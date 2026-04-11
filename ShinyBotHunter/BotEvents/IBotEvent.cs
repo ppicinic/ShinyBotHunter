@@ -1,4 +1,7 @@
-﻿namespace ShinyBotHunter.BotEvents
+﻿using ShinyBotHunter.Bot;
+using ShinyBotHunter.Context;
+
+namespace ShinyBotHunter.BotEvents
 {
     public interface IBotEvent
     {

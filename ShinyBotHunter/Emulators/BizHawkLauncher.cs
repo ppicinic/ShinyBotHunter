@@ -1,4 +1,5 @@
-﻿using ShinyBotHunter.Context;
+﻿using Microsoft.Extensions.Options;
+using ShinyBotHunter.Context;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -25,10 +26,8 @@ namespace ShinyBotHunter.Emulators
         private int height;
 
         private int _maxEmulators = 14;
-        // make this a singleton class that uses DI to load AppSettings
-        private static readonly SemaphoreSlim _globalLock = new SemaphoreSlim(14, 14);
-        private static readonly SemaphoreSlim _writerLock = new SemaphoreSlim(1, 1);
-        public BizHawkLauncher(GameContext context, int maxEmulators = 14)
+        private BizHawkReaderWriterLock _locker;
+        public BizHawkLauncher(GameContext context, IServiceProvider provider)
         {
             this.placement = context.DisplayPosition;
             this.memoryPort = context.MemoryPort;
@@ -36,14 +35,16 @@ namespace ShinyBotHunter.Emulators
             this.game = context.GameName;
             this.width = context.Width;
             this.height = context.Height;
-            this._maxEmulators = maxEmulators;
+            this._maxEmulators = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value.MaxEmulators["DS"];
+            _locker = provider.GetRequiredService<BizHawkReaderWriterLock>();
+
             process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "C:\\BizHawk\\EmuHawk.exe",
+                    FileName = "D:\\BizHawk\\EmuHawk.exe",
                     UseShellExecute = false,
-                    Arguments = $"\"C:\\ROMs\\{this.game}.nds\""
+                    Arguments = $"\"D:\\ROMs\\{this.game}.nds\" \"--lua=D:\\Code\\ShinyBotHunter\\Lua Scripts\\Loader.lua\""
                 }
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();
@@ -88,8 +89,7 @@ namespace ShinyBotHunter.Emulators
 
         public async Task LaunchAsync()
         {
-            await _globalLock.WaitAsync();
-            try
+            await using (var _ = await _locker.GetReaderLockAsync()) 
             {
                 process.Start();
                 processStarted = true;
@@ -98,10 +98,6 @@ namespace ShinyBotHunter.Emulators
                 hwId = main;
                 ShowWindow(lua, SW_MINIMIZE);
                 await RepositionAsync(this.placement);
-            }
-            finally
-            {
-                _globalLock.Release();
             }
         }
 
@@ -113,7 +109,7 @@ namespace ShinyBotHunter.Emulators
 
         public Task RepositionAsync(int placeId)
         {
-            return RepositionAsync(placeId % 7 * this.width - 6, placeId / 7 * this.height);
+            return RepositionAsync(placeId % (this._maxEmulators / 2) * this.width - 6, placeId / (this._maxEmulators / 2) * this.height);
         }
 
 
@@ -215,21 +211,11 @@ namespace ShinyBotHunter.Emulators
         {
             if (processStarted)
             {
-                await _writerLock.WaitAsync();
-                for (int i = 0; i < _maxEmulators; i++)
-                {
-                    await _globalLock.WaitAsync();
-                }
-                try
+                await using (var _ = await _locker.GetWriterLockAsync())
                 {
                     process.CloseMainWindow();
                     await process.WaitForExitAsync();
                     await Task.Delay(2000);
-                }
-                finally
-                {
-                    _globalLock.Release(_maxEmulators);
-                    _writerLock.Release();
                 }
             }
         }
