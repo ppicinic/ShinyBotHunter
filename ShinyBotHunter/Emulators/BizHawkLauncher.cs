@@ -41,9 +41,9 @@ namespace ShinyBotHunter.Emulators
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "C:\\BizHawk\\EmuHawk.exe",
+                    FileName = "D:\\BizHawk\\EmuHawk.exe",
                     UseShellExecute = false,
-                    Arguments = $"\"C:\\ROMs\\{this.game}.nds\""
+                    Arguments = $"\"D:\\ROMs\\{this.game}.nds\" \"--lua=D:\\Code\\ShinyBotHunter\\Lua Scripts\\Loader.lua\""
                 }
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();
@@ -113,7 +113,7 @@ namespace ShinyBotHunter.Emulators
 
         public Task RepositionAsync(int placeId)
         {
-            return RepositionAsync(placeId % 7 * this.width - 6, placeId / 7 * this.height);
+            return RepositionAsync(placeId % (this._maxEmulators / 2) * this.width - 6, placeId / (this._maxEmulators / 2) * this.height);
         }
 
 

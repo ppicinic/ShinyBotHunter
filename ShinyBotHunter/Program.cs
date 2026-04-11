@@ -14,7 +14,9 @@ namespace ShinyBotHunter
     {
         public static async Task Main(string[] args)
         {
-            MultiShinyHunterEvent e = new MultiShinyHunterEvent();
+            //MultiShinyHunterEvent e = new MultiShinyHunterEvent();
+            var startup = new Startup();
+            await startup.MainAsync();
             //ICommandClient commandClient = new BizHawkCommandClient();
             //commandClient.Connect();
             //Console.ReadKey();
@@ -28,11 +30,11 @@ namespace ShinyBotHunter
             //await commandClient.WaitForMacroAsync();
             //await Task.Delay(5000);
             //await commandClient.DisposeAsync();
-            var data = await e.ExecuteAsync();
-            foreach(var pokemon in data)
-            {
-                Console.WriteLine($"{pokemon.Game}{pokemon.GameId}: {pokemon.PokemonData.Species}");
-            }
+            //var data = await e.ExecuteAsync();
+            //foreach(var pokemon in data)
+            //{
+            //    Console.WriteLine($"{pokemon.Game}{pokemon.GameId}: {pokemon.PokemonData.Species}");
+            //}
             //while(tasks.Count > 0)
             //{
             //    Task<IBot> completedTask = await Task.WhenAny(tasks);

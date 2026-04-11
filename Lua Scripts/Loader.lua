@@ -1,2 +1,2 @@
-dofile("C:\\Code\\Lua Scripts\\CommandServer.lua")
-dofile("C:\\Code\\Lua Scripts\\MemoryServer.lua")
+dofile("D:\\Code\\ShinyBotHunter\\Lua Scripts\\CommandServer.lua")
+dofile("D:\\Code\\ShinyBotHunter\\Lua Scripts\\MemoryServer.lua")

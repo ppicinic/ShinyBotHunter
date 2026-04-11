@@ -1,4 +1,6 @@
-﻿using ShinyBotHunter.Bot;
+﻿using Microsoft.Extensions.Options;
+using ShinyBotHunter.Bot;
+using ShinyBotHunter.Context;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using System.Threading.Channels;
@@ -46,11 +48,16 @@ namespace ShinyBotHunter.BotEvents
         private ShinyStarterGameState gameState = new ShinyStarterGameState() { Name = "Blank"};
         private int maxEmulators;
         private static readonly object _locker=new object();
+        private IServiceProvider serviceProvider;
+        private BotFactory botFactory;
 
-        public MultiShinyHunterEvent(int maxEmulators = 14)
+        public MultiShinyHunterEvent(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider serviceProvider)
         {
-            this.maxEmulators = maxEmulators;
+            this.maxEmulators = appSettings.Value.MaxEmulators["DS"];
+            this.serviceProvider = serviceProvider;
+            this.botFactory = botFactory;
         }
+
         public async Task<List<StarterPokemonData>> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             gameState = CreateOrLoadGameState();
@@ -82,10 +89,9 @@ namespace ShinyBotHunter.BotEvents
             List<Task> tasks = new List<Task>();
             for(int i = 0; i < maxEmulators; i++)
             {
-                var botFactory = new BotFactory();
                 var context = botFactory.BuildGameContext("Pokemon HeartGold", i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
-                CreateSaveEvent createSave = new CreateSaveEvent(bot, context);
+                CreateSaveEvent createSave = new CreateSaveEvent(bot, context, serviceProvider);
                 tasks.Add(createSave.ExecuteAsync());
                 await Task.Delay(5000);
             }
@@ -103,7 +109,6 @@ namespace ShinyBotHunter.BotEvents
             List<IBot> bots = new List<IBot>();
             for (int i = 0; i < maxEmulators; i++)
             {
-                var botFactory = new BotFactory();
                 var context = botFactory.BuildGameContext("Pokemon HeartGold", i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
                 bots.Add(bot);
@@ -134,10 +139,9 @@ namespace ShinyBotHunter.BotEvents
             List<Task> tasks = new List<Task>();
             for (int i = 0; i < maxEmulators; i++)
             {
-                var botFactory = new BotFactory();
                 var context = botFactory.BuildGameContext("Pokemon SoulSilver", i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
-                CreateSaveEvent createSave = new CreateSaveEvent(bot, context);
+                CreateSaveEvent createSave = new CreateSaveEvent(bot, context, serviceProvider);
                 tasks.Add(createSave.ExecuteAsync());
                 await Task.Delay(5000);
             }
@@ -251,7 +255,6 @@ namespace ShinyBotHunter.BotEvents
         {
             var _ = Task.Run(async () =>
             {
-                var botFactory = new BotFactory();
                 var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
                 IBot bot = botFactory.CreateBot(context);
                 var e = new HgssShinyStarterEvent(bot, context.GameFlavor);
@@ -266,10 +269,9 @@ namespace ShinyBotHunter.BotEvents
         private void CreateAndHuntTask(int gameId, int placement, Channel<StarterPokemonData> channel, CancellationToken token)
         {
             var _ = Task.Run(async () => {
-                var botFactory = new BotFactory();
                 var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
                 IBot createBot = botFactory.CreateBot(context);
-                CreateSaveEvent saveEvent = new CreateSaveEvent(createBot, context);
+                CreateSaveEvent saveEvent = new CreateSaveEvent(createBot, context, serviceProvider);
                 await saveEvent.ExecuteAsync();
                 await Task.Delay(10000);
                 IBot shinyBot = botFactory.CreateBot(context);
