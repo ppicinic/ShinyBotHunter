@@ -1,5 +1,6 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Emulators;
 
 namespace ShinyBotHunter
 {
@@ -28,6 +29,7 @@ namespace ShinyBotHunter
                 .Configure<ApplicationSettings>(config.GetSection("ApplicationSettings"))
                 .AddScoped<MultiShinyHunterEvent>()
                 .AddSingleton<BotFactory>()
+                .AddSingleton<BizHawkReaderWriterLock>()
                 .BuildServiceProvider();
             return services;
         }

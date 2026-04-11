@@ -16,7 +16,7 @@ namespace ShinyBotHunter.Bot
         }
         public IBot CreateBot(GameContext context)
         {
-            ILauncher launcher = new BizHawkLauncher(context, applicationSettings.MaxEmulators["DS"]);
+            ILauncher launcher = new BizHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(context);
             IMemoryClient memoryClient = new BizHawkMemoryClient(port: context.MemoryPort);
             return new Bot(launcher, commandClient, memoryClient);
