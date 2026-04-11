@@ -1,0 +1,4 @@
+name: SoftReset
+flavor: HGSS
+steps:
+  - ["T.Start", "T.Select", "T.L", "T.R" ]  

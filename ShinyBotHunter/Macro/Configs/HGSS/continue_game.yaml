@@ -1,0 +1,8 @@
+name: ContinueGame
+flavor: HGSS
+steps:
+ - T.A
+ - W.R[120,840]
+ - T.A 
+ - W.R[240,960]
+ - T.A 

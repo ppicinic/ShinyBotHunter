@@ -1,0 +1,35 @@
+name: CreateNewSavePart3
+flavor: HGSS
+steps:
+ - H.Right.47
+ - W.5
+ - T.Down
+ - W.5
+ - T.A
+ - W.15
+ - H.Up.20
+ - W.5
+ - T.Left
+ - W.5
+ - T.A 
+ - W.30
+ - T.Down
+ - W.5
+ - H.Right.36
+ - W.5
+ - T.A
+ - W.5
+ - T.Right
+ - W.5
+ - T.A
+ - W.5
+ - H.Left.60
+ - W.5
+ - T.Down
+ - W.5
+ - T.A 
+ - W.5
+ - T.Start
+ - W.5
+ - T.A 
+ - W.60

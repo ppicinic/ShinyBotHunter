@@ -1,0 +1,13 @@
+name: CreateNewSavePart1
+flavor: HGSS
+steps:
+ - T.A
+ - W.120
+ - T.A 
+ - W.420
+ # we select no info needed 
+ - T.B
+ - W.60
+ - T.B
+ - W.60 
+ - T.A

@@ -1,0 +1,10 @@
+﻿name: SelectStarter
+flavor: HGSS
+steps:
+ - T.A
+ - W.180
+ - T.A
+ - W.60
+ - T.Left
+ - W.60
+ - T.Left

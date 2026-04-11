@@ -1,0 +1,13 @@
+name: CreateNewSave
+flavor: HGSS
+steps:
+  - macro: CreateNewSavePart1
+  - W.180
+  - macro: CreateNewSavePart2
+  - W.120
+  - macro: CreateNewSavePart3
+  - W.120
+  - macro: CreateNewSavePart4
+  - macro: CreateNewSavePart5
+  - W.180
+  - macro: CreateNewSavePart6

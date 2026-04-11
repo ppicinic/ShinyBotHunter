@@ -1,0 +1,6 @@
+name: SelectStarterFull
+flavor: HGSS
+steps:
+ - macro: ContinueGame
+ - W.240
+ - macro: SelectStarter 

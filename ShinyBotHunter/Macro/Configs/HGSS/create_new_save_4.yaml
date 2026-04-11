@@ -1,0 +1,25 @@
+name: CreateNewSavePart4
+flavor: HGSS
+steps:
+ - T.A
+ - W.60
+ - T.A
+ - W.60
+ - H.A.90 
+ - W.5
+ - H.A.90
+ - W.5
+ - H.A.90
+ - W.5
+ - H.A.90  
+ - W.5
+ - H.A.90
+ - W.5
+ - T.A
+ - W.300
+ - H.Left.30 
+ - H.Up.30
+ - H.Left.45
+ - W.375
+ - H.A.90 
+ - W.5 

@@ -1,0 +1,6 @@
+@ShinyBotHunter_HostAddress = http://localhost:5049
+
+GET {{ShinyBotHunter_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
