@@ -3,9 +3,9 @@
 # =============================================================================
 
 ## Build outputs
-ShinyHunterBot/bin/
-ShinyHunterBot/obj/
-ShinyHunterBot/out/
+*/bin/*
+*/obj/*
+*/out/*
 
 ## .NET Core
 project.lock.json
@@ -19,7 +19,7 @@ artifacts/
 *.sln.docstates
 
 ## Visual Studio
-ShinyBotHunter/.vs/
+*.vs/*
 *.rsuser
 *.vspx
 *.sap
