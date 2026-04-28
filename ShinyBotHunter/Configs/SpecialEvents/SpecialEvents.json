@@ -1,0 +1,9 @@
+[
+  {
+    "Name": "Launch Bot",
+    "RequiredParameters": [ "GameName" ]
+  },
+  {
+    "Name": "HGSS Shiny Starter Hunt"
+  }
+]

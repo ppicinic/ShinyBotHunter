@@ -1,0 +1,18 @@
+{
+  "GameName": "HGSS",
+  "Name": "1-1 Starters",
+  "Pokemon": [
+    {
+      "Name": "Chikorita",
+      "Amount": 1
+    },
+    {
+      "Name": "Cyndaquil",
+      "Amount": 1
+    },
+    {
+      "Name": "Totodile",
+      "Amount": 1
+    }
+  ]
+}

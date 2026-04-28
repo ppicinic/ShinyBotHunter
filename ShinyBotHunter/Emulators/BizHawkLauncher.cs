@@ -83,13 +83,13 @@ namespace ShinyBotHunter.Emulators
 
                 await Task.Delay(100);
             }
-
+            Console.WriteLine("Timed out waiting for BizHawk windows.");
             throw new TimeoutException("Timed out waiting for BizHawk windows.");
         }
 
         public async Task LaunchAsync()
         {
-            await using (var _ = await _locker.GetReaderLockAsync()) 
+            await using (var locker = await _locker.GetReaderLockAsync()) 
             {
                 process.Start();
                 processStarted = true;
@@ -211,10 +211,19 @@ namespace ShinyBotHunter.Emulators
         {
             if (processStarted)
             {
-                await using (var _ = await _locker.GetWriterLockAsync())
+                await using (var locker = await _locker.GetWriterLockAsync())
                 {
                     process.CloseMainWindow();
-                    await process.WaitForExitAsync();
+                    var exitTask = process.WaitForExitAsync();
+                    if(await Task.WhenAny(exitTask, Task.Delay(2 * 60 * 1000)) != exitTask)
+                    {
+                        try
+                        {
+                            process.Kill(entireProcessTree: true);
+                        }
+                        catch { }
+                        await Task.WhenAny(process.WaitForExitAsync(), Task.Delay(60000));
+                    }
                     await Task.Delay(2000);
                 }
             }

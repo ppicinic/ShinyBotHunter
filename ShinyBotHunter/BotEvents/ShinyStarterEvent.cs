@@ -1,32 +1,37 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.BotEvents
 {
-    public class HgssShinyStarterEvent : IBotEvent<PokemonData>
+    public class HgssShinyStarterEvent : AbstractBotEvent<PokemonData?>
     {
         private IBot bot;
         private GameFlavor flavor;
-        private HgssPokemonParser parser = new HgssPokemonParser();
+        private HgssPokemonParser parser;
+        private PokemonPersistenceService encounterService;
 
-        public HgssShinyStarterEvent(IBot bot, GameFlavor flavor)
+        public HgssShinyStarterEvent(HgssPokemonParser parser, PokemonPersistenceService encounterService, IBot bot, GameFlavor flavor)
         {
             this.bot = bot;
             this.flavor = flavor;
+            this.parser = parser;
+            this.encounterService = encounterService;
         }
 
-        public async Task<PokemonData> ExecuteAsync(CancellationToken cancellationToken = default)
+        public int[] BotPositions { get { return []; } }
+
+        public async override Task<PokemonData?> ExecuteWithResultAsync(CancellationToken cancellationToken = default)
         {
 
-            PokemonData? shinyPokemon = null;
+            PersistPokemonData? shinyPokemon = null;
             try
             {
                 await bot.LaunchAsync();
                 await Task.Delay(10000);
                 bool shinyFound = false;
-                int x = 0;
-                int trialFinish = Random.Shared.Next(6, 13);
                 while (!shinyFound && !cancellationToken.IsCancellationRequested)
                 {
                     
@@ -37,20 +42,27 @@ namespace ShinyBotHunter.BotEvents
                     uint anchor = await bot.ReadUIntAsync(0x1D4158);
                     uint anchorOffset = anchor - 0x02000000;
                     uint starterData = anchorOffset + 0x1BC00;
+                    List<PersistPokemonData> pokemonData = new List<PersistPokemonData>();
+                    DateTime now = DateTime.UtcNow;
                     for (uint i = 0; i < 3; i++)
                     {
                         var rawData = await this.bot.ReadBytesAsync(starterData + (0xEC * i), 0xEC);
                         PokemonData? starter = parser.Parse(rawData);
                         if (starter is not null)
                         {
-                            if (x == trialFinish)
+                            PersistPokemonData persistPokemonData = new PersistPokemonData()
                             {
-                                shinyPokemon = starter;
+                                PokemonData = starter,
+                                DateTime = now,
+                                Game = GameFlavor.HGSS,
+                                Phase = "1-1 Starters"
+                            };
+                            pokemonData.Add(persistPokemonData);
+                            if (starter.IsShiny)
+                            {
+                                shinyPokemon = persistPokemonData;
                                 shinyFound = true;
                             }
-                            x++;
-                            // TODO Pass pokemon data to Producer-Consumer queue.
-                            //TEMP
                             Console.WriteLine($"SPID: {starter.Species}, PID: {starter.PID}");
                         }
                         else
@@ -59,6 +71,7 @@ namespace ShinyBotHunter.BotEvents
                             Console.WriteLine($"ERROR: Cannot read pokemon data on starter data.");
                         }
                     }
+                    await this.encounterService.AddEncounterAsync(pokemonData);
                     if (!shinyFound)
                     {
                         bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SoftReset"));
@@ -68,14 +81,14 @@ namespace ShinyBotHunter.BotEvents
                 }
                 if(shinyPokemon is null)
                 {
-                    return shinyPokemon!;
+                    return null; 
                 }
-                if(shinyPokemon.Species == 152)
+                if(shinyPokemon.PokemonData.Species == 152)
                 {
                     bot.Tap("Left");
                     await Task.Delay(2000);
                 }
-                else if(shinyPokemon.Species == 155)
+                else if(shinyPokemon.PokemonData.Species == 155)
                 {
                     bot.Tap("Right");
                     await Task.Delay(2000);
@@ -83,17 +96,19 @@ namespace ShinyBotHunter.BotEvents
                 // run save game macro
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveStarter"));
                 await bot.WaitForMacroAsync();
-                await Task.Delay(10000);//10second safety margin to save game before closing emulator.
 
                 // Pass successful shiny to producer-consumer queue
+                await this.encounterService.AddCaughtPokemonAsync(shinyPokemon);
+                await Task.Delay(10000);//10second safety margin to save game before closing emulator.
 
-                return shinyPokemon!;
+                
+                return shinyPokemon.PokemonData;
             }
             catch { }
             finally {
                 await bot.DisposeAsync();
             }
-            return shinyPokemon!;
+            return shinyPokemon is not null ? shinyPokemon.PokemonData : null;
             // therotically this could return null if this event is cancelled,
             // but if we did that we wouldn't await this response so /shrug ?
         }

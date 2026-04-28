@@ -1,0 +1,155 @@
+import React, { useEffect, useState } from 'react'
+import type { PhasePokemonInfo, SubscriptionState } from '../types/api'
+import { useAppContext } from '../context/AppContext'
+import { getSpriteUrl } from '../utils/sprites'
+
+const GAME_DISPLAY_NAMES: Record<string, string> = {
+  HGSS: 'HeartGold & SoulSilver'
+}
+
+function getGameDisplayName(game: string): string {
+  return GAME_DISPLAY_NAMES[game] ?? game
+}
+
+interface PhaseCardProps {
+  subscription: SubscriptionState
+}
+
+export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
+  const { config } = useAppContext()
+  const { game, phase, encounterData, phaseInfo } = subscription
+
+  const phaseData = encounterData?.phaseEncounters?.[phase]
+  const totalPhaseEncounters = phaseData?.allPokemonCounts?.encounters ?? 0
+  const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
+
+  const pokemonList: PhasePokemonInfo[] = phaseInfo?.pokemon ?? []
+
+  // Encounter rate polling
+  const [encounterRate, setEncounterRate] = useState<number | null>(null)
+  const pollingInterval = config?.encounterRatePollingIntervalMs ?? 60000
+
+  useEffect(() => {
+    if (!config?.apiUrl) return
+
+    const fetchRate = async (): Promise<void> => {
+      try {
+        const encodedPhase = encodeURIComponent(phase)
+        const url = `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
+        const res = await fetch(url)
+        if (!res.ok) return
+        const rate = await res.json() as number
+        setEncounterRate(rate)
+      } catch {
+        // silently ignore polling errors
+      }
+    }
+
+    // Fetch immediately on mount, then on interval
+    fetchRate()
+    const timer = setInterval(fetchRate, pollingInterval)
+    return () => clearInterval(timer)
+  }, [config?.apiUrl, game, phase, pollingInterval])
+
+  return (
+    <div className="dashboard-card h-full flex flex-col">
+      <div className="card-header">
+        <div>
+          <span className="text-xs text-slate-500 mr-2">{getGameDisplayName(game)}</span>
+          <span className="card-header-title">{phase}</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <span>
+            Encounters: <span className="text-white font-semibold">{totalPhaseEncounters.toLocaleString()}</span>
+          </span>
+          {totalPhaseShiny > 0 && (
+            <span className="shiny-glow font-semibold">✨ {totalPhaseShiny}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="card-body overflow-auto flex-1">
+        {pokemonList.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+            {phaseInfo === null ? 'Loading phase requirements...' : 'No Pokémon defined for this phase.'}
+          </div>
+        ) : (
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-card-border">
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3 w-24"></th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Name</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Phase Enc.</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Enc.</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2">Caught / Needed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pokemonList.map((pkmn) => {
+                const phaseCounts = phaseData?.pokemonEncounters?.[pkmn.speciesId]
+                const totalCounts = encounterData?.pokemonEncounters?.[pkmn.speciesId]
+                const shiniesCaught = phaseCounts?.shiniesCaught ?? 0
+                const amountRequired = pkmn.amount
+                const isComplete = shiniesCaught >= amountRequired
+                // Phase card shows target (shiny) sprites since these are the pokemon being hunted
+                const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
+
+                return (
+                  <tr
+                    key={pkmn.speciesId}
+                    className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''}`}
+                  >
+                    {/* Sprite */}
+                    <td className="py-2 pr-3 text-center">
+                      <img
+                        src={spritePath}
+                        alt={pkmn.name}
+                        className="w-24 h-24 object-contain mx-auto"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    </td>
+
+                    {/* Name */}
+                    <td className="py-2 pr-3 text-center">
+                      <span className="text-white font-semibold text-sm capitalize">{pkmn.name}</span>
+                      {isComplete && (
+                        <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-700/50 text-green-300">✓</span>
+                      )}
+                    </td>
+
+                    {/* Phase encounters */}
+                    <td className="py-2 pr-3 text-center text-white font-medium text-sm">
+                      {(phaseCounts?.encounters ?? 0).toLocaleString()}
+                    </td>
+
+                    {/* Game encounters */}
+                    <td className="py-2 pr-3 text-center text-white font-medium text-sm">
+                      {(totalCounts?.encounters ?? 0).toLocaleString()}
+                    </td>
+
+                    {/* Shinies caught / needed */}
+                    <td className={`py-2 text-center font-medium text-sm ${isComplete ? 'text-green-400' : 'text-white'}`}>
+                      {shiniesCaught}/{amountRequired}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer: encounter rate */}
+      <div className="flex items-center justify-end px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
+        <span className="text-xs text-slate-400">
+          Rate:{' '}
+          <span className="text-white font-semibold">
+            {encounterRate !== null ? `${encounterRate.toFixed(2)}/hr` : '—'}
+          </span>
+        </span>
+      </div>
+    </div>
+  )
+}
