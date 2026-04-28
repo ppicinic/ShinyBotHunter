@@ -29,6 +29,7 @@ namespace ShinyBotHunter.Bot
 
         public async ValueTask DisposeAsync()
         {
+            await FlushSave(); // we force save cause we can't trust Window Server to close properly.
             try
             {
                 await memoryClient.DisposeAsync();
@@ -134,6 +135,11 @@ namespace ShinyBotHunter.Bot
         public void Tap(string button)
         {
             this.commandClient.Tap(button);
+        }
+
+        public async Task FlushSave()
+        {
+            await this.commandClient.FlushSave();
         }
 
         public async Task WaitForMacroAsync(CancellationToken ct = default)

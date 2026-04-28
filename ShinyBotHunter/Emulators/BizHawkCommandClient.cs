@@ -11,6 +11,7 @@ namespace ShinyBotHunter.Emulators
         private StreamReader? _reader;
 
         public event Action? OnMacroDone;
+        public event Action? OnFlushDone;
 
         private readonly CancellationTokenSource _cts = new();
         private readonly CommandPreprocessor _preprocessor;
@@ -92,6 +93,7 @@ namespace ShinyBotHunter.Emulators
                 string? line = await _reader!.ReadLineAsync(ct);
                 if (line == null) break;
                 if (line == "macro_done") OnMacroDone?.Invoke();
+                if (line == "flushed") OnFlushDone?.Invoke();
                 if (line == "pong") Console.WriteLine("[BizHawkCommandClient] pong");
             }
         }
@@ -108,6 +110,16 @@ namespace ShinyBotHunter.Emulators
             _tcp.Dispose();
             return ValueTask.CompletedTask;
             
+        }
+
+        public async Task FlushSave(CancellationToken ct = default)
+        {
+            _writer!.WriteLine("flush");
+            var tcs = new TaskCompletionSource();
+            OnFlushDone += Complete;
+            await tcs.Task.WaitAsync(ct);
+            OnFlushDone -= Complete;
+            void Complete() => tcs.TrySetResult();
         }
     }
 }

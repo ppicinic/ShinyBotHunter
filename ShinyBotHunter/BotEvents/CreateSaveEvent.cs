@@ -30,6 +30,7 @@ namespace ShinyBotHunter.BotEvents
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(context.GameFlavor, "CreateNewSave"));
             await bot.WaitForMacroAsync(cancellationToken);
             await Task.Delay(10000); // safety sleep for save before closing emulator
+            await bot.FlushSave();
             await bot.DisposeAsync();
         }
 

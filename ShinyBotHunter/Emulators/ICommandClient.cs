@@ -21,5 +21,6 @@
         public void ClearMacro();
 
         public Task WaitForMacroAsync(CancellationToken ct = default);
+        Task FlushSave();
     }
 }

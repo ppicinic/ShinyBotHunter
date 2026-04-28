@@ -96,7 +96,7 @@ namespace ShinyBotHunter.BotEvents
                 // run save game macro
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveStarter"));
                 await bot.WaitForMacroAsync();
-
+                await bot.FlushSave();
                 // Pass successful shiny to producer-consumer queue
                 await this.encounterService.AddCaughtPokemonAsync(shinyPokemon);
                 await Task.Delay(10000);//10second safety margin to save game before closing emulator.
