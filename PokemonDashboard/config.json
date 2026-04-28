@@ -1,0 +1,11 @@
+{
+  "backendUrl": "http://localhost:5001",
+  "apiUrl": "http://localhost:5000",
+  "spritesRootPath": "D:/Sprites",
+  "encounterRatePollingIntervalMs": 60000,
+  "cards": {
+    "phaseCard": { "enabled": true },
+    "recentPokemonCard": { "enabled": true },
+    "adminCard": { "enabled": true }
+  }
+}

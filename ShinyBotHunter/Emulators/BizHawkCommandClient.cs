@@ -67,8 +67,10 @@ namespace ShinyBotHunter.Emulators
         }
 
         public void RunRepeatMacro(string macro)
-            => _writer!.WriteLine($"RP_{macro}");
-
+        {
+            string converted = _preprocessor.Process(macro);
+            _writer!.WriteLine($"RP_{converted}");
+        }
         public void ClearMacro()
             => _writer!.WriteLine("macro_clear");
 
@@ -78,7 +80,7 @@ namespace ShinyBotHunter.Emulators
             OnMacroDone += Complete;
             await tcs.Task.WaitAsync(ct);
             OnMacroDone -= Complete;
-            void Complete() => tcs.TrySetResult();
+            void Complete() => tcs.TrySetResult(); 
         }
 
         // ── Internal ──────────────────────────────────────────────────────────────

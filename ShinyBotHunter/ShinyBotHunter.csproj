@@ -4,13 +4,26 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>90bed6b9-0481-4f35-8c92-163ea1cba3cf</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Scripts\**" />
+    <Content Remove="Scripts\**" />
+    <EmbeddedResource Remove="Scripts\**" />
+    <None Remove="Scripts\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="InfluxDB3.Client" Version="1.7.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Configs\SpecialEvents\" />
+    <Folder Include="Phases\HGSS\" />
   </ItemGroup>
 
 </Project>

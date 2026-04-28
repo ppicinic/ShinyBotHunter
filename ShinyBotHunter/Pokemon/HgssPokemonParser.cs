@@ -1,17 +1,16 @@
-﻿namespace ShinyBotHunter.Pokemon
+﻿using Microsoft.Extensions.Primitives;
+using ShinyBotHunter.Service;
+
+namespace ShinyBotHunter.Pokemon
 {
     public class HgssPokemonParser
     {
+        private PokemonMetadataService _metadataService;
+        public HgssPokemonParser(PokemonMetadataService service)
+        {
+            this._metadataService = service;
+        }
         private uint LCRNG(uint seed) => seed * 0x41C64E6D + 0x6073;
-
-        private readonly int[][] Substruct = {
-            [1,2,3,4], [1,2,4,3], [1,3,2,4], [1,4,2,3],
-            [1,3,4,2], [1,4,3,2], [2,1,3,4], [2,1,4,3],
-            [3,1,2,4], [4,1,2,3], [3,1,4,2], [4,1,3,2],
-            [2,3,1,4], [2,4,1,3], [3,2,1,4], [4,2,1,3],
-            [3,4,1,2], [4,3,1,2], [2,3,4,1], [2,4,3,1],
-            [3,2,4,1], [4,2,3,1], [3,4,2,1], [4,3,2,1],
-        };
 
         public PokemonData? Parse(byte[] raw)
         {
@@ -35,12 +34,14 @@
             ushort move3 = BitConverter.ToUInt16(data, 0x2C);
             ushort move4 = BitConverter.ToUInt16(data, 0x2E);
             uint ivs = BitConverter.ToUInt32(data, 0x38);
+            int formIndex = data[0x40] >> 3;
+
 
             // Block C (0x48)
-            string nickname = ReadString(data, 0x48, 11);
+            string nickname = ReadString(data, 0x48);
 
             // Block D (0x68)
-            string otName = ReadString(data, 0x68, 8);
+            string otName = ReadString(data, 0x68);
 
             // Battle stats (0x88)
             byte level = data[0x8C];
@@ -51,12 +52,16 @@
             ushort spe = BitConverter.ToUInt16(data, 0x96);
             ushort spatk = BitConverter.ToUInt16(data, 0x98);
             ushort spdef = BitConverter.ToUInt16(data, 0x9A);
-
+            byte gender = _metadataService.GetGender(pid, species);
             return new PokemonData
             {
                 PID = pid,
                 Checksum = checksum,
                 Species = species,
+                Name = _metadataService.GetPokemonMetadata(species).PokemonName,
+                FormIndex = formIndex,
+                Gender = gender,
+                FormCode = _metadataService.GetFormCode(species, gender, formIndex),
                 HeldItem = heldItem,
                 OTId = otId,
                 TID = tid,
@@ -70,7 +75,6 @@
                 Nickname = nickname,
                 OTName = otName,
                 Nature = (byte)(pid % 25),
-                AbilitySlot = (byte)(pid & 1),
                 Level = level,
                 HP = hp,
                 MaxHP = maxHp,
@@ -84,6 +88,15 @@
 
         private byte[]? Decrypt(byte[] raw)
         {
+            int[][] Substruct = {
+                [1,2,3,4], [1,2,4,3], [1,3,2,4], [1,4,2,3],
+                [1,3,4,2], [1,4,3,2], [2,1,3,4], [2,1,4,3],
+                [3,1,2,4], [4,1,2,3], [3,1,4,2], [4,1,3,2],
+                [2,3,1,4], [2,4,1,3], [3,2,1,4], [4,2,1,3],
+                [3,4,1,2], [4,3,1,2], [2,3,4,1], [2,4,3,1],
+                [3,2,4,1], [4,2,3,1], [3,4,2,1], [4,3,2,1],
+            };
+
             uint pid = BitConverter.ToUInt32(raw, 0);
             ushort checksum = BitConverter.ToUInt16(raw, 6);
 
@@ -156,16 +169,42 @@
             return sum == checksum;
         }
 
-        private string ReadString(byte[] data, int offset, int maxChars)
+        private string ReadString(byte[] data, int offset)
         {
+            // Define the table exactly as it appears in your Lua code
+            string[] charTable = {
+        " ", "ぁ", "あ", "ぃ", "い", "ぅ", "う", "ぇ", "え", "ぉ", "お", "か", "が", "き", "ぎ", "く", "ぐ", "け", "げ", "こ", "ご", "さ", "ざ", "し", "じ", "す", "ず", "せ", "ぜ", "そ", "ぞ", "た", "だ", "ち", "ぢ", "っ", "つ", "づ", "て", "で", "と", "ど", "な", "に", "ぬ", "ね", "の", "は", "ば", "ぱ", "ひ", "び", "ぴ", "ふ", "ぶ", "ぷ", "へ", "べ", "ぺ", "ほ", "ぼ", "ぽ", "ま", "み", "む", "め", "も", "ゃ", "や", "ゅ", "ゆ", "ょ", "よ", "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "ァ", "ア", "ィ", "イ", "ゥ", "ウ", "ェ", "エ", "ォ", "オ", "カ", "ガ", "キ", "ギ", "ク", "グ", "ケ", "ゲ", "コ", "ゴ", "サ", "ザ", "シ", "ジ", "ス", "ズ", "セ", "ぜ", "ソ", "ゾ", "タ", "ダ", "チ", "ヂ", "ッ", "ツ", "ヅ", "テ", "デ", "ト", "ド", "ナ", "ニ", "ヌ", "ネ", "ノ", "ハ", "バ", "パ", "ヒ", "ビ", "ピ", "フ", "ブ", "プ", "ヘ", "ベ", "ぺ", "ホ", "ボ", "ポ", "ま", "ミ", "ム", "メ", "モ", "ャ", "ヤ", "ゅ", "ゆ", "ょ", "よ", "ら", "り", "る", "れ", "ろ", "わ", "を", "ん", "０", "１", "２", "３", "４", "５", "６", "７", "８", "９", "Ａ", "Ｂ", "Ｃ", "Ｄ", "Ｅ", "Ｆ", "Ｇ", "Ｈ", "Ｉ", "Ｊ", "Ｋ", "Ｌ", "Ｍ", "Ｎ", "Ｏ", "Ｐ", "Ｑ", "Ｒ", "Ｓ", "Ｔ", "Ｕ", "Ｖ", "Ｗ", "Ｘ", "Ｙ", "Ｚ", "ａ", "ｂ", "ｃ", "ｄ", "ｅ", "ｆ", "ｇ", "ｈ", "ｉ", "ｊ", "ｋ", "ｌ", "ｍ", "ｎ", "ｏ", "ｐ", "ｑ", "ｒ", "ｓ", "ｔ", "ｕ", "ｖ", "ｗ", "ｘ", "ｙ", "ｚ", "", "！", "？", "、", "。", "…", "・", "／", "「", "」", "『", "』", "（", "）", "♂", "♀", "＋", "ー", "×", "÷", "＝", "～", "：", "；", "．", "，", "♠", "♣", "♥", "♦", "★", "◎", "○", "□", "△", "◇", "＠", "♪", "％", "☀", "☁", "☂", "☃", "😑", "☺", "☹", "😠", "⤴", "⤵", "💤", "円", "💰", "🗝", "💿", "✉", "💊", "🍓", "◓", "💥", "←", "↑", "↓", "→", "►", "＆", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "À", "Á", "Â", "Ã", "Ä", "Å", "Æ", "Ç", "È", "É", "Ê", "Ë", "Ì", "Í", "Î", "Ï", "Ð", "Ñ", "Ò", "Ó", "Ô", "Õ", "Ö", "×", "Ø", "Ù", "Ú", "Û", "Ü", "Ý", "Þ", "ß", "à", "á", "â", "ã", "ä", "å", "æ", "ç", "è", "é", "ê", "ë", "ì", "í", "î", "ï", "ð", "ñ", "ò", "ó", "ô", "õ", "ö", "÷", "ø", "ù", "ú", "û", "ü", "ý", "þ", "ÿ", "Œ", "œ", "Ş", "ş", "ª", "º", "er", "re", "r", "₽", "¡", "¿", "!", "?", ",", ".", "…", "･", "/", "‘", "’", "“", "”", "„", "«", "»", "(", ")", "♂", "♀", "+", "-", "*", "#", "=", "&", "~", ":", ";", "♠", "♣", "♥", "♦", "★", "◎", "○", "□", "△", "◇", "@", "♪", "%", "☀", "☁", "☂", "☃", "😑", "☺", "☹", "😠", "⤴", "⤵", "💤", " ", "e", "PK", "MN", " ", " ", " ", "", " ", " ", "°", "_", "＿", "․", "‥"
+    };
+
             var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < maxChars; i++)
+
+            // Loop until end of array or null terminator
+            for (int i = offset; i + 1 < data.Length; i += 2)
             {
-                ushort ch = BitConverter.ToUInt16(data, offset + i * 2);
-                if (ch == 0xFFFF) break;
-                sb.Append((char)ch);
+                // Equivalent to Lua: input[i] + bit.lshift(input[i+1], 8)
+                ushort val = (ushort)(data[i] | (data[i + 1] << 8));
+
+                // Null termination check
+                if (val == 0x0000 || val == 0xFFFF)
+                    break;
+
+                int tableIndex = val - 1;
+
+                if (tableIndex >= 0 && tableIndex < charTable.Length)
+                {
+                    sb.Append(charTable[tableIndex]);
+                }
+                else
+                {
+                    //Console.Write($"{val}:?, ");
+                    sb.Append("?");
+                }
             }
-            return sb.ToString();
+
+            string result = sb.ToString();
+            //Console.WriteLine();
+            Console.WriteLine(result);
+            return result;
         }
     }
 }

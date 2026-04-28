@@ -1,0 +1,243 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Base / Reset
+   ============================================================ */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: #0d0d1a;
+  color: #e2e8f0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   Scrollbars
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: #3d3d6b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #5a5a9e;
+}
+
+/* ============================================================
+   Card base styles
+   ============================================================ */
+.dashboard-card {
+  @apply rounded-lg overflow-hidden flex flex-col;
+  background-color: #1a1a2e;
+  border: 1px solid #2d2d4e;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.card-header {
+  @apply flex items-center justify-between px-4 py-2 select-none cursor-grab active:cursor-grabbing;
+  background-color: #16213e;
+  border-bottom: 1px solid #2d2d4e;
+  min-height: 40px;
+}
+
+.card-header-title {
+  @apply text-sm font-semibold uppercase tracking-wider;
+  color: #94a3b8;
+}
+
+.card-body {
+  @apply flex-1 overflow-auto p-3;
+}
+
+/* ============================================================
+   Shiny highlight
+   ============================================================ */
+.shiny-glow {
+  color: #FFD700;
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+}
+
+.shiny-row {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.08) 0%, transparent 100%);
+  border-left: 3px solid #FFD700;
+}
+
+/* ============================================================
+   Progress bar
+   ============================================================ */
+.progress-bar-track {
+  @apply rounded-full overflow-hidden;
+  background-color: #2d2d4e;
+  height: 8px;
+}
+
+.progress-bar-fill {
+  @apply h-full rounded-full transition-all duration-500;
+  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+}
+
+.progress-bar-fill.complete {
+  background: linear-gradient(90deg, #16a34a, #22c55e);
+}
+
+/* ============================================================
+   Connection status indicator
+   ============================================================ */
+.status-dot {
+  @apply inline-block w-2 h-2 rounded-full;
+}
+.status-dot.connected { background-color: #22c55e; }
+.status-dot.disconnected { background-color: #ef4444; }
+.status-dot.reconnecting {
+  background-color: #f59e0b;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ============================================================
+   Recent Encounters entry animation
+   ============================================================ */
+@keyframes slide-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.encounter-entry-new {
+  animation: slide-in-top 0.35s ease-out forwards;
+}
+
+/* ============================================================
+   react-grid-layout overrides
+   ============================================================ */
+.react-grid-layout {
+  position: relative;
+}
+
+.react-grid-item {
+  transition: none !important;
+}
+
+.react-grid-item.react-draggable-dragging {
+  opacity: 0.85;
+  z-index: 100;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+}
+
+.react-grid-item > .react-resizable-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  bottom: 0;
+  right: 0;
+  cursor: se-resize;
+  opacity: 0.4;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid #94a3b8;
+  border-bottom: 2px solid #94a3b8;
+}
+
+.react-grid-item:hover > .react-resizable-handle {
+  opacity: 1;
+}
+
+/* ============================================================
+   Pokemon sprite
+   ============================================================ */
+.pokemon-sprite {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ============================================================
+   Tabs (Admin card)
+   ============================================================ */
+.tab-bar {
+  @apply flex border-b;
+  border-color: #2d2d4e;
+}
+
+.tab-btn {
+  @apply px-4 py-2 text-sm font-medium transition-colors;
+  color: #64748b;
+  border-bottom: 2px solid transparent;
+}
+
+.tab-btn:hover {
+  color: #94a3b8;
+}
+
+.tab-btn.active {
+  color: #e2e8f0;
+  border-bottom-color: #6366f1;
+}
+
+/* ============================================================
+   Stat grid (IV display)
+   ============================================================ */
+.stat-grid {
+  @apply grid gap-1;
+  grid-template-columns: repeat(6, 1fr);
+}
+
+.stat-cell {
+  @apply text-center rounded py-1;
+  background-color: #2d2d4e;
+  font-size: 11px;
+}
+
+.stat-cell .stat-label {
+  @apply block;
+  color: #64748b;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.stat-cell .stat-value {
+  @apply block font-bold;
+  color: #e2e8f0;
+}
+
+.stat-cell .stat-value.max {
+  color: #22c55e;
+}
