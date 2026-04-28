@@ -2,6 +2,10 @@
 # C# / .NET
 # =============================================================================
 
+**PokemonDashboard/dist-electron/**
+**PokemonDashboard/dist-renderer/**
+**PokemonDashboard/release/**
+
 ## Kilo Code
 .kilocode**
 plans/**

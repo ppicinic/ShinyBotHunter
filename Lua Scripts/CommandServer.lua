@@ -185,6 +185,10 @@ local function handle_request(msg)
         held_frames   = {}
         log("CMD MACRO CLEAR")
         sendResponse("macro_done")
+    elseif msg == "flush" then
+    	client.saveramflush()
+    	log("CMD FLUSH: SaveRAM written to disk")
+    	sendResponse("flushed")
     elseif msg == "ping" then
         sendResponse("pong")
     end
