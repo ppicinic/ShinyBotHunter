@@ -28,6 +28,7 @@ namespace ShinyBotHunter
             app.MapControllers().AsRequiredPort(5000);
             app.MapHub<ElectronHub>("/socket-api").AsRequiredPort(5001);
 
+            await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
             services.GetRequiredService<InfluxDbEncounterDao>().Init();
             await services.GetRequiredService<PokemonMetadataService>().InitAsync();
             services.GetRequiredService<PhaseInfoService>().Init();
@@ -42,7 +43,7 @@ namespace ShinyBotHunter
             }
             else
             {
-                await MainRunnerAsync(app);
+                await MainRunnerAsync(app, services);
             }
             
 
@@ -54,27 +55,22 @@ namespace ShinyBotHunter
 
         //public 
 
-        private async Task MainRunnerAsync(WebApplication app)
+        private async Task MainRunnerAsync(WebApplication app, IServiceProvider services)
         {
             var _ = Task.Run(async () =>
             {
                 await app.RunAsync();
             });
             await Task.Delay(5000);
-            string? s = "";
-            do
-            {
-                 s = Console.ReadLine();
-            } while (s != "end");
-            //var botFactory = services.GetRequiredService<BotFactory>();
-            //var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
-            //await bot.LaunchAsync();
-            //Console.WriteLine("Press to check direction");
+
+            var botFactory = services.GetRequiredService<BotFactory>();
+            var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
+            await bot.LaunchAsync();
 
 
-            //char c = Console.ReadKey().KeyChar;
-            //bot.RunMacroString("W.240");
-            //await bot.WaitForMacroAsync();
+
+            bot.RunMacroString("W.240");
+            await bot.WaitForMacroAsync();
             //c = Console.ReadKey().KeyChar;
             //while (c != 'c')
             //{
@@ -212,7 +208,13 @@ namespace ShinyBotHunter
             //        Console.WriteLine($"{pokemon.Game}{pokemon.GameId}: {pokemon.PokemonData.Species}");
             //    }
             //}
-
+            await bot.DisposeAsync();
+            Console.WriteLine("BizHawk should be closed or close soon");
+            string? s = "";
+            do
+            {
+                s = Console.ReadLine();
+            } while (s != "end");
             await Task.Delay(5000);
         }
 
@@ -243,6 +245,7 @@ namespace ShinyBotHunter
                 .AddSingleton<PhaseInfoService>()
                 .AddSingleton<AdminService>()
                 .AddSingleton<BotService>()
+                .AddSingleton<BizHawkLuaLoader>()
                 .AddSingleton<NotificationService>();
         }
     }
