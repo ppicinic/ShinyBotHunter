@@ -124,6 +124,10 @@ namespace ShinyBotHunter.Persistence.InfluxDb
         {
             string query = $"SELECT AVG(hourly_counts) AS average_points_per_hour FROM (SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' GROUP BY 1)";
             var result = await _client.Query(query, database: database).FirstAsync();
+            if(result is null || result[0] is null)
+            {
+                return 0.0;
+            }
             return double.Parse(result![0]!.ToString()!);
         }
 
