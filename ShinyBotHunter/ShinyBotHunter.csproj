@@ -8,13 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Scripts\**" />
-    <Content Remove="Scripts\**" />
-    <EmbeddedResource Remove="Scripts\**" />
-    <None Remove="Scripts\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="InfluxDB3.Client" Version="1.7.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
     <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
@@ -23,6 +16,7 @@
 
   <ItemGroup>
     <Folder Include="Configs\SpecialEvents\" />
+    <Folder Include="NewFolder\" />
     <Folder Include="Phases\HGSS\" />
   </ItemGroup>
 

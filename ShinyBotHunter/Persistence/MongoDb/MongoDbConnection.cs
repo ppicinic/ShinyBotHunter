@@ -1,4 +1,5 @@
-﻿using MongoDB.Driver;
+﻿using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 
 namespace ShinyBotHunter.Persistence.MongoDb
 {
@@ -6,11 +7,11 @@ namespace ShinyBotHunter.Persistence.MongoDb
     {
         private IMongoDatabase database;
         private MongoClient mongoClient;
-        public MongoDbConnection()
+        public MongoDbConnection(IOptions<ApplicationSettings> appSettings)
         {
-            string connectionUri = "mongodb://localhost:27017";
+            string connectionUri = $"mongodb://{appSettings.Value.MongoDbUrl}";
             mongoClient = new MongoClient(connectionUri);
-            database = mongoClient.GetDatabase("ShinyBotHunter");
+            database = mongoClient.GetDatabase(appSettings.Value.MongoDbDatabase);
         }
 
         public IMongoDatabase GetDatabase()

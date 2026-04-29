@@ -137,7 +137,7 @@ namespace ShinyBotHunter.Bot
             this.commandClient.Tap(button);
         }
 
-        public async Task FlushSave()
+        public async Task FlushSave(CancellationToken ct = default)
         {
             await this.commandClient.FlushSave();
         }
