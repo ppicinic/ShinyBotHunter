@@ -128,6 +128,7 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             {
                 return 0.0;
             }
+            // TODO this isn't accurate the first and last hour buckets don't calculate properly.
             return double.Parse(result![0]!.ToString()!);
         }
 
