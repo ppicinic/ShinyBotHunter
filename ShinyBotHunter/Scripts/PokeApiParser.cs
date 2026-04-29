@@ -1,245 +1,274 @@
-﻿#r "nuget: MongoDB.Driver, 3.1.0"
-
+﻿using Microsoft.Extensions.Options;
+using MongoDB.Driver;
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using MongoDB.Driver;
-
-// --- Models ---
-internal record PokemonDex(PokemonDexEntry[] results);
-internal record PokemonDexEntry(string name, string url);
-internal record PokemonSpecies(string name, string url);
-internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms);
-internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female);
-internal record PokemonForm(string name, string url);
-internal record PokemonFormData(string name, VersionGroup version_group, PokemonSprite sprites);
-internal record VersionGroup(string name, string url);
-
-public class PokemonMetadata
+namespace ShinyBotHunter.Scripts
 {
-    public int Id { get; set; }
-    public string PokemonName { get; set; }
-    public string PokeApiName { get; set; }
-    public List<PokemonFormMetadata> Forms { get; set; } = new List<PokemonFormMetadata>();
-    public bool HasFemaleForm {get;set;} = false;
-}
+    // --- Models ---
+    internal record PokemonDex(PokemonDexEntry[] results);
+    internal record PokemonDexEntry(string name, string url);
+    internal record PokemonSpecies(string name, string url);
+    internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms);
+    internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female);
+    internal record PokemonForm(string name, string url);
+    internal record PokemonFormData(string name, VersionGroup version_group, PokemonSprite sprites);
+    internal record VersionGroup(string name, string url);
 
-public class PokemonFormMetadata
-{
-    public string Name {get;set;}
-    public string Version {get;set;}
-    public bool HasFemaleForm {get; set;}
-}
-
-public async Task DownloadImageAsync(string url, string filePath)
-{
-    if(!File.Exists(filePath)){
-        using (HttpClient client = new HttpClient())
-        {
-            // Get the image bytes from the URL
-            byte[] imageBytes = await client.GetByteArrayAsync(url);
-            
-            // Write the bytes to a local file
-            await File.WriteAllBytesAsync(filePath, imageBytes);
-        }
-    }
-}
-
-// --- Execution Logic ---
-HttpClient client = new HttpClient();
-string baseUri = "https://pokeapi.co/api/v2/";
-string dexUri = "pokemon?limit=2000";
-
-Console.WriteLine("Fetching Dex entries...");
-var entries = await client.GetFromJsonAsync<PokemonDex>(baseUri + dexUri);
-
-if (entries?.results == null) throw new Exception("Failed to retrieve entries.");
-
-var cache = new Dictionary<string, PokemonMetadata>();
-var metadataList = new List<PokemonMetadata>();
-var spriteCache = new HashSet<string>(){
-    "back_default",
-    "back_female",
-    "back_shiny",
-    "back_shiny_female",
-    "front_default",
-    "front_female",
-    "front_shiny",
-    "front_shiny_female",
-    "other",
-    "versions"
-};
-
-var skipPokemon = new HashSet<string>(){
-    "pikachu-starter",
-    "eevee-starter",
-    "koraidon-limited-build",
-    "koraidon-sprinting-build",
-    "koraidon-swimming-build",
-    "koraidon-gliding-build",
-    "miraidon-low-power-mode",
-    "miraidon-drive-mode",
-    "miraidon-aquatic-mode",
-    "miraidon-glide-mode"
-};
-
-HashSet<string> versions = new HashSet<string>() {
-    "gold-silver",
-    "firered-leafgreen",
-    "emerald",
-    "diamond-pearl",
-    "platinum",
-    "ruby-sapphire"
-};
-
-HashSet<string> skipForms = new HashSet<string>(){
-    "pichu-spiky-eared",
-    "mothim-sandy",
-    "mothim-trash",
-    "mothim-plant",
-    "frillish-female",
-    "jellicent-female",
-    "pyroar-female",
-    "xerneas-active",
-    "sinistea-antique",
-    "polteageist-antique",
-    "poltchageist-artisan",
-    "sinistcha-masterpiece"
-};
-
-for (int i = 0; i < entries.results.Length; i++)
-{
-    string name = entries.results[i].name;
-    var pokemon = await client.GetFromJsonAsync<Pokemon>(baseUri + $"pokemon/{name}");
-    
-    if (pokemon == null) continue;
-    if(pokemon.name.EndsWith("-totem") || (pokemon.name.EndsWith("-meteor") && pokemon.name.StartsWith("minior")) || skipPokemon.Contains(pokemon.name) || pokemon.name.Contains("-mega") || pokemon.name.Contains("-gmax")) { continue; }
-
-    if (cache.ContainsKey(pokemon.species.name))
+    public class PokemonMetadata
     {
-        if(pokemon.name != "oinkologne-female"){
-            var form = await client.GetFromJsonAsync<PokemonFormData>(pokemon.forms[0].url);
-            
-            cache[pokemon.species.name].Forms.Add(new PokemonFormMetadata(){
-                Name = pokemon.name,
-                Version = form.version_group.name
-            });
-        }
+        public int Id { get; set; }
+        public string PokemonName { get; set; } = null!;
+        public string PokeApiName { get; set; } = null!;
+        public List<PokemonFormMetadata> Forms { get; set; } = new List<PokemonFormMetadata>();
+        public bool HasFemaleForm { get; set; } = false;
     }
-    else
+
+    public class PokemonFormMetadata
     {
-        var meta = new PokemonMetadata()
+        public string Name { get; set; } = null!;
+        public string Version { get; set; } = null!;
+        public bool HasFemaleForm { get; set; }
+    }
+
+    public class PokeApiParser
+    {
+        private string rootSpriteDirectory;
+        private string mongoDbUrl;
+        private string mongoDbDatabase;
+
+        public PokeApiParser(IOptions<ApplicationSettings> appSettings)
         {
-            Id = pokemon.id == 10136 ? 774 : pokemon.id,
-            PokeApiName = pokemon.name,
-            PokemonName = PokemonNames.GetName(pokemon.id),
-        };
-        if(pokemon.name == "minior-red"){
-            meta.Forms.Add(new PokemonFormMetadata(){
-                Name = pokemon.name,
-                Version = "sun-moon",
-                HasFemaleForm = false
-            });
+            rootSpriteDirectory = appSettings.Value.SpriteBaseDirectory;
+            mongoDbUrl = appSettings.Value.MongoDbUrl;
+            mongoDbDatabase = appSettings.Value.MongoDbDatabase;
         }
-        foreach(var formSrc in pokemon.forms){
-            if(!skipForms.Contains(formSrc.name) && formSrc.name != pokemon.name && !formSrc.name.Contains("scatterbug") && !formSrc.name.Contains("spewpa"))
+        public async Task DownloadImageAsync(string url, string filePath)
+        {
+            if (!File.Exists(filePath))
             {
-                var form = await client.GetFromJsonAsync<PokemonFormData>(formSrc.url);
-                meta.Forms.Add(new PokemonFormMetadata(){
-                    Name = form.name,
-                    Version = form.version_group.name,
-                    HasFemaleForm = form.sprites.front_female is not null 
-                });
-                if(form.sprites.front_female is not null){
-                    Console.WriteLine($"Form {form.name} has a female version");
-                }
-                try{
-                    await DownloadImageAsync(form.sprites.front_default, $"D:/Sprites/Default/{form.name}.png");
-                    await DownloadImageAsync(form.sprites.front_shiny, $"D:/Sprites/Shiny/{form.name}.png");
-                }catch(Exception e){
-                    Console.WriteLine($"Form {form.name} has no sprites");
-                    throw e;
+                using (HttpClient client = new HttpClient())
+                {
+                    // Get the image bytes from the URL
+                    byte[] imageBytes = await client.GetByteArrayAsync(url);
+
+                    // Write the bytes to a local file
+                    await File.WriteAllBytesAsync(filePath, imageBytes);
                 }
             }
         }
-        metadataList.Add(meta);
-        if(pokemon.sprites.front_female is not null){
-            meta.HasFemaleForm = true;
+
+        public async Task ScrapePokeApi()
+        {
+            // --- Execution Logic ---
+            HttpClient client = new HttpClient();
+            string baseUri = "https://pokeapi.co/api/v2/";
+            string dexUri = "pokemon?limit=2000";
+
+            Console.WriteLine("Fetching Dex entries...");
+            var entries = await client.GetFromJsonAsync<PokemonDex>(baseUri + dexUri);
+
+            if (entries?.results == null) throw new Exception("Failed to retrieve entries.");
+
+            var cache = new Dictionary<string, PokemonMetadata>();
+            var metadataList = new List<PokemonMetadata>();
+            var spriteCache = new HashSet<string>(){
+            "back_default",
+            "back_female",
+            "back_shiny",
+            "back_shiny_female",
+            "front_default",
+            "front_female",
+            "front_shiny",
+            "front_shiny_female",
+            "other",
+            "versions"
+        };
+
+            var skipPokemon = new HashSet<string>(){
+            "pikachu-starter",
+            "eevee-starter",
+            "koraidon-limited-build",
+            "koraidon-sprinting-build",
+            "koraidon-swimming-build",
+            "koraidon-gliding-build",
+            "miraidon-low-power-mode",
+            "miraidon-drive-mode",
+            "miraidon-aquatic-mode",
+            "miraidon-glide-mode"
+        };
+
+            HashSet<string> versions = new HashSet<string>() {
+            "gold-silver",
+            "firered-leafgreen",
+            "emerald",
+            "diamond-pearl",
+            "platinum",
+            "ruby-sapphire"
+        };
+
+            HashSet<string> skipForms = new HashSet<string>(){
+            "pichu-spiky-eared",
+            "mothim-sandy",
+            "mothim-trash",
+            "mothim-plant",
+            "frillish-female",
+            "jellicent-female",
+            "pyroar-female",
+            "xerneas-active",
+            "sinistea-antique",
+            "polteageist-antique",
+            "poltchageist-artisan",
+            "sinistcha-masterpiece"
+        };
+
+            for (int i = 0; i < entries.results.Length; i++)
+            {
+                string name = entries.results[i].name;
+                var pokemon = await client.GetFromJsonAsync<Pokemon>(baseUri + $"pokemon/{name}");
+
+                if (pokemon == null) continue;
+                if (pokemon.name.EndsWith("-totem") || (pokemon.name.EndsWith("-meteor") && pokemon.name.StartsWith("minior")) || skipPokemon.Contains(pokemon.name) || pokemon.name.Contains("-mega") || pokemon.name.Contains("-gmax")) { continue; }
+
+                if (cache.ContainsKey(pokemon.species.name))
+                {
+                    if (pokemon.name != "oinkologne-female")
+                    {
+                        var form = await client.GetFromJsonAsync<PokemonFormData>(pokemon.forms[0].url);
+
+                        cache[pokemon.species.name].Forms.Add(new PokemonFormMetadata()
+                        {
+                            Name = pokemon.name,
+                            Version = form!.version_group.name
+                        });
+                    }
+                }
+                else
+                {
+                    var meta = new PokemonMetadata()
+                    {
+                        Id = pokemon.id == 10136 ? 774 : pokemon.id,
+                        PokeApiName = pokemon.name,
+                        PokemonName = PokemonNames.GetName(pokemon.id),
+                    };
+                    if (pokemon.name == "minior-red")
+                    {
+                        meta.Forms.Add(new PokemonFormMetadata()
+                        {
+                            Name = pokemon.name,
+                            Version = "sun-moon",
+                            HasFemaleForm = false
+                        });
+                    }
+                    foreach (var formSrc in pokemon.forms)
+                    {
+                        if (!skipForms.Contains(formSrc.name) && formSrc.name != pokemon.name && !formSrc.name.Contains("scatterbug") && !formSrc.name.Contains("spewpa"))
+                        {
+                            var form = await client.GetFromJsonAsync<PokemonFormData>(formSrc.url);
+                            meta.Forms.Add(new PokemonFormMetadata()
+                            {
+                                Name = form!.name,
+                                Version = form.version_group.name,
+                                HasFemaleForm = form.sprites.front_female is not null
+                            });
+                            if (form.sprites.front_female is not null)
+                            {
+                                Console.WriteLine($"Form {form.name} has a female version");
+                            }
+                            try
+                            {
+                                await DownloadImageAsync(form.sprites.front_default, $"{rootSpriteDirectory}/Default/{form.name}.png");
+                                await DownloadImageAsync(form.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{form.name}.png");
+                            }
+                            catch (Exception)
+                            {
+                                Console.WriteLine($"Form {form.name} has no sprites");
+                                throw;
+                            }
+                        }
+                    }
+                    metadataList.Add(meta);
+                    if (pokemon.sprites.front_female is not null)
+                    {
+                        meta.HasFemaleForm = true;
+                    }
+                    cache.Add(pokemon.species.name, meta);
+                }
+                try
+                {
+
+                    if (pokemon.sprites.front_female is not null && pokemon.sprites.front_shiny_female is not null)
+                    {
+                        await DownloadImageAsync(pokemon.sprites.front_female, $"{rootSpriteDirectory}/Female_Default/{pokemon.name}.png");
+                        await DownloadImageAsync(pokemon.sprites.front_shiny_female, $"{rootSpriteDirectory}/Female_Shiny/{pokemon.name}.png");
+                    }
+                    if (pokemon.name == "oinkologne-female")
+                    {
+                        await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Female_Default/oinkologne-male.png");
+                        await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Female_Shiny/oinkologne-male.png");
+                    }
+                    else
+                    {
+                        await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Default/{pokemon.name}.png");
+                        await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{pokemon.name}.png");
+                    }
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine($"{pokemon.name} has no sprites");
+                    throw;
+                }
+
+                if (i % 100 == 0) Console.WriteLine($"Processed {i} entries...");
+            }
+
+            foreach (var val in versions)
+            {
+                Console.WriteLine(val);
+            }
+
+
+            foreach (var pokemon in metadataList)
+            {
+                if (pokemon.Id <= 493)
+                {
+                    var forms = pokemon.Forms.Where(x => versions.Contains(x.Version)).ToList();
+                    if (forms.Count() > 1 || pokemon.HasFemaleForm)
+                    {
+                        Console.WriteLine($"{pokemon.PokemonName} has multiple forms: [{String.Join(", ", forms.Select(x => x.Name))}], Female: {pokemon.HasFemaleForm}");
+                    }
+                }
+            }
+            // --- MongoDB Save ---
+            //TODO use mongodb url
+            string connectionUri = $"mongodb://{mongoDbUrl}";
+            var mongoClient = new MongoClient(connectionUri);
+            var database = mongoClient.GetDatabase(mongoDbDatabase);
+            var collection = database.GetCollection<PokemonMetadata>("PokemonMetadata");
+
+            await collection.InsertManyAsync(metadataList);
+            // Console.WriteLine("Saved to MongoDB successfully!");
         }
-        cache.Add(pokemon.species.name, meta);
     }
-    try{
-    
-        if(pokemon.sprites.front_female is not null && pokemon.sprites.front_shiny_female is not null){
-            await DownloadImageAsync(pokemon.sprites.front_female, $"D:/Sprites/Female_Default/{pokemon.name}.png");
-            await DownloadImageAsync(pokemon.sprites.front_shiny_female, $"D:/Sprites/Female_Shiny/{pokemon.name}.png");
-        }
-        if(pokemon.name == "oinkologne-female"){
-            await DownloadImageAsync(pokemon.sprites.front_default, $"D:/Sprites/Female_Default/oinkologne-male.png");
-            await DownloadImageAsync(pokemon.sprites.front_shiny, $"D:/Sprites/Female_Shiny/oinkologne-male.png");
-        }else{
-            await DownloadImageAsync(pokemon.sprites.front_default, $"D:/Sprites/Default/{pokemon.name}.png");
-            await DownloadImageAsync(pokemon.sprites.front_shiny, $"D:/Sprites/Shiny/{pokemon.name}.png");
-        }
-    }
-    catch(Exception e){
-        Console.WriteLine($"{pokemon.name} has no sprites");
-        throw e;
-    }
-    
-    if (i % 100 == 0) Console.WriteLine($"Processed {i} entries...");
-}
-
-foreach(var val in versions){
-    Console.WriteLine(val);
-}
-
-// List<string> unowns = new List<string>();
-// for(int i = 98; i < 98+25; i++)
-// {
-//     unowns.Add(new string(new char[] {(char)i}));
-// }
-// unowns.Add("question");
-// unowns.Add("exclamation");
-
-// foreach(string unown in unowns){
-//     await DownloadImageAsync($"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/201-{unown}.png", $"D:/Sprites/Default/unown-{unown}.png");
-//     await DownloadImageAsync($"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/201-{unown}.png", $"D:/Sprites/Shiny/unown-{unown}.png");
-// }
 
 
-foreach(var pokemon in metadataList){
-    if(pokemon.Id <= 493)
+    // --- Static Helpers ---
+    public static class PokemonNames
     {
-        var forms = pokemon.Forms.Where(x => versions.Contains(x.Version)).ToList();
-        if(forms.Count() > 1 || pokemon.HasFemaleForm){
-            Console.WriteLine($"{pokemon.PokemonName} has multiple forms: [{String.Join(", ", forms.Select(x => x.Name))}], Female: {pokemon.HasFemaleForm}");
+        public static string GetName(int id)
+        {
+            if (id == 10136)
+            {
+                id = 774;
+            }
+            if (id < Names.Length) return Names[id];
+            throw new Exception("Id is incorrect");
         }
-    }
-}
-// --- MongoDB Save ---
-string connectionUri = "mongodb://localhost:27017";
-var mongoClient = new MongoClient(connectionUri);
-var database = mongoClient.GetDatabase("ShinyBotHunter");
-var collection = database.GetCollection<PokemonMetadata>("PokemonMetadata");
 
-await collection.InsertManyAsync(metadataList);
-// Console.WriteLine("Saved to MongoDB successfully!");
-
-// --- Static Helpers ---
-public static class PokemonNames {
-    public static string GetName(int id) {
-        if(id == 10136){
-            id = 774;
-        }
-        if (id < Names.Length) return Names[id];
-        throw new Exception("Id is incorrect");
-    }
-
-    public static readonly string[] Names = new string[]
-    {
+        public static readonly string[] Names = new string[]
+        {
         "???",           // 0    (unused/invalid)
 
         // ── Generation 1 ──────────────────────────────────────────────────────
@@ -1284,6 +1313,7 @@ public static class PokemonNames {
         "Iron Crown",    // 1023
         "Terapagos",     // 1024
         "Pecharunt",     // 1025
-    };
+        };
 
+    }
 }

@@ -1,20 +1,23 @@
-﻿using ShinyBotHunter.Bot;
+﻿using Google.Protobuf.WellKnownTypes;
+using Grpc.Net.Client.Balancer;
+using Microsoft.Extensions.Options;
+using MongoDB.Driver;
+using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
-using MongoDB.Driver;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Service;
 using System.Text;
-using Grpc.Net.Client.Balancer;
 
 namespace ShinyBotHunter
 {
     public class Startup
     {
-        public async Task MainAsync()
+        public async Task MainAsync(string[] args)
         {
             var builder = WebApplication.CreateBuilder();
             builder.Services.AddControllers();
@@ -25,6 +28,7 @@ namespace ShinyBotHunter
             app.MapControllers().AsRequiredPort(5000);
             app.MapHub<ElectronHub>("/socket-api").AsRequiredPort(5001);
 
+            await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
             services.GetRequiredService<InfluxDbEncounterDao>().Init();
             await services.GetRequiredService<PokemonMetadataService>().InitAsync();
             services.GetRequiredService<PhaseInfoService>().Init();
@@ -33,22 +37,40 @@ namespace ShinyBotHunter
             services.GetRequiredService<PokemonPersistenceService>().Init();
             services.GetRequiredService<BotService>().Init();
 
+            if (args.Length > 0 && args[0].ToLower() == "--parsePokeApi")
+            {
+                await ParsePokeApi(services);
+            }
+            else
+            {
+                await MainRunnerAsync(app, services);
+            }
+            
 
+            await services.GetRequiredService<PokemonPersistenceService>().DisposeAsync();
+            await services.GetRequiredService<InfluxDbEncounterDao>().DisposeAsync();
+            await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
+            services.GetRequiredService<MongoDbConnection>().Dispose();
+        }
+
+        //public 
+
+        private async Task MainRunnerAsync(WebApplication app, IServiceProvider services)
+        {
             var _ = Task.Run(async () =>
             {
                 await app.RunAsync();
             });
             await Task.Delay(5000);
-            Console.ReadLine();
-            //var botFactory = services.GetRequiredService<BotFactory>();
-            //var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
-            //await bot.LaunchAsync();
-            //Console.WriteLine("Press to check direction");
+
+            var botFactory = services.GetRequiredService<BotFactory>();
+            var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
+            await bot.LaunchAsync();
 
 
-            //char c = Console.ReadKey().KeyChar;
-            //bot.RunMacroString("W.240");
-            //await bot.WaitForMacroAsync();
+
+            bot.RunMacroString("W.240");
+            await bot.WaitForMacroAsync();
             //c = Console.ReadKey().KeyChar;
             //while (c != 'c')
             //{
@@ -186,17 +208,20 @@ namespace ShinyBotHunter
             //        Console.WriteLine($"{pokemon.Game}{pokemon.GameId}: {pokemon.PokemonData.Species}");
             //    }
             //}
-
+            await bot.DisposeAsync();
+            Console.WriteLine("BizHawk should be closed or close soon");
+            string? s = "";
+            do
+            {
+                s = Console.ReadLine();
+            } while (s != "end");
             await Task.Delay(5000);
-
-            await services.GetRequiredService<PokemonPersistenceService>().DisposeAsync();
-            await services.GetRequiredService<InfluxDbEncounterDao>().DisposeAsync();
-            await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
-            services.GetRequiredService<MongoDbConnection>().Dispose();
         }
 
-
-
+        private async Task ParsePokeApi(IServiceProvider provider)
+        {
+            await new PokeApiParser(provider.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
+        }
         public void CreateServices(IServiceCollection services)
         {
             var config = new ConfigurationBuilder()
@@ -220,6 +245,7 @@ namespace ShinyBotHunter
                 .AddSingleton<PhaseInfoService>()
                 .AddSingleton<AdminService>()
                 .AddSingleton<BotService>()
+                .AddSingleton<BizHawkLuaLoader>()
                 .AddSingleton<NotificationService>();
         }
     }

@@ -24,27 +24,35 @@ namespace ShinyBotHunter.Emulators
         private IntPtr hwId;
         private int width;
         private int height;
+        private int widthOffset;
+        private string romDirectory;
+        private string bizHawkDirectory;
 
         private int _maxEmulators = 14;
         private BizHawkReaderWriterLock _locker;
         public BizHawkLauncher(GameContext context, IServiceProvider provider)
         {
+            ApplicationSettings applicationSettings = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value;
             this.placement = context.DisplayPosition;
             this.memoryPort = context.MemoryPort;
             this.commandPort = context.CommandPort;
             this.game = context.GameName;
             this.width = context.Width;
             this.height = context.Height;
-            this._maxEmulators = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value.MaxEmulators["DS"];
+            this.widthOffset = context.WidthOffset;
+            this._maxEmulators = applicationSettings.MaxEmulators["DS"];
+            this.romDirectory = applicationSettings.ROMBaseDirectory;
+            this.bizHawkDirectory = applicationSettings.BizHawkBaseDirectory;
             _locker = provider.GetRequiredService<BizHawkReaderWriterLock>();
 
+            string path = AppContext.BaseDirectory;
             process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "D:\\BizHawk\\EmuHawk.exe",
+                    FileName = $"{this.bizHawkDirectory}EmuHawk.exe",
                     UseShellExecute = false,
-                    Arguments = $"\"D:\\ROMs\\{this.game}.nds\" \"--lua=D:\\Code\\ShinyBotHunter\\Lua Scripts\\Loader.lua\""
+                    Arguments = $"\"{this.romDirectory}{this.game}.nds\" \"--lua={path}\\Loader.lua\""
                 }
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();
@@ -109,7 +117,7 @@ namespace ShinyBotHunter.Emulators
 
         public Task RepositionAsync(int placeId)
         {
-            return RepositionAsync(placeId % (this._maxEmulators / 2) * this.width - 6, placeId / (this._maxEmulators / 2) * this.height);
+            return RepositionAsync(placeId % (this._maxEmulators / 2) * this.width - 6 + this.widthOffset, placeId / (this._maxEmulators / 2) * this.height);
         }
 
 

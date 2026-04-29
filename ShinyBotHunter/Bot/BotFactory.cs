@@ -32,7 +32,8 @@ namespace ShinyBotHunter.Bot
                 MemoryPort = 50101 + (displayPosition * 2),
                 CommandPort = 50100 + (displayPosition * 2),
                 Width = applicationSettings.DisplayWidth["DS"],
-                Height = applicationSettings.DisplayHeight["DS"]
+                Height = applicationSettings.DisplayHeight["DS"],
+                WidthOffset = applicationSettings.WidthOffset["DS"]
             };
         }
     }

@@ -9,7 +9,7 @@ local DEBUG = true
 local port = tonumber(os.getenv("BIZHAWK_COMMAND_PORT")) or 50000
 
 local server = TcpListener(IPAddress.Loopback, port)
-local client, stream, reader, writer = nil, nil, nil, nil
+local serverClient, stream, reader, writer = nil, nil, nil, nil
 
 local held_frames   = {} 
 local command_stack = {}
@@ -23,8 +23,8 @@ print("Command server waiting on port " .. port .. "...")
 
 local function disconnect()
     pcall(function() stream:Close() end)
-    pcall(function() client:Close() end)
-    stream, client, reader, writer = nil, nil, nil, nil
+    pcall(function() serverClient:Close() end)
+    stream, serverClient, reader, writer = nil, nil, nil, nil
     held_frames   = {}
     command_stack = {}
     print("Command client disconnected, waiting for new connection...")
@@ -186,7 +186,7 @@ local function handle_request(msg)
         log("CMD MACRO CLEAR")
         sendResponse("macro_done")
     elseif msg == "flush" then
-    	client.saveramflush()
+    	client.saveram()
     	log("CMD FLUSH: SaveRAM written to disk")
     	sendResponse("flushed")
     elseif msg == "ping" then
@@ -197,9 +197,9 @@ end
 -- ── Frame loop ────────────────────────────────────────────────────────────────
 
 event.onframestart(function()
-    if client == nil and server:Pending() then
-        client = server:AcceptTcpClient()
-        stream = client:GetStream()
+    if serverClient == nil and server:Pending() then
+        serverClient = server:AcceptTcpClient()
+        stream = serverClient:GetStream()
         reader = StreamReader(stream)
         writer = StreamWriter(stream)
         writer.AutoFlush = true

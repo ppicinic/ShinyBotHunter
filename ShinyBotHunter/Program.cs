@@ -16,7 +16,7 @@ namespace ShinyBotHunter
         {
 
             var startup = new Startup();
-            await startup.MainAsync();
+            await startup.MainAsync(args);
         }
     }
 }
