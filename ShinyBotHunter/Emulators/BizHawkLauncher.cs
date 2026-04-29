@@ -221,7 +221,16 @@ namespace ShinyBotHunter.Emulators
             {
                 await using (var locker = await _locker.GetWriterLockAsync())
                 {
-                    process.CloseMainWindow();
+                    if (process.MainWindowHandle == hwId)
+                    {
+                        Console.WriteLine("Emulator is main window. Closing via CloseMainWindow()");
+                        process.CloseMainWindow();
+                    }
+                    else
+                    {
+                        Console.WriteLine("Emulator is not main window. Closing via SendMessage()");
+                        SendMessage(hwId, WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+                    }
                     var exitTask = process.WaitForExitAsync();
                     if(await Task.WhenAny(exitTask, Task.Delay(2 * 60 * 1000)) != exitTask)
                     {
@@ -240,6 +249,10 @@ namespace ShinyBotHunter.Emulators
         #region Win32
 
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        private const uint WM_CLOSE = 0x0010;
 
         [DllImport("user32.dll")]
         private static extern bool EnumThreadWindows(
