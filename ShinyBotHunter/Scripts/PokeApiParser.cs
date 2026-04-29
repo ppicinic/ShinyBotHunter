@@ -229,19 +229,6 @@ namespace ShinyBotHunter.Scripts
                 Console.WriteLine(val);
             }
 
-            // List<string> unowns = new List<string>();
-            // for(int i = 98; i < 98+25; i++)
-            // {
-            //     unowns.Add(new string(new char[] {(char)i}));
-            // }
-            // unowns.Add("question");
-            // unowns.Add("exclamation");
-
-            // foreach(string unown in unowns){
-            //     await DownloadImageAsync($"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/201-{unown}.png", $"D:/Sprites/Default/unown-{unown}.png");
-            //     await DownloadImageAsync($"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/201-{unown}.png", $"D:/Sprites/Shiny/unown-{unown}.png");
-            // }
-
 
             foreach (var pokemon in metadataList)
             {
