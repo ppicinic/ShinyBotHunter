@@ -59,6 +59,14 @@ namespace ShinyBotHunter.Emulators
             process.StartInfo.Environment["BIZHAWK_MEMORY_PORT"] = this.memoryPort.ToString();
         }
 
+        public string GameFileName 
+        {   
+            get
+            {
+                return this.game;
+            } 
+        }
+
         private async Task WaitForWindows(Process process, int timeoutMs = 30000)
         {
             var sw = Stopwatch.StartNew();

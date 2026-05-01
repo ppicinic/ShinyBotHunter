@@ -23,6 +23,7 @@ export interface AppConfig {
 export interface ActiveSubscription {
   game: string
   phase: string
+  gameName?: string | null
 }
 
 export interface DashboardConfig {
@@ -48,14 +49,30 @@ export interface PhaseEncounterResponse {
   pokemonEncounters: Record<number, PokemonCounts>
 }
 
-export interface GameEncounterResponse {
+export interface CaughtPokemon {
+  pokemon: PokemonData
+  game: string
+  id: string
+  phase: string
+  gameFileName: string
+}
+
+// C# GameEncounterResponseBase — base encounter data (game-level or game-file-level)
+export interface GameEncounterResponseBase {
   allPokemonCounts: PokemonCounts
   // C# Dictionary<int, PokemonCounts> — JSON keys are numbers
   pokemonEncounters: Record<number, PokemonCounts>
   // C# Dictionary<string, PhaseEncounterResponse> — JSON keys are phase name strings
   phaseEncounters: Record<string, PhaseEncounterResponse>
+  // C# CaughtPokemon[] — caught shinies for this scope
+  caughtPokemons: CaughtPokemon[]
+}
+
+export interface GameEncounterResponse extends GameEncounterResponseBase {
   // C# PokemonData[] — the most recent encounters for this game
   latestEncounters: PokemonData[]
+  // C# Dictionary<string, GameEncounterResponseBase> — per-game-file encounter data
+  gameSpecificResponse: Record<string, GameEncounterResponseBase>
 }
 
 // ============================================================
@@ -121,12 +138,14 @@ export interface PhasePokemonInfo {
   speciesId: number
   amount: number
   formCode: string
+  requireSpecificForm: boolean
 }
 
 export interface PhaseInfo {
   gameName: string
   name: string
   pokemon: PhasePokemonInfo[]
+  isStatic: boolean
 }
 
 // Wrapper returned by GET /api/phaseinfo/{game}/{phase}
@@ -143,6 +162,7 @@ export interface WrappedPokemonPhase {
 export interface SubscriptionState {
   game: string
   phase: string
+  gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
 }
@@ -153,7 +173,8 @@ export interface SubscriptionState {
 // ============================================================
 
 export interface GameMetadata {
-  phases: string[]
+  // Full PhaseInfo objects — includes name, gameName, pokemon, isStatic
+  phases: PhaseInfo[]
 }
 
 export interface AdminMetadata {
@@ -177,8 +198,15 @@ export interface NewEventArguments {
   gameName?: string
 }
 
+// Matches C# EmulatorState record in BotService.cs
+export interface EmulatorState {
+  name: string
+  eventState: number // 0=NotCreated, 1=NotStarted, 2=Running, 3=Waiting, 4=Complete
+  gameFlavor: number // C# GameFlavor enum — may serialize as int or string name
+}
+
 // Bot dashboard state returned by GET /api/bot/getDashboardState,
 // POST /api/startTopLevelAction, and POST /api/bot/cancelAction.
-// Maps emulator position (int) -> display name (string, e.g. "Bot 0" or event name)
+// Maps emulator position (int) -> EmulatorState
 // JSON keys are numbers serialized as strings by System.Text.Json
-export type BotDashboardState = Record<number, string>
+export type BotDashboardState = Record<number, EmulatorState>

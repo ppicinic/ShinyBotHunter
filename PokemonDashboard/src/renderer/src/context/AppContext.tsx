@@ -35,16 +35,19 @@ const AppContext = createContext<AppContextValue>({
   signalR: null
 })
 
-// Fetches phase info + initial encounter data from GET /api/phaseinfo/{game}/{phase}
+// Fetches phase info + initial encounter data from GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
 // The endpoint returns WrappedPokemonPhase: { phaseInfo, data }
 async function fetchWrappedPhaseInfo(
   apiUrl: string,
   game: string,
-  phase: string
+  phase: string,
+  gameName?: string | null
 ): Promise<{ phaseInfo: PhaseInfo; encounterData: GameEncounterResponse } | null> {
   try {
     const encodedPhase = encodeURIComponent(phase)
-    const url = `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}`
+    const url = gameName
+      ? `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
+      : `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}`
     const response = await fetch(url)
     if (!response.ok) return null
     const wrapped = (await response.json()) as WrappedPokemonPhase
@@ -145,11 +148,11 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
       )
 
       // Subscribe to SignalR groups and fetch phase info for new subs
-      toAdd.forEach(async ({ game, phase }) => {
+      toAdd.forEach(async ({ game, phase, gameName }) => {
         service.subscribeToGamePhase(game, phase).catch(console.error)
 
         // Fetch phase info + initial encounter data from REST API
-        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase)
+        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase, gameName)
         if (result) {
           setSubscriptions((prev) =>
             prev.map((sub) =>
@@ -175,9 +178,10 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
       const kept = currentSubs.filter((sub) =>
         newSubs.some((ns) => ns.game === sub.game && ns.phase === sub.phase)
       )
-      const added = toAdd.map(({ game, phase }) => ({
+      const added = toAdd.map(({ game, phase, gameName }) => ({
         game,
         phase,
+        gameName: gameName ?? null,
         encounterData: null,
         phaseInfo: null
       }))

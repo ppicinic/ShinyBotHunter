@@ -17,7 +17,6 @@
   <ItemGroup>
     <Folder Include="Configs\SpecialEvents\" />
     <Folder Include="NewFolder\" />
-    <Folder Include="Phases\HGSS\" />
   </ItemGroup>
 
 </Project>

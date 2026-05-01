@@ -52,6 +52,8 @@ namespace ShinyBotHunter.Bot
             this.commandClient.Hold(button);
         }
 
+        public string GameFileName => this.launcher.GameFileName;
+
         public void HoldFrames(string button, int frames)
         {
             this.commandClient.HoldFrames(button, frames);

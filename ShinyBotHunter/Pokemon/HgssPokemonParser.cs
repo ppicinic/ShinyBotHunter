@@ -25,6 +25,10 @@ namespace ShinyBotHunter.Pokemon
 
             // Block A (0x08)
             ushort species = BitConverter.ToUInt16(data, 0x08);
+            if(species <= 0 || species > 493)
+            {
+                return null;
+            }
             ushort heldItem = BitConverter.ToUInt16(data, 0x0A);
             byte ability = data[0x15];
 
@@ -43,16 +47,16 @@ namespace ShinyBotHunter.Pokemon
             // Block D (0x68)
             string otName = ReadString(data, 0x68);
 
-            // Battle stats (0x88)
-            byte level = data[0x8C];
-            ushort hp = BitConverter.ToUInt16(data, 0x8E);
-            ushort maxHp = BitConverter.ToUInt16(data, 0x90);
-            ushort atk = BitConverter.ToUInt16(data, 0x92);
-            ushort def = BitConverter.ToUInt16(data, 0x94);
-            ushort spe = BitConverter.ToUInt16(data, 0x96);
-            ushort spatk = BitConverter.ToUInt16(data, 0x98);
-            ushort spdef = BitConverter.ToUInt16(data, 0x9A);
             byte gender = _metadataService.GetGender(pid, species);
+            // Battle stats (0x88)
+            byte level = data.Length > 136 ? data[0x8C] : (byte)0;
+            ushort hp = data.Length > 136 ? BitConverter.ToUInt16(data, 0x8E) : (ushort)0;
+            ushort maxHp = data.Length > 136 ? BitConverter.ToUInt16(data, 0x90) : (ushort)0;
+            ushort atk = data.Length > 136 ? BitConverter.ToUInt16(data, 0x92) : (ushort)0;
+            ushort def = data.Length > 136 ? BitConverter.ToUInt16(data, 0x94) : (ushort)0;
+            ushort spe = data.Length > 136 ? BitConverter.ToUInt16(data, 0x96) : (ushort)0;
+            ushort spatk = data.Length > 136 ? BitConverter.ToUInt16(data, 0x98) : (ushort)0;
+            ushort spdef = data.Length > 136 ? BitConverter.ToUInt16(data, 0x9A) : (ushort)0;
             return new PokemonData
             {
                 PID = pid,
@@ -134,12 +138,14 @@ namespace ShinyBotHunter.Pokemon
 
             // Battle stats (0x88–0xDB) encrypted with PID as seed
             seed = pid;
-            result.AddRange(DecryptBlock(raw, 0x88, 0xDB, ref seed));
+            if (raw.Length > 140)
+            {
+                result.AddRange(DecryptBlock(raw, 0x88, 0xDB, ref seed));
 
-            // Gen 4: 16 blank ball seal bytes
-            for (int i = 0; i < 0x10; i++)
-                result.Add(0x0);
-
+                // Gen 4: 16 blank ball seal bytes
+                for (int i = 0; i < 0x10; i++)
+                    result.Add(0x0);
+            }
             return result.ToArray();
         }
 

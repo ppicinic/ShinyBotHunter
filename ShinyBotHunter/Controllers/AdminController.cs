@@ -1,32 +1,35 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
 {
-    public record GamePhaseRaw(string game, string phase);
+    public record GamePhaseRaw(string game, string phase, string? gameName);
     public class AdminController : ApiControllerBase
     {
         private AdminService adminService;
         private PhaseInfoService phaseInfoService;
-        public AdminController(AdminService adminService, PhaseInfoService phaseInfoService) 
+        private string romDirectory;
+        public AdminController(AdminService adminService, PhaseInfoService phaseInfoService, IOptions<ApplicationSettings> appSettings) 
         {
             this.adminService = adminService;
             this.phaseInfoService = phaseInfoService;
+            this.romDirectory = appSettings.Value.ROMBaseDirectory;
         }
 
         
         [HttpPost("subcribeGamePhase")]
         public async Task<IActionResult> SubscribeGamePhase([FromBody] GamePhaseRaw gamePhase)
         {
-            await adminService.SubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase);
+            await adminService.SubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName);
             return Ok();
         }
 
         [HttpPost("unsubcribeGamePhase")]
         public async Task<IActionResult> UnsubscribeGamePhase([FromBody] GamePhaseRaw gamePhase)
         {
-            await adminService.UnsubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase);
+            await adminService.UnsubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName);
             return Ok();
         }
 
@@ -48,6 +51,24 @@ namespace ShinyBotHunter.Controllers
             };
             return Ok(metadata);
         }
+
+        [HttpGet("getAllGames")]
+        public ActionResult<string[]> GetAllGames()
+        {
+            var files = Directory.GetFiles(romDirectory);
+            List<string> result = new List<string>();
+            for (int i = 0; i < files.Length; i++)
+            {
+                var file = files[i];
+                var parts = file.Split('\\', '/', '.');
+                if (parts.Length >= 2)
+                {
+                    result.Add(parts[parts.Length - 2]);
+                }
+
+            }
+            return Ok(result.ToArray());
+        }
     }
 
     public class AdminMetadata
@@ -57,6 +78,6 @@ namespace ShinyBotHunter.Controllers
 
     public class GameMetadata
     {
-        public string[] Phases { get;set; } = null!;
+        public PhaseInfo[] Phases { get;set; } = null!;
     }
 }

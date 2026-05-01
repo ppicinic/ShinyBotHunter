@@ -17,10 +17,12 @@ namespace ShinyBotHunter.BotEvents
             romDir = appSettings.Value.ROMBaseDirectory;
             this.bot = bot;
             this.context = context;
+            EventState = EventState.NotStarted;
         }
 
         public async Task ExecuteAsync(CancellationToken cancellationToken = default)
         {
+            EventState = EventState.Running;
             if (!File.Exists($"{romDir}{context.GameName}.nds"))
             {
                 File.Copy($"{romDir}{context.SourceGameName}.nds", $"{romDir}{context.GameName}.nds");
@@ -32,7 +34,10 @@ namespace ShinyBotHunter.BotEvents
             await Task.Delay(10000); // safety sleep for save before closing emulator
             await bot.FlushSave();
             await bot.DisposeAsync();
+            EventState = EventState.Complete;
         }
+
+        public EventState EventState { get; set; }
 
     }
 }

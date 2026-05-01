@@ -5,5 +5,6 @@
         public Task LaunchAsync();
         public Task RepositionAsync(int x, int y);
         public Task RepositionAsync(int placement);
+        public string GameFileName { get; }
     }
 }

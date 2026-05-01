@@ -8,5 +8,7 @@
             await ExecuteWithResultAsync(cancellationToken);
         }
 
+        public abstract EventState EventState { get; }
+
     }
 }

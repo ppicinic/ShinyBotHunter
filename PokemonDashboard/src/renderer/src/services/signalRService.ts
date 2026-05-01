@@ -1,23 +1,11 @@
 import * as signalR from '@microsoft/signalr'
-import type { GameEncounterResponse, DashboardConfig, ActiveSubscription } from '../types/api'
+import type { BotDashboardState, GameEncounterResponse, DashboardConfig, ActiveSubscription } from '../types/api'
+import { normalizeGameFlavor } from '../utils/gameFlavor'
 
 export type EncountersHandler = (response: GameEncounterResponse, game: string, phase: string) => void
 export type DashboardConfigHandler = (config: DashboardConfig) => void
+export type DashboardStateHandler = (state: BotDashboardState) => void
 export type ConnectionStateHandler = (state: 'connected' | 'disconnected' | 'reconnecting') => void
-
-// C# GameFlavor enum — maps integer value to string name.
-// Must stay in sync with ShinyBotHunter/Macro/GameFlavor.cs
-const GAME_FLAVOR_NAMES: Record<number, string> = {
-  0: 'HGSS'
-}
-
-// Normalize a game value that may be a number (C# enum integer) or already a string.
-function normalizeGame(game: number | string): string {
-  if (typeof game === 'number') {
-    return GAME_FLAVOR_NAMES[game] ?? String(game)
-  }
-  return game
-}
 
 export class SignalRService {
   private connection: signalR.HubConnection | null = null
@@ -26,6 +14,7 @@ export class SignalRService {
 
   private encountersHandlers: EncountersHandler[] = []
   private dashboardConfigHandlers: DashboardConfigHandler[] = []
+  private dashboardStateHandlers: DashboardStateHandler[] = []
   private connectionStateHandlers: ConnectionStateHandler[] = []
 
   // Track which game+phase the last RecieveEncounters came from
@@ -71,15 +60,20 @@ export class SignalRService {
     // C# interface method is ReceiveDashboardConfig (not RefreshDashboardConfig)
     // Payload shape: { gamePhases: [{game, phase}], recentEncounterCount: number }
     // C# GameFlavor enum serializes as integer by default — normalize to string name.
-    this.connection.on('ReceiveDashboardConfig', (rawConfig: { gamePhases: Array<{ game: number | string; phase: string }>; recentEncounterCount: number }) => {
+    this.connection.on('ReceiveDashboardConfig', (rawConfig: { gamePhases: Array<{ game: number | string; phase: string; gameFileName?: string | null }>; recentEncounterCount: number }) => {
       const config: DashboardConfig = {
         gamePhases: (rawConfig.gamePhases ?? []).map((gp): ActiveSubscription => ({
-          game: normalizeGame(gp.game),
-          phase: gp.phase
+          game: normalizeGameFlavor(gp.game),
+          phase: gp.phase,
+          gameName: gp.gameFileName ?? null
         })),
         recentEncounterCount: rawConfig.recentEncounterCount ?? 0
       }
       this.dashboardConfigHandlers.forEach((h) => h(config))
+    })
+
+    this.connection.on('ReceiveDashboardState', (state: BotDashboardState) => {
+      this.dashboardStateHandlers.forEach((h) => h(state))
     })
 
     this.connection.onreconnecting(() => {
@@ -129,6 +123,13 @@ export class SignalRService {
     this.dashboardConfigHandlers.push(handler)
     return () => {
       this.dashboardConfigHandlers = this.dashboardConfigHandlers.filter((h) => h !== handler)
+    }
+  }
+
+  onDashboardState(handler: DashboardStateHandler): () => void {
+    this.dashboardStateHandlers.push(handler)
+    return () => {
+      this.dashboardStateHandlers = this.dashboardStateHandlers.filter((h) => h !== handler)
     }
   }
 

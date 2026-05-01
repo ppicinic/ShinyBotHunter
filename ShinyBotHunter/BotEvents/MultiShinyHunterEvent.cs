@@ -57,6 +57,14 @@ namespace ShinyBotHunter.BotEvents
         private HgssShinyStarterEventFactory shinyStarterEventFactory;
         private IMongoCollection<BaseGameState> _collection;
 
+
+        public override EventState EventState 
+        { 
+            get 
+            { 
+                return EventState.Complete;  
+            } 
+        }
         public int[] BotPositions 
         { 
             get 

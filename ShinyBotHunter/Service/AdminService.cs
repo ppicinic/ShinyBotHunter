@@ -14,16 +14,16 @@ namespace ShinyBotHunter.Service
             _hubContext = hubContext;
         }
 
-        public async Task SubscribeGamePhaseAsync(string game, string phase)
+        public async Task SubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase);
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
             gamePhases.Add(gp);
             await UpdateDashboardsAsync();
         }
 
-        public async Task UnsubscribeGamePhaseAsync(string game, string phase)
+        public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase);
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
             if (gamePhases.Contains(gp))
             {
                 gamePhases.Remove(gp);

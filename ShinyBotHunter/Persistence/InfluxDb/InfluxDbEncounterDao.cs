@@ -63,6 +63,7 @@ namespace ShinyBotHunter.Persistence.InfluxDb
                             .SetTag("pokemon_game", pokemonData.Game.ToString())
                             .SetTag("phase", pokemonData.Phase)
                             .SetTag("is_shiny", pokemon.IsShiny.ToString())
+                            .SetTag("game_file_name", pokemonData.GameFileName)
                             .SetTimestamp(pokemonData.DateTime)
                             .SetField("PID", pokemon.PID)
                             .SetField("TID", pokemon.TID)
@@ -90,6 +91,16 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             var first = await _client.Query(influxQl, database: database).FirstAsync();
 
             string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game.ToString()}' AND \"is_shiny\" = 'True'";
+            var second = await _client.Query(influxQl2, database: database).FirstAsync();
+            return ((long)(first![0]!), (long)second![0]!);
+        }
+
+        public async Task<(long, long)> GetAllEncountersForGameName(string gameFileName)
+        {
+            string influxQl = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}'";
+            var first = await _client.Query(influxQl, database: database).FirstAsync();
+
+            string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"is_shiny\" = 'True'";
             var second = await _client.Query(influxQl2, database: database).FirstAsync();
             return ((long)(first![0]!), (long)second![0]!);
         }
@@ -142,12 +153,32 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             return ((long)(first![0]!), (long)second![0]!);
         }
 
+        public async Task<(long, long)> GetAllPhaseEncountersForGameName(string gameFileName, string phase)
+        {
+            string influxQl = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"phase\" = '{phase}'";
+            var first = await _client.Query(influxQl, database: database).FirstAsync();
+
+            string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"phase\" = '{phase}' AND \"is_shiny\" = 'True'";
+            var second = await _client.Query(influxQl2, database: database).FirstAsync();
+            return ((long)(first![0]!), (long)second![0]!);
+        }
+
         public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGame(GameFlavor game, string phase, int species)
         {
             string influxQl = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"pokemon_id\" = {species}";
             var first = await _client.Query(influxQl, database: database).FirstAsync();
 
             string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"pokemon_id\" = {species} AND \"is_shiny\" = 'True'";
+            var second = await _client.Query(influxQl2, database: database).FirstAsync();
+            return ((long)(first![0]!), (long)second![0]!);
+        }
+
+        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGameName(string gameFileName, string phase, int species)
+        {
+            string influxQl = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"phase\" = '{phase}' AND \"pokemon_id\" = {species}";
+            var first = await _client.Query(influxQl, database: database).FirstAsync();
+
+            string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"phase\" = '{phase}' AND \"pokemon_id\" = {species} AND \"is_shiny\" = 'True'";
             var second = await _client.Query(influxQl2, database: database).FirstAsync();
             return ((long)(first![0]!), (long)second![0]!);
         }
@@ -167,6 +198,18 @@ namespace ShinyBotHunter.Persistence.InfluxDb
 
             // all shiny encounters
             string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game.ToString()}' AND \"pokemon_id\" = {species} AND \"is_shiny\" = 'True'";
+            var second = await _client.Query(influxQl2, database: database).FirstAsync();
+            return ((long)(first![0]!), (long)second![0]!);
+        }
+
+        public async Task<(long, long)> GetAllSpeciesEncountersForGameName(string gameFileName, int species)
+        {
+            // All encounters
+            string influxQl = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"pokemon_id\" = {species}";
+            var first = await _client.Query(influxQl, database: database).FirstAsync();
+
+            // all shiny encounters
+            string influxQl2 = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"game_file_name\" = '{gameFileName.ToString()}' AND \"pokemon_id\" = {species} AND \"is_shiny\" = 'True'";
             var second = await _client.Query(influxQl2, database: database).FirstAsync();
             return ((long)(first![0]!), (long)second![0]!);
         }
