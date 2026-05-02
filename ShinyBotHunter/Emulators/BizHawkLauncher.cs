@@ -46,7 +46,7 @@ namespace ShinyBotHunter.Emulators
             _locker = provider.GetRequiredService<BizHawkReaderWriterLock>();
 
             string path = AppContext.BaseDirectory;
-            string soundConfig = context.SoundOn ? $" --config=config_sound_on.ini" : "";
+            string soundConfig = context.SoundOn ? $" --config={this.bizHawkDirectory}config_sound_on.ini" : "";
             process = new Process
             {
                 StartInfo = new ProcessStartInfo
