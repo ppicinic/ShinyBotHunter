@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { PhasePokemonInfo, SubscriptionState } from '../types/api'
+import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import { getSpriteUrl } from '../utils/sprites'
 
@@ -17,9 +17,14 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
   const { config } = useAppContext()
-  const { game, phase, encounterData, phaseInfo } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo } = subscription
 
-  const phaseData = encounterData?.phaseEncounters?.[phase]
+  // When gameName is set, use the game-file-specific response; otherwise use the game-level response
+  const scopedData: GameEncounterResponseBase | null | undefined = gameName
+    ? encounterData?.gameSpecificResponse?.[gameName]
+    : encounterData
+
+  const phaseData = scopedData?.phaseEncounters?.[phase]
   const totalPhaseEncounters = phaseData?.allPokemonCounts?.encounters ?? 0
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
 
@@ -35,7 +40,9 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
     const fetchRate = async (): Promise<void> => {
       try {
         const encodedPhase = encodeURIComponent(phase)
-        const url = `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
+        const url = gameName
+          ? `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
+          : `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
         const res = await fetch(url)
         if (!res.ok) return
         const rate = await res.json() as number
@@ -49,7 +56,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
     fetchRate()
     const timer = setInterval(fetchRate, pollingInterval)
     return () => clearInterval(timer)
-  }, [config?.apiUrl, game, phase, pollingInterval])
+  }, [config?.apiUrl, game, phase, gameName, pollingInterval])
 
   return (
     <div className="dashboard-card h-full flex flex-col">
@@ -71,7 +78,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
       <div className="card-body overflow-auto flex-1">
         {pokemonList.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
-            {phaseInfo === null ? 'Loading phase requirements...' : 'No Pokémon defined for this phase.'}
+            {phaseInfo === null ? 'Loading milestone requirements...' : 'No Pokémon defined for this milestone.'}
           </div>
         ) : (
           <table className="w-full border-collapse">
@@ -79,16 +86,19 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
               <tr className="border-b border-card-border">
                 <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3 w-24"></th>
                 <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Name</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Phase Enc.</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Enc.</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2">Caught / Needed</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Milestone Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2">Shinies Caught</th>
               </tr>
             </thead>
             <tbody>
               {pokemonList.map((pkmn) => {
                 const phaseCounts = phaseData?.pokemonEncounters?.[pkmn.speciesId]
-                const totalCounts = encounterData?.pokemonEncounters?.[pkmn.speciesId]
-                const shiniesCaught = phaseCounts?.shiniesCaught ?? 0
+                const totalCounts = scopedData?.pokemonEncounters?.[pkmn.speciesId]
+                const shiniesCaught = totalCounts?.shiniesCaught ?? 0
+                const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
+                // Missed = shiny encounters that were not caught
+                const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
                 const amountRequired = pkmn.amount
                 const isComplete = shiniesCaught >= amountRequired
                 // Phase card shows target (shiny) sprites since these are the pokemon being hunted
@@ -131,7 +141,10 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
 
                     {/* Shinies caught / needed */}
                     <td className={`py-2 text-center font-medium text-sm ${isComplete ? 'text-green-400' : 'text-white'}`}>
-                      {shiniesCaught}/{amountRequired}
+                      <div>{shiniesCaught}/{amountRequired}</div>
+                      {shiniesMissed > 0 && (
+                        <div className="text-xs text-red-400 font-normal">({shiniesMissed} missed)</div>
+                      )}
                     </td>
                   </tr>
                 )

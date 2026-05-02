@@ -25,6 +25,7 @@ namespace ShinyBotHunter.Context
         public int WidthOffset { get; set; } = 0;
         public ConsoleType ConsoleType { get; set; } = ConsoleType.DS;
         public GameFlavor GameFlavor { get; set; } = GameFlavor.HGSS;
+        public bool SoundOn { get; set; }
 
 
     }

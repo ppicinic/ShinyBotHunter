@@ -5,7 +5,7 @@ local IPAddress    = luanet.import_type("System.Net.IPAddress")
 local StreamReader = luanet.import_type("System.IO.StreamReader")
 local StreamWriter = luanet.import_type("System.IO.StreamWriter")
 
-local DEBUG = true
+local DEBUG = false
 local port = tonumber(os.getenv("BIZHAWK_COMMAND_PORT")) or 50000
 
 local server = TcpListener(IPAddress.Loopback, port)
@@ -13,6 +13,7 @@ local serverClient, stream, reader, writer = nil, nil, nil, nil
 
 local held_frames   = {} 
 local command_stack = {}
+local clearHold = false
 
 local function log(msg)
     if DEBUG then print(msg) end
@@ -59,6 +60,11 @@ local function parse_frame_commands(macro_str)
             local action = parts[1]
             if action == "W" then
                 frame_obj.wait = tonumber(parts[2]) or tonumber(table.concat(parts, ".", 2)) or 1
+            elseif action == "S" then
+                local x      = tonumber(parts[2])
+                local y      = tonumber(parts[3])
+                local frames = tonumber(parts[4]) or 1
+                table.insert(frame_obj.buttons, { name = "Touch", x = x, y = y, framesLeft = frames })
             else
                 local button = parts[2] or ""
                 local num    = tonumber(parts[3]) or 1
@@ -214,6 +220,7 @@ event.onframestart(function()
 
     local top = command_stack[#command_stack]
     local buttons_to_press = {}
+    local coords_to_touch = {}
 
     for btn, _ in pairs(held_frames) do
         buttons_to_press[btn] = true
@@ -222,11 +229,25 @@ event.onframestart(function()
     if top and top.action == "FRAME" then
         for _, btn in ipairs(top.buttons) do
             if btn.framesLeft > 0 then
-                buttons_to_press[btn.name] = true
+                if btn.name == "Touch" then
+                    buttons_to_press["Touch"] = true
+                    log("TOUCH: x=" .. tostring(btn.x) .. " y=" .. tostring(btn.y))
+                    coords_to_touch['Touch X'] = btn.x
+                    coords_to_touch['Touch Y'] = btn.y
+                    clearHold = true
+                else
+                    buttons_to_press[btn.name] = true
+                end
             end
         end
     end
 
+    
+    if next(coords_to_touch) == nil and clearHold then
+        client.clearautohold()
+        clearHold = false
+    end
+    joypad.setanalog(coords_to_touch)
     joypad.set(buttons_to_press)
     step_stack()
 end)

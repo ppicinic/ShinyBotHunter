@@ -14,5 +14,9 @@
         public string InfluxDbUrl { get; set; } = null!;
         public string InfluxDbDatabase { get; set; } = null!;
         public string LuaBaseDirectory { get; set; } = null!;
+        public string DiscordToken { get; set; } = null!;
+        public ulong? DiscordGuildId { get; set; } = null!;
+        public ulong? ShinyLogChannel { get; set; } = null!;
+        public ulong? ShinyLogMention { get; set; } = null!;
     }
 }

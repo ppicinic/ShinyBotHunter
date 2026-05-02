@@ -8,5 +8,6 @@ namespace ShinyBotHunter.Pokemon
         public DateTime DateTime { get; set; }
         public GameFlavor Game { get; set; }
         public required string Phase { get; set; }
+        public required string GameFileName { get; set; }
     }
 }

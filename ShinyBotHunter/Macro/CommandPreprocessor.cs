@@ -4,10 +4,22 @@ namespace ShinyBotHunter.Macro
 {
     public class CommandPreprocessor
     {
+
+        private static readonly Dictionary<string, (int X, int Y)> TouchShorthands = new()
+        {
+            { "Pokedex",  (45,  35)  },
+            { "Pokemon",  (45,  75)  },
+            { "Bag",      (45,  115) },
+            { "Trainer",  (125, 35)  },
+            { "Save",     (125, 75)  },
+            { "Options",  (125, 115) },
+            { "Run",      (125, 175) },
+        };
         public int DefaultTapFrames { get; set; } = 3;
 
         private static readonly Regex TapRegex = new(@"T\.([^;:.]+)", RegexOptions.Compiled);
         private static readonly Regex RandomRegex = new(@"W\.R\[(\d+),(\d+)\]", RegexOptions.Compiled);
+        private static readonly Regex TouchShorthandRegex = new(@"S\.([A-Za-z]+)(?:\.(\d+))?", RegexOptions.Compiled);
 
         private readonly Random _random = new();
 
@@ -16,6 +28,7 @@ namespace ShinyBotHunter.Macro
             string result = macro;
             result = ConvertTaps(result);
             result = ConvertRandomWaits(result);
+            result = ConvertTouchShorthands(result);
             return result;
         }
 
@@ -32,6 +45,20 @@ namespace ShinyBotHunter.Macro
                 int min = int.Parse(m.Groups[1].Value);
                 int max = int.Parse(m.Groups[2].Value);
                 return $"W.{_random.Next(min, max + 1)}";
+            });
+        }
+
+        private string ConvertTouchShorthands(string macro)
+        {
+            return TouchShorthandRegex.Replace(macro, m =>
+            {
+                string name = m.Groups[1].Value;
+                string frames = m.Groups[2].Success ? m.Groups[2].Value : DefaultTapFrames.ToString();
+
+                if (!TouchShorthands.TryGetValue(name, out var coords))
+                    throw new ArgumentException($"Unknown touch shorthand: '{name}'");
+
+                return $"S.{coords.X}.{coords.Y}.{frames}";
             });
         }
     }

@@ -18,5 +18,6 @@ namespace ShinyBotHunter.Service
     {
         Task RecieveEncounters(GameEncounterResponse pokemon);
         Task ReceiveDashboardConfig(DashboardConfig config);
+        Task ReceiveDashboardState(Dictionary<int, EmulatorState> state);
     }
 }

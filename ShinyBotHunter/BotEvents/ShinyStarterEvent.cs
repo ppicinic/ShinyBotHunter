@@ -21,6 +21,14 @@ namespace ShinyBotHunter.BotEvents
             this.encounterService = encounterService;
         }
 
+        public override EventState EventState
+        {
+            get
+            {
+                return EventState.Complete;
+            }
+        }
+
         public int[] BotPositions { get { return []; } }
 
         public async override Task<PokemonData?> ExecuteWithResultAsync(CancellationToken cancellationToken = default)
@@ -40,22 +48,22 @@ namespace ShinyBotHunter.BotEvents
                     await Task.Delay(2000);
 
                     uint anchor = await bot.ReadUIntAsync(0x1D4158);
-                    uint anchorOffset = anchor - 0x02000000;
-                    uint starterData = anchorOffset + 0x1BC00;
+                    uint starterData = anchor + 0x1BC00;
                     List<PersistPokemonData> pokemonData = new List<PersistPokemonData>();
                     DateTime now = DateTime.UtcNow;
                     for (uint i = 0; i < 3; i++)
                     {
                         var rawData = await this.bot.ReadBytesAsync(starterData + (0xEC * i), 0xEC);
                         PokemonData? starter = parser.Parse(rawData);
-                        if (starter is not null)
+                        if (starter is not null && !starter.IsCorrupt)
                         {
                             PersistPokemonData persistPokemonData = new PersistPokemonData()
                             {
                                 PokemonData = starter,
                                 DateTime = now,
                                 Game = GameFlavor.HGSS,
-                                Phase = "1-1 Starters"
+                                Phase = "1-1 Starters",
+                                GameFileName = bot.GameFileName,
                             };
                             pokemonData.Add(persistPokemonData);
                             if (starter.IsShiny)

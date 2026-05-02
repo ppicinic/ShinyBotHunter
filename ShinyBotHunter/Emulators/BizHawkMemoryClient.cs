@@ -24,6 +24,7 @@ namespace ShinyBotHunter.Emulators
 
         public async Task<byte[]> ReadBytesAsync(uint address, int length)
         {
+            address = address > 0x02000000 ? address - 0x02000000 : address; // Memory address fix so we don't do it everywhere.
             await _stream.WriteAsync(BuildHeader(0x01, address, (uint)length));
             var buf = new byte[length];
             await ReadExactAsync(buf);
