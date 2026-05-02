@@ -176,6 +176,7 @@ public class WildPokemonEncounterEvent : IBotEvent
                 await bot.WaitForMacroAsync();
                 await persistenceService.AddCaughtPokemonAsync(foundShinyPokemon!);
                 await Task.Delay(1000);
+                await bot.FlushSave();
             }
             foundShinyPokemon = null;
             var phaseInfo = phaseInfoService.GetPhaseInfo(this.gameFlavor, this.phase);
@@ -187,14 +188,14 @@ public class WildPokemonEncounterEvent : IBotEvent
                 {
                     if (targetPokemon.RequireSpecificForm)
                     {
-                        if (caughtPokemon.Where(x => /* x.Pokemon.IsShiny && */ x.Pokemon.FormCode == targetPokemon.FormCode).Count() < targetPokemon.Amount)
+                        if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.FormCode == targetPokemon.FormCode).Count() < targetPokemon.Amount)
                         {
                             complete = false;
                         }
                     }
                     else
                     {
-                        if (caughtPokemon.Where(x => /* x.Pokemon.IsShiny && */ x.Pokemon.Name == targetPokemon.Name).Count() < targetPokemon.Amount)
+                        if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.Name == targetPokemon.Name).Count() < targetPokemon.Amount)
                         {
                             complete = false;
                         }
@@ -317,8 +318,7 @@ public class WildPokemonEncounterEvent : IBotEvent
                     GameFileName = bot.GameFileName,
                 };
                 await persistenceService.AddEncounterAsync(persistPokemon);
-                //if (await target.IsTargetAsync(pokemon))
-                if (Random.Shared.NextDouble() < .3) // testing line.
+                if (await target.IsTargetAsync(pokemon))
                 {
                     foundShinyPokemon = persistPokemon;
                     await NotifyDiscordOfTarget(persistPokemon);

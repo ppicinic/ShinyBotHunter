@@ -22,7 +22,7 @@ namespace ShinyBotHunter.Bot
             return new Bot(launcher, commandClient, memoryClient);
         }
 
-        public GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition)
+        public GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
         {
             return new GameContext()
             {
@@ -33,7 +33,8 @@ namespace ShinyBotHunter.Bot
                 CommandPort = 50100 + (displayPosition * 2),
                 Width = applicationSettings.DisplayWidth["DS"],
                 Height = applicationSettings.DisplayHeight["DS"],
-                WidthOffset = applicationSettings.WidthOffset["DS"]
+                WidthOffset = applicationSettings.WidthOffset["DS"],
+                SoundOn = soundOn is not null ? soundOn.Value : false,
             };
         }
     }

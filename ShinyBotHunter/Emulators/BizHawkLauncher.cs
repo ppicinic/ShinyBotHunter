@@ -46,13 +46,14 @@ namespace ShinyBotHunter.Emulators
             _locker = provider.GetRequiredService<BizHawkReaderWriterLock>();
 
             string path = AppContext.BaseDirectory;
+            string soundConfig = context.SoundOn ? $" --config=config_sound_on.ini" : "";
             process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = $"{this.bizHawkDirectory}EmuHawk.exe",
                     UseShellExecute = false,
-                    Arguments = $"\"{this.romDirectory}{this.game}.nds\" \"--lua={path}\\Loader.lua\""
+                    Arguments = $"\"{this.romDirectory}{this.game}.nds\" \"--lua={path}\\Loader.lua\"{soundConfig}"
                 }
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();

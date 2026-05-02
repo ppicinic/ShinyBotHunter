@@ -2,6 +2,7 @@
 # C# / .NET
 # =============================================================================
 
+**config_sound_on.ini
 **PokemonDashboard/dist-electron/**
 **PokemonDashboard/dist-renderer/**
 **PokemonDashboard/release/**

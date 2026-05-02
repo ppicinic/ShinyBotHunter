@@ -29,7 +29,6 @@ namespace ShinyBotHunter.Service
 
         public void Init()
         {
-            
             string json = File.ReadAllText("./Configs/SpecialEvents/SpecialEvents.json");
             specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json)!;
         }
@@ -51,11 +50,15 @@ namespace ShinyBotHunter.Service
                     newPos = i;
                 }
             }
+            if(newPos == -1)
+            {
+                newPos = positions.Count();
+            }
             if (args.EventName == "Launch Bot")
             {
                 if(args is not null && args.GameName is not null)
                 {
-                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos);
+                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
                     botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
@@ -70,7 +73,7 @@ namespace ShinyBotHunter.Service
             {
                 if (args is not null && args.GameName is not null)
                 {
-                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos);
+                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
                     botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
@@ -211,6 +214,7 @@ namespace ShinyBotHunter.Service
     {
         public string Name { get; set; } = null!;
         public string[]? RequiredParameters { get; set; }
+        public string[]? OptionalParameters { get; set; }
     }
 
     public class NewEventArguments
@@ -219,6 +223,7 @@ namespace ShinyBotHunter.Service
         public string? GameName { get; set; }
         public string? PhaseName { get; set; }
         public string? TargetType { get; set; }
+        public bool? SoundOn { get; set; }
     }
 
     public class BotAndOrEvent

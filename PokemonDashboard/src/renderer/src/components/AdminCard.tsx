@@ -308,7 +308,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       })
     )
     setBotActions(updates)
-    // Initialize param values for any new actions
+    // Initialize param values for any new actions (required + optional)
     setBotActionParams((prev) => {
       const next = { ...prev }
       for (const [posStr, actionList] of Object.entries(updates)) {
@@ -319,6 +319,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
             next[pos][action.name] = {}
             action.requiredParameters?.forEach((param) => {
               next[pos][action.name][param] = ''
+            })
+            action.optionalParameters?.forEach((param) => {
+              // soundOn (case-insensitive) defaults to 'false'; other optional params default to ''
+              next[pos][action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
             })
           }
         })
@@ -360,6 +364,9 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
           initial[action.name] = {}
           action.requiredParameters?.forEach((param) => {
             initial[action.name][param] = ''
+          })
+          action.optionalParameters?.forEach((param) => {
+            initial[action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
           })
         })
         setParamValues(initial)
@@ -408,12 +415,17 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     setFeedback(null)
     try {
       const params = botActionParams[pos]?.[action.name] ?? {}
-      const body: Record<string, string | undefined> = { eventName: action.name }
+      const body: Record<string, string | boolean | undefined> = { eventName: action.name }
       if (params['PhaseName'] !== undefined) {
         body['phaseName'] = params['PhaseName']
       }
       if (params['TargetType'] !== undefined) {
         body['targetType'] = params['TargetType']
+      }
+      // Find soundOn key case-insensitively
+      const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
+      if (soundOnKey !== undefined) {
+        body['soundOn'] = params[soundOnKey] === 'true'
       }
 
       const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
@@ -447,9 +459,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     setFeedback(null)
     try {
       const params = paramValues[action.name] ?? {}
-      const body: Record<string, string> = { eventName: action.name }
+      const body: Record<string, string | boolean> = { eventName: action.name }
       if (params['GameName'] !== undefined) {
         body['gameName'] = params['GameName']
+      }
+      // Find soundOn key case-insensitively
+      const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
+      if (soundOnKey !== undefined) {
+        body['soundOn'] = params[soundOnKey] === 'true'
       }
 
       const res = await fetch(`${apiUrl}/api/startTopLevelAction`, {
@@ -625,6 +642,32 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 )}
                               </div>
                             ))}
+                            {action.optionalParameters && action.optionalParameters.length > 0 && (
+                              <div className="pt-0.5 border-t border-slate-700/30">
+                                <span className="text-xs text-slate-600">Optional</span>
+                                {action.optionalParameters.map((param) => (
+                                  <div key={param} className="flex items-center gap-2 mt-0.5">
+                                    <label className="text-xs text-slate-500 w-20 flex-shrink-0">{param}</label>
+                                    {param.toLowerCase() === 'soundon' ? (
+                                      <input
+                                        type="checkbox"
+                                        checked={params[param] === 'true'}
+                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.checked ? 'true' : 'false')}
+                                        className="w-4 h-4 accent-indigo-500"
+                                      />
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={params[param] ?? ''}
+                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
+                                        placeholder={param}
+                                        className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -700,6 +743,32 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                       )}
                     </div>
                   ))}
+                  {action.optionalParameters && action.optionalParameters.length > 0 && (
+                    <div className="pt-1 border-t border-slate-700/30">
+                      <span className="text-xs text-slate-600">Optional</span>
+                      {action.optionalParameters.map((param) => (
+                        <div key={param} className="flex items-center gap-2 mt-1">
+                          <label className="text-xs text-slate-400 w-24 flex-shrink-0">{param}</label>
+                          {param.toLowerCase() === 'soundon' ? (
+                            <input
+                              type="checkbox"
+                              checked={params[param] === 'true'}
+                              onChange={(e) => handleParamChange(action.name, param, e.target.checked ? 'true' : 'false')}
+                              className="w-4 h-4 accent-indigo-500"
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={params[param] ?? ''}
+                              onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                              placeholder={param}
+                              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}

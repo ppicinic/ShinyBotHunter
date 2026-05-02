@@ -1,11 +1,13 @@
 [
   {
     "Name": "Launch Bot",
-    "RequiredParameters": [ "GameName" ]
+    "RequiredParameters": [ "GameName" ],
+    "OptionalParameters": [ "SoundOn"]
   },
   {
     "Name": "Launch Bot + Continue",
-    "RequiredParameters": [ "GameName" ]
+    "RequiredParameters": [ "GameName" ],
+    "OptionalParameters": [ "SoundOn"]
   },
   {
     "Name": "HGSS Shiny Starter Hunt"

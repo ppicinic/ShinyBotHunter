@@ -191,6 +191,7 @@ export interface AdminMetadata {
 export interface EventArgumentOptions {
   name: string
   requiredParameters?: string[]
+  optionalParameters?: string[]
 }
 
 export interface NewEventArguments {
