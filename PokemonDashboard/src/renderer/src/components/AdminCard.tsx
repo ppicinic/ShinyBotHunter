@@ -8,8 +8,17 @@ type TabId = 'config' | 'botControl' | 'phaseEditor'
 const TABS: { id: TabId; label: string }[] = [
   { id: 'config', label: 'Dashboard Config' },
   { id: 'botControl', label: 'Bot Control' },
-  { id: 'phaseEditor', label: 'Phase Editor' }
+  { id: 'phaseEditor', label: 'Milestone Editor' }
 ]
+
+// Maps internal parameter names to user-friendly display labels
+const PARAM_DISPLAY_NAMES: Record<string, string> = {
+  PhaseName: 'Milestone',
+  GameName: 'Game',
+  TargetType: 'Target Type',
+  SoundOn: 'Sound On',
+}
+const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
 
 // ============================================================
 // Dashboard Config Tab
@@ -185,7 +194,7 @@ function DashboardConfigTab(): JSX.Element {
             onChange={(e) => setSelectedPhase(e.target.value)}
             className="flex-1 bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
           >
-            {availablePhases.length === 0 && <option value="">No phases</option>}
+            {availablePhases.length === 0 && <option value="">No milestones</option>}
             {availablePhases.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
@@ -608,14 +617,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                             </div>
                             {action.requiredParameters?.map((param) => (
                               <div key={param} className="flex items-center gap-2">
-                                <label className="text-xs text-slate-500 w-20 flex-shrink-0">{param}</label>
+                                <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
                                 {param === 'PhaseName' ? (
                                   <select
                                     value={params[param] ?? ''}
                                     onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
                                     className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
                                   >
-                                    <option value="">Select a phase...</option>
+                                    <option value="">Select a milestone...</option>
                                     {availablePhases.map((phase) => (
                                       <option key={phase.name} value={phase.name}>{phase.name}</option>
                                     ))}
@@ -647,7 +656,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 <span className="text-xs text-slate-600">Optional</span>
                                 {action.optionalParameters.map((param) => (
                                   <div key={param} className="flex items-center gap-2 mt-0.5">
-                                    <label className="text-xs text-slate-500 w-20 flex-shrink-0">{param}</label>
+                                    <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
                                     {param.toLowerCase() === 'soundon' ? (
                                       <input
                                         type="checkbox"
@@ -720,7 +729,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
 
                   {action.requiredParameters?.map((param) => (
                     <div key={param} className="flex items-center gap-2">
-                      <label className="text-xs text-slate-400 w-24 flex-shrink-0">{param}</label>
+                      <label className="text-xs text-slate-400 w-24 flex-shrink-0">{getParamLabel(param)}</label>
                       {param === 'GameName' ? (
                         <select
                           value={params[param] ?? ''}
@@ -748,7 +757,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                       <span className="text-xs text-slate-600">Optional</span>
                       {action.optionalParameters.map((param) => (
                         <div key={param} className="flex items-center gap-2 mt-1">
-                          <label className="text-xs text-slate-400 w-24 flex-shrink-0">{param}</label>
+                          <label className="text-xs text-slate-400 w-24 flex-shrink-0">{getParamLabel(param)}</label>
                           {param.toLowerCase() === 'soundon' ? (
                             <input
                               type="checkbox"
@@ -860,7 +869,7 @@ function PhaseEditorTab(): JSX.Element {
         return r.json()
       })
       .then((data: { phaseInfo: PhaseInfo }) => setForm(data.phaseInfo))
-      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load phase', true))
+      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load milestone', true))
       .finally(() => setLoadingPhase(false))
   }, [apiUrl, selectedGame, selectedPhase, isNewPhase])
 
@@ -916,7 +925,7 @@ function PhaseEditorTab(): JSX.Element {
   const handleSave = async (): Promise<void> => {
     if (!form) return
     const phaseName = isNewPhase ? newPhaseName.trim() : selectedPhase
-    if (!phaseName) { showFeedback('Phase name is required', true); return }
+    if (!phaseName) { showFeedback('Milestone name is required', true); return }
     if (form.pokemon.length === 0) { showFeedback('At least one Pokémon is required', true); return }
 
     setSaving(true)
@@ -964,7 +973,7 @@ function PhaseEditorTab(): JSX.Element {
       {/* Game + Phase selector */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-          Select Phase
+          Select Milestone
         </h3>
         <div className="flex gap-2 flex-wrap">
           <select
@@ -990,7 +999,7 @@ function PhaseEditorTab(): JSX.Element {
             {availablePhases.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
-            <option value="__new__">+ New phase…</option>
+            <option value="__new__">+ New milestone…</option>
           </select>
         </div>
 
@@ -1000,7 +1009,7 @@ function PhaseEditorTab(): JSX.Element {
               type="text"
               value={newPhaseName}
               onChange={(e) => handleNewPhaseNameChange(e.target.value)}
-              placeholder="New phase name"
+              placeholder="New milestone name"
               className="w-full bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
             />
           </div>
@@ -1008,14 +1017,14 @@ function PhaseEditorTab(): JSX.Element {
 
         {isReadOnly && (
           <p className="mt-1.5 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1">
-            This phase is static (loaded from disk) and cannot be edited.
+            This milestone is static (loaded from disk) and cannot be edited.
           </p>
         )}
       </div>
 
       {/* Pokemon list editor */}
       {loadingPhase ? (
-        <p className="text-slate-500 text-sm">Loading phase...</p>
+        <p className="text-slate-500 text-sm">Loading milestone...</p>
       ) : form !== null ? (
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -1119,7 +1128,7 @@ function PhaseEditorTab(): JSX.Element {
                 disabled={saving}
                 className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded transition-colors font-medium"
               >
-                {saving ? 'Saving...' : 'Save Phase'}
+                {saving ? 'Saving...' : 'Save Milestone'}
               </button>
             </div>
           )}

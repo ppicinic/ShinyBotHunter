@@ -78,7 +78,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
       <div className="card-body overflow-auto flex-1">
         {pokemonList.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
-            {phaseInfo === null ? 'Loading phase requirements...' : 'No Pokémon defined for this phase.'}
+            {phaseInfo === null ? 'Loading milestone requirements...' : 'No Pokémon defined for this milestone.'}
           </div>
         ) : (
           <table className="w-full border-collapse">
@@ -86,9 +86,9 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
               <tr className="border-b border-card-border">
                 <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3 w-24"></th>
                 <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Name</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Phase Enc.</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Enc.</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2">Caught / Needed</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Milestone Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-2">Shinies Caught</th>
               </tr>
             </thead>
             <tbody>
