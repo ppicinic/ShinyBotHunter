@@ -11,11 +11,15 @@ namespace ShinyBotHunter.Pokemon
             this._metadataService = service;
         }
         private uint LCRNG(uint seed) => seed * 0x41C64E6D + 0x6073;
+        Dictionary<int, byte[]> cache = new Dictionary<int, byte[]>();
 
         public PokemonData? Parse(byte[] raw)
         {
             byte[]? data = Decrypt(raw);
-            if (data == null) return null;
+            if (data == null)
+            {
+                return new PokemonData() { IsCorrupt = true };
+            }
 
             uint pid = BitConverter.ToUInt32(data, 0x00);
             ushort checksum = BitConverter.ToUInt16(data, 0x06);
@@ -27,7 +31,7 @@ namespace ShinyBotHunter.Pokemon
             ushort species = BitConverter.ToUInt16(data, 0x08);
             if(species <= 0 || species > 493)
             {
-                return null;
+                return new PokemonData() { IsCorrupt = true };
             }
             ushort heldItem = BitConverter.ToUInt16(data, 0x0A);
             byte ability = data[0x15];
@@ -209,7 +213,7 @@ namespace ShinyBotHunter.Pokemon
 
             string result = sb.ToString();
             //Console.WriteLine();
-            Console.WriteLine(result);
+            //Console.WriteLine(result);
             return result;
         }
     }

@@ -17,6 +17,8 @@ namespace ShinyBotHunter.Pokemon
         [BsonRepresentation(BsonType.Int32)]
         public ushort Species { get; set; }
         public byte Gender { get; set; }
+        [BsonIgnore]
+        public bool IsCorrupt { get; set; }
         public string FormCode { get; set; }
         public string Name { get; set; }
         public int FormIndex { get; set; }

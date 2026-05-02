@@ -118,14 +118,22 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Spin Encounter")
             {
-                if(args.PhaseName is null)
+                if(args.PhaseName is null || args.TargetType is null)
                 {
                     throw new ArgumentException($"PhaseName cannot be null for Spin Encounter Event.");
                 }
-                var wildPokemonEvent = new WildPokemonEncounterEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, EncounterType.Spin, provider, 
-                                                new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName));
+                var targetType = Enum.Parse<TargetType>(args.TargetType);
+                ITarget target = targetType == TargetType.PhaseTarget
+                                                    ? new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName)
+                                                    : new ShinyTarget();
+                var wildPokemonEvent = new WildPokemonEncounterEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, EncounterType.Spin, provider, target, this);
                 botEvents[pos].StartEvent(wildPokemonEvent, args.PhaseName, this);
 
+                return GetBotDashboardState();
+            }
+            else if(args.EventName == "Resume")
+            {
+                botEvents[pos].StartEvent(botEvents[pos].Event!, botEvents[pos].GetName(pos), this);
                 return GetBotDashboardState();
             }
             else
@@ -159,7 +167,7 @@ namespace ShinyBotHunter.Service
         private static Dictionary<string, EventArgumentOptions> actionMap = new Dictionary<string, EventArgumentOptions>()
         {
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
-            {"Spin Encounter", new EventArgumentOptions() { Name = "Spin Encounter", RequiredParameters = ["PhaseName"]} },
+            {"Spin Encounter", new EventArgumentOptions() { Name = "Spin Encounter", RequiredParameters = ["PhaseName", "TargetType"]} },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -189,6 +197,12 @@ namespace ShinyBotHunter.Service
         }
     }
 
+    public enum TargetType
+    {
+        PhaseTarget,
+        ShinyTarget
+    }
+
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor);
 
     
@@ -204,6 +218,7 @@ namespace ShinyBotHunter.Service
         public string EventName { get; set; } = "";
         public string? GameName { get; set; }
         public string? PhaseName { get; set; }
+        public string? TargetType { get; set; }
     }
 
     public class BotAndOrEvent
@@ -234,6 +249,11 @@ namespace ShinyBotHunter.Service
                 EventTask = null;
                 Event = null;
                 CancellationTokenSource = null;
+            }
+            if(Event is not null)
+            {
+                Event = null;
+                hasEvent = true;
             }
             if (Bot is not null && !hasEvent)
             {

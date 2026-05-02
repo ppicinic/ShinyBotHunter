@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using System.Diagnostics.Metrics;
+using System.Numerics;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading.Channels;
@@ -130,17 +131,65 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             }
             return pokemons;
         }
-
+        private const double OneHourMilliseconds = 1 * 60 * 60 * 1000;
         public async Task<double> GetEncountersPerHour(GameFlavor game, string phase)
         {
-            string query = $"SELECT AVG(hourly_counts) AS average_points_per_hour FROM (SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' GROUP BY 1)";
-            var result = await _client.Query(query, database: database).FirstAsync();
-            if(result is null || result[0] is null)
+
+            string query = $"SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' GROUP BY 1 ORDER BY time";
+            var result = await _client.Query(query, database: database).ToArrayAsync();
+            if(result is null || result[0] is null || result[0][0] is null)
             {
                 return 0.0;
             }
+            string query2 = $"SELECT MIN(time) AS first_time, MAX(time) AS last_time FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}'";
             // TODO this isn't accurate the first and last hour buckets don't calculate properly.
-            return double.Parse(result![0]!.ToString()!);
+            var result2 = await _client.Query(query2, database: database).FirstAsync();
+            return CalculateEncounters(result, result2);
+        }
+
+        public async Task<double> GetEncountersPerHour(GameFlavor game, string phase, string gameFileName)
+        {
+
+            string query = $"SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}' GROUP BY 1 ORDER BY time";
+            var result = await _client.Query(query, database: database).ToArrayAsync();
+            if (result is null || result[0] is null || result[0][0] is null)
+            {
+                return 0.0;
+            }
+            string query2 = $"SELECT MIN(time) AS first_time, MAX(time) AS last_time FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}'";
+            // TODO this isn't accurate the first and last hour buckets don't calculate properly.
+            var result2 = await _client.Query(query2, database: database).FirstAsync();
+            return CalculateEncounters(result, result2);
+        }
+
+        private double CalculateEncounters(object?[][] result, object?[] result2)
+        {
+            if (result2[0] == result2[1])
+            {
+                return 0.0;
+            }
+            if (result.Length == 1)
+            {
+                var row = result[0];
+                var timeDiff = (DateTimeOffset)result2[1]! - (DateTimeOffset)result2[0]!;
+                var factor = OneHourMilliseconds / timeDiff.TotalMilliseconds;
+                return factor * double.Parse(row[1]!.ToString()!);
+            }
+            double sum = 0.0;
+            var firstRow = result[0];
+            var firstDiff = (new DateTime((long)(BigInteger)firstRow[0]!).AddHours(1)) - (DateTimeOffset)result2[0]!;
+            var firstFactor = OneHourMilliseconds / firstDiff.TotalMilliseconds;
+            sum += double.Parse(firstRow[1]!.ToString()!) * firstFactor;
+            var lastRow = result[0];
+            var lastDiff = (DateTimeOffset)result2[1]! - new DateTime((long)(BigInteger)lastRow[0]!);
+            var lastFactor = OneHourMilliseconds / lastDiff.TotalMilliseconds;
+            sum += double.Parse(lastRow[1]!.ToString()!) * lastFactor;
+            for (int i = 1; i < result.Length - 1; i++)
+            {
+                var row = result[i];
+                sum += double.Parse(row[1]!.ToString()!);
+            }
+            return sum / result.Length;
         }
 
         public async Task<(long, long)> GetAllPhaseEncountersForGame(GameFlavor game, string phase)

@@ -402,6 +402,8 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     onRefresh // just reference it so the parent can call loadDashboardState
   }, [onRefresh])
 
+  const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget']
+
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
     setFeedback(null)
     try {
@@ -409,6 +411,9 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       const body: Record<string, string | undefined> = { eventName: action.name }
       if (params['PhaseName'] !== undefined) {
         body['phaseName'] = params['PhaseName']
+      }
+      if (params['TargetType'] !== undefined) {
+        body['targetType'] = params['TargetType']
       }
 
       const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
@@ -596,6 +601,17 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                     <option value="">Select a phase...</option>
                                     {availablePhases.map((phase) => (
                                       <option key={phase.name} value={phase.name}>{phase.name}</option>
+                                    ))}
+                                  </select>
+                                ) : param === 'TargetType' ? (
+                                  <select
+                                    value={params[param] ?? ''}
+                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
+                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="">Select target type...</option>
+                                    {TARGET_TYPE_OPTIONS.map((t) => (
+                                      <option key={t} value={t}>{t}</option>
                                     ))}
                                   </select>
                                 ) : (

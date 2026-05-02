@@ -71,6 +71,13 @@ namespace ShinyBotHunter.Controllers
             double result = await influxDbEncounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase);
             return Ok(result);
         }
+
+        [HttpGet("phaseinfo/encounterRate/{game}/{phase}/{gameFileName}")]
+        public async Task<ActionResult<double>> GetEncounterRate(string game, string phase, string gameFileName)
+        {
+            double result = await influxDbEncounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            return Ok(result);
+        }
     }
 
     public record WrappedPokemonPhase(PhaseInfo phaseInfo, GameEncounterResponse data);

@@ -40,7 +40,9 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
     const fetchRate = async (): Promise<void> => {
       try {
         const encodedPhase = encodeURIComponent(phase)
-        const url = `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
+        const url = gameName
+          ? `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
+          : `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
         const res = await fetch(url)
         if (!res.ok) return
         const rate = await res.json() as number
@@ -54,7 +56,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
     fetchRate()
     const timer = setInterval(fetchRate, pollingInterval)
     return () => clearInterval(timer)
-  }, [config?.apiUrl, game, phase, pollingInterval])
+  }, [config?.apiUrl, game, phase, gameName, pollingInterval])
 
   return (
     <div className="dashboard-card h-full flex flex-col">

@@ -1,4 +1,7 @@
-﻿using Google.Protobuf.WellKnownTypes;
+﻿using Discord;
+using Discord.Interactions;
+using Discord.WebSocket;
+using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client.Balancer;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
@@ -13,7 +16,10 @@ using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Services;
+using System.Diagnostics;
 using System.Text;
+using YamlDotNet.Core;
 
 namespace ShinyBotHunter
 {
@@ -30,6 +36,7 @@ namespace ShinyBotHunter
             app.MapControllers().AsRequiredPort(5000);
             app.MapHub<ElectronHub>("/socket-api").AsRequiredPort(5001);
 
+            await services.GetRequiredService<DiscordBotService>().StartAsync();
             await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
             services.GetRequiredService<InfluxDbEncounterDao>().Init();
             await services.GetRequiredService<PokemonMetadataService>().InitAsync();
@@ -51,8 +58,8 @@ namespace ShinyBotHunter
             {
                 await MainRunnerAsync(app, services);
             }
-            
 
+            await services.GetRequiredService<DiscordBotService>().StopAsync();
             await services.GetRequiredService<PokemonPersistenceService>().DisposeAsync();
             await services.GetRequiredService<InfluxDbEncounterDao>().DisposeAsync();
             await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
@@ -75,6 +82,34 @@ namespace ShinyBotHunter
             //await Task.Delay(5000);
             //bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "ContinueGame"));
             //await bot.WaitForMacroAsync();
+            //char c = Console.ReadKey().KeyChar;
+            ////var parser = services.GetRequiredService<HgssPokemonParser>();
+            //var reader = services.GetRequiredService<PokemonStateReader>();
+
+            //for(int x = 0; x < 1000; x++)
+            //{
+            //    Stopwatch sw = new Stopwatch();
+            //    sw.Start();
+            //    var state = await reader.GetPokemonState(bot);
+            //    sw.Stop();
+            //    Console.WriteLine($"{sw.ElapsedMilliseconds / 1000}.{sw.ElapsedMilliseconds % 1000}s");
+            //    for(int i = 0; i < state.PartySize; i++)
+            //    {
+            //        Console.WriteLine($"Party Slot {i+1}: {state.PartyPokemon[i]!.Nickname}");
+            //    }
+            //    for(int box = 0; box < 18; box++)
+            //    {
+            //        for(int slot = 0; slot < 30; slot++)
+            //        {
+            //            var boxPokemon = state.BoxPokemon[box][slot];
+            //            if (boxPokemon is not null)
+            //            {
+            //                Console.WriteLine($"Box {box + 1}, Slot {slot + 1}: {boxPokemon.Nickname}");
+            //            }
+            //        }
+            //    }
+            //}
+            //await bot.DisposeAsync();
             //var parser = services.GetRequiredService<HgssPokemonParser>();
             //await Task.Delay(5000);
             //WildPokemonEncounterEvent encounterEvent = new WildPokemonEncounterEvent(bot, Macro.GameFlavor.HGSS, "Testing", EncounterType.Spin, services, new PhaseTarget(services, GameFlavor.HGSS, "Testing", bot.GameFileName));
@@ -89,7 +124,7 @@ namespace ShinyBotHunter
             ////await cts.CancelAsync();
             ////await _1;
             //await bot.DisposeAsync();
-            Console.WriteLine("BizHawk should be closed or close soon");
+            //Console.WriteLine("BizHawk should be closed or close soon");
             string? s = "";
             do
             {
@@ -125,6 +160,10 @@ namespace ShinyBotHunter
         }
         public void CreateServices(IServiceCollection services)
         {
+            InteractionServiceConfig interactionServiceConfig = new InteractionServiceConfig()
+            {
+                DefaultRunMode = RunMode.Async
+            };
             var config = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: false)
                 .AddUserSecrets<Startup>()
@@ -148,6 +187,17 @@ namespace ShinyBotHunter
                 .AddSingleton<BotService>()
                 .AddSingleton<BizHawkLuaLoader>()
                 .AddSingleton<EncounterEventTypeFactory>()
+                .AddSingleton<PokemonStateReader>()
+                .AddSingleton(new DiscordSocketConfig
+                {
+                    // Safe default for initial bot setup; add privileged intents later if needed.
+                    UseInteractionSnowflakeDate = false,
+                    AlwaysDownloadUsers = true,
+                    GatewayIntents = GatewayIntents.All
+                })
+                .AddSingleton<DiscordSocketClient>()
+                .AddSingleton<InteractionService>(sp => new InteractionService(sp.GetRequiredService<DiscordSocketClient>(), interactionServiceConfig))
+                .AddSingleton<DiscordBotService>()
                 .AddSingleton<NotificationService>();
         }
     }

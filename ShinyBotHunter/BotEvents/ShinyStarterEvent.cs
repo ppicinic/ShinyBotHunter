@@ -55,7 +55,7 @@ namespace ShinyBotHunter.BotEvents
                     {
                         var rawData = await this.bot.ReadBytesAsync(starterData + (0xEC * i), 0xEC);
                         PokemonData? starter = parser.Parse(rawData);
-                        if (starter is not null)
+                        if (starter is not null && !starter.IsCorrupt)
                         {
                             PersistPokemonData persistPokemonData = new PersistPokemonData()
                             {
