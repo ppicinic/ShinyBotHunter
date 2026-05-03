@@ -3,6 +3,7 @@ using InfluxDB3.Client.Write;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
+using System.Collections;
 using System.Diagnostics.Metrics;
 using System.Numerics;
 using System.Reflection;
@@ -136,34 +137,26 @@ namespace ShinyBotHunter.Persistence.InfluxDb
         {
 
             string query = $"SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' GROUP BY 1 ORDER BY time";
-            var result = await _client.Query(query, database: database).ToArrayAsync();
-            if(result is null || result[0] is null || result[0][0] is null)
-            {
-                return 0.0;
-            }
             string query2 = $"SELECT MIN(time) AS first_time, MAX(time) AS last_time FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}'";
-            // TODO this isn't accurate the first and last hour buckets don't calculate properly.
-            var result2 = await _client.Query(query2, database: database).FirstAsync();
-            return CalculateEncounters(result, result2);
+            return await CalculateEncounters(query, query2);
         }
 
         public async Task<double> GetEncountersPerHour(GameFlavor game, string phase, string gameFileName)
         {
 
             string query = $"SELECT DATE_BIN(INTERVAL '1 hour', time) AS time, COUNT(*) AS hourly_counts FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}' GROUP BY 1 ORDER BY time";
+            string query2 = $"SELECT MIN(time) AS first_time, MAX(time) AS last_time FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}'";
+            return await CalculateEncounters(query, query2);
+        }
+
+        private async Task<double> CalculateEncounters(string query, string query2)
+        {
             var result = await _client.Query(query, database: database).ToArrayAsync();
-            if (result is null || result[0] is null || result[0][0] is null)
+            if (result is null || result.Length == 0 || result[0] is null || result[0].Length == 0 || result[0][0] is null)
             {
                 return 0.0;
             }
-            string query2 = $"SELECT MIN(time) AS first_time, MAX(time) AS last_time FROM \"encounter\" WHERE time >= now() - INTERVAL '24 hours' AND \"pokemon_game\" = '{game.ToString()}' AND \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}'";
-            // TODO this isn't accurate the first and last hour buckets don't calculate properly.
             var result2 = await _client.Query(query2, database: database).FirstAsync();
-            return CalculateEncounters(result, result2);
-        }
-
-        private double CalculateEncounters(object?[][] result, object?[] result2)
-        {
             if (result2[0] == result2[1])
             {
                 return 0.0;
@@ -177,12 +170,14 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             }
             double sum = 0.0;
             var firstRow = result[0];
-            var firstDiff = (new DateTime((long)(BigInteger)firstRow[0]!).AddHours(1)) - (DateTimeOffset)result2[0]!;
+            var firstDiff = (DateTimeOffset.FromUnixTimeMilliseconds((long)(BigInteger)firstRow[0]! / 1000000).AddHours(1)) - (DateTimeOffset)result2[0]!;
             var firstFactor = OneHourMilliseconds / firstDiff.TotalMilliseconds;
             sum += double.Parse(firstRow[1]!.ToString()!) * firstFactor;
-            var lastRow = result[0];
-            var lastDiff = (DateTimeOffset)result2[1]! - new DateTime((long)(BigInteger)lastRow[0]!);
+            var lastRow = result[result.Length-1];
+            var lastDiff = (DateTimeOffset)result2[1]! - DateTimeOffset.FromUnixTimeMilliseconds((long)(BigInteger)lastRow[0]! / 1000000);
             var lastFactor = OneHourMilliseconds / lastDiff.TotalMilliseconds;
+
+            Console.WriteLine($"{firstFactor}, {lastFactor}");
             sum += double.Parse(lastRow[1]!.ToString()!) * lastFactor;
             for (int i = 1; i < result.Length - 1; i++)
             {

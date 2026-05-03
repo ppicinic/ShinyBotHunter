@@ -62,7 +62,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
     <div className="dashboard-card h-full flex flex-col">
       <div className="card-header">
         <div>
-          <span className="text-xs text-slate-500 mr-2">{getGameDisplayName(game)}</span>
+          <span className="text-xs text-slate-500 mr-2">{gameName ?? getGameDisplayName(game)}</span>
           <span className="card-header-title">{phase}</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-400">

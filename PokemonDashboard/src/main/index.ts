@@ -1,16 +1,48 @@
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 
 const isDev = process.env.NODE_ENV === 'development'
 
-function loadConfig(): object {
-  const configPath = isDev
-    ? join(app.getAppPath(), 'config.json')
-    : join(process.resourcesPath, 'config.json')
+function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base }
+  for (const key of Object.keys(override)) {
+    const baseVal = base[key]
+    const overrideVal = override[key]
+    if (
+      overrideVal !== null &&
+      typeof overrideVal === 'object' &&
+      !Array.isArray(overrideVal) &&
+      baseVal !== null &&
+      typeof baseVal === 'object' &&
+      !Array.isArray(baseVal)
+    ) {
+      result[key] = deepMerge(
+        baseVal as Record<string, unknown>,
+        overrideVal as Record<string, unknown>
+      )
+    } else {
+      result[key] = overrideVal
+    }
+  }
+  return result
+}
 
+function loadConfig(): object {
+  const configDir = isDev ? app.getAppPath() : process.resourcesPath
+
+  const configPath = join(configDir, 'config.json')
   const raw = readFileSync(configPath, 'utf-8') // throws if missing
-  return JSON.parse(raw) // throws if invalid JSON
+  let config = JSON.parse(raw) as Record<string, unknown> // throws if invalid JSON
+
+  const overridePath = join(configDir, 'override-config.json')
+  if (existsSync(overridePath)) {
+    const overrideRaw = readFileSync(overridePath, 'utf-8')
+    const override = JSON.parse(overrideRaw) as Record<string, unknown>
+    config = deepMerge(config, override)
+  }
+
+  return config
 }
 
 function createWindow(): void {

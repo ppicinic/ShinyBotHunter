@@ -66,6 +66,15 @@ namespace ShinyBotHunter.Emulators
             string converted = _preprocessor.Process(macro);
             _writer!.WriteLine($"macro_string_{converted}");
         }
+        
+        public void RunMacros(params MacroStruct[] macroStructs)
+        {
+            string macro = String.Join("|", macroStructs.Select(x =>
+            {
+                return $"{(x.repeat ? "RP_" : "macro_string_")}{_preprocessor.Process(x.macro)}";
+            }));
+            _writer!.WriteLine(macro);
+        }
 
         public void RunRepeatMacro(string macro)
         {

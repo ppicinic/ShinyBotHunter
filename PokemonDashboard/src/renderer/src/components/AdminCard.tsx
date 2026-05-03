@@ -860,17 +860,22 @@ function PhaseEditorTab(): JSX.Element {
   // Load phase info when selection changes (and not creating new)
   useEffect(() => {
     if (!apiUrl || !selectedGame || !selectedPhase || isNewPhase) return
+    const controller = new AbortController()
     setForm(null)
     setLoadingPhase(true)
     const encodedPhase = encodeURIComponent(selectedPhase)
-    fetch(`${apiUrl}/api/phaseinfo/${selectedGame}/${encodedPhase}`)
+    fetch(`${apiUrl}/api/phaseinfo/${selectedGame}/${encodedPhase}`, { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
       .then((data: { phaseInfo: PhaseInfo }) => setForm(data.phaseInfo))
-      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load milestone', true))
+      .catch((err) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        showFeedback(err instanceof Error ? err.message : 'Failed to load milestone', true)
+      })
       .finally(() => setLoadingPhase(false))
+    return () => controller.abort()
   }, [apiUrl, selectedGame, selectedPhase, isNewPhase])
 
   const handleGameChange = (game: string): void => {

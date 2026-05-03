@@ -6,6 +6,7 @@
 **PokemonDashboard/dist-electron/**
 **PokemonDashboard/dist-renderer/**
 **PokemonDashboard/release/**
+**/override-config.json
 
 ## Kilo Code
 .kilocode**
