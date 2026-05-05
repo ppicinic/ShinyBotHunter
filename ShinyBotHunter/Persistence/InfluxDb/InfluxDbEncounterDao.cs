@@ -149,6 +149,29 @@ namespace ShinyBotHunter.Persistence.InfluxDb
             return await CalculateEncounters(query, query2);
         }
 
+        public async Task<int> GetCurrentPhaseCount(GameFlavor game, string phase)
+        {
+            string query = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game}' AND \"phase\" = '{phase}' AND \"time\" > COALESCE((SELECT MAX(\"time\") FROM \"encounter\" WHERE \"pokemon_game\" = '{game}' AND \"phase\" = '{phase}' AND \"is_shiny\" = 'True'), '1677-09-21T00:12:45Z'::TIMESTAMP)";
+            return await GetCurrentPhaseCount(query);
+        }
+
+        public async Task<int> GetCurrentPhaseCount(string gameFileName, string phase)
+        {
+            string query = $"SELECT COUNT(\"PID\") FROM \"encounter\" WHERE \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}' AND \"time\" > COALESCE((SELECT MAX(\"time\") FROM \"encounter\" WHERE \"phase\" = '{phase}' AND \"game_file_name\" = '{gameFileName}' AND \"is_shiny\" = 'True'), '1677-09-21T00:12:45Z'::TIMESTAMP)";
+            Console.WriteLine(query);
+            return await GetCurrentPhaseCount(query);
+        }
+
+        private async Task<int> GetCurrentPhaseCount(string query)
+        {
+            var result = await _client.Query(query, database: database).FirstAsync();
+            if(result is null || result[0] is null)
+            {
+                return 0;
+            }
+            return Int32.Parse(result[0]!.ToString()!);
+        }
+
         private async Task<double> CalculateEncounters(string query, string query2)
         {
             var result = await _client.Query(query, database: database).ToArrayAsync();

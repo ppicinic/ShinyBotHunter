@@ -27,6 +27,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
   const phaseData = scopedData?.phaseEncounters?.[phase]
   const totalPhaseEncounters = phaseData?.allPokemonCounts?.encounters ?? 0
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
+  const phaseCount = phaseData?.phaseCount ?? null
 
   const pokemonList: PhasePokemonInfo[] = phaseInfo?.pokemon ?? []
 
@@ -154,8 +155,14 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
         )}
       </div>
 
-      {/* Footer: encounter rate */}
-      <div className="flex items-center justify-end px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
+      {/* Footer: phase count + encounter rate */}
+      <div className="flex items-center justify-end gap-4 px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
+        <span className="text-xs text-slate-400">
+          Phase:{' '}
+          <span className="text-white font-semibold">
+            {phaseCount !== null ? phaseCount.toLocaleString() : '—'}
+          </span>
+        </span>
         <span className="text-xs text-slate-400">
           Rate:{' '}
           <span className="text-white font-semibold">

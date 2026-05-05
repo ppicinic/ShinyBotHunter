@@ -47,6 +47,8 @@ export interface PhaseEncounterResponse {
   allPokemonCounts: PokemonCounts
   // C# Dictionary<int, PokemonCounts> — JSON keys are numbers
   pokemonEncounters: Record<number, PokemonCounts>
+  // Number of pokemon encountered since the last shiny seen for this milestone
+  phaseCount: number
 }
 
 export interface CaughtPokemon {

@@ -20,6 +20,7 @@ using ShinyBotHunter.Services;
 using System.Diagnostics;
 using System.Text;
 using YamlDotNet.Core;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ShinyBotHunter
 {
@@ -56,7 +57,8 @@ namespace ShinyBotHunter
             }
             else
             {
-                await MainRunnerAsync(app, services);
+                //await MainRunnerAsync(app, services);
+                await TestAsync(services);
             }
 
             await services.GetRequiredService<DiscordBotService>().StopAsync();
@@ -67,6 +69,35 @@ namespace ShinyBotHunter
         }
 
         //public 
+
+        private async Task TestAsync(IServiceProvider services)
+        {
+            var botFactory = services.GetRequiredService<BotFactory>();
+            var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
+            await bot.LaunchAsync();
+            await Task.Delay(5000);
+            bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "ContinueGame"));
+            await bot.WaitForMacroAsync();
+            char c = Console.ReadKey().KeyChar;
+            while(c != 'c')
+            {
+                var x = await bot.ReadUIntAsync(0x21DA6F4);
+                var y = await bot.ReadUIntAsync(0x21DA6FC);
+                Console.Write($"x: {to_s16(x)}, y:{to_s16(y)}");
+                c = Console.ReadKey().KeyChar;
+            }
+            string? s = "";
+            do
+            {
+                s = Console.ReadLine();
+            } while (s != "end");
+            await Task.Delay(1000);
+        }
+
+        private short to_s16(uint u32)
+        {
+            return (short)(((u32 / 65536) + 32768) % 65536 - 32768);
+        }
 
         private async Task MainRunnerAsync(WebApplication app, IServiceProvider services)
         {
