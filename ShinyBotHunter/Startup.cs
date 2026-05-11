@@ -95,8 +95,10 @@ namespace ShinyBotHunter
             while(c != 'c')
             {
                 var x = await bot.ReadUIntAsync(0x21DA6F4);
-                var y = await bot.ReadUIntAsync(0x21DA6FC);
+                uint addr = 0x21DA6FC;
+                var y = await bot.ReadUIntAsync(addr);
                 Console.Write($"x: {to_s16(x)}, y:{to_s16(y)}");
+                //bot.RunMacros(new MacroStruct($"M.Up.{to_s16(y)-3}.{addr}"), new MacroStruct($"M.Down.{to_s16(y)}.{addr};M.Up.{to_s16(y) - 3}.{addr}", true));
                 c = Console.ReadKey().KeyChar;
             }
             string? s = "";

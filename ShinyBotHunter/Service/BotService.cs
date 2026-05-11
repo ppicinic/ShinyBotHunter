@@ -121,17 +121,39 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException($"{args.EventName} is not a valid action to run currently.");
             }
-            if(args.EventName == "Spin Encounter")
+            if(args.EventName == "Wild Encounter")
             {
                 if(args.PhaseName is null || args.TargetType is null)
                 {
-                    throw new ArgumentException($"PhaseName cannot be null for Spin Encounter Event.");
+                    throw new ArgumentException($"PhaseName cannot be null for Wild Pokemon Encounter Event.");
+                }
+                if(args.EncounterType is null)
+                {
+                    throw new ArgumentException($"EncounterType must be supplied for Wild Pokemon Encounter Event");
                 }
                 var targetType = Enum.Parse<TargetType>(args.TargetType);
                 ITarget target = targetType == TargetType.PhaseTarget
                                                     ? new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName)
                                                     : new ShinyTarget();
-                var wildPokemonEvent = new WildPokemonEncounterEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, EncounterType.Spin, provider, target, this);
+                int xRange = args.xRange ?? 0;
+                int yRange = args.yRange ?? 0;
+
+                if(args.EncounterType == EncounterType.Run)
+                {
+                    if(yRange < 0 || xRange < 0)
+                    {
+                        throw new ArgumentException($"X and Y range must be non-negative values");
+                    }
+                    if(yRange == 0 && xRange == 0)
+                    {
+                        throw new ArgumentException($"A x or y range must be supplied for Run Encounter Event");
+                    }
+                    if(yRange > 0 && xRange > 0)
+                    {
+                        throw new ArgumentException($"Only x or y range must be supplied, not both.");
+                    }
+                }
+                var wildPokemonEvent = new WildPokemonEncounterEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, new EncounterParams(args.EncounterType.Value, yRange, xRange), provider, target, this);
                 botEvents[pos].StartEvent(wildPokemonEvent, args.PhaseName, this);
 
                 return GetBotDashboardState();
@@ -161,7 +183,7 @@ namespace ShinyBotHunter.Service
             else if(botEvent.Event is null || botEvent.Event.EventState == EventState.Complete)
             {
                 // TODO continue game.
-                return [actionMap["Spin Encounter"]];
+                return [actionMap["Wild Encounter"]];
             }
             else
             {
@@ -172,7 +194,10 @@ namespace ShinyBotHunter.Service
         private static Dictionary<string, EventArgumentOptions> actionMap = new Dictionary<string, EventArgumentOptions>()
         {
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
-            {"Spin Encounter", new EventArgumentOptions() { Name = "Spin Encounter", RequiredParameters = ["PhaseName", "TargetType"]} },
+            {"Wild Encounter", new EventArgumentOptions() { Name = "Wild Encounter", RequiredParameters = ["PhaseName", "TargetType", "EncounterType"], 
+                                ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
+                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" }
+                                ]} },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -217,6 +242,27 @@ namespace ShinyBotHunter.Service
         public string Name { get; set; } = null!;
         public string[]? RequiredParameters { get; set; }
         public string[]? OptionalParameters { get; set; }
+        public ConditionalParameters[] ConditionalParameters { get; set; } = [];
+    }
+
+    public class ConditionalParameters
+    {
+        public Condition Condition { get; set; } = null!;
+        public string Name { get; set; } = null!;
+        public bool HideIfConditionNotMet { get; set; } = true;
+    }
+
+    public class Condition
+    {
+        public ConditionType ConditionType { get; set; }
+        public string Name { get; set; } = null!;
+        public string Value { get; set; } = null!;
+    }
+
+
+    public enum ConditionType
+    {
+        Eq
     }
 
     public class NewEventArguments
@@ -226,6 +272,9 @@ namespace ShinyBotHunter.Service
         public string? PhaseName { get; set; }
         public string? TargetType { get; set; }
         public bool? SoundOn { get; set; }
+        public EncounterType? EncounterType { get; set; }
+        public int? yRange { get; set; }
+        public int? xRange { get; set; }
     }
 
     public class BotAndOrEvent
