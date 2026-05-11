@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Service;
 
@@ -9,12 +10,12 @@ namespace ShinyBotHunter.Controllers
     {
         private PhaseInfoService phaseInfoService;
         private PokemonPersistenceService pokemonPersistenceService;
-        private InfluxDbEncounterDao influxDbEncounterDao;
-        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, InfluxDbEncounterDao encounterDao)
+        private IEncounterDao encounterDao;
+        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao)
         {
             this.phaseInfoService = phaseInfoService;
             this.pokemonPersistenceService = pokemonPersistenceService;
-            influxDbEncounterDao = encounterDao;
+            this.encounterDao = encounterDao;
         }
 
         [HttpGet("phaseinfo/{game}/{phase}")]
@@ -68,14 +69,14 @@ namespace ShinyBotHunter.Controllers
         [HttpGet("phaseinfo/encounterRate/{game}/{phase}")]
         public async Task<ActionResult<double>> GetEncounterRate(string game, string phase)
         {
-            double result = await influxDbEncounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase);
+            double result = await encounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase);
             return Ok(result);
         }
 
         [HttpGet("phaseinfo/encounterRate/{game}/{phase}/{gameFileName}")]
         public async Task<ActionResult<double>> GetEncounterRate(string game, string phase, string gameFileName)
         {
-            double result = await influxDbEncounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            double result = await encounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase, gameFileName);
             return Ok(result);
         }
     }

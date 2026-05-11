@@ -1,18 +1,23 @@
-﻿using Discord;
+﻿using CmdScale.EntityFrameworkCore.TimescaleDB;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Net.Client.Balancer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using MongoDB.Driver.Core.Configuration;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Persistence.PostgreSQL;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Service;
@@ -39,7 +44,7 @@ namespace ShinyBotHunter
 
             await services.GetRequiredService<DiscordBotService>().StartAsync();
             await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
-            services.GetRequiredService<InfluxDbEncounterDao>().Init();
+            services.GetRequiredService<IEncounterDao>().Init();
             await services.GetRequiredService<PokemonMetadataService>().InitAsync();
             await services.GetRequiredService<PhaseInfoService>().InitAsync();
             services.GetRequiredService<NotificationService>().Init();
@@ -55,6 +60,10 @@ namespace ShinyBotHunter
             {
                 await MigrateInfluxDbv1ToV2(services, args);
             }
+            else if (args.Length > 0 && args[0].ToLower() == "--migrateinfluxtopostgresql")
+            {
+                await MigrateInfluxToPostgres(services, args);
+            }
             else
             {
                 await MainRunnerAsync(app, services);
@@ -63,7 +72,7 @@ namespace ShinyBotHunter
 
             await services.GetRequiredService<DiscordBotService>().StopAsync();
             await services.GetRequiredService<PokemonPersistenceService>().DisposeAsync();
-            await services.GetRequiredService<InfluxDbEncounterDao>().DisposeAsync();
+            await services.GetRequiredService<IEncounterDao>().DisposeAsync();
             await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
             services.GetRequiredService<MongoDbConnection>().Dispose();
         }
@@ -193,6 +202,12 @@ namespace ShinyBotHunter
             }
             await new MigrateInfluxSchemav1Tov2(provider, delete, dryRun, dryRunTableName).MigrateAsync();
         }
+
+        private async Task MigrateInfluxToPostgres(IServiceProvider provider, string[] args)
+        {
+            await new MigrateInfluxToPostgres(provider).MigrateAsync();
+        }
+
         public void CreateServices(IServiceCollection services)
         {
             InteractionServiceConfig interactionServiceConfig = new InteractionServiceConfig()
@@ -205,6 +220,9 @@ namespace ShinyBotHunter
                 .Build();
             var provider = services
                 .Configure<ApplicationSettings>(config.GetSection("ApplicationSettings"))
+                .AddDbContextFactory<PokemonDbContext>(options =>
+                    options.UseNpgsql(config.GetConnectionString("DefaultConnection"))
+                    .UseTimescaleDb())
                 .AddSingleton<IConfiguration>(config)
                 .AddTransient<MultiShinyHunterEvent>()
                 .AddSingleton<BotFactory>()
@@ -214,7 +232,7 @@ namespace ShinyBotHunter
                 .AddSingleton<HgssPokemonParser>()
                 .AddSingleton<HgssShinyStarterEventFactory>()
                 .AddSingleton<PokemonPersistenceService>()
-                .AddSingleton<InfluxDbEncounterDao>()
+                .AddSingleton<IEncounterDao, PostgreSQLEncounterDao>()
                 .AddSingleton<MongoDbConnection>()
                 .AddSingleton<MongoCaughtPokemonDao>()
                 .AddSingleton<PhaseInfoService>()
