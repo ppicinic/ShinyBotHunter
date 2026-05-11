@@ -1,4 +1,6 @@
-﻿using ShinyBotHunter.Macro;
+﻿using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -121,6 +123,7 @@ namespace ShinyBotHunter.Service
                 PhaseEncounters = cache.PhaseEncounterCache.Where(x => request.Phases.Contains(x.Key)).Select(x => new KeyValuePair<string, PhaseEncounterResponse>(x.Key, new PhaseEncounterResponse()
                 {
                     AllPokemonCounts = x.Value.AllPokemonCounts.Clone(),
+                    PhaseCount = x.Value.PhaseCount,
                     PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.Species.Contains(y.Key)).Select(y => new KeyValuePair<int, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
                 })).ToDictionary(),
                 LatestEncounters = cache.LatestEncounters.Reverse().ToArray(),
@@ -143,6 +146,7 @@ namespace ShinyBotHunter.Service
                 PhaseEncounters = cache.PhaseEncounterCache.Where(x => request.Phases.Contains(x.Key)).Select(x => new KeyValuePair<string, PhaseEncounterResponse>(x.Key, new PhaseEncounterResponse()
                 {
                     AllPokemonCounts = x.Value.AllPokemonCounts.Clone(),
+                    PhaseCount = x.Value.PhaseCount,
                     PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.Species.Contains(y.Key)).Select(y => new KeyValuePair<int, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
                 })).ToDictionary(),
                 CaughtPokemons = cache.CaughtPokemon.ToArray()
@@ -159,53 +163,13 @@ namespace ShinyBotHunter.Service
                 cache.LatestEncounters.TryDequeue(out remove);
             }
             cache.LatestEncounters.Enqueue(encounter.PokemonData);
-            cache.AllPokemonCounts.Encounters += 1;
-            cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.Encounters += 1;
-            cache.PokemonEncounterCache[encounter.PokemonData.Species].Encounters += 1;
-            cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].Encounters += 1;
-            if (encounter.PokemonData.IsShiny)
-            {
-                cache.AllPokemonCounts.ShinyEncounters += 1;
-                cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.ShinyEncounters += 1;
-                cache.PokemonEncounterCache[encounter.PokemonData.Species].ShinyEncounters += 1;
-                cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].ShinyEncounters += 1;
-            }
-            AddEncounterToGameLevelCache(cache.GameLevelCache[encounter.GameFileName], encounter);
-        }
-
-        private void AddEncounterToGameLevelCache(GameEncounterCacheBase cache, PersistPokemonData encounter)
-        {
-            cache.AllPokemonCounts.Encounters += 1;
-            cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.Encounters += 1;
-            cache.PokemonEncounterCache[encounter.PokemonData.Species].Encounters += 1;
-            cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].Encounters += 1;
-            if (encounter.PokemonData.IsShiny)
-            {
-                cache.AllPokemonCounts.ShinyEncounters += 1;
-                cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.ShinyEncounters += 1;
-                cache.PokemonEncounterCache[encounter.PokemonData.Species].ShinyEncounters += 1;
-                cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].ShinyEncounters += 1;
-            }
+            cache.Increment(encounter);
         }
 
         private async Task AddCatchToCacheAsync(PersistPokemonData encounter, CaughtPokemon caughtPokemon)
         {
             var cache = await GetOrLoadCacheAsync(new CacheLoadRequest(encounter));
-            cache.AllPokemonCounts.ShiniesCaught += 1;
-            cache.CaughtPokemon.Add(caughtPokemon);
-            cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.ShiniesCaught += 1;
-            cache.PokemonEncounterCache[encounter.PokemonData.Species].ShiniesCaught += 1;
-            cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].ShiniesCaught += 1;
-            AddCatchToGameLevelCache(cache.GameLevelCache[caughtPokemon.GameFileName], encounter, caughtPokemon);
-        }
-
-        private void AddCatchToGameLevelCache(GameEncounterCacheBase cache, PersistPokemonData encounter, CaughtPokemon caughtPokemon)
-        {
-            cache.AllPokemonCounts.ShiniesCaught += 1;
-            cache.CaughtPokemon.Add(caughtPokemon);
-            cache.PhaseEncounterCache[encounter.Phase].AllPokemonCounts.ShiniesCaught += 1;
-            cache.PokemonEncounterCache[encounter.PokemonData.Species].ShiniesCaught += 1;
-            cache.PhaseEncounterCache[encounter.Phase].PokemonEncounterCache[encounter.PokemonData.Species].ShiniesCaught += 1;
+            cache.Increment(caughtPokemon, encounter);
         }
 
         public async Task<List<CaughtPokemon>> GetCaughtPokemonAsync(GameFlavor game)
@@ -390,6 +354,7 @@ namespace ShinyBotHunter.Service
         {
             (long, long) encounters = await _encounterDao.GetAllPhaseEncountersForGame(game, phase);
             long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseShiniesCountAsync(game, phase);
+            int phaseCount = await _encounterDao.GetCurrentPhaseCount(game, phase);
             cache.PhaseEncounterCache.TryAdd(phase, new PhaseEncounterCache()
             {
                 AllPokemonCounts = new PokemonCounts()
@@ -397,7 +362,8 @@ namespace ShinyBotHunter.Service
                     Encounters = encounters.Item1,
                     ShinyEncounters = encounters.Item2,
                     ShiniesCaught = shiniesCaught,
-                } 
+                },
+                PhaseCount = phaseCount
             });
         }
 
@@ -474,6 +440,7 @@ namespace ShinyBotHunter.Service
         {
             (long, long) encounters = await _encounterDao.GetAllPhaseEncountersForGameName(gameFileName, phase);
             long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseShiniesCountAsync(gameFileName, phase);
+            int phaseCount = await _encounterDao.GetCurrentPhaseCount(gameFileName, phase);
             cache.PhaseEncounterCache.TryAdd(phase, new PhaseEncounterCache()
             {
                 AllPokemonCounts = new PokemonCounts()
@@ -481,7 +448,8 @@ namespace ShinyBotHunter.Service
                     Encounters = encounters.Item1,
                     ShinyEncounters = encounters.Item2,
                     ShiniesCaught = shiniesCaught,
-                }
+                },
+                PhaseCount = phaseCount
             });
         }
 
@@ -558,12 +526,25 @@ namespace ShinyBotHunter.Service
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
         public Dictionary<int, PokemonCounts> PokemonEncounters { get; set; } = new();
+        public int PhaseCount { get; set; } = 0;
     }
 
     public class GameEncounterCache : GameEncounterCacheBase
     {
         public ConcurrentQueue<PokemonData> LatestEncounters { get; set; } = new();
         public ConcurrentDictionary<string, GameEncounterCacheBase> GameLevelCache { get; set; } = new();
+
+        internal override void Increment(PersistPokemonData encounter)
+        {
+            base.Increment(encounter);
+            GameLevelCache[encounter.GameFileName].Increment(encounter);
+        }
+
+        internal override void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
+        {
+            base.Increment(caughtPokemon, encounter);
+            GameLevelCache[encounter.GameFileName].Increment(caughtPokemon, encounter);
+        }
     }
 
     public class GameEncounterCacheBase
@@ -572,19 +553,58 @@ namespace ShinyBotHunter.Service
         public ConcurrentDictionary<string, PhaseEncounterCache> PhaseEncounterCache { get; set; } = new();
         public ConcurrentDictionary<int, PokemonCounts> PokemonEncounterCache { get; set; } = new();
         public ConcurrentBag<CaughtPokemon> CaughtPokemon { get; set; } = new();
+
+        internal virtual void Increment(PersistPokemonData encounter)
+        {
+            AllPokemonCounts.Increment(encounter);
+            PokemonEncounterCache[encounter.PokemonData.Species].Increment(encounter);
+            PhaseEncounterCache[encounter.Phase].Increment(encounter);
+        }
+        internal virtual void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
+        {
+            AllPokemonCounts.Increment(caughtPokemon, encounter);
+            CaughtPokemon.Add(caughtPokemon);
+            PhaseEncounterCache[encounter.Phase].Increment(caughtPokemon, encounter);
+            PokemonEncounterCache[encounter.PokemonData.Species].Increment(caughtPokemon, encounter);
+        }
     }
 
     public class PhaseEncounterCache
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
         public ConcurrentDictionary<int, PokemonCounts> PokemonEncounterCache { get; set; } = new();
+        private int phaseCount = 0;
+        public int PhaseCount { get => phaseCount; set => Interlocked.Exchange(ref phaseCount, value); }
+
+        internal void Increment(PersistPokemonData encounter)
+        {
+            AllPokemonCounts.Increment(encounter);
+            PokemonEncounterCache[encounter.PokemonData.Species].Increment(encounter);
+            if (encounter.PokemonData.IsShiny)
+            {
+                PhaseCount = 0;
+            }
+            else
+            {
+                Interlocked.Increment(ref phaseCount);
+            }
+        }
+
+        internal void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
+        {
+            AllPokemonCounts.Increment(caughtPokemon, encounter);
+            PokemonEncounterCache[encounter.PokemonData.Species].Increment(caughtPokemon, encounter);
+        }
     }
 
     public class PokemonCounts
     {
-        public long Encounters { get; set; }
-        public long ShinyEncounters { get; set;  }
-        public long ShiniesCaught { get; set; }
+        private long encounters = 0;
+        private long shinyEncounters = 0;
+        private long shiniesCaught = 0;
+        public long Encounters { get => encounters; set => Interlocked.Exchange(ref encounters, value); }
+        public long ShinyEncounters { get => shinyEncounters; set => Interlocked.Exchange(ref shinyEncounters, value); }
+        public long ShiniesCaught { get => shiniesCaught; set => Interlocked.Exchange(ref shiniesCaught, value); }
 
         public PokemonCounts Clone()
         {
@@ -594,6 +614,23 @@ namespace ShinyBotHunter.Service
                 ShinyEncounters = ShinyEncounters,
                 ShiniesCaught = ShiniesCaught,
             };
+        }
+
+        internal void Increment(PersistPokemonData encounter)
+        {
+            Interlocked.Increment(ref encounters);
+            if (encounter.PokemonData.IsShiny)
+            {
+                Interlocked.Increment(ref shinyEncounters);
+            }
+        }
+
+        internal void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
+        {
+            if (caughtPokemon.Pokemon.IsShiny)
+            {
+                Interlocked.Increment(ref shiniesCaught);
+            }
         }
     }
 }

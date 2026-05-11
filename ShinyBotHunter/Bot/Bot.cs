@@ -153,5 +153,10 @@ namespace ShinyBotHunter.Bot
         {
             await this.memoryClient.WriteByteAsync(address, value);
         }
+
+        public void RunMacros(params MacroStruct[] macro)
+        {
+            this.commandClient.RunMacros(macro);
+        }
     }
 }
