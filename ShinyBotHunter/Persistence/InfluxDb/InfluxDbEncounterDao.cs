@@ -12,7 +12,7 @@ using System.Threading.Channels;
 
 namespace ShinyBotHunter.Persistence.InfluxDb
 {
-    public class InfluxDbEncounterDao : IAsyncDisposable
+    public class InfluxDbEncounterDao : IEncounterDao
     {
         private Channel<List<PersistPokemonData>> ProducerQueue { get; set; }
         private InfluxDBClient _client;

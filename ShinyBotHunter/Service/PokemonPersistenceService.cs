@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -13,7 +14,7 @@ namespace ShinyBotHunter.Service
     public record EncounterNotification(GameFlavor game, string phase, string gameFileName);
     public class PokemonPersistenceService : IAsyncDisposable
     {
-        private InfluxDbEncounterDao _encounterDao;
+        private IEncounterDao _encounterDao;
         private MongoCaughtPokemonDao _caughtPokemonDao;
         private static readonly SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
         private List<INotify<EncounterNotification, CacheLoadRequest, GameEncounterResponse>> notifies;
@@ -34,7 +35,7 @@ namespace ShinyBotHunter.Service
         **/
         private ConcurrentDictionary<GameFlavor, GameEncounterCache> gameCache = new();
 
-        public PokemonPersistenceService(InfluxDbEncounterDao encounterDao, MongoCaughtPokemonDao mongoCaughtPokemonDao)
+        public PokemonPersistenceService(IEncounterDao encounterDao, MongoCaughtPokemonDao mongoCaughtPokemonDao)
         {
             this._encounterDao = encounterDao;
             this._caughtPokemonDao = mongoCaughtPokemonDao;
@@ -384,7 +385,7 @@ namespace ShinyBotHunter.Service
             (long, long) encounters = await _encounterDao.GetAllEncountersForGame(game);
             List<CaughtPokemon> caughtShinies = await _caughtPokemonDao.GetAllCaughtShiniesAsync(game);
             long shiniesCaught = caughtShinies.Count();
-            var latestPokemon = await _encounterDao.GetLatestEncounters(game);
+            List<PokemonData> latestPokemon = await _encounterDao.GetLatestEncounters(game);
             var thisGameCache = new GameEncounterCache()
             {
                 AllPokemonCounts = new PokemonCounts()
