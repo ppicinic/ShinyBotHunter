@@ -47,7 +47,7 @@ namespace ShinyBotHunter.BotEvents
                     await bot.WaitForMacroAsync(cancellationToken);
                     await Task.Delay(2000);
 
-                    uint anchor = await bot.ReadUIntAsync(0x1D4158);
+                    uint anchor = await bot.ReadUIntAsync(0x21D4158);
                     uint starterData = anchor + 0x1BC00;
                     List<PersistPokemonData> pokemonData = new List<PersistPokemonData>();
                     DateTime now = DateTime.UtcNow;
