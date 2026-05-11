@@ -277,7 +277,7 @@ namespace ShinyBotHunter.Service
                     return Event.BotPositions;
                 }
             }
-            else if(BotPosition is not null)
+            if(BotPosition is not null)
             {
                 return [BotPosition.Value];
             }
