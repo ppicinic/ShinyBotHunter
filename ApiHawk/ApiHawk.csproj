@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>BotServer</AssemblyName>
+    <RootNamespace>ApiHawk</RootNamespace>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>9.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      BizHawk 2.9.1 reference DLLs.
+      Copy the following files from D:\BizHawk\ into ApiHawk\lib\:
+        BizHawk.Client.Common.dll
+        EmuHawk.exe
+        BizHawk.Common.dll
+        BizHawk.Emulation.Common.dll
+      These are not deployed with the output — Private=false keeps them out of the build output.
+    -->
+    <Reference Include="BizHawk.Client.Common">
+      <HintPath>lib\BizHawk.Client.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="EmuHawk">
+      <HintPath>lib\EmuHawk.exe</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BizHawk.Common">
+      <HintPath>lib\BizHawk.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BizHawk.Emulation.Common">
+      <HintPath>lib\BizHawk.Emulation.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    After building, manually copy BotServer.dll from the build output to D:\BizHawk\ExternalTools\.
+    Example (Debug):  bin\Debug\net48\BotServer.dll  →  D:\BizHawk\ExternalTools\BotServer.dll
+    Example (Release): bin\Release\net48\BotServer.dll → D:\BizHawk\ExternalTools\BotServer.dll
+  -->
+</Project>

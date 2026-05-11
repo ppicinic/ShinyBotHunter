@@ -18,5 +18,6 @@
         public ulong? DiscordGuildId { get; set; } = null!;
         public ulong? ShinyLogChannel { get; set; } = null!;
         public ulong? ShinyLogMention { get; set; } = null!;
+        public string BizHawkMode { get; set; } = "LuaNet";
     }
 }

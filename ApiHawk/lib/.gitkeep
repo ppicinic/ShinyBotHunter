@@ -1,0 +1,7 @@
+# Place the following BizHawk 2.9.1 DLLs here (copy from D:\BizHawk\):
+#   BizHawk.Client.Common.dll
+#   EmuHawk.exe
+#   BizHawk.Common.dll
+#   BizHawk.Emulation.Common.dll
+#
+# These files are gitignored (binary DLLs should not be committed).

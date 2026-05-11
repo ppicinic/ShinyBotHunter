@@ -18,9 +18,11 @@ namespace ShinyBotHunter.Service
         private IServiceProvider provider;
         private EventArgumentOptions[] specialEvents;
         private IHubContext<ElectronHub, IElectronClient> hubContext;
+        private string bizHawkMode;
         public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext)
         {
             this.maxEmulators = appSettings.Value.MaxEmulators["DS"];
+            this.bizHawkMode = appSettings.Value.BizHawkMode;
             this.botFactory = botFactory;
             this.provider = provider;
             specialEvents = Array.Empty<EventArgumentOptions>();
