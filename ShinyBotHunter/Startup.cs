@@ -57,8 +57,8 @@ namespace ShinyBotHunter
             }
             else
             {
-                //await MainRunnerAsync(app, services);
-                await TestAsync(services);
+                await MainRunnerAsync(app, services);
+                //await TestAsync(services);
             }
 
             await services.GetRequiredService<DiscordBotService>().StopAsync();
