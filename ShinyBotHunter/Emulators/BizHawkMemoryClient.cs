@@ -7,11 +7,18 @@ namespace ShinyBotHunter.Emulators
 
     public class BizHawkMemoryClient : BizHawkClientBase, IMemoryClient
     {
-        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 50001)
-            : base("BizHawkMemoryClient", host, port) { }
+        private bool localMemoryOnly;
+        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 50001, bool localMemoryOnly = true)
+            : base("BizHawkMemoryClient", host, port) 
+        {
+            this.localMemoryOnly = localMemoryOnly;
+        }
 
-        public BizHawkMemoryClient(GameContext context)
-            : base("BizHawkMemoryClient", "127.0.0.1", context.CommandPort) { }
+        public BizHawkMemoryClient(GameContext context, bool localMemoryOnly = true)
+            : base("BizHawkMemoryClient", "127.0.0.1", context.CommandPort) 
+        {
+            this.localMemoryOnly = localMemoryOnly;
+        }
 
         protected override void Disconnect()
         {
@@ -24,7 +31,7 @@ namespace ShinyBotHunter.Emulators
 
         public async Task<byte[]> ReadBytesAsync(uint address, int length)
         {
-            address = address > 0x02000000 ? address - 0x02000000 : address; // Memory address fix so we don't do it everywhere.
+            address = (address > 0x02000000) && false ? address - 0x02000000 : address; // Memory address fix so we don't do it everywhere.
             await _stream.WriteAsync(BuildHeader(0x01, address, (uint)length));
             var buf = new byte[length];
             await ReadExactAsync(buf);

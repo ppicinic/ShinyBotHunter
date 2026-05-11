@@ -57,8 +57,8 @@ namespace ShinyBotHunter
             }
             else
             {
-                //await MainRunnerAsync(app, services);
-                await TestAsync(services);
+                await MainRunnerAsync(app, services);
+                //await TestAsync(services);
             }
 
             await services.GetRequiredService<DiscordBotService>().StopAsync();
@@ -73,11 +73,15 @@ namespace ShinyBotHunter
         private async Task TestAsync(IServiceProvider services)
         {
             var botFactory = services.GetRequiredService<BotFactory>();
-            var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 1));
+            var bot = botFactory.CreateBot(botFactory.BuildGameContext("Pokemon SoulSilver", -1, 0));
             await bot.LaunchAsync();
             await Task.Delay(5000);
+            Console.WriteLine("try to continue game");
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "ContinueGame"));
             await bot.WaitForMacroAsync();
+
+            Console.WriteLine("Finished");
+            Console.WriteLine("Press a key to read map coordinates");
             char c = Console.ReadKey().KeyChar;
             while(c != 'c')
             {

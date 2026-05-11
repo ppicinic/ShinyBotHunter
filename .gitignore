@@ -2,6 +2,8 @@
 # C# / .NET
 # =============================================================================
 
+**/ApiHawk/lib/*.dll
+**/ApiHawk/lib/*.exe
 **config_sound_on.ini
 **PokemonDashboard/dist-electron/**
 **PokemonDashboard/dist-renderer/**
