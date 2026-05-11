@@ -245,7 +245,7 @@ public class WildPokemonEncounterEvent : IBotEvent
 
         //private async Task<byte> GetBattleMenuState()
         //{
-        //    uint anchor = await bot.ReadUIntAsync(0x1D4158);
+        //    uint anchor = await bot.ReadUIntAsync(0x21D4158);
         //    var battleMenuStatePtr = anchor + 0x230EC;
         //    return await bot.ReadByteAsync(battleMenuStatePtr);
         //}
@@ -262,7 +262,7 @@ public class WildPokemonEncounterEvent : IBotEvent
 
         private async Task PokemonDataPending()
         {
-            uint anchor = await bot.ReadUIntAsync(0x1D4158);
+            uint anchor = await bot.ReadUIntAsync(0x21D4158);
             uint foeAnchorPtr = anchor + 0x6930;
             uint foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
             uint foeCountPtr = foeAnchor + 0xC14;
@@ -270,7 +270,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             while (foeCount == 0)
             {
                 await Task.Delay(166);
-                anchor = await bot.ReadUIntAsync(0x1D4158);
+                anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchorPtr = anchor + 0x6930;
                 foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
                 foeCountPtr = foeAnchor + 0xC14;
@@ -281,7 +281,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             while(pokemon is null || pokemon.IsCorrupt)
             {
                 await Task.Delay(166); 
-                anchor = await bot.ReadUIntAsync(0x1D4158);
+                anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchor = await bot.ReadUIntAsync(anchor + 0x6930);
                 pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
             }
@@ -289,13 +289,13 @@ public class WildPokemonEncounterEvent : IBotEvent
             
             // tap B until battle menu
             bot.RunRepeatMacro("T.B;W.5");
-            anchor = await bot.ReadUIntAsync(0x1D4158);
+            anchor = await bot.ReadUIntAsync(0x21D4158);
             var battleMenuStatePtr = anchor + 0x230EC;
             byte battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
             while (battleMenuState != 1)
             {
                 await Task.Delay(166);
-                anchor = await bot.ReadUIntAsync(0x1D4158);
+                anchor = await bot.ReadUIntAsync(0x21D4158);
                 battleMenuStatePtr = anchor + 0x230EC;
                 battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
             }

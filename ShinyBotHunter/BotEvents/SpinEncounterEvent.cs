@@ -28,7 +28,7 @@ namespace ShinyBotHunter.BotEvents
 
         public override async Task<bool> ExecuteWithResultAsync(CancellationToken cancellationToken)
         {
-            uint anchor = await bot.ReadUIntAsync(0x1D4158);
+            uint anchor = await bot.ReadUIntAsync(0x21D4158);
             uint facingPtr = anchor + 0x1DC4;
             byte facing = await bot.ReadByteAsync(facingPtr);
             string macro = GetSpinMacro(facing);
@@ -45,6 +45,7 @@ namespace ShinyBotHunter.BotEvents
             }
             bot.ClearMacro();
             await bot.WaitForMacroAsync();
+            Console.WriteLine("Found battle");
             return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
         }
 

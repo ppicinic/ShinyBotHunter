@@ -71,9 +71,9 @@ namespace ShinyBotHunter.Service
         public async Task<PokemonState> GetPokemonState(IBot bot)
         {
             PokemonState state = new PokemonState();
-            uint anchor = await bot.ReadUIntAsync(0x1D4158);
+            uint anchor = await bot.ReadUIntAsync(0x21D4158);
             byte partyCount = await bot.ReadByteAsync(anchor - 0x23F44);
-            byte[] partyData = await bot.ReadBytesAsync(await bot.ReadUIntAsync(0x1D4158) - 0x23F40, 0xEC * partyCount);
+            byte[] partyData = await bot.ReadBytesAsync(await bot.ReadUIntAsync(0x21D4158) - 0x23F40, 0xEC * partyCount);
             state.PartySize = partyCount;
             for (uint i = 0; i < partyCount; i++)
             {
@@ -81,7 +81,7 @@ namespace ShinyBotHunter.Service
                 while (pokemon is null || pokemon.IsCorrupt)
                 {
                     await Task.Delay(100);
-                    anchor = await bot.ReadUIntAsync(0x1D4158);
+                    anchor = await bot.ReadUIntAsync(0x21D4158);
                     pokemon = parser.Parse(await bot.ReadBytesAsync(anchor - 0x23F40 + (i * 0xEC), 0xEC));
                 }
                 state.PartyPokemon[i] = pokemon;
@@ -97,7 +97,7 @@ namespace ShinyBotHunter.Service
                     checkMap[i][j] = false;
                 }
             }
-            anchor = await bot.ReadUIntAsync(0x1D4158);
+            anchor = await bot.ReadUIntAsync(0x21D4158);
             byte[] fullBoxData = await bot.ReadBytesAsync(anchor - 0x148D8, (18 * 4096));
             for (int box = 0; box < 18; box++)
             {
@@ -131,7 +131,7 @@ namespace ShinyBotHunter.Service
                         do
                         {
                             await Task.Delay(100);
-                            anchor = await bot.ReadUIntAsync(0x1D4158);
+                            anchor = await bot.ReadUIntAsync(0x21D4158);
                             byte[] boxData = await bot.ReadBytesAsync((anchor - 0x148D8) + (box * 4096) + (slot * 136), 136);
                             boxPokemon = parser.Parse(boxData);
                         } while (boxPokemon is null || boxPokemon.IsCorrupt);

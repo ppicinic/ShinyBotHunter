@@ -64,10 +64,16 @@ namespace ApiHawk
 
         public void UpdateValues(ToolFormUpdateType type)
         {
-            if (type == ToolFormUpdateType.PostFrame)
+            // Use PreFrame to match the Lua scripts which use event.onframestart.
+            // This ensures joypad inputs are applied before the frame is processed.
+            if (type == ToolFormUpdateType.PreFrame)
+            {
+                _commandServer?.ServiceFrame();
+            }
+            // Memory reads/writes can happen at PostFrame (after emulation, before next frame)
+            else if (type == ToolFormUpdateType.PostFrame)
             {
                 _memoryServer?.ServiceFrame();
-                _commandServer?.ServiceFrame();
             }
         }
 
