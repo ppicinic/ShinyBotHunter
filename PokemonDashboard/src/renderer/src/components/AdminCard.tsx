@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
-import type { AdminMetadata, BotDashboardState, EmulatorState, EventArgumentOptions, PhaseInfo, PhasePokemonInfo } from '../types/api'
+import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 
 type TabId = 'config' | 'botControl' | 'phaseEditor'
@@ -17,8 +17,25 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   GameName: 'Game',
   TargetType: 'Target Type',
   SoundOn: 'Sound On',
+  EncounterType: 'Encounter Type',
+  xRange: 'X Range',
+  yRange: 'Y Range',
 }
 const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
+
+const ENCOUNTER_TYPE_OPTIONS = ['Spin', 'Run']
+// Maps EncounterType string names to C# enum integer values (Spin=0, Run=1)
+const ENCOUNTER_TYPE_VALUES: Record<string, number> = { Spin: 0, Run: 1 }
+
+/** Evaluate whether a condition is met given the current param values.
+ *  conditionType may be the string 'Eq' or the integer 0 (C# enum default serialization). */
+function isConditionMet(condition: { conditionType: string | number; name: string; value: string }, params: Record<string, string>): boolean {
+  const isEq = condition.conditionType === 'Eq' || condition.conditionType === 0
+  if (isEq) {
+    return params[condition.name] === condition.value
+  }
+  return false
+}
 
 // ============================================================
 // Dashboard Config Tab
@@ -333,6 +350,11 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
               // soundOn (case-insensitive) defaults to 'false'; other optional params default to ''
               next[pos][action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
             })
+            action.conditionalParameters?.forEach((cp) => {
+              // xRange/yRange default to '0'; other conditional params default to ''
+              const lower = cp.name.toLowerCase()
+              next[pos][action.name][cp.name] = (lower === 'xrange' || lower === 'yrange') ? '0' : ''
+            })
           }
         })
       }
@@ -376,6 +398,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
           })
           action.optionalParameters?.forEach((param) => {
             initial[action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
+          })
+          action.conditionalParameters?.forEach((cp) => {
+            const lower = cp.name.toLowerCase()
+            initial[action.name][cp.name] = (lower === 'xrange' || lower === 'yrange') ? '0' : ''
           })
         })
         setParamValues(initial)
@@ -424,12 +450,21 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     setFeedback(null)
     try {
       const params = botActionParams[pos]?.[action.name] ?? {}
-      const body: Record<string, string | boolean | undefined> = { eventName: action.name }
+      const body: Record<string, string | boolean | number | undefined> = { eventName: action.name }
       if (params['PhaseName'] !== undefined) {
         body['phaseName'] = params['PhaseName']
       }
       if (params['TargetType'] !== undefined) {
         body['targetType'] = params['TargetType']
+      }
+      if (params['EncounterType'] !== undefined && params['EncounterType'] !== '') {
+        body['encounterType'] = ENCOUNTER_TYPE_VALUES[params['EncounterType']] ?? params['EncounterType']
+      }
+      if (params['xRange'] !== undefined) {
+        body['xRange'] = parseInt(params['xRange'], 10) || 0
+      }
+      if (params['yRange'] !== undefined) {
+        body['yRange'] = parseInt(params['yRange'], 10) || 0
       }
       // Find soundOn key case-insensitively
       const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
@@ -640,6 +675,17 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                       <option key={t} value={t}>{t}</option>
                                     ))}
                                   </select>
+                                ) : param === 'EncounterType' ? (
+                                  <select
+                                    value={params[param] ?? ''}
+                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
+                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                                  >
+                                    <option value="">Select encounter type...</option>
+                                    {ENCOUNTER_TYPE_OPTIONS.map((t) => (
+                                      <option key={t} value={t}>{t}</option>
+                                    ))}
+                                  </select>
                                 ) : (
                                   <input
                                     type="text"
@@ -677,6 +723,34 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 ))}
                               </div>
                             )}
+                            {action.conditionalParameters && action.conditionalParameters.length > 0 && (() => {
+                              const visibleConditionals = action.conditionalParameters.filter((cp: ConditionalParameter) => {
+                                const condMet = isConditionMet(cp.condition, params)
+                                return condMet || !cp.hideIfConditionNotMet
+                              })
+                              if (visibleConditionals.length === 0) return null
+                              return (
+                                <div className="pt-0.5 border-t border-slate-700/30">
+                                  <span className="text-xs text-slate-600">Conditional</span>
+                                  {visibleConditionals.map((cp: ConditionalParameter) => {
+                                    const condMet = isConditionMet(cp.condition, params)
+                                    return (
+                                      <div key={cp.name} className="flex items-center gap-2 mt-0.5">
+                                        <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
+                                        <input
+                                          type="number"
+                                          value={params[cp.name] ?? '0'}
+                                          onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
+                                          disabled={!condMet}
+                                          placeholder="0"
+                                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
+                                        />
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            })()}
                           </div>
                         )
                       })}

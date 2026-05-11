@@ -45,10 +45,11 @@ public class WildPokemonEncounterEvent : IBotEvent
         private BotService botService;
         private PokemonStateReader reader;
         private PhaseInfoService phaseInfoService;
-        public WildPokemonEncounterEvent(IBot bot, GameFlavor gameFlavor, string phase, EncounterType encounterType, IServiceProvider provider, ITarget target, BotService botService)
+        private EncounterParams encounterParams;
+        public WildPokemonEncounterEvent(IBot bot, GameFlavor gameFlavor, string phase, EncounterParams encounterParams, IServiceProvider provider, ITarget target, BotService botService)
         {
             var encounterFactory = provider.GetRequiredService<EncounterEventTypeFactory>();
-            encounteringEvent = encounterFactory.GetEncounterEvent(bot, encounterType);
+            encounteringEvent = encounterFactory.GetEncounterEvent(bot, encounterParams);
             State = WildPokemonState.NotStarted;
             this.bot = bot; 
             parser = provider.GetRequiredService<HgssPokemonParser>();
@@ -61,6 +62,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             this.phase = phase;
             this.target = target;
             this.botService = botService;
+            this.encounterParams = encounterParams;
         }
 
         public EventState EventState
@@ -237,9 +239,12 @@ public class WildPokemonEncounterEvent : IBotEvent
             //    await Task.Delay(100);
             //}
             ////Console.WriteLine("W 4 seconds");
-            bot.RunMacroString("W.120");
-            await bot.WaitForMacroAsync();
-            Console.WriteLine("Run Complete");
+            if (encounterParams.type == EncounterType.Spin) // TODO move this to start of spin encounter.
+            {
+                bot.RunMacroString("W.120");
+                await bot.WaitForMacroAsync();
+                Console.WriteLine("Run Complete");
+            }
             State = WildPokemonState.Encountering;
         }
 

@@ -1,6 +1,8 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -36,7 +38,11 @@ namespace ApiHawk
             public int X;
             public int Y;
             public int FramesLeft;
+            public short Destination;
+            public uint DestinationAddress;
             public bool IsTouch => Name == "Touch";
+            public bool IsMove { get; set; } = false;
+            public bool ReachedDestination { get; set; } = false;
         }
 
         private sealed class StackEntry
@@ -71,6 +77,7 @@ namespace ApiHawk
         // ── BizHawk APIs ──────────────────────────────────────────────────────────
         public IJoypadApi?    JoypadApi { get; set; }
         public IEmuClientApi? ClientApi { get; set; }
+        public IMemoryApi? MemoryApi { get; set; }
 
         public CommandServer(int port)
         {
@@ -92,7 +99,14 @@ namespace ApiHawk
                 string? cmd = _pendingCommand;
                 _pendingCommand = null;
                 if (cmd != null)
-                    HandleCommand(cmd);
+                {
+                    string[] cmds = cmd.Split('|');
+                    for(int i = cmds.Length - 1; i >= 0; i--)
+                    {
+                        HandleCommand(cmds[i]);
+                    }
+                }
+                    
             }
 
             StepStack();
@@ -185,6 +199,13 @@ namespace ApiHawk
                     {
                         entry.Wait = p.Length > 1 && int.TryParse(p[1], out int w) ? w : 1;
                     }
+                    else if(action == "M")
+                    {
+                        string button = p[1];
+                        short dest = short.Parse(p[2]);
+                        uint memAddr = uint.Parse(p[3]);
+                        entry.Buttons.Add(new ButtonState { Name = button, Destination = dest, DestinationAddress = memAddr, IsMove = true });
+                    }
                     else if (action == "S")
                     {
                         int x = p.Length > 1 && int.TryParse(p[1], out int sx) ? sx : 0;
@@ -227,7 +248,7 @@ namespace ApiHawk
 
             if (repeat)
                 _commandStack.Push(new StackEntry { Action = FrameAction.RepeatMacro, MacroStr = macroStr });
-            else
+            else if (_commandStack.Count ==  0)
                 _commandStack.Push(new StackEntry { Action = FrameAction.MacroEnd });
 
             for (int i = frames.Count - 1; i >= 0; i--)
@@ -235,13 +256,21 @@ namespace ApiHawk
         }
 
         // ── Stack stepper ─────────────────────────────────────────────────────────
-
+        private short to_s16(uint u32)
+        {
+            return (short)(((u32 / 65536) + 32768) % 65536 - 32768);
+        }
         private void StepStack()
         {
             if (_commandStack.Count == 0) return;
 
             var top = _commandStack.Peek();
-
+            if (top.Action == FrameAction.RepeatMacro)
+            {
+                _commandStack.Pop();
+                PushMacroString(top.MacroStr, repeat: true);
+                top = _commandStack.Peek();
+            }
             if (top.Action == FrameAction.Frame)
             {
                 bool stillActive = false;
@@ -254,7 +283,19 @@ namespace ApiHawk
 
                 foreach (var btn in top.Buttons)
                 {
-                    if (btn.FramesLeft > 0)
+                    if (btn.IsMove)
+                    {
+                        var data = to_s16(BinaryPrimitives.ReadUInt32LittleEndian(MemoryApi!.ReadByteRange(btn.DestinationAddress, 4).ToArray()));
+                        if(data != btn.Destination)
+                        {
+                            stillActive = true;
+                        }
+                        else
+                        {
+                            btn.ReachedDestination = true;
+                        }
+                    }
+                    else if (btn.FramesLeft > 0)
                     {
                         btn.FramesLeft--;
                         if (btn.FramesLeft > 0) stillActive = true;
@@ -263,11 +304,6 @@ namespace ApiHawk
 
                 if (!stillActive)
                     _commandStack.Pop();
-            }
-            else if (top.Action == FrameAction.RepeatMacro)
-            {
-                _commandStack.Pop();
-                PushMacroString(top.MacroStr, repeat: true);
             }
             else if (top.Action == FrameAction.MacroEnd)
             {
@@ -295,7 +331,14 @@ namespace ApiHawk
                 {
                     foreach (var btn in top.Buttons)
                     {
-                        if (btn.FramesLeft > 0)
+                        if (btn.IsMove)
+                        {
+                            if (!btn.ReachedDestination)
+                            {
+                                buttons[btn.Name] = true;
+                            }
+                        }
+                        else if (btn.FramesLeft > 0)
                         {
                             if (btn.IsTouch)
                             {

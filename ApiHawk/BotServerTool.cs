@@ -99,6 +99,7 @@ namespace ApiHawk
 
             _commandServer = new CommandServer(cmdPort)
             {
+                MemoryApi = _memoryApi,
                 JoypadApi = _joypadApi,
                 ClientApi = _clientApi
             };

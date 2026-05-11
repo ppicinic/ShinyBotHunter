@@ -190,10 +190,26 @@ export interface AdminMetadata {
 // Note: the API returns an array of EventArgumentOptions
 // ============================================================
 
+export type ConditionType = 'Eq'
+
+export interface Condition {
+  // C# enums serialize as integers by default; accept both string and number
+  conditionType: ConditionType | number
+  name: string
+  value: string
+}
+
+export interface ConditionalParameter {
+  condition: Condition
+  name: string
+  hideIfConditionNotMet: boolean
+}
+
 export interface EventArgumentOptions {
   name: string
   requiredParameters?: string[]
   optionalParameters?: string[]
+  conditionalParameters?: ConditionalParameter[]
 }
 
 export interface NewEventArguments {
