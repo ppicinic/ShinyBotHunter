@@ -1,10 +1,6 @@
-﻿using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using SharpCompress.Compressors.Xz;
+﻿
 using ShinyBotHunter.Pathfinding;
 using System.Text.Json;
-using System.Xml.Linq;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ShinyBotHunter.Scripts.Maps
 {

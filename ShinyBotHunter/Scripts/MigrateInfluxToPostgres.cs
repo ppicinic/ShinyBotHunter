@@ -16,9 +16,6 @@ namespace ShinyBotHunter.Scripts
         private string token;
         private string database;
         private string tableName = "encounter";
-        private bool withDeletion;
-        private bool withDryRun;
-        private string? dryRunTable;
         private IServiceProvider provider;
         public MigrateInfluxToPostgres(IServiceProvider provider)
         {

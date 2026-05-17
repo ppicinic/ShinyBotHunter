@@ -13,16 +13,16 @@
     <PackageReference Include="Discord.Net" Version="3.19.1" />
     <PackageReference Include="InfluxDB3.Client" Version="1.7.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
-    <PackageReference Include="MongoDB.Driver" Version="3.7.1" />
+    <PackageReference Include="MongoDB.Driver" Version="3.8.1" />
     <PackageReference Include="Npgsql" Version="10.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageReference Include="SharpCompress" Version="0.48.0" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="Configs\SpecialEvents\" />
     <Folder Include="Data\HGSS\" />
-    <Folder Include="NewFolder\" />
   </ItemGroup>
 
 </Project>
