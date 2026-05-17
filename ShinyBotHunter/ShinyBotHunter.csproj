@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Folder Include="Configs\SpecialEvents\" />
+    <Folder Include="Data\HGSS\" />
     <Folder Include="NewFolder\" />
   </ItemGroup>
 

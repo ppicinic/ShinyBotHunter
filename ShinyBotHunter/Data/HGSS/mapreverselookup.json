@@ -1,0 +1,2070 @@
+{
+  "35": {
+    "BotMapId": 0,
+    "InternalName": "R31"
+  },
+  "34": {
+    "BotMapId": 0,
+    "InternalName": "R30"
+  },
+  "30": {
+    "BotMapId": 0,
+    "InternalName": "R26"
+  },
+  "67": {
+    "BotMapId": 0,
+    "InternalName": "T21"
+  },
+  "33": {
+    "BotMapId": 0,
+    "InternalName": "R29"
+  },
+  "60": {
+    "BotMapId": 0,
+    "InternalName": "T20"
+  },
+  "31": {
+    "BotMapId": 0,
+    "InternalName": "R27"
+  },
+  "90": {
+    "BotMapId": 1,
+    "InternalName": "T31"
+  },
+  "32": {
+    "BotMapId": 1,
+    "InternalName": "R28"
+  },
+  "58": {
+    "BotMapId": 2,
+    "InternalName": "T10"
+  },
+  "73": {
+    "BotMapId": 3,
+    "InternalName": "T22"
+  },
+  "36": {
+    "BotMapId": 3,
+    "InternalName": "R32"
+  },
+  "113": {
+    "BotMapId": 4,
+    "InternalName": "D24R0101"
+  },
+  "74": {
+    "BotMapId": 5,
+    "InternalName": "T23"
+  },
+  "37": {
+    "BotMapId": 5,
+    "InternalName": "R33"
+  },
+  "76": {
+    "BotMapId": 6,
+    "InternalName": "T25"
+  },
+  "38": {
+    "BotMapId": 6,
+    "InternalName": "R34"
+  },
+  "78": {
+    "BotMapId": 7,
+    "InternalName": "T27"
+  },
+  "41": {
+    "BotMapId": 7,
+    "InternalName": "R37"
+  },
+  "40": {
+    "BotMapId": 7,
+    "InternalName": "R36"
+  },
+  "39": {
+    "BotMapId": 7,
+    "InternalName": "R35"
+  },
+  "43": {
+    "BotMapId": 8,
+    "InternalName": "R39"
+  },
+  "42": {
+    "BotMapId": 8,
+    "InternalName": "R38"
+  },
+  "77": {
+    "BotMapId": 8,
+    "InternalName": "T26"
+  },
+  "94": {
+    "BotMapId": 8,
+    "InternalName": "W40"
+  },
+  "75": {
+    "BotMapId": 8,
+    "InternalName": "T24"
+  },
+  "95": {
+    "BotMapId": 8,
+    "InternalName": "W41"
+  },
+  "174": {
+    "BotMapId": 9,
+    "InternalName": "D47"
+  },
+  "152": {
+    "BotMapId": 9,
+    "InternalName": "R48"
+  },
+  "151": {
+    "BotMapId": 9,
+    "InternalName": "R47"
+  },
+  "44": {
+    "BotMapId": 10,
+    "InternalName": "R42"
+  },
+  "87": {
+    "BotMapId": 10,
+    "InternalName": "T28"
+  },
+  "46": {
+    "BotMapId": 10,
+    "InternalName": "R44"
+  },
+  "89": {
+    "BotMapId": 11,
+    "InternalName": "T30"
+  },
+  "47": {
+    "BotMapId": 11,
+    "InternalName": "R45"
+  },
+  "48": {
+    "BotMapId": 11,
+    "InternalName": "R46"
+  },
+  "88": {
+    "BotMapId": 12,
+    "InternalName": "T29"
+  },
+  "45": {
+    "BotMapId": 12,
+    "InternalName": "R43"
+  },
+  "10": {
+    "BotMapId": 13,
+    "InternalName": "R02"
+  },
+  "50": {
+    "BotMapId": 13,
+    "InternalName": "T02"
+  },
+  "27": {
+    "BotMapId": 13,
+    "InternalName": "R22"
+  },
+  "9": {
+    "BotMapId": 14,
+    "InternalName": "R01"
+  },
+  "49": {
+    "BotMapId": 14,
+    "InternalName": "T01"
+  },
+  "93": {
+    "BotMapId": 14,
+    "InternalName": "W21"
+  },
+  "91": {
+    "BotMapId": 14,
+    "InternalName": "W19"
+  },
+  "57": {
+    "BotMapId": 14,
+    "InternalName": "T09"
+  },
+  "92": {
+    "BotMapId": 14,
+    "InternalName": "W20"
+  },
+  "51": {
+    "BotMapId": 15,
+    "InternalName": "T03"
+  },
+  "11": {
+    "BotMapId": 15,
+    "InternalName": "R03"
+  },
+  "414": {
+    "BotMapId": 15,
+    "InternalName": "R02R0101"
+  },
+  "29": {
+    "BotMapId": 16,
+    "InternalName": "R25"
+  },
+  "28": {
+    "BotMapId": 16,
+    "InternalName": "R24"
+  },
+  "12": {
+    "BotMapId": 16,
+    "InternalName": "R04"
+  },
+  "52": {
+    "BotMapId": 16,
+    "InternalName": "T04"
+  },
+  "17": {
+    "BotMapId": 16,
+    "InternalName": "R09"
+  },
+  "13": {
+    "BotMapId": 16,
+    "InternalName": "R05"
+  },
+  "18": {
+    "BotMapId": 16,
+    "InternalName": "R10"
+  },
+  "59": {
+    "BotMapId": 17,
+    "InternalName": "T11"
+  },
+  "55": {
+    "BotMapId": 18,
+    "InternalName": "T07"
+  },
+  "15": {
+    "BotMapId": 18,
+    "InternalName": "R07"
+  },
+  "422": {
+    "BotMapId": 18,
+    "InternalName": "R16R0301"
+  },
+  "24": {
+    "BotMapId": 19,
+    "InternalName": "R16"
+  },
+  "25": {
+    "BotMapId": 19,
+    "InternalName": "R17"
+  },
+  "56": {
+    "BotMapId": 19,
+    "InternalName": "T08"
+  },
+  "26": {
+    "BotMapId": 19,
+    "InternalName": "R18"
+  },
+  "388": {
+    "BotMapId": 20,
+    "InternalName": "R10R0101"
+  },
+  "16": {
+    "BotMapId": 20,
+    "InternalName": "R08"
+  },
+  "53": {
+    "BotMapId": 20,
+    "InternalName": "T05"
+  },
+  "20": {
+    "BotMapId": 20,
+    "InternalName": "R12"
+  },
+  "21": {
+    "BotMapId": 20,
+    "InternalName": "R13"
+  },
+  "22": {
+    "BotMapId": 20,
+    "InternalName": "R14"
+  },
+  "23": {
+    "BotMapId": 20,
+    "InternalName": "R15"
+  },
+  "14": {
+    "BotMapId": 21,
+    "InternalName": "R06"
+  },
+  "54": {
+    "BotMapId": 21,
+    "InternalName": "T06"
+  },
+  "19": {
+    "BotMapId": 21,
+    "InternalName": "R11"
+  },
+  "2": {
+    "BotMapId": 30,
+    "InternalName": "UNION"
+  },
+  "4": {
+    "BotMapId": 31,
+    "InternalName": "DIRECT2"
+  },
+  "5": {
+    "BotMapId": 32,
+    "InternalName": "DIRECT4"
+  },
+  "6": {
+    "BotMapId": 33,
+    "InternalName": "D17R1101"
+  },
+  "7": {
+    "BotMapId": 34,
+    "InternalName": "D18R0101"
+  },
+  "61": {
+    "BotMapId": 35,
+    "InternalName": "T20R0101"
+  },
+  "62": {
+    "BotMapId": 36,
+    "InternalName": "T20R0102"
+  },
+  "63": {
+    "BotMapId": 37,
+    "InternalName": "T20R0201"
+  },
+  "64": {
+    "BotMapId": 38,
+    "InternalName": "T20R0202"
+  },
+  "65": {
+    "BotMapId": 39,
+    "InternalName": "T20R0301"
+  },
+  "66": {
+    "BotMapId": 40,
+    "InternalName": "T20R0401"
+  },
+  "68": {
+    "BotMapId": 41,
+    "InternalName": "T21FS0101"
+  },
+  "69": {
+    "BotMapId": 42,
+    "InternalName": "T21PC0101"
+  },
+  "70": {
+    "BotMapId": 43,
+    "InternalName": "T21R0301"
+  },
+  "71": {
+    "BotMapId": 44,
+    "InternalName": "T21R0401"
+  },
+  "72": {
+    "BotMapId": 45,
+    "InternalName": "T21R0501"
+  },
+  "79": {
+    "BotMapId": 46,
+    "InternalName": "T27FS0101"
+  },
+  "80": {
+    "BotMapId": 47,
+    "InternalName": "T27GYM0101"
+  },
+  "81": {
+    "BotMapId": 48,
+    "InternalName": "T27PC0101"
+  },
+  "82": {
+    "BotMapId": 49,
+    "InternalName": "T27R0101"
+  },
+  "83": {
+    "BotMapId": 50,
+    "InternalName": "T27R0201"
+  },
+  "84": {
+    "BotMapId": 51,
+    "InternalName": "T27R0801"
+  },
+  "85": {
+    "BotMapId": 52,
+    "InternalName": "T27R0401"
+  },
+  "86": {
+    "BotMapId": 53,
+    "InternalName": "T27R0501"
+  },
+  "96": {
+    "BotMapId": 54,
+    "InternalName": "D22R0101"
+  },
+  "97": {
+    "BotMapId": 55,
+    "InternalName": "R31R0101"
+  },
+  "98": {
+    "BotMapId": 56,
+    "InternalName": "R32R0101"
+  },
+  "99": {
+    "BotMapId": 57,
+    "InternalName": "D25R0101"
+  },
+  "100": {
+    "BotMapId": 58,
+    "InternalName": "T23R0101"
+  },
+  "101": {
+    "BotMapId": 59,
+    "InternalName": "R35R0101"
+  },
+  "102": {
+    "BotMapId": 60,
+    "InternalName": "R35R0201"
+  },
+  "103": {
+    "BotMapId": 61,
+    "InternalName": "R36R0101"
+  },
+  "104": {
+    "BotMapId": 62,
+    "InternalName": "R36R0201"
+  },
+  "105": {
+    "BotMapId": 63,
+    "InternalName": "T27R0601"
+  },
+  "106": {
+    "BotMapId": 64,
+    "InternalName": "D01R0101"
+  },
+  "107": {
+    "BotMapId": 65,
+    "InternalName": "D02R0101"
+  },
+  "108": {
+    "BotMapId": 66,
+    "InternalName": "D05R0101"
+  },
+  "109": {
+    "BotMapId": 67,
+    "InternalName": "D10R0101"
+  },
+  "110": {
+    "BotMapId": 68,
+    "InternalName": "D15R0101"
+  },
+  "111": {
+    "BotMapId": 69,
+    "InternalName": "D17R0101"
+  },
+  "112": {
+    "BotMapId": 70,
+    "InternalName": "D23R0101"
+  },
+  "114": {
+    "BotMapId": 71,
+    "InternalName": "D26R0101"
+  },
+  "115": {
+    "BotMapId": 72,
+    "InternalName": "D27R0101"
+  },
+  "116": {
+    "BotMapId": 73,
+    "InternalName": "D35R0101"
+  },
+  "117": {
+    "BotMapId": 74,
+    "InternalName": "D36R0101"
+  },
+  "118": {
+    "BotMapId": 75,
+    "InternalName": "D37R0101"
+  },
+  "119": {
+    "BotMapId": 76,
+    "InternalName": "D38R0101"
+  },
+  "120": {
+    "BotMapId": 77,
+    "InternalName": "D39R0101"
+  },
+  "121": {
+    "BotMapId": 78,
+    "InternalName": "D40R0101"
+  },
+  "122": {
+    "BotMapId": 79,
+    "InternalName": "D41R0101"
+  },
+  "123": {
+    "BotMapId": 80,
+    "InternalName": "D42R0101"
+  },
+  "124": {
+    "BotMapId": 81,
+    "InternalName": "D43R0101"
+  },
+  "125": {
+    "BotMapId": 82,
+    "InternalName": "D44R0101"
+  },
+  "126": {
+    "BotMapId": 83,
+    "InternalName": "D45R0101"
+  },
+  "127": {
+    "BotMapId": 84,
+    "InternalName": "R30R0101"
+  },
+  "128": {
+    "BotMapId": 85,
+    "InternalName": "T27PC0102"
+  },
+  "129": {
+    "BotMapId": 86,
+    "InternalName": "T27PC0103"
+  },
+  "130": {
+    "BotMapId": 87,
+    "InternalName": "T27PC0104"
+  },
+  "131": {
+    "BotMapId": 88,
+    "InternalName": "T27PC0105"
+  },
+  "132": {
+    "BotMapId": 89,
+    "InternalName": "R42R0101"
+  },
+  "133": {
+    "BotMapId": 90,
+    "InternalName": "T28R0201"
+  },
+  "134": {
+    "BotMapId": 91,
+    "InternalName": "R29R0101"
+  },
+  "135": {
+    "BotMapId": 92,
+    "InternalName": "T22GYM0101"
+  },
+  "136": {
+    "BotMapId": 93,
+    "InternalName": "T23GYM0101"
+  },
+  "137": {
+    "BotMapId": 94,
+    "InternalName": "T25GYM0101"
+  },
+  "138": {
+    "BotMapId": 95,
+    "InternalName": "T26GYM0101"
+  },
+  "139": {
+    "BotMapId": 96,
+    "InternalName": "T24GYM0101"
+  },
+  "140": {
+    "BotMapId": 97,
+    "InternalName": "T28GYM0101"
+  },
+  "141": {
+    "BotMapId": 98,
+    "InternalName": "T30GYM0101"
+  },
+  "142": {
+    "BotMapId": 99,
+    "InternalName": "R43R0101"
+  },
+  "143": {
+    "BotMapId": 100,
+    "InternalName": "R30R0201"
+  },
+  "144": {
+    "BotMapId": 101,
+    "InternalName": "T21PC0102"
+  },
+  "145": {
+    "BotMapId": 102,
+    "InternalName": "D03R0101"
+  },
+  "146": {
+    "BotMapId": 103,
+    "InternalName": "D11R0101"
+  },
+  "147": {
+    "BotMapId": 104,
+    "InternalName": "D46R0101"
+  },
+  "148": {
+    "BotMapId": 105,
+    "InternalName": "R09R0101"
+  },
+  "149": {
+    "BotMapId": 106,
+    "InternalName": "T22R0701"
+  },
+  "150": {
+    "BotMapId": 107,
+    "InternalName": "D22R0201"
+  },
+  "153": {
+    "BotMapId": 108,
+    "InternalName": "D25R0102"
+  },
+  "154": {
+    "BotMapId": 109,
+    "InternalName": "D25R0103"
+  },
+  "155": {
+    "BotMapId": 110,
+    "InternalName": "D15R0102"
+  },
+  "156": {
+    "BotMapId": 111,
+    "InternalName": "D15R0103"
+  },
+  "157": {
+    "BotMapId": 112,
+    "InternalName": "T22FS0101"
+  },
+  "158": {
+    "BotMapId": 113,
+    "InternalName": "T22PC0101"
+  },
+  "159": {
+    "BotMapId": 114,
+    "InternalName": "T22R0301"
+  },
+  "160": {
+    "BotMapId": 115,
+    "InternalName": "T22R0401"
+  },
+  "161": {
+    "BotMapId": 116,
+    "InternalName": "T22R0501"
+  },
+  "162": {
+    "BotMapId": 117,
+    "InternalName": "T22R0601"
+  },
+  "163": {
+    "BotMapId": 118,
+    "InternalName": "T23R0201"
+  },
+  "164": {
+    "BotMapId": 119,
+    "InternalName": "T23R0501"
+  },
+  "165": {
+    "BotMapId": 120,
+    "InternalName": "T23FS0101"
+  },
+  "166": {
+    "BotMapId": 121,
+    "InternalName": "T23PC0101"
+  },
+  "167": {
+    "BotMapId": 122,
+    "InternalName": "T22PC0102"
+  },
+  "168": {
+    "BotMapId": 123,
+    "InternalName": "T23PC0102"
+  },
+  "169": {
+    "BotMapId": 124,
+    "InternalName": "R32PC0101"
+  },
+  "170": {
+    "BotMapId": 125,
+    "InternalName": "R32PC0102"
+  },
+  "171": {
+    "BotMapId": 126,
+    "InternalName": "R34R0201"
+  },
+  "172": {
+    "BotMapId": 127,
+    "InternalName": "R38R0101"
+  },
+  "173": {
+    "BotMapId": 128,
+    "InternalName": "D47R0101"
+  },
+  "175": {
+    "BotMapId": 129,
+    "InternalName": "T27R0301"
+  },
+  "176": {
+    "BotMapId": 130,
+    "InternalName": "D42R0102"
+  },
+  "177": {
+    "BotMapId": 131,
+    "InternalName": "D26R0102"
+  },
+  "178": {
+    "BotMapId": 132,
+    "InternalName": "D43R0102"
+  },
+  "179": {
+    "BotMapId": 133,
+    "InternalName": "D43R0103"
+  },
+  "180": {
+    "BotMapId": 134,
+    "InternalName": "T23GYM0102"
+  },
+  "181": {
+    "BotMapId": 135,
+    "InternalName": "D26R0103"
+  },
+  "182": {
+    "BotMapId": 136,
+    "InternalName": "T25R0201"
+  },
+  "183": {
+    "BotMapId": 137,
+    "InternalName": "T25R1101"
+  },
+  "184": {
+    "BotMapId": 138,
+    "InternalName": "T25R0601"
+  },
+  "185": {
+    "BotMapId": 139,
+    "InternalName": "T25PC0101"
+  },
+  "186": {
+    "BotMapId": 140,
+    "InternalName": "D23R0102"
+  },
+  "187": {
+    "BotMapId": 141,
+    "InternalName": "D23R0103"
+  },
+  "188": {
+    "BotMapId": 142,
+    "InternalName": "D23R0104"
+  },
+  "189": {
+    "BotMapId": 143,
+    "InternalName": "D23R0105"
+  },
+  "190": {
+    "BotMapId": 144,
+    "InternalName": "D23R0106"
+  },
+  "191": {
+    "BotMapId": 145,
+    "InternalName": "T25R1001"
+  },
+  "192": {
+    "BotMapId": 146,
+    "InternalName": "T25R1002"
+  },
+  "193": {
+    "BotMapId": 147,
+    "InternalName": "T25R1003"
+  },
+  "194": {
+    "BotMapId": 148,
+    "InternalName": "T25R1004"
+  },
+  "195": {
+    "BotMapId": 149,
+    "InternalName": "T25R1005"
+  },
+  "196": {
+    "BotMapId": 150,
+    "InternalName": "T25R1006"
+  },
+  "197": {
+    "BotMapId": 151,
+    "InternalName": "T25R0501"
+  },
+  "198": {
+    "BotMapId": 152,
+    "InternalName": "T25R0502"
+  },
+  "199": {
+    "BotMapId": 153,
+    "InternalName": "D37R0102"
+  },
+  "200": {
+    "BotMapId": 154,
+    "InternalName": "D37R0103"
+  },
+  "201": {
+    "BotMapId": 155,
+    "InternalName": "D37R0104"
+  },
+  "202": {
+    "BotMapId": 156,
+    "InternalName": "D37R0105"
+  },
+  "203": {
+    "BotMapId": 157,
+    "InternalName": "T25R0401"
+  },
+  "204": {
+    "BotMapId": 158,
+    "InternalName": "T25R0301"
+  },
+  "205": {
+    "BotMapId": 159,
+    "InternalName": "T25R0801"
+  },
+  "206": {
+    "BotMapId": 160,
+    "InternalName": "T25R0901"
+  },
+  "207": {
+    "BotMapId": 161,
+    "InternalName": "T25R1201"
+  },
+  "208": {
+    "BotMapId": 162,
+    "InternalName": "T25R1301"
+  },
+  "209": {
+    "BotMapId": 163,
+    "InternalName": "T25R1302"
+  },
+  "210": {
+    "BotMapId": 164,
+    "InternalName": "T25R1303"
+  },
+  "211": {
+    "BotMapId": 165,
+    "InternalName": "T25R1304"
+  },
+  "212": {
+    "BotMapId": 166,
+    "InternalName": "T25R1305"
+  },
+  "213": {
+    "BotMapId": 167,
+    "InternalName": "T25R1306"
+  },
+  "214": {
+    "BotMapId": 168,
+    "InternalName": "R39R0101"
+  },
+  "215": {
+    "BotMapId": 169,
+    "InternalName": "R39R0201"
+  },
+  "216": {
+    "BotMapId": 170,
+    "InternalName": "T27R0202"
+  },
+  "217": {
+    "BotMapId": 171,
+    "InternalName": "D18R0102"
+  },
+  "219": {
+    "BotMapId": 172,
+    "InternalName": "T25PC0102"
+  },
+  "220": {
+    "BotMapId": 173,
+    "InternalName": "D27R0102"
+  },
+  "221": {
+    "BotMapId": 174,
+    "InternalName": "D27R0103"
+  },
+  "222": {
+    "BotMapId": 175,
+    "InternalName": "D27R0104"
+  },
+  "223": {
+    "BotMapId": 176,
+    "InternalName": "D27R0105"
+  },
+  "224": {
+    "BotMapId": 177,
+    "InternalName": "D27R0106"
+  },
+  "225": {
+    "BotMapId": 178,
+    "InternalName": "D27R0107"
+  },
+  "226": {
+    "BotMapId": 179,
+    "InternalName": "T26PC0101"
+  },
+  "227": {
+    "BotMapId": 180,
+    "InternalName": "T26FS0101"
+  },
+  "228": {
+    "BotMapId": 181,
+    "InternalName": "T26R0301"
+  },
+  "229": {
+    "BotMapId": 182,
+    "InternalName": "T26R0501"
+  },
+  "230": {
+    "BotMapId": 183,
+    "InternalName": "T26R0601"
+  },
+  "231": {
+    "BotMapId": 184,
+    "InternalName": "T26R0701"
+  },
+  "232": {
+    "BotMapId": 185,
+    "InternalName": "T24R0201"
+  },
+  "233": {
+    "BotMapId": 186,
+    "InternalName": "T24R0501"
+  },
+  "234": {
+    "BotMapId": 187,
+    "InternalName": "T24R0601"
+  },
+  "235": {
+    "BotMapId": 188,
+    "InternalName": "T24R0701"
+  },
+  "236": {
+    "BotMapId": 189,
+    "InternalName": "T24PC0101"
+  },
+  "237": {
+    "BotMapId": 190,
+    "InternalName": "D39R0102"
+  },
+  "238": {
+    "BotMapId": 191,
+    "InternalName": "D39R0103"
+  },
+  "239": {
+    "BotMapId": 192,
+    "InternalName": "D39R0104"
+  },
+  "240": {
+    "BotMapId": 193,
+    "InternalName": "P01R0101"
+  },
+  "241": {
+    "BotMapId": 194,
+    "InternalName": "T24PC0102"
+  },
+  "242": {
+    "BotMapId": 195,
+    "InternalName": "D40R0102"
+  },
+  "243": {
+    "BotMapId": 196,
+    "InternalName": "D40R0104"
+  },
+  "244": {
+    "BotMapId": 197,
+    "InternalName": "D40R0107"
+  },
+  "245": {
+    "BotMapId": 198,
+    "InternalName": "R43R0201"
+  },
+  "246": {
+    "BotMapId": 199,
+    "InternalName": "T28PC0101"
+  },
+  "247": {
+    "BotMapId": 200,
+    "InternalName": "D35R0102"
+  },
+  "248": {
+    "BotMapId": 201,
+    "InternalName": "D35R0103"
+  },
+  "249": {
+    "BotMapId": 202,
+    "InternalName": "D35R0104"
+  },
+  "250": {
+    "BotMapId": 203,
+    "InternalName": "D38R0102"
+  },
+  "251": {
+    "BotMapId": 204,
+    "InternalName": "D38R0103"
+  },
+  "252": {
+    "BotMapId": 205,
+    "InternalName": "D38R0104"
+  },
+  "253": {
+    "BotMapId": 206,
+    "InternalName": "D44R0102"
+  },
+  "265": {
+    "BotMapId": 207,
+    "InternalName": "D31R0201"
+  },
+  "266": {
+    "BotMapId": 208,
+    "InternalName": "D31R0202"
+  },
+  "271": {
+    "BotMapId": 209,
+    "InternalName": "D31R0207"
+  },
+  "272": {
+    "BotMapId": 210,
+    "InternalName": "D32"
+  },
+  "273": {
+    "BotMapId": 211,
+    "InternalName": "D32R0101"
+  },
+  "274": {
+    "BotMapId": 212,
+    "InternalName": "D32R0201"
+  },
+  "275": {
+    "BotMapId": 213,
+    "InternalName": "D32R0301"
+  },
+  "276": {
+    "BotMapId": 214,
+    "InternalName": "D32R0401"
+  },
+  "277": {
+    "BotMapId": 215,
+    "InternalName": "D32R0501"
+  },
+  "278": {
+    "BotMapId": 216,
+    "InternalName": "D32R0601"
+  },
+  "279": {
+    "BotMapId": 217,
+    "InternalName": "D48R0101"
+  },
+  "280": {
+    "BotMapId": 218,
+    "InternalName": "D49"
+  },
+  "281": {
+    "BotMapId": 219,
+    "InternalName": "D49R0101"
+  },
+  "282": {
+    "BotMapId": 220,
+    "InternalName": "D49R0102"
+  },
+  "283": {
+    "BotMapId": 221,
+    "InternalName": "D49R0103"
+  },
+  "284": {
+    "BotMapId": 222,
+    "InternalName": "D49R0104"
+  },
+  "285": {
+    "BotMapId": 223,
+    "InternalName": "D49R0105"
+  },
+  "286": {
+    "BotMapId": 224,
+    "InternalName": "D49R0106"
+  },
+  "287": {
+    "BotMapId": 225,
+    "InternalName": "D49R0107"
+  },
+  "288": {
+    "BotMapId": 226,
+    "InternalName": "D44R0103"
+  },
+  "289": {
+    "BotMapId": 227,
+    "InternalName": "T30R0201"
+  },
+  "290": {
+    "BotMapId": 228,
+    "InternalName": "T30R0301"
+  },
+  "291": {
+    "BotMapId": 229,
+    "InternalName": "T30R0601"
+  },
+  "292": {
+    "BotMapId": 230,
+    "InternalName": "T30FS0101"
+  },
+  "293": {
+    "BotMapId": 231,
+    "InternalName": "T30PC0101"
+  },
+  "294": {
+    "BotMapId": 232,
+    "InternalName": "T29R0101"
+  },
+  "295": {
+    "BotMapId": 233,
+    "InternalName": "T29R0201"
+  },
+  "296": {
+    "BotMapId": 234,
+    "InternalName": "R26R0101"
+  },
+  "297": {
+    "BotMapId": 235,
+    "InternalName": "R26R0201"
+  },
+  "298": {
+    "BotMapId": 236,
+    "InternalName": "D45R0102"
+  },
+  "299": {
+    "BotMapId": 237,
+    "InternalName": "R22R0101"
+  },
+  "300": {
+    "BotMapId": 238,
+    "InternalName": "T10R0101"
+  },
+  "301": {
+    "BotMapId": 239,
+    "InternalName": "T10R0201"
+  },
+  "302": {
+    "BotMapId": 240,
+    "InternalName": "T10R0301"
+  },
+  "303": {
+    "BotMapId": 241,
+    "InternalName": "T10R0401"
+  },
+  "304": {
+    "BotMapId": 242,
+    "InternalName": "T10R0501"
+  },
+  "305": {
+    "BotMapId": 243,
+    "InternalName": "T10R0601"
+  },
+  "306": {
+    "BotMapId": 244,
+    "InternalName": "T10R0701"
+  },
+  "307": {
+    "BotMapId": 245,
+    "InternalName": "P01R0301"
+  },
+  "308": {
+    "BotMapId": 246,
+    "InternalName": "P01R0302"
+  },
+  "309": {
+    "BotMapId": 247,
+    "InternalName": "P01R0303"
+  },
+  "310": {
+    "BotMapId": 248,
+    "InternalName": "P01R0304"
+  },
+  "311": {
+    "BotMapId": 249,
+    "InternalName": "P01R0305"
+  },
+  "312": {
+    "BotMapId": 250,
+    "InternalName": "D24R0202"
+  },
+  "313": {
+    "BotMapId": 251,
+    "InternalName": "D24R0203"
+  },
+  "314": {
+    "BotMapId": 252,
+    "InternalName": "D24R0204"
+  },
+  "315": {
+    "BotMapId": 253,
+    "InternalName": "D24R0205"
+  },
+  "316": {
+    "BotMapId": 254,
+    "InternalName": "D24R0206"
+  },
+  "317": {
+    "BotMapId": 255,
+    "InternalName": "D24R0207"
+  },
+  "318": {
+    "BotMapId": 256,
+    "InternalName": "D24R0208"
+  },
+  "319": {
+    "BotMapId": 257,
+    "InternalName": "D24R0209"
+  },
+  "320": {
+    "BotMapId": 258,
+    "InternalName": "D24R0210"
+  },
+  "321": {
+    "BotMapId": 259,
+    "InternalName": "D24R0102"
+  },
+  "322": {
+    "BotMapId": 260,
+    "InternalName": "R27R0101"
+  },
+  "323": {
+    "BotMapId": 261,
+    "InternalName": "D24R0211"
+  },
+  "324": {
+    "BotMapId": 262,
+    "InternalName": "D24R0212"
+  },
+  "325": {
+    "BotMapId": 263,
+    "InternalName": "D24R0213"
+  },
+  "326": {
+    "BotMapId": 264,
+    "InternalName": "D24R0214"
+  },
+  "327": {
+    "BotMapId": 265,
+    "InternalName": "D24R0215"
+  },
+  "328": {
+    "BotMapId": 266,
+    "InternalName": "P01R0306"
+  },
+  "329": {
+    "BotMapId": 267,
+    "InternalName": "P01R0307"
+  },
+  "330": {
+    "BotMapId": 268,
+    "InternalName": "P01R0102"
+  },
+  "331": {
+    "BotMapId": 269,
+    "InternalName": "R34R0101"
+  },
+  "332": {
+    "BotMapId": 270,
+    "InternalName": "D17R0102"
+  },
+  "333": {
+    "BotMapId": 271,
+    "InternalName": "D17R0103"
+  },
+  "334": {
+    "BotMapId": 272,
+    "InternalName": "D17R0104"
+  },
+  "335": {
+    "BotMapId": 273,
+    "InternalName": "D17R0105"
+  },
+  "336": {
+    "BotMapId": 274,
+    "InternalName": "D17R0106"
+  },
+  "337": {
+    "BotMapId": 275,
+    "InternalName": "D17R0107"
+  },
+  "338": {
+    "BotMapId": 276,
+    "InternalName": "D17R0108"
+  },
+  "339": {
+    "BotMapId": 277,
+    "InternalName": "D17R0109"
+  },
+  "340": {
+    "BotMapId": 278,
+    "InternalName": "D17R0110"
+  },
+  "341": {
+    "BotMapId": 279,
+    "InternalName": "D17R0112"
+  },
+  "342": {
+    "BotMapId": 280,
+    "InternalName": "D50R0101"
+  },
+  "343": {
+    "BotMapId": 281,
+    "InternalName": "SAF01"
+  },
+  "344": {
+    "BotMapId": 282,
+    "InternalName": "SAF02"
+  },
+  "345": {
+    "BotMapId": 283,
+    "InternalName": "SAF03"
+  },
+  "346": {
+    "BotMapId": 284,
+    "InternalName": "SAF04"
+  },
+  "347": {
+    "BotMapId": 285,
+    "InternalName": "SAF05"
+  },
+  "348": {
+    "BotMapId": 286,
+    "InternalName": "SAF06"
+  },
+  "349": {
+    "BotMapId": 287,
+    "InternalName": "SAF07"
+  },
+  "350": {
+    "BotMapId": 288,
+    "InternalName": "SAF08"
+  },
+  "351": {
+    "BotMapId": 289,
+    "InternalName": "SAF09"
+  },
+  "352": {
+    "BotMapId": 290,
+    "InternalName": "SAF10"
+  },
+  "353": {
+    "BotMapId": 291,
+    "InternalName": "SAF11"
+  },
+  "354": {
+    "BotMapId": 292,
+    "InternalName": "SAF12"
+  },
+  "355": {
+    "BotMapId": 293,
+    "InternalName": "SAF13"
+  },
+  "356": {
+    "BotMapId": 294,
+    "InternalName": "SAF14"
+  },
+  "358": {
+    "BotMapId": 295,
+    "InternalName": "T06PC0101"
+  },
+  "359": {
+    "BotMapId": 296,
+    "InternalName": "T06PC0102"
+  },
+  "360": {
+    "BotMapId": 297,
+    "InternalName": "T06FS0101"
+  },
+  "361": {
+    "BotMapId": 298,
+    "InternalName": "T06R0101"
+  },
+  "362": {
+    "BotMapId": 299,
+    "InternalName": "T06R0301"
+  },
+  "363": {
+    "BotMapId": 300,
+    "InternalName": "T06R0401"
+  },
+  "364": {
+    "BotMapId": 301,
+    "InternalName": "T06R0601"
+  },
+  "365": {
+    "BotMapId": 302,
+    "InternalName": "T06GYM0101"
+  },
+  "366": {
+    "BotMapId": 303,
+    "InternalName": "W40R0101"
+  },
+  "367": {
+    "BotMapId": 304,
+    "InternalName": "T26PC0102"
+  },
+  "368": {
+    "BotMapId": 305,
+    "InternalName": "T28PC0102"
+  },
+  "369": {
+    "BotMapId": 306,
+    "InternalName": "T30PC0102"
+  },
+  "370": {
+    "BotMapId": 307,
+    "InternalName": "T07R0101"
+  },
+  "371": {
+    "BotMapId": 308,
+    "InternalName": "T07R0102"
+  },
+  "372": {
+    "BotMapId": 309,
+    "InternalName": "T07R0103"
+  },
+  "373": {
+    "BotMapId": 310,
+    "InternalName": "T07R0104"
+  },
+  "374": {
+    "BotMapId": 311,
+    "InternalName": "T07R0105"
+  },
+  "375": {
+    "BotMapId": 312,
+    "InternalName": "T07R0106"
+  },
+  "376": {
+    "BotMapId": 313,
+    "InternalName": "T07R0201"
+  },
+  "377": {
+    "BotMapId": 314,
+    "InternalName": "T07R0202"
+  },
+  "378": {
+    "BotMapId": 315,
+    "InternalName": "T07R0203"
+  },
+  "379": {
+    "BotMapId": 316,
+    "InternalName": "T07R0204"
+  },
+  "380": {
+    "BotMapId": 317,
+    "InternalName": "T07R0205"
+  },
+  "381": {
+    "BotMapId": 318,
+    "InternalName": "T07R0401"
+  },
+  "382": {
+    "BotMapId": 319,
+    "InternalName": "T07R0501"
+  },
+  "383": {
+    "BotMapId": 320,
+    "InternalName": "T07R0701"
+  },
+  "384": {
+    "BotMapId": 321,
+    "InternalName": "T20R0402"
+  },
+  "385": {
+    "BotMapId": 322,
+    "InternalName": "T24R0801"
+  },
+  "386": {
+    "BotMapId": 323,
+    "InternalName": "P01R0103"
+  },
+  "387": {
+    "BotMapId": 324,
+    "InternalName": "P01R0104"
+  },
+  "389": {
+    "BotMapId": 325,
+    "InternalName": "R06R0201"
+  },
+  "390": {
+    "BotMapId": 326,
+    "InternalName": "R08R0201"
+  },
+  "391": {
+    "BotMapId": 327,
+    "InternalName": "R05R0301"
+  },
+  "392": {
+    "BotMapId": 328,
+    "InternalName": "R15R0101"
+  },
+  "393": {
+    "BotMapId": 329,
+    "InternalName": "T07PC0101"
+  },
+  "394": {
+    "BotMapId": 330,
+    "InternalName": "T07PC0102"
+  },
+  "395": {
+    "BotMapId": 331,
+    "InternalName": "T07GYM0101"
+  },
+  "396": {
+    "BotMapId": 332,
+    "InternalName": "T28GYM0102"
+  },
+  "397": {
+    "BotMapId": 333,
+    "InternalName": "T28GYM0103"
+  },
+  "398": {
+    "BotMapId": 334,
+    "InternalName": "T11R0101"
+  },
+  "399": {
+    "BotMapId": 335,
+    "InternalName": "T11R0501"
+  },
+  "400": {
+    "BotMapId": 336,
+    "InternalName": "T11R0601"
+  },
+  "401": {
+    "BotMapId": 337,
+    "InternalName": "T11R0602"
+  },
+  "402": {
+    "BotMapId": 338,
+    "InternalName": "T11R0701"
+  },
+  "403": {
+    "BotMapId": 339,
+    "InternalName": "T11R0702"
+  },
+  "404": {
+    "BotMapId": 340,
+    "InternalName": "T11R0801"
+  },
+  "405": {
+    "BotMapId": 341,
+    "InternalName": "T11R0802"
+  },
+  "406": {
+    "BotMapId": 342,
+    "InternalName": "T11R0901"
+  },
+  "407": {
+    "BotMapId": 343,
+    "InternalName": "T11PC0101"
+  },
+  "408": {
+    "BotMapId": 344,
+    "InternalName": "T11PC0102"
+  },
+  "409": {
+    "BotMapId": 345,
+    "InternalName": "T11FS0101"
+  },
+  "410": {
+    "BotMapId": 346,
+    "InternalName": "T11GYM0101"
+  },
+  "411": {
+    "BotMapId": 347,
+    "InternalName": "D32R0102"
+  },
+  "412": {
+    "BotMapId": 348,
+    "InternalName": "T25R1202"
+  },
+  "413": {
+    "BotMapId": 349,
+    "InternalName": "T25R1203"
+  },
+  "415": {
+    "BotMapId": 350,
+    "InternalName": "R16R0101"
+  },
+  "417": {
+    "BotMapId": 351,
+    "InternalName": "R02R0201"
+  },
+  "418": {
+    "BotMapId": 352,
+    "InternalName": "R02R0301"
+  },
+  "419": {
+    "BotMapId": 353,
+    "InternalName": "R02R0401"
+  },
+  "420": {
+    "BotMapId": 354,
+    "InternalName": "R02R0501"
+  },
+  "421": {
+    "BotMapId": 355,
+    "InternalName": "R16R0201"
+  },
+  "423": {
+    "BotMapId": 356,
+    "InternalName": "R18R0101"
+  },
+  "424": {
+    "BotMapId": 357,
+    "InternalName": "W19R0101"
+  },
+  "425": {
+    "BotMapId": 358,
+    "InternalName": "R11R0101"
+  },
+  "426": {
+    "BotMapId": 359,
+    "InternalName": "T04FS0101"
+  },
+  "427": {
+    "BotMapId": 360,
+    "InternalName": "T04GYM0101"
+  },
+  "428": {
+    "BotMapId": 361,
+    "InternalName": "T04PC0101"
+  },
+  "429": {
+    "BotMapId": 362,
+    "InternalName": "T04R0101"
+  },
+  "430": {
+    "BotMapId": 363,
+    "InternalName": "T04R0201"
+  },
+  "431": {
+    "BotMapId": 364,
+    "InternalName": "T04R0301"
+  },
+  "432": {
+    "BotMapId": 365,
+    "InternalName": "T04R0401"
+  },
+  "433": {
+    "BotMapId": 366,
+    "InternalName": "T05FS0101"
+  },
+  "434": {
+    "BotMapId": 367,
+    "InternalName": "T05PC0101"
+  },
+  "435": {
+    "BotMapId": 368,
+    "InternalName": "T05R0201"
+  },
+  "436": {
+    "BotMapId": 369,
+    "InternalName": "T05R0301"
+  },
+  "437": {
+    "BotMapId": 370,
+    "InternalName": "T05R0401"
+  },
+  "438": {
+    "BotMapId": 371,
+    "InternalName": "T05R0601"
+  },
+  "439": {
+    "BotMapId": 372,
+    "InternalName": "T05R0701"
+  },
+  "440": {
+    "BotMapId": 373,
+    "InternalName": "R25R0101"
+  },
+  "441": {
+    "BotMapId": 374,
+    "InternalName": "T25R1007"
+  },
+  "442": {
+    "BotMapId": 375,
+    "InternalName": "T07R0107"
+  },
+  "443": {
+    "BotMapId": 376,
+    "InternalName": "T07R0206"
+  },
+  "444": {
+    "BotMapId": 377,
+    "InternalName": "T07R0207"
+  },
+  "445": {
+    "BotMapId": 378,
+    "InternalName": "T11R0703"
+  },
+  "446": {
+    "BotMapId": 379,
+    "InternalName": "D27R0108"
+  },
+  "447": {
+    "BotMapId": 380,
+    "InternalName": "D23R0107"
+  },
+  "448": {
+    "BotMapId": 381,
+    "InternalName": "D02R0102"
+  },
+  "449": {
+    "BotMapId": 382,
+    "InternalName": "D02R0103"
+  },
+  "450": {
+    "BotMapId": 383,
+    "InternalName": "D03R0102"
+  },
+  "451": {
+    "BotMapId": 384,
+    "InternalName": "D03R0103"
+  },
+  "452": {
+    "BotMapId": 385,
+    "InternalName": "D05R0102"
+  },
+  "453": {
+    "BotMapId": 386,
+    "InternalName": "D11R0102"
+  },
+  "454": {
+    "BotMapId": 387,
+    "InternalName": "D11R0103"
+  },
+  "455": {
+    "BotMapId": 388,
+    "InternalName": "D11R0104"
+  },
+  "456": {
+    "BotMapId": 389,
+    "InternalName": "D11R0105"
+  },
+  "457": {
+    "BotMapId": 390,
+    "InternalName": "D11R0106"
+  },
+  "458": {
+    "BotMapId": 391,
+    "InternalName": "D11R0107"
+  },
+  "459": {
+    "BotMapId": 392,
+    "InternalName": "D41R0102"
+  },
+  "460": {
+    "BotMapId": 393,
+    "InternalName": "D41R0103"
+  },
+  "461": {
+    "BotMapId": 394,
+    "InternalName": "D41R0104"
+  },
+  "462": {
+    "BotMapId": 395,
+    "InternalName": "D41R0105"
+  },
+  "463": {
+    "BotMapId": 396,
+    "InternalName": "D41R0106"
+  },
+  "464": {
+    "BotMapId": 397,
+    "InternalName": "D41R0107"
+  },
+  "465": {
+    "BotMapId": 398,
+    "InternalName": "D41R0108"
+  },
+  "466": {
+    "BotMapId": 399,
+    "InternalName": "R10PC0101"
+  },
+  "467": {
+    "BotMapId": 400,
+    "InternalName": "R10R0201"
+  },
+  "468": {
+    "BotMapId": 401,
+    "InternalName": "R05R0101"
+  },
+  "469": {
+    "BotMapId": 402,
+    "InternalName": "R05R0201"
+  },
+  "470": {
+    "BotMapId": 403,
+    "InternalName": "R06R0101"
+  },
+  "471": {
+    "BotMapId": 404,
+    "InternalName": "T03R0101"
+  },
+  "472": {
+    "BotMapId": 405,
+    "InternalName": "T03R0201"
+  },
+  "473": {
+    "BotMapId": 406,
+    "InternalName": "T03GYM0101"
+  },
+  "474": {
+    "BotMapId": 407,
+    "InternalName": "T03FS0101"
+  },
+  "475": {
+    "BotMapId": 408,
+    "InternalName": "T03PC0101"
+  },
+  "476": {
+    "BotMapId": 409,
+    "InternalName": "T03PC0102"
+  },
+  "477": {
+    "BotMapId": 410,
+    "InternalName": "T03R0601"
+  },
+  "478": {
+    "BotMapId": 411,
+    "InternalName": "T08FS0101"
+  },
+  "479": {
+    "BotMapId": 412,
+    "InternalName": "T08R0201"
+  },
+  "480": {
+    "BotMapId": 413,
+    "InternalName": "T08GYM0101"
+  },
+  "481": {
+    "BotMapId": 414,
+    "InternalName": "T08R0401"
+  },
+  "482": {
+    "BotMapId": 415,
+    "InternalName": "T08PC0101"
+  },
+  "483": {
+    "BotMapId": 416,
+    "InternalName": "T08R0601"
+  },
+  "484": {
+    "BotMapId": 417,
+    "InternalName": "R10PC0102"
+  },
+  "485": {
+    "BotMapId": 418,
+    "InternalName": "T08PC0102"
+  },
+  "486": {
+    "BotMapId": 419,
+    "InternalName": "D40R0106"
+  },
+  "487": {
+    "BotMapId": 420,
+    "InternalName": "D22R0102"
+  },
+  "488": {
+    "BotMapId": 421,
+    "InternalName": "D22R0103"
+  },
+  "489": {
+    "BotMapId": 422,
+    "InternalName": "R10R0202"
+  },
+  "490": {
+    "BotMapId": 423,
+    "InternalName": "D24R0216"
+  },
+  "491": {
+    "BotMapId": 424,
+    "InternalName": "D24R0217"
+  },
+  "492": {
+    "BotMapId": 425,
+    "InternalName": "D24R0218"
+  },
+  "493": {
+    "BotMapId": 426,
+    "InternalName": "R07R0101"
+  },
+  "494": {
+    "BotMapId": 427,
+    "InternalName": "T05PC0102"
+  },
+  "495": {
+    "BotMapId": 428,
+    "InternalName": "T04PC0102"
+  },
+  "496": {
+    "BotMapId": 429,
+    "InternalName": "T02GYM0101"
+  },
+  "497": {
+    "BotMapId": 430,
+    "InternalName": "T02R0201"
+  },
+  "498": {
+    "BotMapId": 431,
+    "InternalName": "T02R0301"
+  },
+  "499": {
+    "BotMapId": 432,
+    "InternalName": "T02R0302"
+  },
+  "500": {
+    "BotMapId": 433,
+    "InternalName": "T02FS0101"
+  },
+  "501": {
+    "BotMapId": 434,
+    "InternalName": "T02PC0101"
+  },
+  "502": {
+    "BotMapId": 435,
+    "InternalName": "T02PC0102"
+  },
+  "503": {
+    "BotMapId": 436,
+    "InternalName": "T01R0101"
+  },
+  "504": {
+    "BotMapId": 437,
+    "InternalName": "T01R0201"
+  },
+  "505": {
+    "BotMapId": 438,
+    "InternalName": "T01R0301"
+  },
+  "506": {
+    "BotMapId": 439,
+    "InternalName": "T01R0102"
+  },
+  "507": {
+    "BotMapId": 440,
+    "InternalName": "T01R0202"
+  },
+  "508": {
+    "BotMapId": 441,
+    "InternalName": "T09PC0101"
+  },
+  "509": {
+    "BotMapId": 442,
+    "InternalName": "T09PC0102"
+  },
+  "510": {
+    "BotMapId": 443,
+    "InternalName": "R28R0101"
+  },
+  "511": {
+    "BotMapId": 444,
+    "InternalName": "R03PC0101"
+  },
+  "512": {
+    "BotMapId": 445,
+    "InternalName": "R03PC0102"
+  },
+  "513": {
+    "BotMapId": 446,
+    "InternalName": "D02R0104"
+  },
+  "514": {
+    "BotMapId": 447,
+    "InternalName": "T31PC0101"
+  },
+  "515": {
+    "BotMapId": 448,
+    "InternalName": "T31PC0102"
+  },
+  "516": {
+    "BotMapId": 449,
+    "InternalName": "HIROBA"
+  },
+  "517": {
+    "BotMapId": 450,
+    "InternalName": "R05R0401"
+  },
+  "518": {
+    "BotMapId": 451,
+    "InternalName": "D02FS0101"
+  },
+  "519": {
+    "BotMapId": 452,
+    "InternalName": "T25R0503"
+  },
+  "520": {
+    "BotMapId": 453,
+    "InternalName": "T11R0603"
+  },
+  "521": {
+    "BotMapId": 454,
+    "InternalName": "D51R0101"
+  },
+  "522": {
+    "BotMapId": 455,
+    "InternalName": "D51R0201"
+  },
+  "523": {
+    "BotMapId": 456,
+    "InternalName": "D51R0301"
+  },
+  "524": {
+    "BotMapId": 457,
+    "InternalName": "D52R0101"
+  },
+  "525": {
+    "BotMapId": 458,
+    "InternalName": "D52R0102"
+  },
+  "526": {
+    "BotMapId": 459,
+    "InternalName": "D52R0103"
+  },
+  "527": {
+    "BotMapId": 460,
+    "InternalName": "T02R0401"
+  },
+  "528": {
+    "BotMapId": 461,
+    "InternalName": "D32PC0101"
+  },
+  "529": {
+    "BotMapId": 462,
+    "InternalName": "D32PC0102"
+  },
+  "530": {
+    "BotMapId": 463,
+    "InternalName": "D32FS0101"
+  },
+  "531": {
+    "BotMapId": 464,
+    "InternalName": "D32R0103"
+  },
+  "532": {
+    "BotMapId": 465,
+    "InternalName": "R05R0202"
+  },
+  "533": {
+    "BotMapId": 466,
+    "InternalName": "R12R0101"
+  },
+  "534": {
+    "BotMapId": 467,
+    "InternalName": "D47PC0101"
+  },
+  "535": {
+    "BotMapId": 468,
+    "InternalName": "D47PC0102"
+  },
+  "536": {
+    "BotMapId": 469,
+    "InternalName": "T25SP0101"
+  },
+  "537": {
+    "BotMapId": 470,
+    "InternalName": "T07SP0101"
+  },
+  "539": {
+    "BotMapId": 471,
+    "InternalName": "T10R0801"
+  }
+}
