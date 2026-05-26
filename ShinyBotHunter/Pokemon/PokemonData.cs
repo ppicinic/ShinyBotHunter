@@ -73,5 +73,42 @@ namespace ShinyBotHunter.Pokemon
 
         [BsonRepresentation(BsonType.Boolean)]
         public bool IsShiny => ShinyValue < 8;
+
+        [BsonIgnore]
+        public byte Move1PP { get; internal set; }
+        [BsonIgnore]
+        public byte Move2PP { get; internal set; }
+        [BsonIgnore]
+        public byte Move3PP { get; internal set; }
+        [BsonIgnore]
+        public byte Move4PP { get; internal set; }
+        [BsonIgnore]
+        public Move[] Moves { get
+            {
+                return [new Move() { Id = Move1, PP = Move1PP }, new Move() { Id = Move2, PP = Move2PP }, new Move() { Id = Move3, PP = Move3PP }, new Move() { Id = Move4, PP = Move4PP }];
+            } 
+        }
+        [BsonIgnore]
+        public byte EVHP { get; set; }
+        [BsonIgnore]
+        public byte EVAtk { get; set; }
+        [BsonIgnore]
+        public byte EVDef { get; set; }
+        [BsonIgnore]
+        public byte EVSpAtk { get; set; }
+        [BsonIgnore]
+        public byte EVSpDef { get; set; }
+        [BsonIgnore]
+        public byte EVSpeed { get; set; }
+        [BsonIgnore]
+        public byte Happiness { get; set; }
+        [BsonIgnore]
+        public byte Beauty { get; set; }
+    }
+
+    public class Move
+    {
+        public int Id { get; set; }
+        public int PP { get; set; }
     }
 }

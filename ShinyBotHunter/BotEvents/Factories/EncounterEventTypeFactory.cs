@@ -17,7 +17,7 @@ namespace ShinyBotHunter.BotEvents.Factories
                 case EncounterType.Spin:
                     return new SpinEncounterEvent(bot);
                 case EncounterType.Run:
-                    return new RunEncounterEvent(bot, param);
+                    return new RunEncounterEventDeprecated(bot, param);
                 default:
                     throw new ArgumentException("No suitable encounter available");
             }

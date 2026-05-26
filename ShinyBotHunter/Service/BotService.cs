@@ -153,14 +153,25 @@ namespace ShinyBotHunter.Service
                         throw new ArgumentException($"Only x or y range must be supplied, not both.");
                     }
                 }
-                var wildPokemonEvent = new WildPokemonEncounterEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, new EncounterParams(args.EncounterType.Value, yRange, xRange), provider, target, this);
-                botEvents[pos].StartEvent(wildPokemonEvent, args.PhaseName, this);
+                var wildPokemonEvent = new OrchestratorEvent(provider, new EncounterParams(args.EncounterType.Value, yRange, xRange));
+                botEvents[pos].GameState = new GameState()
+                {
+                    OriginalBattleMode = BattleMode.Flee,
+                    GameFlavor = GameFlavor.HGSS,
+                    BotService = this,
+                    Target = target,
+                    Milestone = args.PhaseName,
+                    Bot = botEvents[pos].Bot!,
+                };
+                botEvents[pos].GameState!.State.Push(EventState.Init);
+                botEvents[pos].StartEvent(wildPokemonEvent, botEvents[pos].GameState!, args.PhaseName, this);
 
                 return GetBotDashboardState();
             }
             else if(args.EventName == "Resume")
             {
-                botEvents[pos].StartEvent(botEvents[pos].Event!, botEvents[pos].GetName(pos), this);
+                botEvents[pos].GameState!.SwapState(EventState.Resume);
+                botEvents[pos].StartEvent(botEvents[pos].Event!, botEvents[pos].GameState!, botEvents[pos].GetName(pos), this);
                 return GetBotDashboardState();
             }
             else
@@ -176,11 +187,11 @@ namespace ShinyBotHunter.Service
                 return [];
             }
             var botEvent = botEvents[pos];
-            if(botEvent.Event is not null && botEvent.Event.EventState == EventState.Waiting)
+            if(botEvent.GameState is not null && botEvent.GameState.State.Count > 0 && botEvent.GameState.State.Peek() == EventState.Waiting)
             {
                 return [actionMap["Resume"]];
             }
-            else if(botEvent.Event is null || botEvent.Event.EventState == EventState.Complete)
+            else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
             {
                 // TODO continue game.
                 return [actionMap["Wild Encounter"]];
@@ -203,7 +214,7 @@ namespace ShinyBotHunter.Service
 
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
-            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.Event is not null ? x.Value.Event.EventState : EventState.NotCreated, GameFlavor.HGSS))).ToDictionary();
+            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, GameFlavor.HGSS))).ToDictionary();
         }
 
         public async Task<Dictionary<int, EmulatorState>> CancelBotOrEventAsync(int pos)
@@ -288,6 +299,7 @@ namespace ShinyBotHunter.Service
         public IBot? Bot { get; set; }
         public IBotEvent? Event { get; set; }
         public Task? EventTask { get; set; }
+        public GameState? GameState { get; set; }
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         private string? eventName;
         public string GetName(int pos)
@@ -304,6 +316,7 @@ namespace ShinyBotHunter.Service
                 hasEvent = true;
                 EventTask = null;
                 Event = null;
+                GameState = null;
                 CancellationTokenSource = null;
             }
             if(Event is not null)
@@ -336,18 +349,18 @@ namespace ShinyBotHunter.Service
         }
 
         // TODO refactor this we shouldn't pass botService like this.
-        public void StartEvent(IBotEvent botEvent, string name, BotService botService)
+        public void StartEvent(IBotEvent botEvent, GameState gameState, string name, BotService botService)
         {
             Event = botEvent;
             eventName = name;
             CancellationTokenSource = new CancellationTokenSource();
-            EventTask = Event.ExecuteAsync(CancellationTokenSource.Token)
+            EventTask = Event.ExecuteAsync(gameState, CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
                     if (!CancellationTokenSource.IsCancellationRequested)
                     {
                         await CancellationTokenSource.CancelAsync();
-                        if (Event.EventState == EventState.Waiting)
+                        if (gameState.State.Count > 0 && gameState.State.Peek() == EventState.Waiting)
                         {
                             EventTask = null;
                             CancellationTokenSource = null;
@@ -368,7 +381,7 @@ namespace ShinyBotHunter.Service
             Event = botEvent;
             eventName = name;
             CancellationTokenSource = new CancellationTokenSource();
-            EventTask = Event.ExecuteAsync(CancellationTokenSource.Token)
+            EventTask = Event.ExecuteAsync(new GameState(), CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
                     if (!CancellationTokenSource.IsCancellationRequested)

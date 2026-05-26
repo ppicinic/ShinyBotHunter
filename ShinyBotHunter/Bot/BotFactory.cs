@@ -21,14 +21,16 @@ namespace ShinyBotHunter.Bot
                 var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
                 ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort, localMemoryOnly: false);
-                return new Bot(apiHawkLauncher, commandClient, memoryClient);
+                IDataReader reader = new HgssDataReader(memoryClient);
+                return new Bot(apiHawkLauncher, commandClient, memoryClient, reader);
             }
             else
             {
                 ILauncher launcher = new BizHawkLauncher(context, serviceProvider);
                 ICommandClient commandClient = new BizHawkCommandClient(context);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: context.MemoryPort);
-                return new Bot(launcher, commandClient, memoryClient);
+                IDataReader reader = new HgssDataReader(memoryClient);
+                return new Bot(launcher, commandClient, memoryClient, reader);
             }
         }
 

@@ -31,7 +31,7 @@ namespace ShinyBotHunter.BotEvents
 
         public int[] BotPositions { get { return []; } }
 
-        public async override Task<PokemonData?> ExecuteWithResultAsync(CancellationToken cancellationToken = default)
+        public async override Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken = default)
         {
 
             PersistPokemonData? shinyPokemon = null;

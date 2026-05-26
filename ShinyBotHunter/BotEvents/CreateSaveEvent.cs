@@ -20,7 +20,7 @@ namespace ShinyBotHunter.BotEvents
             EventState = EventState.NotStarted;
         }
 
-        public async Task ExecuteAsync(CancellationToken cancellationToken = default)
+        public async Task ExecuteAsync(GameState state, CancellationToken cancellationToken = default)
         {
             EventState = EventState.Running;
             if (!File.Exists($"{romDir}{context.GameName}.nds"))

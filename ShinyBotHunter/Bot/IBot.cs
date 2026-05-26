@@ -2,7 +2,7 @@
 
 namespace ShinyBotHunter.Bot
 {
-    public interface IBot : ILauncher, ICommandClient, IMemoryClient
+    public interface IBot : ILauncher, ICommandClient, IMemoryClient, IDataReader
     {
     }
 }

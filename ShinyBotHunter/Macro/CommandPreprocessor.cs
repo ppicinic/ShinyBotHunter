@@ -14,6 +14,18 @@ namespace ShinyBotHunter.Macro
             { "Save",     (125, 75)  },
             { "Options",  (125, 115) },
             { "Run",      (125, 175) },
+            { "MoveOne",  (70,  60)  },
+            { "MoveTwo",  (170, 60)  },
+            { "MoveThree", (70,  110) },
+            { "MoveFour",    (170, 110) },
+            { "NewMove",    (128, 70) },
+            { "NewMoveOne",    (60, 70) },
+            { "NewMoveTwo",    (190, 70) },
+            { "NewMoveThree",    (60, 120) },
+            { "NewMoveFour",    (190, 120) },
+            { "Forget",    (100, 170) },
+            { "DoNotLearn", (128, 140) },
+            { "DoNotLearnComplete", (128, 70) },
         };
         public int DefaultTapFrames { get; set; } = 3;
 

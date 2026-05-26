@@ -21,5 +21,12 @@
         public const byte MAP_RockSmash = 0x10;
         public const byte MAP_WalkingTrainer = 0x11;
         public const byte MAP_Blocked = 0x80;
+
+        public static readonly Dictionary<byte, string> NATURE_NAMES = new Dictionary<byte, string>() {
+            { 0, "Hardy" }, {  1, "Lonely" }, {  2, "Brave" }, {  3, "Adamant" }, {  4, "Naughty" },
+            { 5, "Bold" }, {  6, "Docile" }, {  7, "Relaxed" }, {  8, "Impish" }, {  9, "Lax" },
+            { 10, "Timid" }, {  11, "Hasty" }, {  12, "Serious" }, {  13, "Jolly" }, {  14, "Naive" },
+            { 15, "Modest" }, { 16, "Mild" }, {  17, "Quiet" }, {  18, "Bashful" }, {  19, "Rash" },
+            { 20, "Calm" }, {  21, "Gentle" }, {  22, "Sassy" }, {  23, "Careful" }, {  24, "Quirky" } };
     }
 }

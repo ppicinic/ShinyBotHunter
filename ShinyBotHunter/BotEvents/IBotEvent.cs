@@ -5,21 +5,44 @@ namespace ShinyBotHunter.BotEvents
 {
     public enum EventState
     {
-        NotCreated,
+        None,
         NotStarted,
         Running,
         Waiting,
         Complete,
+        Encountering,
+        BattleStart,
+        BattleComplete,
+        PokemonDataPending,
+        Flee,
+        Fight,
+        DecideAction,
+        WaitForMovesEnd,
+        EnemyFainted,
+        OurPokemonFainted,
+        BothPokemonFainted,
+        LevelUp,
+        EvolutionInit,
+        DecideOverworldAction,
+        HealAndReturn,
+        GoToPokemonCenter,
+        Init,
+        Resume,
     }
     public interface IBotEvent
     {
-        public Task ExecuteAsync(CancellationToken cancellationToken);
+        public Task ExecuteAsync(GameState state, CancellationToken cancellationToken);
         public int[] BotPositions { get { return []; } }
         public EventState EventState {  get; }
+        public GameState GameState { get
+            {
+                return new GameState();
+            } 
+        }
     }
 
     public interface IBotEvent<T> : IBotEvent
     {
-        public Task<T> ExecuteWithResultAsync(CancellationToken cancellationToken);
+        public Task<T> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken);
     }
 }

@@ -16,7 +16,7 @@ namespace ShinyBotHunter.BotEvents
     
 public class WildPokemonEncounterEvent : IBotEvent
     {
-        private static Dictionary<byte, string> NATURE_NAMES = new Dictionary<byte, string>() {
+        public static Dictionary<byte, string> NATURE_NAMES = new Dictionary<byte, string>() {
             { 0, "Hardy" }, {  1, "Lonely" }, {  2, "Brave" }, {  3, "Adamant" }, {  4, "Naughty" }, 
             { 5, "Bold" }, {  6, "Docile" }, {  7, "Relaxed" }, {  8, "Impish" }, {  9, "Lax" }, 
             { 10, "Timid" }, {  11, "Hasty" }, {  12, "Serious" }, {  13, "Jolly" }, {  14, "Naive" }, 
@@ -88,7 +88,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             }
         }
 
-        public async Task ExecuteAsync(CancellationToken cancellationToken)
+        public async Task ExecuteAsync(GameState state, CancellationToken cancellationToken)
         {
             if(State == WildPokemonState.Waiting)
             {
@@ -111,7 +111,7 @@ public class WildPokemonEncounterEvent : IBotEvent
                 }
                 else if( State == WildPokemonState.Encountering)
                 {
-                    bool foundPokemon = await encounteringEvent.ExecuteWithResultAsync(cancellationToken);
+                    bool foundPokemon = await encounteringEvent.ExecuteWithResultAsync(new GameState(), cancellationToken);
                     if (foundPokemon)
                     {
                         State = WildPokemonState.PokemonDataPending;

@@ -23,6 +23,8 @@ using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.BattlePokemonParser;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
 using System.Diagnostics;
 using System.Text;
@@ -58,6 +60,10 @@ namespace ShinyBotHunter
             {
                 await ParsePokeApi(services);
             }
+            else if (args.Length > 0 && args[0].ToLower() == "--parsepokemoveapi")
+            {
+                await new PokeApiParser(services.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
+            }
             else if (args.Length > 0 && args[0].ToLower() == "--migrateinfluxv1tov2")
             {
                 await MigrateInfluxDbv1ToV2(services, args);
@@ -78,15 +84,18 @@ namespace ShinyBotHunter
             }
             else
             {
-                //await MainRunnerAsync(app, services);
-                await TestAsync(services);
+                await MainRunnerAsync(app, services);
+                //await TestAsync(services);
+                //await new Test().TestBattleEvent(services);
             }
 
+            await services.GetRequiredService<SmogonDamageService>().DisposeAsync();
             await services.GetRequiredService<DiscordBotService>().StopAsync();
             await services.GetRequiredService<PokemonPersistenceService>().DisposeAsync();
             await services.GetRequiredService<IEncounterDao>().DisposeAsync();
             await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
             services.GetRequiredService<MongoDbConnection>().Dispose();
+            await services.GetRequiredService<SmogonDamageService>().DisposeAsync();
         }
 
         //public 
@@ -402,7 +411,11 @@ namespace ShinyBotHunter
                 .AddSingleton<PokemonStateReader>()
                 .AddSingleton<GraphService>(x => GraphService.Instance)
                 .AddSingleton<PathfindingService>()
-                .AddSingleton<MapService>(x=> MapService.Instance)
+                .AddSingleton<MapService>(x => MapService.Instance)
+                .AddSingleton<SmogonDamageService>()
+                .AddTransient<BattleOrchestratorEvent>()
+                .AddKeyedSingleton<IPointerService>(GameFlavor.HGSS, new HgssPointerService())
+                .AddKeyedSingleton<IBattlePokemonParser>(GameFlavor.HGSS, new HgssBattlePokemonParser())
                 .AddSingleton(new DiscordSocketConfig
                 {
                     // Safe default for initial bot setup; add privileged intents later if needed.

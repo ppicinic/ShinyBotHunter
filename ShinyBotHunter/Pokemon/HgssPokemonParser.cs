@@ -34,13 +34,25 @@ namespace ShinyBotHunter.Pokemon
                 return new PokemonData() { IsCorrupt = true };
             }
             ushort heldItem = BitConverter.ToUInt16(data, 0x0A);
+            byte happiness = data[0x14];
             byte ability = data[0x15];
+            byte evHp = data[0x18];
+            byte evAtk = data[0x19];
+            byte evDef = data[0x1A];
+            byte evSpe = data[0x1B];
+            byte evSpAtk = data[0x1C];
+            byte evSpDef = data[0x1D];
+            byte beauty = data[0x1F];
 
             // Block B (0x28)
             ushort move1 = BitConverter.ToUInt16(data, 0x28);
             ushort move2 = BitConverter.ToUInt16(data, 0x2A);
             ushort move3 = BitConverter.ToUInt16(data, 0x2C);
             ushort move4 = BitConverter.ToUInt16(data, 0x2E);
+            byte move1PP = data[0x30];
+            byte move2PP = data[0x31];
+            byte move3PP = data[0x32];
+            byte move4PP = data[0x33];
             uint ivs = BitConverter.ToUInt32(data, 0x38);
             int formIndex = data[0x40] >> 3;
 
@@ -79,6 +91,10 @@ namespace ShinyBotHunter.Pokemon
                 Move2 = move2,
                 Move3 = move3,
                 Move4 = move4,
+                Move1PP = move1PP,
+                Move2PP = move2PP,
+                Move3PP = move3PP,
+                Move4PP = move4PP,
                 IVs = ivs,
                 Nickname = nickname,
                 OTName = otName,
@@ -91,6 +107,14 @@ namespace ShinyBotHunter.Pokemon
                 Speed = spe,
                 SpAttack = spatk,
                 SpDefense = spdef,
+                EVHP = evHp,
+                EVAtk = evAtk,
+                EVDef = evDef,
+                EVSpAtk = evSpAtk,
+                EVSpDef = evSpDef,
+                EVSpeed = evSpe,
+                Happiness = happiness,
+                Beauty = beauty,
             };
         }
 

@@ -1,5 +1,12 @@
-﻿using ShinyBotHunter.Bot;
+﻿using Mono.TextTemplating;
+using ShinyBotHunter.Bot;
+using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts;
+using ShinyBotHunter.Service.BattlePokemonParser;
+using ShinyBotHunter.Service.Pointers;
+using System.Diagnostics;
 
 namespace ShinyBotHunter.Service
 {
@@ -60,20 +67,43 @@ namespace ShinyBotHunter.Service
             return list;
         }
     }
+
+    public class PokemonBattleState
+    {
+        public BattlePokemon ActivePokemon { get; set; } = null!;
+        public BattlePokemon EnemyPokemon { get; set; } = null!;
+        public List<PokemonData> PartyPokemon { get; set; } = new List<PokemonData>();
+
+        public Move[] Moves
+        {
+            get
+            {
+                var moves = ActivePokemon.Pokemon.Moves;
+                for(int i = 0; i < moves.Length; i++)
+                {
+                    moves[i].PP = ActivePokemon.MovePP[i];
+                }
+                return moves;
+            }
+        }
+    }
     public class PokemonStateReader
     {
         private HgssPokemonParser parser;
-        public PokemonStateReader(HgssPokemonParser parser)
+        private IPointerService pointerService;
+        private IBattlePokemonParser battleParser;
+        public PokemonStateReader(HgssPokemonParser parser, IServiceProvider provider)
         {
             this.parser = parser;
+            this.pointerService = provider.GetRequiredKeyedService<IPointerService>(GameFlavor.HGSS);
+            this.battleParser = provider.GetRequiredKeyedService<IBattlePokemonParser>(GameFlavor.HGSS);
         }
 
-        public async Task<PokemonState> GetPokemonState(IBot bot)
+        public async Task<PokemonState> GetPokemonState(IMemoryClient bot)
         {
             PokemonState state = new PokemonState();
             uint anchor = await bot.ReadUIntAsync(0x21D4158);
             byte partyCount = await bot.ReadByteAsync(anchor - 0x23F44);
-            byte[] partyData = await bot.ReadBytesAsync(await bot.ReadUIntAsync(0x21D4158) - 0x23F40, 0xEC * partyCount);
             state.PartySize = partyCount;
             for (uint i = 0; i < partyCount; i++)
             {
@@ -140,6 +170,65 @@ namespace ShinyBotHunter.Service
                 }
             }
             return state;
+        }
+
+        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot)
+        {
+            uint anchor = await bot.ReadUIntAsync(pointerService.Anchor);
+            byte partyCount = await bot.ReadByteAsync((uint)(anchor + pointerService.PartySize));
+            List<PokemonData> partyPokemon = new List<PokemonData>();
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
+            for(uint i = 0; i < partyCount; i++)
+            {
+                var pokemon = parser.Parse(await bot.ReadBytesAsync(anchor + pointerService.BattlePartyPokemon + (i * 0xEC), 0xEC));
+                while (pokemon is null || pokemon.IsCorrupt)
+                {
+                    if(sw.ElapsedMilliseconds > 2000)
+                    {
+                        sw.Stop();
+                        return null;
+                    }
+                    await Task.Delay(100);
+                    anchor = await bot.ReadUIntAsync(pointerService.Anchor);
+                    pokemon = parser.Parse(await bot.ReadBytesAsync(anchor + pointerService.BattlePartyPokemon + (i * 0xEC), 0xEC));
+                }
+                partyPokemon.Add(pokemon);
+            }
+            sw.Stop();
+            var enemyAnchor = await bot.ReadUIntAsync(anchor + pointerService.EnemyAnchor);
+            var enemyData = await bot.ReadBytesAsync(enemyAnchor + pointerService.Enemy, 0xEC);
+            var enemyPokemon = parser.Parse(enemyData);
+
+            sw = new Stopwatch();
+            sw.Start();
+            while (enemyPokemon is null || enemyPokemon.IsCorrupt)
+            {
+                if(sw.ElapsedMilliseconds > 2000)
+                {
+                    sw.Stop();
+                    return null;
+                }
+                await Task.Delay(100);
+                anchor = await bot.ReadUIntAsync(pointerService.Anchor); 
+                enemyAnchor = await bot.ReadUIntAsync(anchor + pointerService.EnemyAnchor);
+                enemyData = await bot.ReadBytesAsync(enemyAnchor + pointerService.Enemy, 0xEC);
+                enemyPokemon = parser.Parse(enemyData);
+            }
+            sw.Stop();
+            var battleEnemyPokemonData = await bot.ReadBytesAsync(anchor + pointerService.BattleEnemyPokemon, 108);
+            var battlePokemonData = await bot.ReadBytesAsync(anchor + pointerService.BattlePokemon, 108);
+            var activePokemon = battleParser.ParseBattlePokemon(battlePokemonData, partyPokemon);
+            if(activePokemon is null)
+            {
+                return null;
+            }
+            return new PokemonBattleState()
+            {
+                PartyPokemon = partyPokemon,
+                EnemyPokemon = battleParser.ParseBattlePokemon(battleEnemyPokemonData, enemyPokemon),
+                ActivePokemon = activePokemon
+            };
         }
     }
 }

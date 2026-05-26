@@ -87,7 +87,7 @@ namespace ShinyBotHunter.BotEvents
             _collection = dbConnection.GetDatabase().GetCollection<BaseGameState>("PhaseStates");
         }
 
-        public async override Task<List<StarterPokemonData>> ExecuteWithResultAsync(CancellationToken cancellationToken)
+        public async override Task<List<StarterPokemonData>> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
             Console.WriteLine("Load state");
             gameState = await CreateOrLoadGameState();
@@ -127,7 +127,7 @@ namespace ShinyBotHunter.BotEvents
                 var context = botFactory.BuildGameContext("Pokemon HeartGold", i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
                 CreateSaveEvent createSave = new CreateSaveEvent(bot, context, serviceProvider);
-                tasks.Add(createSave.ExecuteAsync());
+                tasks.Add(createSave.ExecuteAsync(new GameState()));
                 await Task.Delay(5000);
             }
             try
@@ -151,7 +151,7 @@ namespace ShinyBotHunter.BotEvents
                 IBot bot = botFactory.CreateBot(context);
                 bots.Add(bot);
                 HgssShinyStarterEvent hgssShinyStarter = shinyStarterEventFactory.CreateEvent(bot, GameFlavor.HGSS);
-                tasks.Add(hgssShinyStarter.ExecuteWithResultAsync(cancellationTokenSource.Token));
+                tasks.Add(hgssShinyStarter.ExecuteWithResultAsync(new GameState(), cancellationTokenSource.Token));
                 await Task.Delay(5000);
             }
             var pauseTasks = new List<Task<PokemonData?>>(tasks);
@@ -310,7 +310,7 @@ namespace ShinyBotHunter.BotEvents
                 var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
                 IBot bot = botFactory.CreateBot(context);
                 var e = shinyStarterEventFactory.CreateEvent(bot, context.GameFlavor);
-                var pokemonData = await e.ExecuteWithResultAsync(token);
+                var pokemonData = await e.ExecuteWithResultAsync(new GameState(), token);
                 if (pokemonData is not null)
                 {
                     await channel.Writer.WriteAsync(new StarterPokemonData() { Game = "Pokemon SoulSilver", GameId = gameId.ToString(), PokemonData = pokemonData });
@@ -324,11 +324,11 @@ namespace ShinyBotHunter.BotEvents
                 var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
                 IBot createBot = botFactory.CreateBot(context);
                 CreateSaveEvent saveEvent = new CreateSaveEvent(createBot, context, serviceProvider);
-                await saveEvent.ExecuteAsync();
+                await saveEvent.ExecuteAsync(new GameState());
                 await Task.Delay(10000);
                 IBot shinyBot = botFactory.CreateBot(context);
                 HgssShinyStarterEvent shinyEvent = shinyStarterEventFactory.CreateEvent(shinyBot, GameFlavor.HGSS);
-                var pokemonData = await shinyEvent.ExecuteWithResultAsync(token);
+                var pokemonData = await shinyEvent.ExecuteWithResultAsync(new GameState(), token);
                 if (pokemonData is not null)
                 {
                     await Task.Delay(10000);

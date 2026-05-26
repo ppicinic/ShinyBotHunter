@@ -1,5 +1,10 @@
 ﻿using Microsoft.Extensions.Options;
+using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.Options;
 using MongoDB.Driver;
+using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Pokemon;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -11,19 +16,83 @@ namespace ShinyBotHunter.Scripts
     internal record PokemonDex(PokemonDexEntry[] results);
     internal record PokemonDexEntry(string name, string url);
     internal record PokemonSpecies(string name, string url);
-    internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms);
+    internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms, LearnedMoves[] moves);
     internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female);
     internal record PokemonForm(string name, string url);
     internal record PokemonFormData(string name, VersionGroup version_group, PokemonSprite sprites);
     internal record VersionGroup(string name, string url);
-
+    internal record MoveLanguageVersion(string name);
+    internal record MoveNames(string name, MoveLanguageVersion language);
+    internal record DamageClass(string name);
+    internal record PokemonMove(string name, int id, MoveNames[] names, DamageClass damage_class);
+    internal record LearnedMoves(LearnMove move, MoveVersionGroupDetails[] version_group_details);
+    internal record LearnMove(string name, string url);
+    internal record MoveVersionGroupDetails(int level_learned_at, MoveLearnMethod move_learn_method, MoveVersionGroup version_group, int? order);
+    internal record MoveVersionGroup(string name);
+    internal record MoveLearnMethod(string name);
+    internal record EvolutionChain(EvolvesTo chain);
+    internal record EvolvesTo(EvolvesTo[]? evolves_to, PokemonDexEntry species, EvolutionDetails[] evolution_details);
+    internal record EvolutionDetails(EvoTrigger trigger, PokemonFieldName? base_form, PokemonFieldName? region, PokemonFieldName? held_item, int? gender, int? min_happiness, int? min_level, string time_of_day,
+                                        int? relative_physical_stats, PokemonFieldName? known_move, PokemonFieldName? party_species, int? min_beauty);
+    internal record EvoTrigger(string name);
+    internal record EvoChainList(EvoUrl[] results);
+    internal record PokemonFieldName(string name, string url);
+    internal record EvoUrl(string url);
     public class PokemonMetadata
     {
         public int Id { get; set; }
         public string PokemonName { get; set; } = null!;
         public string PokeApiName { get; set; } = null!;
+        public string PokeApiSpeciesName { get; set; } = null!;
         public List<PokemonFormMetadata> Forms { get; set; } = new List<PokemonFormMetadata>();
-        public bool HasFemaleForm { get; set; } = false;
+        public bool HasFemaleForm { get; set; } = false; 
+        [BsonDictionaryOptions(DictionaryRepresentation.ArrayOfDocuments)]
+        public Dictionary<GameFlavor, List<PokemonLevelUpMoveData>> LevelUpMoves = new Dictionary<GameFlavor, List<PokemonLevelUpMoveData>>();
+        [BsonDictionaryOptions(DictionaryRepresentation.ArrayOfDocuments)]
+        public Dictionary<GameFlavor, List<EvolutionMetadata>> EvolutionDetails = new Dictionary<GameFlavor, List<EvolutionMetadata>>();
+    }
+
+    public class EvolutionMetadata
+    {
+        public int? MinLevel { get; set; } = null;
+        public int EvolveToId { get; set; }
+        public int? HeldItemId { get; set; } = null;
+        public int? Gender { get; set; } = null;
+        public bool? IsNight { get; set; } = null;
+        public bool? IsDay { get; set; } = null;
+        public int? MinHappiness { get; set; } = null;
+        public int? TyrogueValue { get; set; } = null; // -1 - hitmonchan, 0 - hitmontop, 1 - hitmonlee
+        public int? KnownMoveId { get; set; } = null;
+        public int? PartySpeciesId { get; set; } = null;
+        public int? MinBeauty { get; set; } = null;
+    }
+
+    public class PokemonLevelUpMoveData : IComparable<PokemonLevelUpMoveData>
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = null!;
+        public int Level { get; set; }
+        public int? Order { get; set; } = null;
+
+        public int CompareTo(PokemonLevelUpMoveData? other)
+        {
+            // 1. Standard C# contract: any instance is greater than null
+            if (other is null)
+            {
+                return 1;
+            }
+
+            // 2. Compare Levels first
+            int levelComparison = Level.CompareTo(other.Level);
+            if (levelComparison != 0)
+            {
+                return levelComparison;
+            }
+
+            // 3. If Levels are equal, safely compare Orders.
+            // Nullable.Compare automatically handles cases where either or both are null.
+            return Nullable.Compare(Order, other.Order);
+        }
     }
 
     public class PokemonFormMetadata
@@ -60,8 +129,143 @@ namespace ShinyBotHunter.Scripts
             }
         }
 
+        private async Task<Dictionary<int, PokemonMoveMetadata>> ScrapeMovesApiAsync()
+        {
+            Console.WriteLine("Scraping move metadata...");
+            HttpClient client = new HttpClient();
+            string baseUri = "https://pokeapi.co/api/v2/move/";
+            List<WriteModel<PokemonMoveMetadata>> moves = new List<WriteModel<PokemonMoveMetadata>>();
+            Dictionary<int, PokemonMoveMetadata> toReturn = new Dictionary<int, PokemonMoveMetadata>();
+            for(int i = 1; i < 920; i++)
+            {
+                try
+                {
+
+                    var move = await client.GetFromJsonAsync<PokemonMove>($"{baseUri}{i}");
+                    var filter = Builders<PokemonMoveMetadata>.Filter.Eq(x => x.Id, i);
+                    var dbMove = new PokemonMoveMetadata()
+                    {
+                        Id = i,
+                        NameId = move!.name,
+                        Name = GetEnglishName(move),
+                        DamageClass = move.damage_class.name
+                    };
+                    toReturn.Add(dbMove.Id, dbMove);
+                    moves.Add(new ReplaceOneModel<PokemonMoveMetadata>(filter, dbMove)
+                    {
+                        IsUpsert = true
+                    });
+                }
+                catch
+                {
+                    Console.WriteLine($"Failed to parse move: {i}");
+                    throw;
+                }
+            }
+
+            string connectionUri = $"mongodb://{mongoDbUrl}";
+            var mongoClient = new MongoClient(connectionUri);
+            var database = mongoClient.GetDatabase(mongoDbDatabase);
+            var collection = database.GetCollection<PokemonMoveMetadata>("PokemonMoveMetadata");
+
+            await collection.BulkWriteAsync(moves);
+            Console.WriteLine("Database updated with move metadata");
+            return toReturn;
+        }
+
+        private async Task GetEvolutions(Dictionary<string, PokemonMetadata> pokemonMap)
+        {
+            HttpClient client = new HttpClient();
+            string baseUri = "https://pokeapi.co/api/v2/";
+            string evoListUri = "evolution-chain?limit=1000";
+            var list = await client.GetFromJsonAsync<EvoChainList>(baseUri + evoListUri);
+            foreach(var evoUrl in list!.results)
+            {
+                try
+                {
+                    var evoData = await client.GetFromJsonAsync<EvolutionChain>(evoUrl.url);
+                    if (evoData!.chain.evolution_details.Length > 0)
+                    {
+                        Console.WriteLine($"{evoUrl.url} has evolution details at root");
+                    }
+                    ValidateEvoData(evoUrl.url, evoData!.chain, evoData.chain.species.name, pokemonMap);
+                }
+                catch
+                {
+                    Console.WriteLine($"Failed at {evoUrl.url}");
+                    throw;
+                }
+            }
+        }
+
+        // need gender
+
+        private void ValidateEvoData(string url, EvolvesTo chain, string evolvesFrom, Dictionary<string, PokemonMetadata> pokemonMap)
+        {
+            // todo evolution details for feebas-milotic.
+            var evoDetails = chain.evolution_details.Where(x => x.region is null).ToList();
+            if(evoDetails.Count() > 0)
+            {
+                var details = evoDetails[0];
+                if(details.trigger.name == "level-up" && pokemonMap.ContainsKey(evolvesFrom) && pokemonMap.ContainsKey(chain.species.name))
+                {
+                    EvolutionMetadata evoMetadata = new EvolutionMetadata()
+                    {
+                        EvolveToId = pokemonMap[chain.species.name].Id,
+                        MinLevel = details.min_level,
+                        Gender = details.gender is null ? null : details.gender == 2 ? 1 : 2,
+                        MinHappiness = details.min_happiness,
+                        IsDay = details.time_of_day == "day",
+                        IsNight = details.time_of_day == "night",
+                        TyrogueValue = details.relative_physical_stats,
+                        MinBeauty = details.min_beauty,
+                    };
+                    if (details.held_item is not null)
+                    {
+                        evoMetadata.HeldItemId = Int32.Parse(details.held_item.url.Split("/", StringSplitOptions.RemoveEmptyEntries)[^1]);
+                    }
+                    if(details.known_move is not null)
+                    {
+                        evoMetadata.KnownMoveId = Int32.Parse(details.known_move.url.Split("/", StringSplitOptions.RemoveEmptyEntries)[^1]);
+                    }
+                    if (details.party_species is not null)
+                    {
+                        evoMetadata.PartySpeciesId = Int32.Parse(details.party_species.url.Split("/", StringSplitOptions.RemoveEmptyEntries)[^1]);
+                    }
+                    var poke = pokemonMap[evolvesFrom];
+                    if (!poke.EvolutionDetails.ContainsKey(GameFlavor.HGSS))
+                    {
+                        poke.EvolutionDetails.Add(GameFlavor.HGSS, new List<EvolutionMetadata>());
+                    }
+                    poke.EvolutionDetails[GameFlavor.HGSS].Add(evoMetadata);
+                }
+            }
+            if(chain.evolves_to is null)
+            {
+                return;
+            }
+            foreach(var evolvesTo in chain.evolves_to)
+            {
+                ValidateEvoData(url, evolvesTo, chain.species.name, pokemonMap);
+            }
+        }
+
+        private string GetEnglishName(PokemonMove move)
+        {
+            foreach(var lang in move.names)
+            {
+                if(lang.language.name == "en")
+                {
+                    return lang.name;
+                }
+            }
+            throw new Exception($"no english name for move: {move.id} found");
+        }
+
         public async Task ScrapePokeApi()
         {
+            
+            var moveData = await ScrapeMovesApiAsync();
             // --- Execution Logic ---
             HttpClient client = new HttpClient();
             string baseUri = "https://pokeapi.co/api/v2/";
@@ -151,6 +355,7 @@ namespace ShinyBotHunter.Scripts
                     {
                         Id = pokemon.id == 10136 ? 774 : pokemon.id,
                         PokeApiName = pokemon.name,
+                        PokeApiSpeciesName = pokemon.species.name,
                         PokemonName = PokemonNames.GetName(pokemon.id),
                     };
                     if (pokemon.name == "minior-red")
@@ -193,6 +398,38 @@ namespace ShinyBotHunter.Scripts
                     if (pokemon.sprites.front_female is not null)
                     {
                         meta.HasFemaleForm = true;
+                    }
+                    meta.LevelUpMoves.Add(GameFlavor.HGSS, new List<PokemonLevelUpMoveData>());
+                    // Move data
+                    foreach (var move in pokemon.moves)
+                    {
+                        foreach (var vg in move.version_group_details)
+                        {
+                            if (vg.version_group.name == "heartgold-soulsilver" && vg.move_learn_method.name == "level-up")
+                            {
+                                int id = Int32.Parse(move.move.url.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]);
+                                meta.LevelUpMoves[GameFlavor.HGSS].Add(new PokemonLevelUpMoveData()
+                                {
+                                    Id = id,
+                                    Level = vg.level_learned_at,
+                                    Order = vg.order,
+                                    Name = moveData[id].Name
+                                });
+                            }
+                        }
+                    }
+                    try
+                    {
+                        meta.LevelUpMoves[GameFlavor.HGSS].Sort();
+                    }
+                    catch
+                    {
+                        Console.WriteLine($"Error sorting moves for {meta.Id}:{meta.PokemonName}");
+                        foreach (var printMove in meta.LevelUpMoves[GameFlavor.HGSS])
+                        {
+                            Console.WriteLine($"Id: {printMove.Id}, Name: {printMove.Name}, Level: {printMove.Level}, Order: {printMove.Order}");
+                        }
+                        throw;
                     }
                     cache.Add(pokemon.species.name, meta);
                 }
@@ -241,15 +478,39 @@ namespace ShinyBotHunter.Scripts
                     }
                 }
             }
+            Dictionary<string, PokemonMetadata> pokemonMap = new Dictionary<string, PokemonMetadata>();
+            HashSet<string> skipEvolve = new HashSet<string>() 
+            {
+                "magnezone",
+                "glaceon",
+                "leafeon",
+                "probopass"
+            };
+            foreach (var pokemon in metadataList)
+            {
+                if(pokemon.Id <= 493 && !skipEvolve.Contains(pokemon.PokeApiSpeciesName))
+                {
+                    pokemonMap.Add(pokemon.PokeApiSpeciesName, pokemon);
+                }
+            }
+            await GetEvolutions(pokemonMap);
             // --- MongoDB Save ---
             //TODO use mongodb url
             string connectionUri = $"mongodb://{mongoDbUrl}";
             var mongoClient = new MongoClient(connectionUri);
             var database = mongoClient.GetDatabase(mongoDbDatabase);
             var collection = database.GetCollection<PokemonMetadata>("PokemonMetadata");
-
-            await collection.InsertManyAsync(metadataList);
-            // Console.WriteLine("Saved to MongoDB successfully!");
+            List<WriteModel<PokemonMetadata>> updateList = new List<WriteModel<PokemonMetadata>>();
+            foreach(var metadata in metadataList)
+            {
+                var filter = Builders<PokemonMetadata>.Filter.Eq(x => x.Id, metadata.Id);
+                updateList.Add(new ReplaceOneModel<PokemonMetadata>(filter, metadata)
+                 {
+                     IsUpsert = true
+                 });
+            }
+            await collection.BulkWriteAsync(updateList);
+            Console.WriteLine("Saved to MongoDB successfully!");
         }
     }
 
