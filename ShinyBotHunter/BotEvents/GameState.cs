@@ -1,6 +1,7 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -32,6 +33,8 @@ namespace ShinyBotHunter.BotEvents
         public int StartX { get; set; } = -1;
         public bool MilestoneComplete { get; set; } = false;
         public BotService BotService { get; set; } = null!;
+        public List<NodePoint>? NavigationPath { get; set; } = null;
+        public int NavigationPathIndex { get; set; } = 0;
 
         public void SwapState(EventState newState)
         {

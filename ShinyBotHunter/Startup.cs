@@ -414,6 +414,7 @@ namespace ShinyBotHunter
                 .AddSingleton<MapService>(x => MapService.Instance)
                 .AddSingleton<SmogonDamageService>()
                 .AddTransient<BattleOrchestratorEvent>()
+                .AddTransient<NavigatorEvent>()
                 .AddKeyedSingleton<IPointerService>(GameFlavor.HGSS, new HgssPointerService())
                 .AddKeyedSingleton<IBattlePokemonParser>(GameFlavor.HGSS, new HgssBattlePokemonParser())
                 .AddSingleton(new DiscordSocketConfig

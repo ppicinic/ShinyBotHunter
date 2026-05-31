@@ -1,5 +1,4 @@
-﻿using Mono.TextTemplating;
-using ShinyBotHunter.Bot;
+﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
@@ -26,10 +25,10 @@ namespace ShinyBotHunter.BotEvents
         public override EventState EventState => throw new NotImplementedException();
         private EncounterParams encounterParams;
         private IBotEvent<GameState> battleEvent;
+        private NavigatorEvent navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
         private MapService mapService;
-        private PathfindingService pathfindingService;
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
 
@@ -37,10 +36,10 @@ namespace ShinyBotHunter.BotEvents
         {
             this.encounterParams = encounterParams;
             battleEvent = provider.GetRequiredService<BattleOrchestratorEvent>();
+            navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
             this.mapService = provider.GetRequiredService<MapService>();
-            this.pathfindingService = provider.GetRequiredService<PathfindingService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
         }
@@ -90,12 +89,19 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if(topState == EventState.BattleComplete)
                 {
-                    // todo check complete
-                    state.SwapState(EventState.DecideOverworldAction);
+                    // Pop BattleComplete and let the previous state resume.
+                    // If the stack empties (normal encounter path), restart at DecideOverworldAction.
+                    state.State.Pop();
+                    if (state.State.Count == 0)
+                    {
+                        state.State.Push(EventState.DecideOverworldAction);
+                    }
                 }
-                else if(topState == EventState.GoToPokemonCenter)
+                else if(topState == EventState.GoToPokemonCenter
+                     || topState == EventState.HealAtPokemonCenter
+                     || topState == EventState.ReturnToStart)
                 {
-                    await GoToPokemonCenter(state);
+                    await navigatorEvent.ExecuteWithResultAsync(state, cancellationToken);
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
@@ -145,19 +151,6 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
             state.MilestoneComplete = complete;
-        }
-
-        private async Task GoToPokemonCenter(GameState state)
-        {
-            short x = await state.Bot.GetTrainerXPos();
-            short y = await state.Bot.GetTrainerYPos();
-            while(x <= 0 && y <= 0)
-            {
-                await Task.Delay(100);
-                x = await state.Bot.GetTrainerXPos();
-                y = await state.Bot.GetTrainerYPos();
-            }
-            var nodePath = await pathfindingService.FindClosestPokemonCenter(await state.Bot.GetMapId(), x, y, new Capability(), await state.Bot.GetFacing());
         }
 
         private async Task DecideOverworldAction(GameState state)
