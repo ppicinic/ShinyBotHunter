@@ -47,8 +47,8 @@ namespace ShinyBotHunter.Migrations
                     b.Property<byte>("Gender")
                         .HasColumnType("smallint");
 
-                    b.Property<long>("IVs")
-                        .HasColumnType("bigint");
+                    b.Property<int>("IVs")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsShiny")
                         .HasColumnType("boolean");
@@ -67,20 +67,20 @@ namespace ShinyBotHunter.Migrations
                     b.Property<byte>("Nature")
                         .HasColumnType("smallint");
 
-                    b.Property<long>("PID")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("SID")
+                    b.Property<int>("PID")
                         .HasColumnType("integer");
 
-                    b.Property<int>("ShinyValue")
-                        .HasColumnType("integer");
+                    b.Property<short>("SID")
+                        .HasColumnType("smallint");
 
-                    b.Property<int>("Species")
-                        .HasColumnType("integer");
+                    b.Property<short>("ShinyValue")
+                        .HasColumnType("smallint");
 
-                    b.Property<int>("TID")
-                        .HasColumnType("integer");
+                    b.Property<short>("Species")
+                        .HasColumnType("smallint");
+
+                    b.Property<short>("TID")
+                        .HasColumnType("smallint");
 
                     b.HasKey("Id", "Timestamp");
 
