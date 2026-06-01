@@ -9,11 +9,13 @@ namespace ShinyBotHunter.Bot
         private ILauncher launcher;
         private ICommandClient commandClient;
         private IMemoryClient memoryClient;
-        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient)
+        private IDataReader dataReader;
+        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader)
         {
             this.launcher = launcher;
             this.commandClient = commandClient;
             this.memoryClient = memoryClient;
+            this.dataReader = reader;
         }
 
         public void ClearMacro()
@@ -53,6 +55,8 @@ namespace ShinyBotHunter.Bot
         }
 
         public string GameFileName => this.launcher.GameFileName;
+
+        public IDataReader Reader => throw new NotImplementedException();
 
         public void HoldFrames(string button, int frames)
         {
@@ -157,6 +161,40 @@ namespace ShinyBotHunter.Bot
         public void RunMacros(params MacroStruct[] macro)
         {
             this.commandClient.RunMacros(macro);
+        }
+
+        public async Task<byte> GetBattleMenuState()
+        {
+            return await dataReader.GetBattleMenuState();
+        }
+
+        public async Task<byte> GetBattleValue()
+        {
+            return await dataReader.GetBattleValue();
+        }
+        public async Task<byte> GetBattleState()
+        {
+            return await dataReader.GetBattleState();
+        }
+
+        public async Task<ushort> GetMapId()
+        {
+            return await dataReader.GetMapId();
+        }
+
+        public async Task<short> GetTrainerXPos()
+        {
+            return await dataReader.GetTrainerXPos();
+        }
+
+        public async Task<short> GetTrainerYPos()
+        {
+            return await dataReader.GetTrainerYPos();
+        }
+
+        public async Task<byte> GetFacing()
+        {
+            return await dataReader.GetFacing();
         }
     }
 }

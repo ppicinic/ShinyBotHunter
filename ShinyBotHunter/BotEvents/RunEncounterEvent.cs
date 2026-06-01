@@ -1,9 +1,10 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.BotEvents
 {
-    public class RunEncounterEvent : AbstractBotEvent<bool>
+    public class RunEncounterEvent : AbstractBotEvent<GameState>
     {
         public override EventState EventState
         {
@@ -25,23 +26,23 @@ namespace ShinyBotHunter.BotEvents
             this.param = param;
         }
 
-        public override async Task<bool> ExecuteWithResultAsync(CancellationToken cancellationToken)
+        public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
-            if(macro is null)
+            if (!state.EncounterMacros.ContainsKey("Run"))
             {
                 var x = Utils.UIntToShort(await bot.ReadUIntAsync(xAddr));
                 var y = Utils.UIntToShort(await bot.ReadUIntAsync(yAddr));
-                if(param.yRange > 0)
+                if (param.yRange > 0)
                 {
-                    macro = $"M.Up.{y - param.yRange}.{yAddr};M.Down.{y + param.yRange}.{yAddr}";
+                    state.EncounterMacros.Add("Run", $"M.Up.{y - param.yRange}.{yAddr};M.Down.{y + param.yRange}.{yAddr}");
                 }
                 else
                 {
-                    macro = $"M.Right.{x + param.xRange}.{xAddr};M.Left.{x - param.xRange}.{xAddr}";
+                    state.EncounterMacros.Add("Run", $"M.Right.{x + param.xRange}.{xAddr};M.Left.{x - param.xRange}.{xAddr}");
                 }
             }
 
-            bot.RunRepeatMacro(macro);
+            bot.RunRepeatMacro(state.EncounterMacros["Run"]);
             uint battleIndicator = 0x21E76D2;
             var battleValue = await bot.ReadByteAsync(battleIndicator);
             while (!(battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0) && !cancellationToken.IsCancellationRequested)
@@ -53,8 +54,10 @@ namespace ShinyBotHunter.BotEvents
             }
             bot.ClearMacro();
             await bot.WaitForMacroAsync();
-            Console.WriteLine("Found battle");
-            return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
+            state.State.Pop();
+            // TODO we should go into Waiting if its a non wild battle
+            state.State.Push(EventState.BattleStart);
+            return state;
         }
     }
 }

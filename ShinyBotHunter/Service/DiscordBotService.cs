@@ -1,11 +1,15 @@
 ﻿using Discord;
 using Discord.Interactions;
-using IResult = Discord.Interactions.IResult;
 using Discord.WebSocket;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Discord.Interactions;
+using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service;
 using System.Threading.Channels;
-using Microsoft.AspNetCore.Http.HttpResults;
+using static System.Net.Mime.MediaTypeNames;
+using IResult = Discord.Interactions.IResult;
 
 namespace ShinyBotHunter.Services;
 
@@ -24,21 +28,175 @@ public sealed class DiscordBotService
     private readonly InteractionService _interactions;
     private readonly IServiceProvider _services;
     private bool isReady = false;
+    private ulong guildId;
+    private ulong newMoveChannelId;
+    private PokemonMetadataService metadataService;
     private Channel<DiscordMessage> messageQueue = Channel.CreateUnbounded<DiscordMessage>();
 
     public DiscordBotService(
         DiscordSocketClient client,
         InteractionService interactions,
         IOptions<ApplicationSettings> options,
-        IServiceProvider services)
+        IServiceProvider services,
+        PokemonMetadataService metadataService)
     {
         _client = client;
         _interactions = interactions;
         _options = options;
         _services = services;
+        this.metadataService = metadataService;
+        this.guildId = options.Value.DiscordGuildId!.Value;
+        this.newMoveChannelId = options.Value.DiscordNewMoveChannelId!.Value;
     }
 
+    public async Task<int> SendNewMoveDecisionAndWaitAsync(PokemonData pokemon, PokemonLevelUpMoveMetadata newMove)
+    {
+        // 1. Create a TaskCompletionSource to return the CustomId string
+        var tcs = new TaskCompletionSource<int>();
+        EmbedBuilder eb = new EmbedBuilder();
+        var channel = _client.GetGuild(guildId).GetTextChannel(newMoveChannelId);
+        eb.WithTitle($"{pokemon.Name} - New Move");
+        eb.WithDescription($"{pokemon.Name} is trying to learn a new move, {newMove.Name}. Should {pokemon.Name} forget a move to learn {newMove.Name}");
+        // 2. Build 5 distinct buttons with unique IDs
+        var component = new ComponentBuilder()
+            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move1).Name, "move_0", ButtonStyle.Primary)
+            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move2).Name, "move_1", ButtonStyle.Secondary)
+            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move3).Name, "move_2", ButtonStyle.Success)
+            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move4).Name, "move_3", ButtonStyle.Danger)
+            .WithButton("Do Not Learn", "do_not_learn", ButtonStyle.Primary)
+            .Build();
 
+        // 3. Send the custom text message, embed, and the 5 buttons
+        var message = await channel.SendMessageAsync(embed: eb.Build(), components: component);
+        string? pendingChoice = null;
+
+        async Task ButtonHandler(SocketMessageComponent interaction)
+        {
+            if (interaction.Message.Id != message.Id) return;
+
+            string customId = interaction.Data.CustomId;
+            var clickedButton = interaction.Message.Components
+                .OfType<ActionRowComponent>()
+                .SelectMany(row => row.Components)
+                .OfType<ButtonComponent>()
+                .FirstOrDefault(btn => btn.CustomId == customId);
+            string buttonLabel = clickedButton?.Label ?? customId;
+
+            // Step A: User clicked one of the main 5 buttons
+            if (customId.StartsWith("move_") || customId == "do_not_learn")
+            {
+                pendingChoice = customId;
+
+                // Build "Are you sure?" confirmation buttons
+                var confirmComponent = new ComponentBuilder()
+                    .WithButton("Confirm Choice", "confirm_yes", ButtonStyle.Success)
+                    .WithButton("Cancel", "confirm_no", ButtonStyle.Secondary)
+                    .Build();
+
+                // Update message inline to ask for confirmation
+                if (customId == "do_not_learn")
+                {
+                    EmbedBuilder eb2 = new EmbedBuilder();
+                    eb2.WithTitle($"{pokemon.Name} - New Move")
+                        .WithDescription($"⚠️ **Are you sure** you want {pokemon.Name} to stop trying to learn {newMove.Name}?");
+                    await interaction.UpdateAsync(msg =>
+                    { 
+                        msg.Embed = eb2.Build();
+                        msg.Components = confirmComponent;
+                    });
+                }
+                else
+                {
+                    EmbedBuilder eb2 = new EmbedBuilder();
+                    eb2.WithTitle($"{pokemon.Name} - New Move")
+                        .WithDescription($"⚠️ **Are you sure** you want {pokemon.Name} to forget {buttonLabel}, and learn {newMove.Name}?");
+                    await interaction.UpdateAsync(msg =>
+                    {
+                        msg.Embed = eb2.Build();
+                        msg.Components = confirmComponent;
+                    });
+                }
+                return;
+            }
+
+            // Step B: User clicked "Confirm Choice"
+            if (customId == "confirm_yes")
+            {
+                try
+                {
+                    int result = -1;
+                    switch (pendingChoice)
+                    {
+                        case "move_0":
+                            result = 0;
+                            break;
+                        case "move_1":
+                            result = 1;
+                            break;
+                        case "move_2":
+                            result = 2;
+                            break;
+                        case "move_3":
+                            result = 3;
+                            break;
+                    }
+                    tcs.TrySetResult(result);
+                    if (result == -1)
+                    {
+                        EmbedBuilder eb3 = new EmbedBuilder();
+                        eb3.WithTitle($"{pokemon.Name} - New Move")
+                            .WithDescription($"{pokemon.Name} did not learn {newMove.Name}!");
+                        await interaction.UpdateAsync(msg =>
+                        {
+                            msg.Embed = eb3.Build();
+                            msg.Components = null;
+                        });
+                    }
+                    else
+                    {
+                        EmbedBuilder eb3 = new EmbedBuilder();
+                        eb3.WithTitle($"{pokemon.Name} - New Move")
+                            .WithDescription($"{pokemon.Name} forget {buttonLabel}, and learned {newMove.Name}!");
+                        await interaction.UpdateAsync(msg =>
+                        {
+                            msg.Embed = eb3.Build();
+                            msg.Components = null;
+                        });
+                    } // Wake up the background task with the original choice
+                }
+                catch(Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                    throw;
+                }
+                return;
+            }
+
+            // Step C: User clicked "Cancel" (Reset back to the 5 buttons)
+            if (customId == "confirm_no")
+            {
+                pendingChoice = null;
+                await interaction.UpdateAsync(msg => {
+                    msg.Embed = eb.Build();
+                    msg.Components = component;
+                });
+            }
+        }
+
+        // 5. Hook up the event
+        _client.ButtonExecuted += ButtonHandler;
+
+        try
+        {
+            // 6. Await indefinitely until one of the 5 buttons is clicked
+            return await tcs.Task;
+        }
+        finally
+        {
+            // 7. Unhook the event to prevent memory leaks
+            _client.ButtonExecuted -= ButtonHandler;
+        }
+    }
 
     public async Task StartAsync()
     {

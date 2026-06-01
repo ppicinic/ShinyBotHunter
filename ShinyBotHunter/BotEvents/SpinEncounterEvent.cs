@@ -26,7 +26,7 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        public override async Task<bool> ExecuteWithResultAsync(CancellationToken cancellationToken)
+        public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
             uint anchor = await bot.ReadUIntAsync(0x21D4158);
             uint facingPtr = anchor + 0x1DC4;

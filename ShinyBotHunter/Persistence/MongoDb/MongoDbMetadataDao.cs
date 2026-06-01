@@ -17,5 +17,12 @@ namespace ShinyBotHunter.Persistence.MongoDb
             IMongoCollection<PokemonMetadata> collection = database.GetCollection<PokemonMetadata>("PokemonMetadata");
             return await collection.AsQueryable().ToListAsync();
         }
+
+        public async Task<List<PokemonMoveMetadata>> GetAllPokemonMoveMetadata()
+        {
+            IMongoDatabase database = mongoDbConnection.GetDatabase();
+            IMongoCollection<PokemonMoveMetadata> collection = database.GetCollection<PokemonMoveMetadata>("PokemonMoveMetadata");
+            return await collection.AsQueryable().ToListAsync();
+        }
     }
 }

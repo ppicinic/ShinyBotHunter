@@ -2,7 +2,7 @@ name: ContinueGame
 flavor: HGSS
 steps:
  - T.A
- - W.R[120,840]
+ - W.120
  - T.A 
- - W.R[240,960]
+ - W.240
  - T.A 

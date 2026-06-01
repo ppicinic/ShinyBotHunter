@@ -1,4 +1,4 @@
-﻿namespace ShinyBotHunter
+﻿namespace ShinyBotHunter.Util
 {
     public class Utils
     {

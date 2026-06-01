@@ -2,10 +2,10 @@
 {
     public abstract class AbstractBotEvent<T> : IBotEvent<T>
     {
-        public abstract Task<T> ExecuteWithResultAsync(CancellationToken cancellationToken);
-        public async Task ExecuteAsync(CancellationToken cancellationToken)
+        public abstract Task<T> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken);
+        public async Task ExecuteAsync(GameState state, CancellationToken cancellationToken)
         {
-            await ExecuteWithResultAsync(cancellationToken);
+            await ExecuteWithResultAsync(state, cancellationToken);
         }
 
         public abstract EventState EventState { get; }

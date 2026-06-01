@@ -8,11 +8,13 @@ namespace ShinyBotHunter.Service
         private MongoDbMetadataDao _metadataDao;
         private Dictionary<int, PokemonMetadata> _metadata;
         private Dictionary<string, int> _nameLookup;
+        private Dictionary<int, PokemonMoveMetadata> _moveMetadata;
         public PokemonMetadataService(MongoDbMetadataDao metadataDao)
         {
             this._metadataDao = metadataDao;
             this._metadata = new Dictionary<int, PokemonMetadata>();
             this._nameLookup = new Dictionary<string, int>();
+            this._moveMetadata = new Dictionary<int, PokemonMoveMetadata>();
         }
 
         public async Task InitAsync()
@@ -23,11 +25,21 @@ namespace ShinyBotHunter.Service
                 _metadata.Add(poke.Id, poke);
                 _nameLookup.Add(poke.PokemonName, poke.Id);
             }
+            var moveData = await _metadataDao.GetAllPokemonMoveMetadata();
+            foreach(var move in moveData)
+            {
+                _moveMetadata.Add(move.Id, move);
+            }
         }
 
         public PokemonMetadata GetPokemonMetadata(string name)
         {
             return _metadata[_nameLookup[name]];
+        }
+
+        public PokemonMoveMetadata GetPokemonMoveMetadata(int id)
+        {
+            return _moveMetadata[id];
         }
 
         public PokemonMetadata GetPokemonMetadata(int id)
