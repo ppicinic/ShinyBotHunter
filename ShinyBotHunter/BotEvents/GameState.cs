@@ -35,6 +35,9 @@ namespace ShinyBotHunter.BotEvents
         public BotService BotService { get; set; } = null!;
         public List<NodePoint>? NavigationPath { get; set; } = null;
         public int NavigationPathIndex { get; set; } = 0;
+        public bool TrainMode { get; set; } = false;
+        public int? TargetLevel { get; set; } = null;
+        public bool TrainingComplete { get; set; } = false;
 
         public void SwapState(EventState newState)
         {

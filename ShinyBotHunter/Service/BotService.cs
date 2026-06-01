@@ -153,15 +153,23 @@ namespace ShinyBotHunter.Service
                         throw new ArgumentException($"Only x or y range must be supplied, not both.");
                     }
                 }
+                bool trainMode = args.TrainMode ?? false;
+                if (trainMode && (args.TargetLevel is null || args.TargetLevel <= 0))
+                {
+                    throw new ArgumentException("TargetLevel must be a positive value when TrainMode is enabled.");
+                }
+
                 var wildPokemonEvent = new OrchestratorEvent(provider, new EncounterParams(args.EncounterType.Value, yRange, xRange));
                 botEvents[pos].GameState = new GameState()
                 {
-                    OriginalBattleMode = BattleMode.Flee,
+                    OriginalBattleMode = trainMode ? BattleMode.Battle : BattleMode.Flee,
                     GameFlavor = GameFlavor.HGSS,
                     BotService = this,
                     Target = target,
                     Milestone = args.PhaseName,
                     Bot = botEvents[pos].Bot!,
+                    TrainMode = trainMode,
+                    TargetLevel = trainMode ? args.TargetLevel : null,
                 };
                 botEvents[pos].GameState!.State.Push(EventState.Init);
                 botEvents[pos].StartEvent(wildPokemonEvent, botEvents[pos].GameState!, args.PhaseName, this);
@@ -205,9 +213,11 @@ namespace ShinyBotHunter.Service
         private static Dictionary<string, EventArgumentOptions> actionMap = new Dictionary<string, EventArgumentOptions>()
         {
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
-            {"Wild Encounter", new EventArgumentOptions() { Name = "Wild Encounter", RequiredParameters = ["PhaseName", "TargetType", "EncounterType"], 
+            {"Wild Encounter", new EventArgumentOptions() { Name = "Wild Encounter", RequiredParameters = ["PhaseName", "TargetType", "EncounterType"],
+                                OptionalParameters = ["TrainMode"],
                                 ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
-                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" }
+                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" },
+                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainMode", Value = "true" }, Name = "TargetLevel" }
                                 ]} },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
@@ -286,6 +296,8 @@ namespace ShinyBotHunter.Service
         public EncounterType? EncounterType { get; set; }
         public int? yRange { get; set; }
         public int? xRange { get; set; }
+        public bool? TrainMode { get; set; }
+        public int? TargetLevel { get; set; }
     }
 
     public class BotAndOrEvent

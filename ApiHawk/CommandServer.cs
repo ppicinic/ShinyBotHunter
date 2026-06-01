@@ -43,6 +43,11 @@ namespace ApiHawk
             public bool IsTouch => Name == "Touch";
             public bool IsMove { get; set; } = false;
             public bool ReachedDestination { get; set; } = false;
+            // Optional map-change guard: stop the move if the map transitions away.
+            public bool HasMapCheck { get; set; } = false;
+            public uint MapAnchorAddress { get; set; }
+            public uint MapNegOffset { get; set; }
+            public ushort ExpectedMapId { get; set; }
         }
 
         private sealed class StackEntry
@@ -204,7 +209,15 @@ namespace ApiHawk
                         string button = p[1];
                         short dest = short.Parse(p[2]);
                         uint memAddr = uint.Parse(p[3]);
-                        entry.Buttons.Add(new ButtonState { Name = button, Destination = dest, DestinationAddress = memAddr, IsMove = true });
+                        var bs = new ButtonState { Name = button, Destination = dest, DestinationAddress = memAddr, IsMove = true };
+                        if (p.Length >= 7)
+                        {
+                            bs.HasMapCheck = true;
+                            bs.MapAnchorAddress = uint.Parse(p[4]);
+                            bs.MapNegOffset = uint.Parse(p[5]);
+                            bs.ExpectedMapId = ushort.Parse(p[6]);
+                        }
+                        entry.Buttons.Add(bs);
                     }
                     else if (action == "S")
                     {
@@ -260,6 +273,13 @@ namespace ApiHawk
         {
             return (short)(((u32 / 65536) + 32768) % 65536 - 32768);
         }
+
+        private ushort ReadCurrentMapId(ButtonState btn)
+        {
+            uint anchor = BinaryPrimitives.ReadUInt32LittleEndian(MemoryApi!.ReadByteRange(btn.MapAnchorAddress, 4).ToArray());
+            return BinaryPrimitives.ReadUInt16LittleEndian(MemoryApi!.ReadByteRange(anchor - btn.MapNegOffset, 2).ToArray());
+        }
+
         private void StepStack()
         {
             if (_commandStack.Count == 0) return;
@@ -286,14 +306,12 @@ namespace ApiHawk
                     if (btn.IsMove)
                     {
                         var data = to_s16(BinaryPrimitives.ReadUInt32LittleEndian(MemoryApi!.ReadByteRange(btn.DestinationAddress, 4).ToArray()));
-                        if(data != btn.Destination)
-                        {
-                            stillActive = true;
-                        }
-                        else
-                        {
+                        bool coordReached = data == btn.Destination;
+                        bool mapChanged = btn.HasMapCheck && ReadCurrentMapId(btn) == btn.ExpectedMapId;
+                        if (coordReached || mapChanged)
                             btn.ReachedDestination = true;
-                        }
+                        else
+                            stillActive = true;
                     }
                     else if (btn.FramesLeft > 0)
                     {

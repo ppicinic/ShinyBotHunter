@@ -155,14 +155,26 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task DecideOverworldAction(GameState state)
         {
-            if (state.MilestoneComplete)
+            var pokeState = await reader.GetPokemonState(state.Bot);
+            var lead = pokeState.PartyPokemon[0]!;
+
+            if (state.TrainMode && !state.TrainingComplete)
+            {
+                if (lead.Level >= state.TargetLevel!.Value)
+                {
+                    state.TrainingComplete = true;
+                    state.OriginalBattleMode = BattleMode.Flee;
+                }
+            }
+
+            if (state.MilestoneComplete && (!state.TrainMode || state.TrainingComplete))
             {
                 state.SwapState(EventState.Complete);
                 await state.BotService.RefreshDashboardState();
                 return;
             }
-            var pokeState = await reader.GetPokemonState(state.Bot);
-            if (CanBattle(pokeState.PartyPokemon[0]!) || state.OriginalBattleMode == BattleMode.Flee)
+
+            if (CanBattle(lead) || state.OriginalBattleMode == BattleMode.Flee)
             {
                 state.BattleMode = state.OriginalBattleMode;
                 state.SwapState(EventState.Encountering);

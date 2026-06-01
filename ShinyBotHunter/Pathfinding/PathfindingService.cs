@@ -257,6 +257,8 @@ namespace ShinyBotHunter.Pathfinding
         public const int YAddrVal = 0x21DA6FC;
         public static readonly string XAddr = XAddrVal.ToString();
         public static readonly string YAddr = YAddrVal.ToString();
+        public const uint MapAnchorAddr = 0x21D4158;
+        public const uint MapNegOffset = 0x22DA4;
         private MapService mapService;
         private GraphService graphService;
         public PathfindingService(MapService mapService, GraphService graphService)
@@ -464,7 +466,7 @@ namespace ShinyBotHunter.Pathfinding
             return node;
         }
 
-        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing)
+        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, ushort? mapIdCheck = null)
         {
             MapPoint? point = ASearch(mapId, startX, startY, destX, destY, capability, facing);
             if(point is null)
@@ -472,7 +474,7 @@ namespace ShinyBotHunter.Pathfinding
                 return null;
             }
             var path = ReconstructPath(point);
-            return CreateMacro(path);
+            return CreateMacro(path, mapIdCheck);
         }
 
         //public List<MapPoint> GetAllWarpWeights(int mapId, int startX, int startY, Capability capability, byte facing)
@@ -537,7 +539,14 @@ namespace ShinyBotHunter.Pathfinding
             return state;
         }
 
-        public string? CreateMacro(IEnumerable<MapPoint> mapPoints)
+        private string FormatMove(string direction, int val, string addr, ushort? mapIdCheck)
+        {
+            if (mapIdCheck.HasValue)
+                return $"M.{direction}.{val}.{addr}.{MapAnchorAddr}.{MapNegOffset}.{mapIdCheck.Value}";
+            return $"M.{direction}.{val}.{addr}";
+        }
+
+        public string? CreateMacro(IEnumerable<MapPoint> mapPoints, ushort? mapIdCheck = null)
         {
             if(mapPoints.Count() < 2)
             {
@@ -578,7 +587,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr};");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null) + ";");
                         startX = curX;
                         startY = curY;
                     }
@@ -608,7 +617,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr};");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null) + ";");
                         startX = curX;
                         startY = curY;
                     }
@@ -638,7 +647,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr}");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null));
                         startX = curX;
                         startY = curY;
                     }
@@ -678,7 +687,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr};");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null) + ";");
                         startX = curX;
                         startY = curY;
                     }
@@ -703,7 +712,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr};");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null) + ";");
                     }
                     if (enumerator.Current.Direction != direction)
                     {
@@ -726,7 +735,7 @@ namespace ShinyBotHunter.Pathfinding
                         //add action to string
                         string directionAddr = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
                         int val = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr};");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null) + ";");
                         startX = curX;
                         startY = curY;
                     }
@@ -758,7 +767,7 @@ namespace ShinyBotHunter.Pathfinding
                         {
                             sb.Append(";");
                         }
-                        sb.Append($"M.{direction.ToString()}.{val}.{directionAddr}");
+                        sb.Append(FormatMove(direction.ToString(), val, directionAddr, null));
                         startX = curX;
                         startY = curY;
                     }
@@ -781,7 +790,7 @@ namespace ShinyBotHunter.Pathfinding
             {
                 sb.Append(";");
             }
-            sb.Append($"M.{direction.ToString()}.{val2}.{directionAddr2}");
+            sb.Append(FormatMove(direction.ToString(), val2, directionAddr2, mapIdCheck));
             if (sb.Length == 0)
             {
                 return null;

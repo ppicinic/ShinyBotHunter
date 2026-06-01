@@ -64,6 +64,9 @@ namespace ShinyBotHunter.BotEvents
         private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
             // TODO: implement heal macro
+            // Dismiss the nurse's automatic greeting so movement is unblocked before navigating out.
+            state.Bot.RunMacroString("T.A;W.90;T.A;W.90");
+            await state.Bot.WaitForMacroAsync(cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }
 
@@ -126,7 +129,11 @@ namespace ShinyBotHunter.BotEvents
                 int destX = isWarp ? fromNode.X : toNode.X;
                 int destY = isWarp ? fromNode.Y : toNode.Y;
 
-                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing);
+                // For warp segments, embed the destination map ID in the final M. command so
+                // it stops the moment the bot arrives on the new map (door entered), preventing
+                // an infinite loop caused by coordinates resetting on the new map.
+                ushort? destMapIdCheck = isWarp ? (ushort)toNode.MapId : null;
+                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destMapIdCheck);
 
                 if (macro is not null)
                 {
@@ -135,9 +142,11 @@ namespace ShinyBotHunter.BotEvents
                         return true;
                 }
 
-                if (isWarp)
+                // Apply the warp wait if the segment was expected to warp OR if the map
+                // actually changed (e.g. the door triggered before coordinates were reached).
+                var mapIdAfter = (int)await state.Bot.GetMapId();
+                if (isWarp || mapIdAfter != mapId)
                 {
-                    // Wait for the warp-transition animation to complete before continuing.
                     state.Bot.RunMacroString(WarpWaitMacro);
                     await state.Bot.WaitForMacroAsync(cancellationToken);
                 }
