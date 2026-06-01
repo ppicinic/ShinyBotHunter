@@ -26,6 +26,8 @@ namespace ShinyBotHunter.BotEvents
         DecideOverworldAction,
         HealAndReturn,
         GoToPokemonCenter,
+        HealAtPokemonCenter,
+        ReturnToStart,
         Init,
         Resume,
     }

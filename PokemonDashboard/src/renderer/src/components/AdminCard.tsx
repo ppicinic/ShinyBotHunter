@@ -20,6 +20,8 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   EncounterType: 'Encounter Type',
   xRange: 'X Range',
   yRange: 'Y Range',
+  TrainMode: 'Train Mode',
+  TargetLevel: 'Target Level',
 }
 const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
 
@@ -471,6 +473,13 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       if (soundOnKey !== undefined) {
         body['soundOn'] = params[soundOnKey] === 'true'
       }
+      const trainModeKey = Object.keys(params).find((k) => k.toLowerCase() === 'trainmode')
+      if (trainModeKey !== undefined) {
+        body['trainMode'] = params[trainModeKey] === 'true'
+      }
+      if (params['TargetLevel'] !== undefined && params['TargetLevel'] !== '' && params['TargetLevel'] !== '0') {
+        body['targetLevel'] = parseInt(params['TargetLevel'], 10)
+      }
 
       const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
         method: 'POST',
@@ -703,7 +712,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 {action.optionalParameters.map((param) => (
                                   <div key={param} className="flex items-center gap-2 mt-0.5">
                                     <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-                                    {param.toLowerCase() === 'soundon' ? (
+                                    {param.toLowerCase() === 'soundon' || param.toLowerCase() === 'trainmode' ? (
                                       <input
                                         type="checkbox"
                                         checked={params[param] === 'true'}
