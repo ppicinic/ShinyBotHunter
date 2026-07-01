@@ -1,12 +1,12 @@
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.BotEvents
 {
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
-        private const string WarpWaitMacro = "W.360";
-
         public override EventState EventState => throw new NotImplementedException();
 
         private readonly PathfindingService pathfindingService;
@@ -41,11 +41,14 @@ namespace ShinyBotHunter.BotEvents
                 var nodePath = await pathfindingService.FindClosestPokemonCenter(mapId, x, y, new Capability(), facing);
                 if (nodePath is null)
                 {
+                    Console.WriteLine($"[Navigator] No pokemon center found from map={mapId} ({x},{y})");
                     state.SwapState(EventState.Complete);
                     return;
                 }
                 state.NavigationPath = nodePath.ToList();
                 state.NavigationPathIndex = 0;
+                Console.WriteLine($"[Navigator] Path found: {string.Join(" -> ", state.NavigationPath.Select(n => $"map={n.Node.MapId}({n.Node.X},{n.Node.Y})"))}");
+                Console.WriteLine($"[Navigator] Starting from map={mapId} ({x},{y})");
             }
 
             bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
@@ -63,9 +66,8 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
-            // TODO: implement heal macro
-            // Dismiss the nurse's automatic greeting so movement is unblocked before navigating out.
-            state.Bot.RunMacroString("T.A;W.90;T.A;W.90");
+            string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "HealPokemon");
+            state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }
@@ -83,7 +85,7 @@ namespace ShinyBotHunter.BotEvents
                     state.StartMapId, state.StartX, state.StartY,
                     new Capability(), facing);
                 if (nodePath is null)
-                {
+                { 
                     state.SwapState(EventState.Complete);
                     return;
                 }
@@ -113,27 +115,48 @@ namespace ShinyBotHunter.BotEvents
 
             while (state.NavigationPathIndex < path.Count - 1)
             {
-                var fromNode = path[state.NavigationPathIndex].Node;
                 var toNode = path[state.NavigationPathIndex + 1].Node;
-
-                // A warp (door, cave entrance) occurs when consecutive nodes have different map IDs.
-                bool isWarp = fromNode.MapId != toNode.MapId;
 
                 var mapId = (int)await state.Bot.GetMapId();
                 var x = await state.Bot.GetTrainerXPos();
                 var y = await state.Bot.GetTrainerYPos();
                 var facing = await state.Bot.GetFacing();
 
-                // For a warp, navigate to the warp-entrance node on the current map;
-                // for a regular segment, navigate to the destination node.
-                int destX = isWarp ? fromNode.X : toNode.X;
-                int destY = isWarp ? fromNode.Y : toNode.Y;
+                // If the node after toNode is on a different map, toNode is a portal tile
+                // (door/cave entrance). Pass the destination node's internal map id so the
+                // final M. command stops the instant the warp fires and the live map id
+                // becomes one of that internal map's raw game ids. This prevents the
+                // infinite button hold caused by coordinates resetting on the new map.
+                bool toNodeIsPortal = state.NavigationPathIndex + 2 < path.Count
+                    && path[state.NavigationPathIndex + 2].Node.MapId != toNode.MapId;
+                int? destBotMapId = toNodeIsPortal
+                    ? path[state.NavigationPathIndex + 2].Node.MapId
+                    : null;
 
-                // For warp segments, embed the destination map ID in the final M. command so
-                // it stops the moment the bot arrives on the new map (door entered), preventing
-                // an infinite loop caused by coordinates resetting on the new map.
-                ushort? destMapIdCheck = isWarp ? (ushort)toNode.MapId : null;
-                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destMapIdCheck);
+                // When crossing a portal, the graph node may point to the spawn position
+                // rather than the actual warp trigger tile. Eagerly scan adjacent tiles
+                // and move toward the portal tile, prioritising the direction of travel.
+                int destX = toNode.X, destY = toNode.Y;
+                bool overshoot = false;
+                if (toNodeIsPortal)
+                {
+                    var portalTile = pathfindingService.GetAdjacentPortalTarget(mapId, toNode.X, toNode.Y, x, y);
+                    if (portalTile.HasValue)
+                    {
+                        destX = portalTile.Value.X;
+                        destY = portalTile.Value.Y;
+                    }
+                    else
+                    {
+                        // Building exit — no portal tile marker, so overshoot by 1 to press
+                        // through the exit tile and trigger the warp.
+                        overshoot = true;
+                    }
+                }
+
+                Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex}: map={mapId} ({x},{y}) -> ({destX},{destY}) portal={toNodeIsPortal} overshoot={overshoot}");
+                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destBotMapId, overshoot);
+                Console.WriteLine($"[Navigator] Macro: {(macro ?? "null")}");
 
                 if (macro is not null)
                 {
@@ -142,13 +165,17 @@ namespace ShinyBotHunter.BotEvents
                         return true;
                 }
 
-                // Apply the warp wait if the segment was expected to warp OR if the map
-                // actually changed (e.g. the door triggered before coordinates were reached).
+                // After a portal crossing, poll until we're on the destination map
+                // and coordinates are valid.
                 var mapIdAfter = (int)await state.Bot.GetMapId();
-                if (isWarp || mapIdAfter != mapId)
+                if (toNodeIsPortal)
                 {
-                    state.Bot.RunMacroString(WarpWaitMacro);
-                    await state.Bot.WaitForMacroAsync(cancellationToken);
+                    var warpDest = path[state.NavigationPathIndex + 2].Node;
+                    await WaitForWarpAsync(state.Bot, mapIdAfter, warpDest.X, warpDest.Y, cancellationToken);
+                }
+                else if (mapIdAfter != mapId)
+                {
+                    await WaitForWarpAsync(state.Bot, mapIdAfter, null, null, cancellationToken);
                 }
 
                 state.NavigationPathIndex++;
@@ -172,7 +199,7 @@ namespace ShinyBotHunter.BotEvents
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            cts.Cancel(); // stop the losing task
+            cts.Cancel();
 
             if (ReferenceEquals(first, battleTask))
             {
@@ -184,13 +211,36 @@ namespace ShinyBotHunter.BotEvents
             return false;
         }
 
+        private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if ((int)await bot.GetMapId() == destMapId)
+                    break;
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
+            }
+            if (destX.HasValue && destY.HasValue)
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var x = await bot.GetTrainerXPos();
+                    var y = await bot.GetTrainerYPos();
+                    if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
+                        break;
+                    await Task.Delay(Constant.PollIntervalMs, cancellationToken);
+                }
+            }
+            bot.RunMacroString("W.60");
+            await bot.WaitForMacroAsync(cancellationToken);
+        }
+
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
             byte battleValue = await bot.GetBattleValue();
             while (battleValue != 0x41 && battleValue != 0x97 && battleValue != 0xC0
                    && !cancellationToken.IsCancellationRequested)
             {
-                await Task.Delay(166, cancellationToken);
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
                 battleValue = await bot.GetBattleValue();
             }
         }

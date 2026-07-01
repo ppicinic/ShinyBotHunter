@@ -466,7 +466,7 @@ namespace ShinyBotHunter.Pathfinding
             return node;
         }
 
-        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, ushort? mapIdCheck = null)
+        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, int? destBotMapId = null, bool overshootFinalStep = false)
         {
             MapPoint? point = ASearch(mapId, startX, startY, destX, destY, capability, facing);
             if(point is null)
@@ -474,7 +474,57 @@ namespace ShinyBotHunter.Pathfinding
                 return null;
             }
             var path = ReconstructPath(point);
-            return CreateMacro(path, mapIdCheck);
+            // When the final move steps through a warp, hand the emulator every raw game
+            // map id the destination internal map could resolve to so it can stop the move
+            // the moment any of them becomes live (the warp firing).
+            IReadOnlyList<int>? destGameMapIds = destBotMapId.HasValue
+                ? mapService.GetGameMapIds(destBotMapId.Value)
+                : null;
+            return CreateMacro(path, destGameMapIds, overshootFinalStep);
+        }
+
+        // Returns the first graph node on fromMapRawId that has a cross-map edge leading
+        // to destMapRawId. Used as a fallback when the navigation path has a direct
+        // cross-map edge with no intermediate portal node recorded.
+        public Node? FindPortalToMap(int fromMapRawId, int destMapRawId)
+        {
+            var nodes = graphService.GetNodesFromMap(fromMapRawId);
+            return nodes.FirstOrDefault(n => n.Edges.Any(e => e.ToNode.MapId == destMapRawId));
+        }
+
+        // Scans the 4 tiles adjacent to (nodeX, nodeY) for a portal tile, preferring the
+        // one in the direction of travel from the player's current position (x, y).
+        public (int X, int Y)? GetAdjacentPortalTarget(int mapId, int nodeX, int nodeY, int x, int y)
+        {
+            Map map = mapService.GetMap(mapId);
+            (int X, int Y)[] candidates =
+            [
+                (nodeX,     nodeY - 1),
+                (nodeX,     nodeY + 1),
+                (nodeX - 1, nodeY),
+                (nodeX + 1, nodeY),
+            ];
+
+            (int X, int Y)? best = null;
+            int bestDist = int.MaxValue;
+
+            foreach (var c in candidates)
+            {
+                if (c.Y < 0 || c.Y >= map.Height || c.X < 0 || c.X >= map.Width)
+                    continue;
+                byte tile = map[c.Y, c.X];
+                if (tile != Constant.MAP_Portal1 && tile != Constant.MAP_Portal2)
+                    continue;
+                // Prefer the tile closest to the direction of travel (minimise Manhattan distance from player).
+                int dist = Math.Abs(c.X - x) + Math.Abs(c.Y - y);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = c;
+                }
+            }
+
+            return best;
         }
 
         //public List<MapPoint> GetAllWarpWeights(int mapId, int startX, int startY, Capability capability, byte facing)
@@ -539,14 +589,16 @@ namespace ShinyBotHunter.Pathfinding
             return state;
         }
 
-        private string FormatMove(string direction, int val, string addr, ushort? mapIdCheck)
+        private string FormatMove(string direction, int val, string addr, IReadOnlyList<int>? destGameMapIds)
         {
-            if (mapIdCheck.HasValue)
-                return $"M.{direction}.{val}.{addr}.{MapAnchorAddr}.{MapNegOffset}.{mapIdCheck.Value}";
+            // When destGameMapIds is set this is a warp-crossing move: the emulator stops it
+            // the moment the live map id matches any of these destination game map ids.
+            if (destGameMapIds is not null && destGameMapIds.Count > 0)
+                return $"M.{direction}.{val}.{addr}.{MapAnchorAddr}.{MapNegOffset}." + string.Join(".", destGameMapIds);
             return $"M.{direction}.{val}.{addr}";
         }
 
-        public string? CreateMacro(IEnumerable<MapPoint> mapPoints, ushort? mapIdCheck = null)
+        public string? CreateMacro(IEnumerable<MapPoint> mapPoints, IReadOnlyList<int>? destGameMapIds = null, bool overshootFinalStep = false)
         {
             if(mapPoints.Count() < 2)
             {
@@ -786,11 +838,13 @@ namespace ShinyBotHunter.Pathfinding
             }
             string directionAddr2 = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
             int val2 = direction == Direction.Up || direction == Direction.Down ? curY : curX;
+            if (overshootFinalStep)
+                val2 += (direction == Direction.Down || direction == Direction.Right) ? 1 : -1;
             if (!first)
             {
                 sb.Append(";");
             }
-            sb.Append(FormatMove(direction.ToString(), val2, directionAddr2, mapIdCheck));
+            sb.Append(FormatMove(direction.ToString(), val2, directionAddr2, destGameMapIds));
             if (sb.Length == 0)
             {
                 return null;

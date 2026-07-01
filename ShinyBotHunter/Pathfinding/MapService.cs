@@ -44,6 +44,7 @@ namespace ShinyBotHunter.Pathfinding
         }
         private Dictionary<int, MapLookup> mapLookup = new Dictionary<int, MapLookup>();
         private Dictionary<int, List<MapLookup>> botMapLookup = new Dictionary<int, List<MapLookup>>();
+        private Dictionary<int, List<int>> botMapGameIds = new Dictionary<int, List<int>>();
         private Dictionary<int, Map> Maps { get; set; } = new Dictionary<int, Map>();
         public void LoadMaps()
         {
@@ -78,8 +79,10 @@ namespace ShinyBotHunter.Pathfinding
                 if (!botMapLookup.ContainsKey(lookup.BotMapId))
                 {
                     botMapLookup.Add(lookup.BotMapId, new List<MapLookup>());
+                    botMapGameIds.Add(lookup.BotMapId, new List<int>());
                 }
                 botMapLookup[lookup.BotMapId].Add(lookup);
+                botMapGameIds[lookup.BotMapId].Add(key);
             }
             var boulders = JsonConvert.DeserializeObject<Dictionary<int, BoulderData[]>>(File.ReadAllText(".\\data\\HGSS\\boulders.json"))!;
             foreach(var (boulderKey, boulderData) in boulders)
@@ -102,6 +105,14 @@ namespace ShinyBotHunter.Pathfinding
         public MapLookup GetMapLookup(int id)
         {
             return mapLookup[id];
+        }
+
+        // All raw/hardware game map ids that share the given internal (bot) map id.
+        // A single bot map id (e.g. the shared Pokemon Center or overworld layout) maps
+        // to many game map ids — one per physical location that reuses that layout.
+        public IReadOnlyList<int> GetGameMapIds(int botMapId)
+        {
+            return botMapGameIds.TryGetValue(botMapId, out var ids) ? ids : new List<int>();
         }
         public Map GetMap(int id, bool internalId = false)
         {

@@ -1,10 +1,10 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using BizHawk.Client.Common;
@@ -12,19 +12,35 @@ using BizHawk.Client.Common;
 namespace ApiHawk
 {
     /// <summary>
-    /// TCP command server — drop-in C# replacement for the Lua CommandServer.lua.
+    /// HTTP command server — replaces the previous raw-TCP command server.
     ///
-    /// Listens on a TCP port (read from BIZHAWK_COMMAND_PORT env var, default 50000).
-    /// Protocol is identical to the Lua version — newline-delimited text commands.
+    /// Listens on http://127.0.0.1:{port}/ (port read from BIZHAWK_COMMAND_PORT, default 50000).
+    /// Binding to the explicit loopback IP avoids needing a Windows URL-ACL reservation.
+    ///
+    /// Endpoints (all POST):
+    ///   /command    — body is a command line (hold_*, release*, macro_string_*, RP_*,
+    ///                 macro_clear, flush, or '|'-piped batches). Queued for the frame thread;
+    ///                 returns "ok" immediately.
+    ///   /wait-macro — long-poll: returns "done" immediately if no macro is outstanding,
+    ///                 otherwise blocks until the running macro completes (macro_done).
+    ///   /flush      — saves RAM and returns "flushed" once the save lands.
+    ///   /ping       — returns "pong".
+    ///
+    /// Completion model (per the synchronous-bot contract):
+    ///   A macro is "outstanding" from the moment a completing command (macro_string_* /
+    ///   macro_clear) is submitted on the /command handler thread — not when the frame thread
+    ///   gets to it — so a /wait-macro arriving right after a submit can never race past it.
+    ///   The frame thread clears the flag and releases all waiters when it reaches the
+    ///   MacroEnd marker (or a warp-guard / macro_clear completion).
+    ///
+    /// Stack-replace rule: when the frame thread drains a /command containing a macro push,
+    /// it wipes the current command stack first, so a new macro always replaces a running one.
     ///
     /// Thread model:
-    ///   TCP thread      — dedicated background Thread; blocks on AcceptTcpClient, reads
-    ///                     newline-delimited commands, posts them to the frame thread.
-    ///   Response thread — dedicated background Thread; blocks on _responseReady, writes
-    ///                     responses (macro_done, flushed, pong) back to the client.
-    ///   Frame thread    — BizHawk's UpdateValues(PostFrame) callback; checks _commandReady
-    ///                     each frame (non-blocking), pushes command onto the stack, steps
-    ///                     the stack, applies joypad state, posts responses.
+    ///   Accept thread  — blocks on HttpListener.GetContext, hands each request to the pool.
+    ///   Handler (pool) — parses the request, enqueues commands / registers waiters, responds.
+    ///   Frame thread   — BizHawk's UpdateValues(PreFrame) callback; drains the command queue,
+    ///                    steps the macro stack, applies joypad state, signals completions.
     /// </summary>
     internal sealed class CommandServer : IDisposable
     {
@@ -43,11 +59,12 @@ namespace ApiHawk
             public bool IsTouch => Name == "Touch";
             public bool IsMove { get; set; } = false;
             public bool ReachedDestination { get; set; } = false;
-            // Optional map-change guard: stop the move if the map transitions away.
+            // Optional warp guard: stop the move the moment the live map id matches any of
+            // the destination map ids (the raw game ids the target internal map resolves to).
             public bool HasMapCheck { get; set; } = false;
             public uint MapAnchorAddress { get; set; }
             public uint MapNegOffset { get; set; }
-            public ushort ExpectedMapId { get; set; }
+            public ushort[] ExpectedMapIds { get; set; } = Array.Empty<ushort>();
         }
 
         private sealed class StackEntry
@@ -63,21 +80,26 @@ namespace ApiHawk
         private readonly Dictionary<string, bool> _heldButtons = new Dictionary<string, bool>();
         private bool _clearHold;
 
-        // ── Pending command from TCP thread → frame thread ────────────────────────
-        private volatile string? _pendingCommand;
+        // ── Incoming commands from handler threads → frame thread ─────────────────
+        private readonly ConcurrentQueue<string> _commandQueue = new ConcurrentQueue<string>();
 
-        // ── Pending response from frame thread → response thread ──────────────────
-        private volatile string? _pendingResponse;
+        // ── Completion tracking (handler threads <→ frame thread) ─────────────────
+        private readonly object _completionLock = new object();
+        private bool _macroPending;
+        private readonly List<ManualResetEventSlim> _macroWaiters = new List<ManualResetEventSlim>();
+        private readonly List<ManualResetEventSlim> _flushWaiters = new List<ManualResetEventSlim>();
 
-        // ── Synchronisation ───────────────────────────────────────────────────────
-        private readonly SemaphoreSlim _commandReady  = new SemaphoreSlim(0, 1);
-        private readonly SemaphoreSlim _responseReady = new SemaphoreSlim(0, 1);
-
-        // ── TCP infrastructure ────────────────────────────────────────────────────
+        // ── HTTP infrastructure ────────────────────────────────────────────────────
         private readonly int _port;
         private volatile bool _disposed;
-        private Thread? _tcpThread;
-        private volatile StreamWriter? _activeWriter;
+        private HttpListener? _listener;
+        private Thread? _acceptThread;
+
+        // Long-poll window: how long a /wait-macro request blocks before returning "pending"
+        // so the client can poll again. This is NOT a macro-completion timeout — a macro that
+        // runs longer than this simply spans multiple poll cycles. Kept well under the client's
+        // HTTP timeout so each response arrives in time.
+        private const int WaitPollWindowMs = 10000;
 
         // ── BizHawk APIs ──────────────────────────────────────────────────────────
         public IJoypadApi?    JoypadApi { get; set; }
@@ -91,31 +113,49 @@ namespace ApiHawk
 
         public void Start()
         {
-            _tcpThread = new Thread(TcpLoop) { IsBackground = true, Name = "CommandServer" };
-            _tcpThread.Start();
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+            _listener.Start();
+
+            _acceptThread = new Thread(AcceptLoop) { IsBackground = true, Name = "CommandServer" };
+            _acceptThread.Start();
+
+            Console.WriteLine($"[CommandServer] Listening on http://127.0.0.1:{_port}/ ...");
         }
 
-        // ── Called by BotServerTool.UpdateValues(PostFrame) every frame ───────────
+        // ── Called by BotServerTool.UpdateValues(PreFrame) every frame ────────────
 
         public void ServiceFrame()
         {
-            if (_commandReady.Wait(0))
+            while (_commandQueue.TryDequeue(out string cmd))
             {
-                string? cmd = _pendingCommand;
-                _pendingCommand = null;
-                if (cmd != null)
+                if (cmd == null) continue;
+
+                string[] cmds = cmd.Split('|');
+
+                // A new macro replaces whatever is currently queued.
+                if (ContainsMacroPush(cmds))
                 {
-                    string[] cmds = cmd.Split('|');
-                    for(int i = cmds.Length - 1; i >= 0; i--)
-                    {
-                        HandleCommand(cmds[i]);
-                    }
+                    _commandStack.Clear();
+                    _heldButtons.Clear();
                 }
-                    
+
+                for (int i = cmds.Length - 1; i >= 0; i--)
+                    HandleCommand(cmds[i]);
             }
 
             StepStack();
             ApplyJoypad();
+        }
+
+        private static bool ContainsMacroPush(string[] cmds)
+        {
+            foreach (string c in cmds)
+            {
+                if (c.StartsWith("macro_string_") || c.StartsWith("RP_"))
+                    return true;
+            }
+            return false;
         }
 
         // ── Command handler (runs on frame thread) ────────────────────────────────
@@ -168,16 +208,12 @@ namespace ApiHawk
             {
                 _commandStack.Clear();
                 _heldButtons.Clear();
-                PostResponse("macro_done");
+                SignalMacroDone();
             }
             else if (msg == "flush")
             {
                 ClientApi?.SaveRam();
-                PostResponse("flushed");
-            }
-            else if (msg == "ping")
-            {
-                PostResponse("pong");
+                SignalFlushDone();
             }
         }
 
@@ -215,7 +251,10 @@ namespace ApiHawk
                             bs.HasMapCheck = true;
                             bs.MapAnchorAddress = uint.Parse(p[4]);
                             bs.MapNegOffset = uint.Parse(p[5]);
-                            bs.ExpectedMapId = ushort.Parse(p[6]);
+                            var ids = new ushort[p.Length - 6];
+                            for (int k = 6; k < p.Length; k++)
+                                ids[k - 6] = ushort.Parse(p[k]);
+                            bs.ExpectedMapIds = ids;
                         }
                         entry.Buttons.Add(bs);
                     }
@@ -307,8 +346,27 @@ namespace ApiHawk
                     {
                         var data = to_s16(BinaryPrimitives.ReadUInt32LittleEndian(MemoryApi!.ReadByteRange(btn.DestinationAddress, 4).ToArray()));
                         bool coordReached = data == btn.Destination;
-                        bool mapChanged = btn.HasMapCheck && ReadCurrentMapId(btn) == btn.ExpectedMapId;
-                        if (coordReached || mapChanged)
+                        bool mapChanged = false;
+                        if (btn.HasMapCheck)
+                        {
+                            ushort currentMapId = ReadCurrentMapId(btn);
+                            foreach (var expected in btn.ExpectedMapIds)
+                            {
+                                if (currentMapId == expected)
+                                {
+                                    mapChanged = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (mapChanged)
+                        {
+                            _commandStack.Clear();
+                            _heldButtons.Clear();
+                            SignalMacroDone();
+                            return;
+                        }
+                        if (coordReached)
                             btn.ReachedDestination = true;
                         else
                             stillActive = true;
@@ -326,7 +384,7 @@ namespace ApiHawk
             else if (top.Action == FrameAction.MacroEnd)
             {
                 _commandStack.Pop();
-                PostResponse("macro_done");
+                SignalMacroDone();
             }
         }
 
@@ -386,112 +444,179 @@ namespace ApiHawk
             JoypadApi.Set(buttons);
         }
 
-        // ── Response helper ───────────────────────────────────────────────────────
+        // ── Completion signalling (frame thread → waiters) ────────────────────────
 
-        private void PostResponse(string response)
+        private void SignalMacroDone()
         {
-            _pendingResponse = response;
-            _responseReady.Release();
+            lock (_completionLock)
+            {
+                _macroPending = false;
+                foreach (var w in _macroWaiters)
+                {
+                    try { w.Set(); } catch { }
+                }
+                _macroWaiters.Clear();
+            }
         }
 
-        // ── TCP loop ──────────────────────────────────────────────────────────────
-
-        private void TcpLoop()
+        private void SignalFlushDone()
         {
-            TcpListener? listener = null;
+            lock (_completionLock)
+            {
+                foreach (var w in _flushWaiters)
+                {
+                    try { w.Set(); } catch { }
+                }
+                _flushWaiters.Clear();
+            }
+        }
+
+        // ── HTTP accept loop ────────────────────────────────────────────────────────
+
+        private void AcceptLoop()
+        {
+            while (!_disposed)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = _listener!.GetContext();
+                }
+                catch (Exception) when (_disposed)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[CommandServer] Accept error: {ex.Message}");
+                    continue;
+                }
+
+                ThreadPool.QueueUserWorkItem(_ => HandleContext(context));
+            }
+        }
+
+        private void HandleContext(HttpListenerContext context)
+        {
             try
             {
-                listener = new TcpListener(IPAddress.Loopback, _port);
-                listener.Start();
-                Console.WriteLine($"[CommandServer] Listening on port {_port}...");
-
-                while (!_disposed)
+                string path = context.Request.Url?.AbsolutePath ?? "/";
+                switch (path)
                 {
-                    TcpClient? client = null;
-                    NetworkStream? stream = null;
-                    StreamReader? reader = null;
-                    StreamWriter? writer = null;
-                    Thread? responseThread = null;
-
-                    try
-                    {
-                        client = listener.AcceptTcpClient();
-                        stream = client.GetStream();
-                        Console.WriteLine("[CommandServer] Client connected.");
-
-                        reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
-                        writer = new StreamWriter(stream, Encoding.UTF8, bufferSize: 1024, leaveOpen: true) { AutoFlush = true };
-
-                        _activeWriter = writer;
-                        responseThread = new Thread(ResponseForwarderLoop) { IsBackground = true, Name = "CommandServerResponseForwarder" };
-                        responseThread.Start();
-
-                        bool disconnected = false;
-                        while (!_disposed && !disconnected)
-                        {
-                            string? line = reader.ReadLine();
-                            if (line == null) break;
-
-                            if (line == "disconnect")
-                            {
-                                disconnected = true;
-                                break;
-                            }
-
-                            _pendingCommand = line;
-                            _commandReady.Release();
-                        }
-                    }
-                    catch (Exception ex) when (!_disposed)
-                    {
-                        Console.WriteLine($"[CommandServer] Client exception: {ex.Message}");
-                    }
-                    finally
-                    {
-                        _activeWriter = null;
-                        try { _responseReady.Release(); } catch { }
-                        responseThread?.Join(500);
-
-                        reader?.Dispose();
-                        writer?.Dispose();
-                        stream?.Dispose();
-                        client?.Dispose();
-                        while (_commandReady.CurrentCount > 0)  _commandReady.Wait(0);
-                        while (_responseReady.CurrentCount > 0) _responseReady.Wait(0);
-                        Console.WriteLine("[CommandServer] Client disconnected, waiting for new connection...");
-                    }
+                    case "/command":
+                        HandleCommandRequest(context);
+                        break;
+                    case "/wait-macro":
+                        HandleWaitRequest(context);
+                        break;
+                    case "/flush":
+                        HandleFlushRequest(context);
+                        break;
+                    case "/ping":
+                        Respond(context, "pong");
+                        break;
+                    default:
+                        context.Response.StatusCode = 404;
+                        context.Response.Close();
+                        break;
                 }
             }
             catch (Exception ex) when (!_disposed)
             {
-                Console.WriteLine($"[CommandServer] Listener exception: {ex.Message}");
-            }
-            finally
-            {
-                listener?.Stop();
+                Console.WriteLine($"[CommandServer] Request exception: {ex.Message}");
+                try { context.Response.Abort(); } catch { }
             }
         }
 
-        private void ResponseForwarderLoop()
+        private void HandleCommandRequest(HttpListenerContext context)
         {
-            while (!_disposed)
+            string body = ReadBodyText(context.Request);
+            if (!string.IsNullOrEmpty(body))
             {
-                _responseReady.Wait();
-                StreamWriter? w = _activeWriter;
-                if (w == null) break;
+                string[] cmds = body.Split('|');
 
-                string resp = _pendingResponse ?? "";
-                _pendingResponse = null;
-                try
-                {
-                    w.WriteLine(resp);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[CommandServer] ResponseForwarder write error: {ex.Message}");
-                    break;
-                }
+                // Mark a macro outstanding on the submitting thread so a /wait-macro that
+                // arrives before the frame thread runs cannot race past it.
+                if (Completes(cmds, "macro_string_", "macro_clear"))
+                    lock (_completionLock) { _macroPending = true; }
+
+                _commandQueue.Enqueue(body);
             }
+            Respond(context, "ok");
+        }
+
+        private static bool Completes(string[] cmds, params string[] prefixes)
+        {
+            foreach (string c in cmds)
+                foreach (string prefix in prefixes)
+                    if (c == prefix || c.StartsWith(prefix))
+                        return true;
+            return false;
+        }
+
+        private void HandleWaitRequest(HttpListenerContext context)
+        {
+            ManualResetEventSlim mre;
+            lock (_completionLock)
+            {
+                if (!_macroPending)
+                {
+                    // Nothing running — the macro is (already) done.
+                    Respond(context, "done");
+                    return;
+                }
+                mre = new ManualResetEventSlim(false);
+                _macroWaiters.Add(mre);
+            }
+
+            bool signaled = mre.Wait(WaitPollWindowMs);
+            lock (_completionLock)
+            {
+                _macroWaiters.Remove(mre);
+                // Report "done" only if the macro actually completed (we were signalled, or the
+                // pending flag cleared during our wait). On a plain timeout, tell the client to
+                // poll again so a long macro is never mistaken for a finished one.
+                bool done = signaled || !_macroPending;
+                mre.Dispose();
+                Respond(context, done ? "done" : "pending");
+            }
+        }
+
+        private void HandleFlushRequest(HttpListenerContext context)
+        {
+            // Submit the flush and register a waiter atomically.
+            var mre = new ManualResetEventSlim(false);
+            lock (_completionLock)
+            {
+                _flushWaiters.Add(mre);
+            }
+            _commandQueue.Enqueue("flush");
+
+            mre.Wait(WaitPollWindowMs);
+            lock (_completionLock) { _flushWaiters.Remove(mre); }
+            mre.Dispose();
+
+            Respond(context, "flushed");
+        }
+
+        // ── HTTP helpers ──────────────────────────────────────────────────────────
+
+        private static string ReadBodyText(HttpListenerRequest request)
+        {
+            using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
+            return reader.ReadToEnd().Trim();
+        }
+
+        private static void Respond(HttpListenerContext context, string text)
+        {
+            byte[] buf = Encoding.UTF8.GetBytes(text);
+            var resp = context.Response;
+            resp.StatusCode = 200;
+            resp.ContentType = "text/plain";
+            resp.ContentLength64 = buf.Length;
+            resp.OutputStream.Write(buf, 0, buf.Length);
+            resp.OutputStream.Close();
+            resp.Close();
         }
 
         // ── IDisposable ───────────────────────────────────────────────────────────
@@ -499,11 +624,12 @@ namespace ApiHawk
         public void Dispose()
         {
             _disposed = true;
-            _activeWriter = null;
-            try { _responseReady.Release(); } catch { }
-            try { _commandReady.Release(); } catch { }
-            _commandReady.Dispose();
-            _responseReady.Dispose();
+            try { _listener?.Stop(); } catch { }
+            try { _listener?.Close(); } catch { }
+
+            // Release any blocked waiters so their requests can return.
+            SignalMacroDone();
+            SignalFlushDone();
         }
     }
 }

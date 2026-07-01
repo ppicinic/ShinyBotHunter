@@ -109,10 +109,10 @@ namespace ShinyBotHunter.Service
             return phaseInfo;
         }
 
-        //TODO this should probably return PhaseInfo? and check that the phase actually exists.
-        public PhaseInfo GetPhaseInfo(GameFlavor game, string phase)
+        public PhaseInfo? GetPhaseInfo(GameFlavor game, string phase)
         {
-            return phaseInfos[new GamePhase(game, phase, null)];
+            phaseInfos.TryGetValue(new GamePhase(game, phase, null), out var info);
+            return info;
         }
 
         public Dictionary<GameFlavor, PhaseInfo[]> GetAllPhases(IEnumerable<GameFlavor> games)

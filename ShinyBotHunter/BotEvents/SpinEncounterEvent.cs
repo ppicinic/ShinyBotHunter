@@ -1,5 +1,6 @@
 ﻿using DnsClient;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Util;
 using System.Text;
 
 namespace ShinyBotHunter.BotEvents
@@ -38,9 +39,7 @@ namespace ShinyBotHunter.BotEvents
             var battleValue = await bot.ReadByteAsync(battleIndicator);
             while (!(battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0) && !cancellationToken.IsCancellationRequested)
             {
-                await Task.Delay(166); // sleep 10 frames before re-polling memory -
-                                       // this is semi dangerous we don't know how slow the memory read is and we want to read on ever 10 frames
-                                       // regardless of the delay, so real implementition needs a better solution
+                await Task.Delay(Constant.PollIntervalMs);
                 battleValue = await bot.ReadByteAsync(battleIndicator);
             }
             bot.ClearMacro();

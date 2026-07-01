@@ -2,6 +2,11 @@
 {
     public class Constant
     {
+        // Interval used by state-polling loops (battle end, overworld, warp detection).
+        // Memory reads now go over concurrent HTTP, so we poll close to the frame rate
+        // (~30 fps) instead of the old 100-166ms cadence.
+        public const int PollIntervalMs = 33;
+
         public const byte MAP_Free = 0;
         public const byte MAP_Portal1 = 1;
         public const byte MAP_Portal2 = 2;

@@ -1,45 +1,55 @@
 using System;
+using System.Collections.Concurrent;
+using System.IO;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using BizHawk.Client.Common;
 
 namespace ApiHawk
 {
     /// <summary>
-    /// TCP memory server — drop-in C# replacement for the Lua MemoryServer.lua.
+    /// HTTP memory server — replaces the previous raw-TCP memory server.
     ///
-    /// Listens on a TCP port (read from BIZHAWK_MEMORY_PORT env var, default 50001).
-    /// Protocol is identical to the Lua version:
-    ///   Request  : [cmd:1][addr:4 LE][aux:4 LE]
-    ///   cmd 0x01 : read  aux bytes from addr  → response: aux bytes
-    ///   cmd 0x02 : write aux&amp;0xFF to addr      → response: 0x01 (ack)
-    ///   cmd 0xFF : disconnect
+    /// Listens on http://127.0.0.1:{port}/ (port read from BIZHAWK_MEMORY_PORT, default 50001).
+    /// Binding to the explicit loopback IP avoids needing a Windows URL-ACL reservation.
+    ///
+    /// Wire format is unchanged — the request body is the same 9-byte binary header the
+    /// clients already build, and the response body is the raw result:
+    ///   Request body : [cmd:1][addr:4 LE][aux:4 LE]
+    ///   cmd 0x01     : read  aux bytes from addr  → response body: aux bytes
+    ///   cmd 0x02     : write aux&amp;0xFF to addr      → response body: 0x01 (ack)
     ///
     /// Thread model:
-    ///   TCP thread   — dedicated background Thread; blocks on AcceptTcpClient, reads 9-byte headers,
-    ///                  posts work to the frame thread via _requestReady, blocks on _requestComplete.
-    ///   Frame thread — BizHawk's UpdateValues(PostFrame) callback; checks _requestReady each frame
-    ///                  (non-blocking), calls IMemoryApi, stores result, releases _requestComplete.
+    ///   Accept thread — blocks on HttpListener.GetContext, hands each request to the thread
+    ///                   pool so many callers can poll concurrently.
+    ///   Handler (pool)— parses the body, enqueues a MemoryRequest, blocks on its completion
+    ///                   handle, then writes the result. The emulator's IMemoryApi is never
+    ///                   touched here — only on the frame thread.
+    ///   Frame thread  — BizHawk's UpdateValues(PostFrame) callback; drains the whole request
+    ///                   queue each frame (FIFO), calls IMemoryApi, and signals each request.
     /// </summary>
     internal sealed class MemoryServer : IDisposable
     {
-        // ── Shared state written by TCP thread, read by frame thread ─────────────
-        private volatile byte _pendingCmd;
-        private volatile uint _pendingAddr;
-        private volatile uint _pendingAux;
+        private sealed class MemoryRequest
+        {
+            public byte Cmd;
+            public uint Addr;
+            public uint Aux;
+            public byte[] Result = Array.Empty<byte>();
+            public readonly ManualResetEventSlim Done = new ManualResetEventSlim(false);
+        }
 
-        // ── Response written by frame thread, read by TCP thread ──────────────────
-        private volatile byte[]? _responseData;
+        // ── Request queue: handler threads → frame thread ─────────────────────────
+        private readonly ConcurrentQueue<MemoryRequest> _queue = new ConcurrentQueue<MemoryRequest>();
 
-        // ── Synchronisation ───────────────────────────────────────────────────────
-        private readonly SemaphoreSlim _requestReady    = new SemaphoreSlim(0, 1);
-        private readonly SemaphoreSlim _requestComplete = new SemaphoreSlim(0, 1);
-
-        // ── TCP infrastructure ────────────────────────────────────────────────────
+        // ── HTTP infrastructure ───────────────────────────────────────────────────
         private readonly int _port;
         private volatile bool _disposed;
-        private Thread? _tcpThread;
+        private HttpListener? _listener;
+        private Thread? _acceptThread;
+
+        // How long a handler waits for the frame thread before giving up.
+        private const int FrameWaitTimeoutMs = 5000;
 
         // ── BizHawk API ───────────────────────────────────────────────────────────
         public IMemoryApi? MemoryApi { get; set; }
@@ -51,138 +61,147 @@ namespace ApiHawk
 
         public void Start()
         {
-            _tcpThread = new Thread(TcpLoop) { IsBackground = true, Name = "MemoryServer" };
-            _tcpThread.Start();
+            _listener = new HttpListener();
+            _listener.Prefixes.Add($"http://127.0.0.1:{_port}/");
+            _listener.Start();
+
+            _acceptThread = new Thread(AcceptLoop) { IsBackground = true, Name = "MemoryServer" };
+            _acceptThread.Start();
+
+            Console.WriteLine($"[MemoryServer] Listening on http://127.0.0.1:{_port}/ ...");
         }
 
         // ── Called by BotServerTool.UpdateValues(PostFrame) every frame ───────────
 
         public void ServiceFrame()
         {
-            if (!_requestReady.Wait(0))
-                return;
-
-            if (MemoryApi == null)
+            while (_queue.TryDequeue(out MemoryRequest req))
             {
-                _responseData = Array.Empty<byte>();
-                _requestComplete.Release();
-                return;
-            }
-
-            byte cmd  = _pendingCmd;
-            uint addr = _pendingAddr;
-            uint aux  = _pendingAux;
-
-            if (cmd == 0x01)
-            {
-                var list = MemoryApi.ReadByteRange((long)addr, (int)aux);
-                byte[] buf = new byte[list.Count];
-                for (int i = 0; i < list.Count; i++)
-                    buf[i] = list[i];
-                _responseData = buf;
-            }
-            else if (cmd == 0x02)
-            {
-                MemoryApi.WriteByte((long)addr, aux & 0xFF);
-                _responseData = new byte[] { 0x01 };
-            }
-            else
-            {
-                _responseData = Array.Empty<byte>();
-            }
-
-            _requestComplete.Release();
-        }
-
-        // ── TCP loop ──────────────────────────────────────────────────────────────
-
-        private void TcpLoop()
-        {
-            TcpListener? listener = null;
-            try
-            {
-                listener = new TcpListener(IPAddress.Loopback, _port);
-                listener.Start();
-                Console.WriteLine($"[MemoryServer] Listening on port {_port}...");
-
-                while (!_disposed)
+                try
                 {
-                    TcpClient? client = null;
-                    NetworkStream? stream = null;
-                    try
+                    if (MemoryApi == null)
                     {
-                        client = listener.AcceptTcpClient();
-                        stream = client.GetStream();
-                        Console.WriteLine("[MemoryServer] Client connected.");
-
-                        var header = new byte[9];
-                        while (!_disposed)
-                        {
-                            if (!ReadExact(stream, header))
-                                break;
-
-                            byte cmd  = header[0];
-                            uint addr = ReadU32Le(header, 1);
-                            uint aux  = ReadU32Le(header, 5);
-
-                            if (cmd == 0xFF)
-                            {
-                                Console.WriteLine("[MemoryServer] Disconnect requested.");
-                                break;
-                            }
-
-                            _pendingCmd  = cmd;
-                            _pendingAddr = addr;
-                            _pendingAux  = aux;
-                            _requestReady.Release();
-
-                            if (!_requestComplete.Wait(5000))
-                            {
-                                Console.WriteLine("[MemoryServer] Frame thread timeout.");
-                                break;
-                            }
-
-                            byte[] resp = _responseData ?? Array.Empty<byte>();
-                            stream.Write(resp, 0, resp.Length);
-                            stream.Flush();
-                        }
+                        req.Result = Array.Empty<byte>();
                     }
-                    catch (Exception ex) when (!_disposed)
+                    else if (req.Cmd == 0x01)
                     {
-                        Console.WriteLine($"[MemoryServer] Client exception: {ex.Message}");
+                        var list = MemoryApi.ReadByteRange((long)req.Addr, (int)req.Aux);
+                        byte[] buf = new byte[list.Count];
+                        for (int i = 0; i < list.Count; i++)
+                            buf[i] = list[i];
+                        req.Result = buf;
                     }
-                    finally
+                    else if (req.Cmd == 0x02)
                     {
-                        stream?.Dispose();
-                        client?.Dispose();
-                        while (_requestReady.CurrentCount > 0)    _requestReady.Wait(0);
-                        while (_requestComplete.CurrentCount > 0) _requestComplete.Wait(0);
-                        Console.WriteLine("[MemoryServer] Client disconnected, waiting for new connection...");
+                        MemoryApi.WriteByte((long)req.Addr, req.Aux & 0xFF);
+                        req.Result = new byte[] { 0x01 };
+                    }
+                    else
+                    {
+                        req.Result = Array.Empty<byte>();
                     }
                 }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MemoryServer] Frame processing error: {ex.Message}");
+                    req.Result = Array.Empty<byte>();
+                }
+                finally
+                {
+                    // The handler may have already given up and disposed Done on timeout.
+                    try { req.Done.Set(); } catch { }
+                }
+            }
+        }
+
+        // ── HTTP accept loop ────────────────────────────────────────────────────────
+
+        private void AcceptLoop()
+        {
+            while (!_disposed)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = _listener!.GetContext();
+                }
+                catch (Exception) when (_disposed)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MemoryServer] Accept error: {ex.Message}");
+                    continue;
+                }
+
+                ThreadPool.QueueUserWorkItem(_ => HandleContext(context));
+            }
+        }
+
+        private void HandleContext(HttpListenerContext context)
+        {
+            HttpListenerResponse response = context.Response;
+            MemoryRequest? req = null;
+            try
+            {
+                byte[]? header = ReadExact(context.Request.InputStream, 9);
+                if (header == null)
+                {
+                    response.StatusCode = 400;
+                    response.Close();
+                    return;
+                }
+
+                req = new MemoryRequest
+                {
+                    Cmd  = header[0],
+                    Addr = ReadU32Le(header, 1),
+                    Aux  = ReadU32Le(header, 5),
+                };
+                _queue.Enqueue(req);
+
+                if (!req.Done.Wait(FrameWaitTimeoutMs))
+                {
+                    Console.WriteLine("[MemoryServer] Frame thread timeout.");
+                    response.StatusCode = 504;
+                    response.Close();
+                    return;
+                }
+
+                byte[] result = req.Result;
+                response.StatusCode = 200;
+                response.ContentType = "application/octet-stream";
+                response.ContentLength64 = result.Length;
+                if (result.Length > 0)
+                    response.OutputStream.Write(result, 0, result.Length);
+                response.OutputStream.Close();
+                response.Close();
             }
             catch (Exception ex) when (!_disposed)
             {
-                Console.WriteLine($"[MemoryServer] Listener exception: {ex.Message}");
+                Console.WriteLine($"[MemoryServer] Request exception: {ex.Message}");
+                try { response.Abort(); } catch { }
             }
             finally
             {
-                listener?.Stop();
+                req?.Done.Dispose();
             }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────
 
-        private static bool ReadExact(NetworkStream stream, byte[] buf)
+        private static byte[]? ReadExact(Stream stream, int count)
         {
+            var buf = new byte[count];
             int offset = 0;
-            while (offset < buf.Length)
+            while (offset < count)
             {
-                int read = stream.Read(buf, offset, buf.Length - offset);
-                if (read == 0) return false;
+                int read = stream.Read(buf, offset, count - offset);
+                if (read == 0) return null;
                 offset += read;
             }
-            return true;
+            return buf;
         }
 
         private static uint ReadU32Le(byte[] buf, int offset)
@@ -198,10 +217,15 @@ namespace ApiHawk
         public void Dispose()
         {
             _disposed = true;
-            try { _requestComplete.Release(); } catch { }
-            try { _requestReady.Release(); } catch { }
-            _requestReady.Dispose();
-            _requestComplete.Dispose();
+            try { _listener?.Stop(); } catch { }
+            try { _listener?.Close(); } catch { }
+
+            // Unblock any handlers still waiting on the frame thread.
+            while (_queue.TryDequeue(out MemoryRequest req))
+            {
+                req.Result = Array.Empty<byte>();
+                try { req.Done.Set(); } catch { }
+            }
         }
     }
 }

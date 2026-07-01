@@ -9,6 +9,7 @@ using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
+using ShinyBotHunter.Util;
 using System.Diagnostics.Eventing.Reader;
 using YamlDotNet.Core;
 using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
@@ -283,7 +284,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine("hit");
             while (!endWait)
             {
-                await Task.Delay(100);
+                await Task.Delay(Constant.PollIntervalMs);
                 try
                 {
                     if(state.PendingEvolutions.Count() > 0 && await state.Bot.GetBattleState() == 14)
@@ -344,13 +345,18 @@ namespace ShinyBotHunter.BotEvents
             bool moveEnd = false;
             while (!moveEnd)
             {
-                await Task.Delay(100);
+                await Task.Delay(Constant.PollIntervalMs);
                 if(!IsBattle(await state.Bot.GetBattleValue()))
                 {
+                    // Battle has ended (e.g. a successful escape). Commit to BattleComplete and
+                    // stop here — re-reading the now-stale battle memory below could otherwise
+                    // override this back into DecideAction and loop on the overworld.
                     state.SwapState(EventState.BattleComplete);
                     moveEnd = true;
+                    continue;
                 }
-                if (await reader.GetPokemonBattleState(state.Bot) is var battleState && await state.Bot.GetBattleMenuState() == 1)
+                var battleState = await reader.GetPokemonBattleState(state.Bot);
+                if (battleState is not null && await state.Bot.GetBattleMenuState() == 1)
                 {
                     state.State.Pop();
                     state.State.Push(EventState.DecideAction);
@@ -370,7 +376,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     state.State.Pop();
                     state.State.Push(EventState.EnemyFainted);
-                    // we don't override state here. we could level up and that this could hide the level up. 
+                    // we don't override state here. we could level up and that this could hide the level up.
                     moveEnd = true;
                 }
             }
@@ -445,7 +451,7 @@ namespace ShinyBotHunter.BotEvents
             var foeCount = await bot.ReadByteAsync(foeCountPtr);
             while (foeCount == 0)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchorPtr = anchor + 0x6930;
                 foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
@@ -456,7 +462,7 @@ namespace ShinyBotHunter.BotEvents
             PokemonData? pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
             while (pokemon is null || pokemon.IsCorrupt)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchor = await bot.ReadUIntAsync(anchor + 0x6930);
                 pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
@@ -472,7 +478,7 @@ namespace ShinyBotHunter.BotEvents
             byte battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
             while (battleMenuState != 1)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 battleMenuStatePtr = anchor + 0x230EC;
                 battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);

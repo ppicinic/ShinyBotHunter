@@ -2,6 +2,9 @@
 # C# / .NET
 # =============================================================================
 
+.claude/settings.local.json
+CLAUDE.md
+
 **/ApiHawk/lib/*.dll
 **/ApiHawk/lib/*.exe
 **config_sound_on.ini

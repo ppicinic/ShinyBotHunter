@@ -30,7 +30,7 @@ namespace ShinyBotHunter.Bot
 
         public async Task<byte> GetBattleMenuState()
         {
-            return await bot.ReadByteAsync( + BattleMenuState);
+            return await bot.ReadByteAsync(await bot.ReadUIntAsync(Anchor) + BattleMenuState);
         }
 
         public async Task<byte> GetBattleValue()
