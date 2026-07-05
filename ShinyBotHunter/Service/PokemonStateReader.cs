@@ -172,7 +172,7 @@ namespace ShinyBotHunter.Service
             return state;
         }
 
-        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot)
+        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot, int timeoutMs = 1000)
         {
             uint anchor = await bot.ReadUIntAsync(pointerService.Anchor);
             byte partyCount = await bot.ReadByteAsync((uint)(anchor + pointerService.PartySize));
@@ -184,7 +184,7 @@ namespace ShinyBotHunter.Service
                 var pokemon = parser.Parse(await bot.ReadBytesAsync(anchor + pointerService.BattlePartyPokemon + (i * 0xEC), 0xEC));
                 while (pokemon is null || pokemon.IsCorrupt)
                 {
-                    if(sw.ElapsedMilliseconds > 2000)
+                    if(sw.ElapsedMilliseconds > timeoutMs)
                     {
                         sw.Stop();
                         return null;

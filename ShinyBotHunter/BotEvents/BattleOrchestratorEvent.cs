@@ -342,43 +342,93 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task WaitForMoveEnd(GameState state)
         {
-            bool moveEnd = false;
-            while (!moveEnd)
+            using var cts = new CancellationTokenSource();
+            CancellationToken ct = cts.Token;
+
+            // Poll each end-of-move condition concurrently and act on whichever trips first.
+            // The cheap battle-end check no longer waits behind the heavy battle-state read.
+            var tasks = new List<Task<(EventState next, PokemonBattleState? bs)?>>
             {
-                await Task.Delay(Constant.PollIntervalMs);
-                if(!IsBattle(await state.Bot.GetBattleValue()))
+                PollBattleEnded(ct),
+                PollMenuUp(ct),
+                PollFaints(ct),
+            };
+
+            (EventState next, PokemonBattleState? bs)? outcome = null;
+            while (outcome is null && tasks.Count > 0)
+            {
+                var finished = await Task.WhenAny(tasks);
+                tasks.Remove(finished);
+                outcome = await finished; // non-null: this task detected its condition
+            }
+
+            cts.Cancel(); // stop the losing polls
+
+            if (outcome is null)
+                return;
+
+            state.SwapState(outcome.Value.next);
+            if (outcome.Value.bs is not null)
+                state.BattleState = outcome.Value.bs;
+
+            // ── Local poll tasks ────────────────────────────────────────────────────
+            // Battle ended (e.g. a successful escape). One cheap byte read, polled at full rate.
+            async Task<(EventState, PokemonBattleState?)?> PollBattleEnded(CancellationToken token)
+            {
+                try
                 {
-                    // Battle has ended (e.g. a successful escape). Commit to BattleComplete and
-                    // stop here — re-reading the now-stale battle memory below could otherwise
-                    // override this back into DecideAction and loop on the overworld.
-                    state.SwapState(EventState.BattleComplete);
-                    moveEnd = true;
-                    continue;
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (!IsBattle(await state.Bot.GetBattleValue()))
+                            return (EventState.BattleComplete, null);
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                var battleState = await reader.GetPokemonBattleState(state.Bot);
-                if (battleState is not null && await state.Bot.GetBattleMenuState() == 1)
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
+            }
+
+            // Command menu is back up → decide the next action. Guarded on a valid battle state
+            // so a stale post-battle read can't push DecideAction (the bug-2b invariant).
+            async Task<(EventState, PokemonBattleState?)?> PollMenuUp(CancellationToken token)
+            {
+                try
                 {
-                    state.State.Pop();
-                    state.State.Push(EventState.DecideAction);
-                    state.BattleState = battleState;
-                    moveEnd = true;
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (await state.Bot.GetBattleMenuState() == 1)
+                        {
+                            var battleState = await reader.GetPokemonBattleState(state.Bot);
+                            if (battleState is not null)
+                                return (EventState.DecideAction, battleState);
+                        }
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                // TODO we could hit a point of both fainting.
-                else if(battleState is not null && battleState.ActivePokemon.HP == 0)
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
+            }
+
+            // A combatant fainted. Both checks share one battle-state read.
+            async Task<(EventState, PokemonBattleState?)?> PollFaints(CancellationToken token)
+            {
+                try
                 {
-                    // action if our pokemon dies
-                    state.State.Pop();
-                    state.State.Push(EventState.OurPokemonFainted);
-                    //state.BattleState = battleState;
-                    moveEnd = true;
+                    while (!token.IsCancellationRequested)
+                    {
+                        var battleState = await reader.GetPokemonBattleState(state.Bot);
+                        if (battleState is not null)
+                        {
+                            if (battleState.ActivePokemon.HP == 0)
+                                return (EventState.OurPokemonFainted, null);
+                            if (battleState.EnemyPokemon.HP == 0)
+                                return (EventState.EnemyFainted, null);
+                        }
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                else if(battleState is not null && battleState.EnemyPokemon.HP == 0)
-                {
-                    state.State.Pop();
-                    state.State.Push(EventState.EnemyFainted);
-                    // we don't override state here. we could level up and that this could hide the level up.
-                    moveEnd = true;
-                }
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
             }
         }
 

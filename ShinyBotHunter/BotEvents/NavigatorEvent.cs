@@ -2,6 +2,7 @@ using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Util;
+using System.Diagnostics;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -10,6 +11,10 @@ namespace ShinyBotHunter.BotEvents
         public override EventState EventState => throw new NotImplementedException();
 
         private readonly PathfindingService pathfindingService;
+
+        // Upper bound on how long we wait for the overworld coordinates to populate after a
+        // battle before giving up and proceeding anyway.
+        private const int OverworldReadyTimeoutMs = 3000;
 
         public NavigatorEvent(PathfindingService pathfindingService)
         {
@@ -32,6 +37,7 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task GoToPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
+            await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
             if (state.NavigationPath is null)
             {
                 var mapId = (int)await state.Bot.GetMapId();
@@ -74,6 +80,7 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
         {
+            await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
             if (state.NavigationPath is null)
             {
                 var mapId = (int)await state.Bot.GetMapId();
@@ -111,6 +118,10 @@ namespace ShinyBotHunter.BotEvents
         // in-progress segment so the A* can be recomputed on resume).
         private async Task<bool> ExecuteNavigationAsync(GameState state, CancellationToken cancellationToken)
         {
+            // Covers resuming navigation right after a mid-route battle, where the first
+            // segment's position read would otherwise hit the post-battle (0,0).
+            await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
+
             var path = state.NavigationPath!;
 
             while (state.NavigationPathIndex < path.Count - 1)
@@ -232,6 +243,23 @@ namespace ShinyBotHunter.BotEvents
             }
             bot.RunMacroString("W.60");
             await bot.WaitForMacroAsync(cancellationToken);
+        }
+
+        // After a battle the overworld coordinates read (0,0) for a moment while the field
+        // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
+        private async Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
+        {
+            var sw = Stopwatch.StartNew();
+            while (!cancellationToken.IsCancellationRequested && sw.ElapsedMilliseconds < OverworldReadyTimeoutMs)
+            {
+                var x = await bot.GetTrainerXPos();
+                var y = await bot.GetTrainerYPos();
+                // Neither coord can be negative. An edge tile (one == 0) is valid, but both-zero
+                // and any negative are the not-loaded values (e.g. (0,0), (0,-1)).
+                if (x >= 0 && y >= 0 && (x > 0 || y > 0))
+                    return;
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
+            }
         }
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
