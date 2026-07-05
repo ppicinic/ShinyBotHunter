@@ -175,7 +175,7 @@ namespace ShinyBotHunter.BotEvents
                 return;
             }
 
-            if (CanBattle(lead) || state.OriginalBattleMode == BattleMode.Flee)
+            if (state.OriginalBattleMode == BattleMode.Flee || CanBattle(lead))
             {
                 state.BattleMode = state.OriginalBattleMode;
                 state.SwapState(EventState.Encountering);
