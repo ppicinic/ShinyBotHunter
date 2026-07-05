@@ -32,16 +32,24 @@ namespace ShinyBotHunter.Macro
         private static readonly Regex TapRegex = new(@"T\.([^;:.]+)", RegexOptions.Compiled);
         private static readonly Regex RandomRegex = new(@"W\.R\[(\d+),(\d+)\]", RegexOptions.Compiled);
         private static readonly Regex TouchShorthandRegex = new(@"S\.([A-Za-z]+)(?:\.(\d+))?", RegexOptions.Compiled);
+        private static readonly Regex HexTokenRegex = new(@"0x[0-9A-Fa-f]+", RegexOptions.Compiled);
 
         private readonly Random _random = new();
 
         public string Process(string macro)
         {
             string result = macro;
+            result = ConvertHexToDecimal(result);
             result = ConvertTaps(result);
             result = ConvertRandomWaits(result);
             result = ConvertTouchShorthands(result);
             return result;
+        }
+
+        private string ConvertHexToDecimal(string macro)
+        {
+            return HexTokenRegex.Replace(macro, m =>
+                Convert.ToUInt32(m.Value, 16).ToString());
         }
 
         private string ConvertTaps(string macro)

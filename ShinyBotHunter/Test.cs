@@ -1,7 +1,9 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts;
@@ -14,6 +16,36 @@ namespace ShinyBotHunter
 {
     public class Test
     {
+        public async Task TestReadCoordinates(IServiceProvider provider)
+        {
+            // Connect to an already-running emulator's memory channel.
+            var mem = new BizHawkMemoryClient(port: 50001);
+            mem.Connect();
+            var reader = new HgssDataReader(mem);
+
+            Console.WriteLine("Press any key to read X/Y/MapId, or Escape to quit.");
+            while (Console.ReadKey(intercept: true).Key != ConsoleKey.Escape)
+            {
+                var x = await reader.GetTrainerXPos();
+                var y = await reader.GetTrainerYPos();
+                var mapId = await reader.GetMapId();
+                Console.WriteLine($"X: {x}, Y: {y}, MapId: {mapId}");
+            }
+        }
+
+        public async Task TestHealPokemonMacro(IServiceProvider provider)
+        {
+            // Connect to an already-running emulator on the default command port.
+            var cmd = new BizHawkCommandClient(port: 50000);
+            cmd.Connect();
+
+            string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "HealPokemon");
+            Console.WriteLine($"Running HealPokemon macro: {macro}");
+            cmd.RunMacroString(macro);
+            await cmd.WaitForMacroAsync();
+            Console.WriteLine("HealPokemon macro complete.");
+        }
+
         public async Task TestBattleStateReader(IServiceProvider provider)
         {
             var reader = provider.GetRequiredService<PokemonStateReader>();
@@ -32,6 +64,38 @@ namespace ShinyBotHunter
                 var state2 = await reader.GetPokemonState(mem);
                 c = Console.ReadLine()!;
             }
+        }
+
+        public async Task TestTrainModeOrchestrator(IServiceProvider provider)
+        {
+            var mem = new BizHawkMemoryClient(port: 50001);
+            var cmd = new BizHawkCommandClient(port: 50000);
+            var bot = new Bot.Bot(new EmptyTestLauncher("Pokemon Soulsilver"), cmd, mem, new HgssDataReader(mem));
+            await bot.LaunchAsync();
+
+            var state = new GameState
+            {
+                Bot = bot,
+                Target = new ShinyTarget(),
+                GameFlavor = GameFlavor.HGSS,
+                OriginalBattleMode = BattleMode.Battle,
+                TrainMode = true,
+                TargetLevel = 99,
+                Milestone = "Test",
+            };
+            state.State.Push(EventState.Init);
+
+            var orchestrator = new OrchestratorEvent(provider, new EncounterParams(EncounterType.Run, 0, 2));
+
+            CancellationTokenSource cts = new CancellationTokenSource();
+            Console.WriteLine("Press Enter to cancel.");
+            var runTask = orchestrator.ExecuteWithResultAsync(state, cts.Token);
+            _ = Task.Run(() => { Console.ReadLine(); cts.Cancel(); });
+
+            try { await runTask; }
+            catch (OperationCanceledException) { Console.WriteLine("Cancelled."); }
+
+            Console.WriteLine($"Final state: {(state.State.TryPeek(out var s) ? s.ToString() : "empty")}");
         }
 
         public async Task TestBattleEvent(IServiceProvider provider)

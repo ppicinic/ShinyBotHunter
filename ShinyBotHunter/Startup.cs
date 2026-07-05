@@ -46,11 +46,17 @@ namespace ShinyBotHunter
             app.MapControllers().AsRequiredPort(5000);
             app.MapHub<ElectronHub>("/socket-api").AsRequiredPort(5001);
 
+            bool isParseMode = args.Length > 0 && (args[0].ToLower() == "--parsepokeapi" || args[0].ToLower() == "--parsepokemoveapi");
+
             await services.GetRequiredService<DiscordBotService>().StartAsync();
             await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
             services.GetRequiredService<IEncounterDao>().Init();
-            await services.GetRequiredService<PokemonMetadataService>().InitAsync();
-            await services.GetRequiredService<PhaseInfoService>().InitAsync();
+            // TODO this is jank we should make the modules lazy loaded.
+            if (!isParseMode)
+            {
+                await services.GetRequiredService<PokemonMetadataService>().InitAsync();
+                await services.GetRequiredService<PhaseInfoService>().InitAsync();
+            }
             services.GetRequiredService<NotificationService>().Init();
             services.GetRequiredService<MongoCaughtPokemonDao>().Init();
             services.GetRequiredService<PokemonPersistenceService>().Init();
@@ -86,7 +92,8 @@ namespace ShinyBotHunter
             {
                 await MainRunnerAsync(app, services);
                 //await TestAsync(services);
-                //await new Test().TestBattleEvent(services);
+                //await new Test().TestHealPokemonMacro(services);
+                //await new Test().TestTrainModeOrchestrator(services);
             }
 
             await services.GetRequiredService<SmogonDamageService>().DisposeAsync();

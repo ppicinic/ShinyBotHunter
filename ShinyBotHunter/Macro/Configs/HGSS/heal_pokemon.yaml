@@ -1,0 +1,18 @@
+name: HealPokemon
+flavor: HGSS
+steps:
+ - M.Up.13.0x21DA6FC
+ - T.A
+ - W.75
+ - T.A
+ - W.75
+ - T.A
+ - W.120
+ - T.A
+ - W.665
+ - T.A
+ - W.90
+ - T.A
+ - W.150
+ - T.A
+ - W.30

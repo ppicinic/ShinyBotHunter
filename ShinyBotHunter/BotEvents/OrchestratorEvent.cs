@@ -75,6 +75,7 @@ namespace ShinyBotHunter.BotEvents
             while(state.State.Count != 0 && state.State.Peek() != EventState.Complete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
             {
                 EventState topState = state.State.Peek();
+                Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
                     await DecideOverworldAction(state);

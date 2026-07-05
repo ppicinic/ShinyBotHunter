@@ -9,6 +9,7 @@ using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
+using ShinyBotHunter.Util;
 using System.Diagnostics.Eventing.Reader;
 using YamlDotNet.Core;
 using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
@@ -283,7 +284,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine("hit");
             while (!endWait)
             {
-                await Task.Delay(100);
+                await Task.Delay(Constant.PollIntervalMs);
                 try
                 {
                     if(state.PendingEvolutions.Count() > 0 && await state.Bot.GetBattleState() == 14)
@@ -341,38 +342,93 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task WaitForMoveEnd(GameState state)
         {
-            bool moveEnd = false;
-            while (!moveEnd)
+            using var cts = new CancellationTokenSource();
+            CancellationToken ct = cts.Token;
+
+            // Poll each end-of-move condition concurrently and act on whichever trips first.
+            // The cheap battle-end check no longer waits behind the heavy battle-state read.
+            var tasks = new List<Task<(EventState next, PokemonBattleState? bs)?>>
             {
-                await Task.Delay(100);
-                if(!IsBattle(await state.Bot.GetBattleValue()))
+                PollBattleEnded(ct),
+                PollMenuUp(ct),
+                PollFaints(ct),
+            };
+
+            (EventState next, PokemonBattleState? bs)? outcome = null;
+            while (outcome is null && tasks.Count > 0)
+            {
+                var finished = await Task.WhenAny(tasks);
+                tasks.Remove(finished);
+                outcome = await finished; // non-null: this task detected its condition
+            }
+
+            cts.Cancel(); // stop the losing polls
+
+            if (outcome is null)
+                return;
+
+            state.SwapState(outcome.Value.next);
+            if (outcome.Value.bs is not null)
+                state.BattleState = outcome.Value.bs;
+
+            // ── Local poll tasks ────────────────────────────────────────────────────
+            // Battle ended (e.g. a successful escape). One cheap byte read, polled at full rate.
+            async Task<(EventState, PokemonBattleState?)?> PollBattleEnded(CancellationToken token)
+            {
+                try
                 {
-                    state.SwapState(EventState.BattleComplete);
-                    moveEnd = true;
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (!IsBattle(await state.Bot.GetBattleValue()))
+                            return (EventState.BattleComplete, null);
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                if (await reader.GetPokemonBattleState(state.Bot) is var battleState && await state.Bot.GetBattleMenuState() == 1)
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
+            }
+
+            // Command menu is back up → decide the next action. Guarded on a valid battle state
+            // so a stale post-battle read can't push DecideAction (the bug-2b invariant).
+            async Task<(EventState, PokemonBattleState?)?> PollMenuUp(CancellationToken token)
+            {
+                try
                 {
-                    state.State.Pop();
-                    state.State.Push(EventState.DecideAction);
-                    state.BattleState = battleState;
-                    moveEnd = true;
+                    while (!token.IsCancellationRequested)
+                    {
+                        if (await state.Bot.GetBattleMenuState() == 1)
+                        {
+                            var battleState = await reader.GetPokemonBattleState(state.Bot);
+                            if (battleState is not null)
+                                return (EventState.DecideAction, battleState);
+                        }
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                // TODO we could hit a point of both fainting.
-                else if(battleState is not null && battleState.ActivePokemon.HP == 0)
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
+            }
+
+            // A combatant fainted. Both checks share one battle-state read.
+            async Task<(EventState, PokemonBattleState?)?> PollFaints(CancellationToken token)
+            {
+                try
                 {
-                    // action if our pokemon dies
-                    state.State.Pop();
-                    state.State.Push(EventState.OurPokemonFainted);
-                    //state.BattleState = battleState;
-                    moveEnd = true;
+                    while (!token.IsCancellationRequested)
+                    {
+                        var battleState = await reader.GetPokemonBattleState(state.Bot);
+                        if (battleState is not null)
+                        {
+                            if (battleState.ActivePokemon.HP == 0)
+                                return (EventState.OurPokemonFainted, null);
+                            if (battleState.EnemyPokemon.HP == 0)
+                                return (EventState.EnemyFainted, null);
+                        }
+                        await Task.Delay(Constant.PollIntervalMs, token);
+                    }
                 }
-                else if(battleState is not null && battleState.EnemyPokemon.HP == 0)
-                {
-                    state.State.Pop();
-                    state.State.Push(EventState.EnemyFainted);
-                    // we don't override state here. we could level up and that this could hide the level up. 
-                    moveEnd = true;
-                }
+                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
+                return null;
             }
         }
 
@@ -445,7 +501,7 @@ namespace ShinyBotHunter.BotEvents
             var foeCount = await bot.ReadByteAsync(foeCountPtr);
             while (foeCount == 0)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchorPtr = anchor + 0x6930;
                 foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
@@ -456,7 +512,7 @@ namespace ShinyBotHunter.BotEvents
             PokemonData? pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
             while (pokemon is null || pokemon.IsCorrupt)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchor = await bot.ReadUIntAsync(anchor + 0x6930);
                 pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
@@ -472,7 +528,7 @@ namespace ShinyBotHunter.BotEvents
             byte battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
             while (battleMenuState != 1)
             {
-                await Task.Delay(166);
+                await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 battleMenuStatePtr = anchor + 0x230EC;
                 battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);

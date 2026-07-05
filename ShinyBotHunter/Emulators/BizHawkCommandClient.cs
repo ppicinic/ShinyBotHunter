@@ -1,134 +1,122 @@
-﻿using ShinyBotHunter.Context;
+using ShinyBotHunter.Context;
 using ShinyBotHunter.Macro;
-using System.Text;
-using System.Text.RegularExpressions;
+using System.Net.Http;
 
 namespace ShinyBotHunter.Emulators
 {
+    /// <summary>
+    /// HTTP command client.
+    ///
+    /// Button/macro commands are sent synchronously to <c>POST /command</c> — the call
+    /// blocks until the server has acked the submission, which guarantees the macro is
+    /// registered as "outstanding" before a following <see cref="WaitForMacroAsync"/> is sent
+    /// (so the wait cannot race past it). Completion is a request/response long-poll:
+    /// <c>POST /wait-macro</c> returns immediately if nothing is running, otherwise when the
+    /// macro finishes. All calls retry on transient transport failures.
+    /// </summary>
     public class BizHawkCommandClient : BizHawkClientBase, ICommandClient
     {
-        private StreamWriter? _writer;
-        private StreamReader? _reader;
-
-        public event Action? OnMacroDone;
-        public event Action? OnFlushDone;
-
-        private readonly CancellationTokenSource _cts = new();
         private readonly CommandPreprocessor _preprocessor;
 
-        public BizHawkCommandClient(string host = "127.0.0.1", int port = 50000)
-            : base("BizHawkCommandClient", host, port) {
+        public BizHawkCommandClient(string host = "127.0.0.1", int port = 50100)
+            : base("BizHawkCommandClient", host, port, TimeSpan.FromSeconds(60))
+        {
             _preprocessor = new CommandPreprocessor();
         }
 
         public BizHawkCommandClient(GameContext context)
-            : base("BizHawkCommandClient", "127.0.0.1", context.CommandPort)
+            : base("BizHawkCommandClient", "127.0.0.1", context.CommandPort, TimeSpan.FromSeconds(60))
         {
             _preprocessor = new CommandPreprocessor();
         }
 
-        public new void Connect()
-        {
-            base.Connect();
-            _writer = new StreamWriter(_stream, Encoding.UTF8) { AutoFlush = true };
-            _reader = new StreamReader(_stream, Encoding.UTF8);
-            _ = ListenForEventsAsync(_cts.Token);
-        }
-
         protected override void Disconnect()
         {
-            _writer?.WriteLine("disconnect");
-            _writer?.Flush();
-            Console.WriteLine("disposed");
+            // Connectionless — nothing to tear down.
         }
 
         // ── Input ─────────────────────────────────────────────────────────────────
 
         public void Tap(string button)
-            => _writer!.WriteLine($"hold_{button}_{_preprocessor.DefaultTapFrames}");
+            => SendCommand($"hold_{button}_{_preprocessor.DefaultTapFrames}");
 
         public void Hold(string button)
-            => _writer!.WriteLine($"hold_{button}");
+            => SendCommand($"hold_{button}");
 
         public void HoldFrames(string button, int frames)
-            => _writer!.WriteLine($"hold_{button}_{frames}");
+            => SendCommand($"hold_{button}_{frames}");
 
         public void Release()
-            => _writer!.WriteLine("release");
+            => SendCommand("release");
 
         public void Release(string button)
-            => _writer!.WriteLine($"release_{button}");
+            => SendCommand($"release_{button}");
 
         // ── Macros ────────────────────────────────────────────────────────────────
 
         public void RunMacroString(string macro)
-        {
-            string converted = _preprocessor.Process(macro);
-            _writer!.WriteLine($"macro_string_{converted}");
-        }
-        
+            => SendCommand($"macro_string_{_preprocessor.Process(macro)}");
+
         public void RunMacros(params MacroStruct[] macroStructs)
         {
             string macro = String.Join("|", macroStructs.Select(x =>
-            {
-                return $"{(x.repeat ? "RP_" : "macro_string_")}{_preprocessor.Process(x.macro)}";
-            }));
-            _writer!.WriteLine(macro);
+                $"{(x.repeat ? "RP_" : "macro_string_")}{_preprocessor.Process(x.macro)}"));
+            SendCommand(macro);
         }
 
         public void RunRepeatMacro(string macro)
-        {
-            string converted = _preprocessor.Process(macro);
-            _writer!.WriteLine($"RP_{converted}");
-        }
+            => SendCommand($"RP_{_preprocessor.Process(macro)}");
+
         public void ClearMacro()
-            => _writer!.WriteLine("macro_clear");
+            => SendCommand("macro_clear");
 
         public async Task WaitForMacroAsync(CancellationToken ct = default)
         {
-            var tcs = new TaskCompletionSource();
-            OnMacroDone += Complete;
-            await tcs.Task.WaitAsync(ct);
-            OnMacroDone -= Complete;
-            void Complete() => tcs.TrySetResult(); 
-        }
-
-        // ── Internal ──────────────────────────────────────────────────────────────
-
-        private async Task ListenForEventsAsync(CancellationToken ct)
-        {
-            while (!ct.IsCancellationRequested)
+            // Long-poll: the server holds each request for a bounded window and returns "done"
+            // only when the macro actually completes, otherwise "pending". Loop until done so a
+            // macro longer than one poll window (e.g. walking to the Pokémon Center) is never
+            // mistaken for finished.
+            while (true)
             {
-                string? line = await _reader!.ReadLineAsync(ct);
-                if (line == null) break;
-                if (line == "macro_done") OnMacroDone?.Invoke();
-                if (line == "flushed") OnFlushDone?.Invoke();
-                if (line == "pong") Console.WriteLine("[BizHawkCommandClient] pong");
-            }
-        }
+                ct.ThrowIfCancellationRequested();
+                string result = await ExecuteWithRetryAsync(async () =>
+                {
+                    using var resp = await _http.PostAsync("wait-macro", new StringContent(""), ct).ConfigureAwait(false);
+                    resp.EnsureSuccessStatusCode();
+                    return (await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false)).Trim();
+                }, ct).ConfigureAwait(false);
 
-        public override ValueTask DisposeAsync()
-        {
-            Console.WriteLine("im disposing");
-            try { Disconnect(); } catch { }
-            //Thread.Sleep(10000);
-            _cts.Cancel();
-            _writer?.Dispose();
-            _reader?.Dispose();
-            _stream.Dispose();
-            _tcp.Dispose();
-            return ValueTask.CompletedTask;
-            
+                if (result == "done")
+                    return;
+                // "pending" — macro still running, poll again.
+            }
         }
 
         public async Task FlushSave(CancellationToken ct = default)
         {
-            _writer!.WriteLine("flush");
-            var tcs = new TaskCompletionSource();
-            OnFlushDone += Complete;
-            await tcs.Task.WaitAsync(ct);
-            OnFlushDone -= Complete;
-            void Complete() => tcs.TrySetResult();
+            await ExecuteWithRetryAsync(async () =>
+            {
+                using var resp = await _http.PostAsync("flush", new StringContent(""), ct).ConfigureAwait(false);
+                resp.EnsureSuccessStatusCode();
+                return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            }, ct);
+        }
+
+        // ── Internal ──────────────────────────────────────────────────────────────
+
+        // Synchronous send: blocks until the server acks the command, preserving ordering
+        // with a subsequent WaitForMacroAsync.
+        private void SendCommand(string line)
+        {
+            ExecuteWithRetry(() =>
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "command")
+                {
+                    Content = new StringContent(line),
+                };
+                using var resp = _http.Send(req);
+                resp.EnsureSuccessStatusCode();
+            });
         }
     }
 }
