@@ -151,9 +151,9 @@ namespace ShinyBotHunter.BotEvents
 
                 // Evolution changes species/stats but not level or known moves, so evo.Pokemon
                 // (captured before the evolution animation ran) still accurately reflects the
-                // mon's level and moveset for the first move check. Reading fresh battle state
-                // here would fail/time out if a "trying to learn a move" prompt is already up,
-                // since that screen doesn't parse as a normal battle state.
+                // mon's level and moveset for the first move check. We deliberately do not read
+                // fresh state here: if a move is about to be learned, the "trying to learn a
+                // move" menu may already be up, and reads during that menu crash.
                 var metadata = metadataService.GetPokemonMetadata(evo.EvolutionDetails.EvolveToId);
                 var newMoves = metadata.LevelUpMoves[GameFlavor.HGSS]
                     .Where(x => x.Level == evo.Pokemon.Level || x.Level == 0).ToList();
@@ -164,7 +164,8 @@ namespace ShinyBotHunter.BotEvents
 
                 // Refresh via the real party read, not the battle-state one -- the enemy is
                 // long gone by this point in the flow, so there's nothing for the battle
-                // reader's enemy pointer chain to resolve to.
+                // reader's enemy pointer chain to resolve to. Safe here: any move-learn
+                // decision has already fully resolved back to a normal screen by this point.
                 var freshParty = await reader.GetPokemonState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
             }
@@ -193,21 +194,20 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task<PokemonData> ProcessMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves)
         {
-            bool first = true;
+            // Reads are safe in the in-battle learn-move flow (unlike the evolution flow), so
+            // every iteration starts from a fresh read. ApplyLearnedMove additionally records
+            // each learn on the PokemonData itself -- memory may not reflect the final learn
+            // until its dialogue finishes, and pokemon is the same object referenced by
+            // state.BattleState.PartyPokemon, so EvolutionInit's snapshot sees it either way.
             foreach(var newMove in newMoves)
             {
-                if (first)
+                // Fresh read via the battle-state reader -- during battle the game works on the
+                // battle copy of the party; the field party (GetPokemonState) is not synced
+                // until the battle fully ends, so reading it here returns pre-battle data.
+                var freshState = await reader.GetPokemonBattleState(state.Bot);
+                if (freshState is not null)
                 {
-                    first = false;
-                }
-                else
-                {
-                    // we potentially learned a new move and the state is different now. Read the
-                    // real (non-battle) party state directly here: by now the enemy may already
-                    // be gone (fainted), so the battle reader's enemy pointer chain can time out
-                    // for no reason even though the party data itself is perfectly readable.
-                    var freshParty = await reader.GetPokemonState(state.Bot);
-                    state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
+                    state.BattleState = freshState;
                     pokemon = state.BattleState.PartyPokemon.Where(x => x.PID == pokemon.PID).First();
                 }
                 bool hasFourMoves = true;
@@ -234,6 +234,7 @@ namespace ShinyBotHunter.BotEvents
                         string moveStr = MoveShorthands[moveId];
                         state.Bot.RunMacroString($"W.5;{string.Format(LearnMoveMacroTemplate, moveStr)}");
                         await state.Bot.WaitForMacroAsync();
+                        ApplyLearnedMove(pokemon, moveId, newMove);
                     }
                 }
                 else
@@ -243,6 +244,7 @@ namespace ShinyBotHunter.BotEvents
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
                     state.Bot.RunMacroString($"{LevelUpPrePromptMacro};{FreeSlotMacro}");
                     await state.Bot.WaitForMacroAsync();
+                    ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                 }
             }
             return pokemon;
@@ -250,19 +252,11 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task<PokemonData> ProcessEvolutionMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves)
         {
-            bool first = true;
+            // No memory reads in here: we're inside the evolution menus, where party state is
+            // not readable. ApplyLearnedMove keeps pokemon.Moves accurate across multiple moves
+            // so each Discord decision shows the current moveset.
             foreach(var newMove in newMoves)
             {
-                if (first)
-                {
-                    first = false;
-                }
-                else
-                {
-                    var freshParty = await reader.GetPokemonState(state.Bot);
-                    state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
-                    pokemon = state.BattleState.PartyPokemon.Where(x => x.PID == pokemon.PID).First();
-                }
                 int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                 if(moveId == -1)
                 {
@@ -274,9 +268,46 @@ namespace ShinyBotHunter.BotEvents
                     string moveStr = MoveShorthands[moveId];
                     state.Bot.RunMacroString($"W.5;{string.Format(EvolutionLearnMoveMacroTemplate, moveStr)}");
                     await state.Bot.WaitForMacroAsync();
+                    ApplyLearnedMove(pokemon, moveId, newMove);
                 }
             }
             return pokemon;
+        }
+
+        // We can't read memory to confirm a learn (dialogue still playing / evolution screen
+        // up), but we know the decision's outcome exactly, so record it on our in-memory
+        // PokemonData directly.
+        private static void ApplyLearnedMove(PokemonData pokemon, int slot, PokemonLevelUpMoveMetadata newMove)
+        {
+            if (slot == 0)
+            {
+                pokemon.Move1 = (ushort)newMove.Id;
+            }
+            else if (slot == 1)
+            {
+                pokemon.Move2 = (ushort)newMove.Id;
+            }
+            else if (slot == 2)
+            {
+                pokemon.Move3 = (ushort)newMove.Id;
+            }
+            else if (slot == 3)
+            {
+                pokemon.Move4 = (ushort)newMove.Id;
+            }
+        }
+
+        private static int FirstOpenMoveSlot(PokemonData pokemon)
+        {
+            var moves = pokemon.Moves;
+            for (int i = 0; i < moves.Length; i++)
+            {
+                if (moves[i].Id == 0)
+                {
+                    return i;
+                }
+            }
+            return -1;
         }
 
         private void ProcessEvolutions(PokemonData levelUp, PokemonMetadata metadata, GameState state, PokemonBattleState battleState)
