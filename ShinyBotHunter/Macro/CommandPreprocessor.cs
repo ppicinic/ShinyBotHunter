@@ -26,6 +26,10 @@ namespace ShinyBotHunter.Macro
             { "Forget",    (100, 170) },
             { "DoNotLearn", (128, 140) },
             { "DoNotLearnComplete", (128, 70) },
+            { "EvoMoveOne",    (60, 25) },
+            { "EvoMoveTwo",    (60, 55) },
+            { "EvoMoveThree",    (60, 85) },
+            { "EvoMoveFour",    (60, 115) },
         };
         public int DefaultTapFrames { get; set; } = 3;
 
