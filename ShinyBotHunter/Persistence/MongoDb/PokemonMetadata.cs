@@ -69,7 +69,7 @@ namespace ShinyBotHunter.Persistence.MongoDb
             }
             if (Level == other.Level)
             {
-                return Order!.Value - other.Order!.Value;
+                return Nullable.Compare(Order, other.Order);
             }
             return Level - other.Level;
         }
