@@ -1,6 +1,10 @@
-import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { flushLayout, loadLayout } from './layoutStore'
+import { getSnapshot, startSignalR, stopSignalR } from './signalRClient'
+import { bootstrapWindows, listWindows, setWindowBounds, type MainConfig } from './windowManager'
+import { IPC, type WindowBounds } from '../shared/windowContracts'
 
 const isDev = process.env.NODE_ENV === 'development'
 
@@ -28,7 +32,7 @@ function deepMerge(base: Record<string, unknown>, override: Record<string, unkno
   return result
 }
 
-function loadConfig(): object {
+function loadConfig(): MainConfig {
   const configDir = isDev ? app.getAppPath() : process.resourcesPath
 
   const configPath = join(configDir, 'config.json')
@@ -42,53 +46,51 @@ function loadConfig(): object {
     config = deepMerge(config, override)
   }
 
-  return config
+  return config as unknown as MainConfig
 }
 
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 900,
-    show: false,
-    autoHideMenuBar: true,
-    title: 'Pokemon Dashboard',
-    backgroundColor: '#0d0d1a',
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      webSecurity: false // Allow loading local file:// sprites
+function sanitizeBoundsPartial(input: unknown): Partial<WindowBounds> {
+  if (!input || typeof input !== 'object') return {}
+  const result: Partial<WindowBounds> = {}
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    const value = (input as Record<string, unknown>)[key]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      result[key] = Math.round(value)
     }
-  })
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+  return result
 }
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.pokemon.dashboard')
 
+  const config = loadConfig()
+
   // IPC: Load static config.json — fails the app if config is missing or invalid
-  ipcMain.handle('load-config', () => {
-    return loadConfig()
+  ipcMain.handle(IPC.loadConfig, () => config)
+
+  loadLayout()
+
+  ipcMain.handle(IPC.getWindowList, () => listWindows())
+
+  ipcMain.handle(IPC.setWindowBounds, (_event, name: unknown, bounds: unknown) => {
+    if (typeof name !== 'string') throw new Error('Window name must be a string')
+    return setWindowBounds(name, sanitizeBoundsPartial(bounds))
   })
 
-  createWindow()
+  ipcMain.handle(IPC.getSignalRState, () => getSnapshot())
 
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  startSignalR(config.backendUrl)
+  bootstrapWindows(config)
+
+  app.on('activate', () => {
+    bootstrapWindows(config)
   })
+})
+
+app.on('before-quit', () => {
+  flushLayout()
+  void stopSignalR()
 })
 
 app.on('window-all-closed', () => {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import { getSpriteUrl } from '../utils/sprites'
+import { WindowCloseButton } from './WindowChrome'
 
 const GAME_DISPLAY_NAMES: Record<string, string> = {
   HGSS: 'HeartGold & SoulSilver'
@@ -13,10 +14,11 @@ function getGameDisplayName(game: string): string {
 
 interface PhaseCardProps {
   subscription: SubscriptionState
+  windowChrome?: boolean
 }
 
-export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
-  const { config } = useAppContext()
+export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
+  const { config, connectionState } = useAppContext()
   const { game, phase, gameName, encounterData, phaseInfo } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
@@ -61,7 +63,7 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
 
   return (
     <div className="dashboard-card h-full flex flex-col">
-      <div className="card-header">
+      <div className={`card-header ${windowChrome ? 'window-drag-region' : ''}`}>
         <div>
           <span className="text-xs text-slate-500 mr-2">{gameName ?? getGameDisplayName(game)}</span>
           <span className="card-header-title">{phase}</span>
@@ -72,6 +74,12 @@ export function PhaseCard({ subscription }: PhaseCardProps): JSX.Element {
           </span>
           {totalPhaseShiny > 0 && (
             <span className="shiny-glow font-semibold">✨ {totalPhaseShiny}</span>
+          )}
+          {windowChrome && (
+            <>
+              <span className={`status-dot ${connectionState}`} />
+              <WindowCloseButton />
+            </>
           )}
         </div>
       </div>

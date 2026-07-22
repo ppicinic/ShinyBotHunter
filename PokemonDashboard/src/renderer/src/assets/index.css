@@ -140,45 +140,27 @@ body {
 }
 
 /* ============================================================
-   react-grid-layout overrides
+   Multi-window chrome
    ============================================================ */
-.react-grid-layout {
-  position: relative;
+.window-drag-region {
+  -webkit-app-region: drag;
 }
 
-.react-grid-item {
-  transition: none !important;
+.window-drag-region button,
+.window-drag-region a,
+.window-drag-region input,
+.window-drag-region select,
+.window-no-drag {
+  -webkit-app-region: no-drag;
 }
 
-.react-grid-item.react-draggable-dragging {
-  opacity: 0.85;
-  z-index: 100;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
-}
-
-.react-grid-item > .react-resizable-handle {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  bottom: 0;
-  right: 0;
-  cursor: se-resize;
-  opacity: 0.4;
-}
-
-.react-grid-item > .react-resizable-handle::after {
-  content: '';
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid #94a3b8;
-  border-bottom: 2px solid #94a3b8;
-}
-
-.react-grid-item:hover > .react-resizable-handle {
-  opacity: 1;
+/* Frameless windows: the card fills the whole OS window, so square off the
+   corners and drop the floating shadow (rounded-lg utility loses this fight
+   on source order — .dashboard-card is declared after @tailwind utilities). */
+.window-root .dashboard-card {
+  border-radius: 0;
+  box-shadow: none;
+  height: 100%;
 }
 
 /* ============================================================
