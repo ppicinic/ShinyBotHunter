@@ -2,13 +2,16 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
 import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
+import { ConnectionStatus } from './ConnectionStatus'
+import { WindowLayoutTab } from './WindowLayoutTab'
 
-type TabId = 'config' | 'botControl' | 'phaseEditor'
+type TabId = 'config' | 'botControl' | 'phaseEditor' | 'windows'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'config', label: 'Dashboard Config' },
   { id: 'botControl', label: 'Bot Control' },
-  { id: 'phaseEditor', label: 'Milestone Editor' }
+  { id: 'phaseEditor', label: 'Milestone Editor' },
+  { id: 'windows', label: 'Window Layout' }
 ]
 
 // Maps internal parameter names to user-friendly display labels
@@ -1255,13 +1258,16 @@ export function AdminCard(): JSX.Element {
     <div className="dashboard-card h-full">
       <div className="card-header">
         <span className="card-header-title">Admin</span>
-        <button
-          onClick={handleRefresh}
-          title="Refresh"
-          className="text-slate-400 hover:text-white transition-colors text-sm px-1"
-        >
-          ↻
-        </button>
+        <div className="flex items-center gap-3">
+          <ConnectionStatus />
+          <button
+            onClick={handleRefresh}
+            title="Refresh"
+            className="text-slate-400 hover:text-white transition-colors text-sm px-1"
+          >
+            ↻
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -1284,6 +1290,7 @@ export function AdminCard(): JSX.Element {
           <BotControlTab key={refreshKey} onRefresh={handleRefresh} />
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
+        {activeTab === 'windows' && <WindowLayoutTab />}
       </div>
     </div>
   )

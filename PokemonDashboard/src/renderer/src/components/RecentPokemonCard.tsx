@@ -3,6 +3,7 @@ import FlipMove from 'react-flip-move'
 import type { PokemonData } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import { getSpriteUrl } from '../utils/sprites'
+import { WindowCloseButton } from './WindowChrome'
 
 const NATURE_NAMES: Record<number, string> = {
   0: 'Hardy', 1: 'Lonely', 2: 'Brave', 3: 'Adamant', 4: 'Naughty',
@@ -91,14 +92,26 @@ const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
   }
 )
 
-export function RecentPokemonCard(): JSX.Element {
-  const { recentEncounters, config } = useAppContext()
+interface RecentPokemonCardProps {
+  windowChrome?: boolean
+}
+
+export function RecentPokemonCard({ windowChrome }: RecentPokemonCardProps = {}): JSX.Element {
+  const { recentEncounters, config, connectionState } = useAppContext()
 
   return (
     <div className="dashboard-card h-full">
-      <div className="card-header">
+      <div className={`card-header ${windowChrome ? 'window-drag-region' : ''}`}>
         <span className="card-header-title">Recent Encounters</span>
-        <span className="text-xs text-slate-500">{recentEncounters.length} shown</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500">{recentEncounters.length} shown</span>
+          {windowChrome && (
+            <>
+              <span className={`status-dot ${connectionState}`} />
+              <WindowCloseButton />
+            </>
+          )}
+        </div>
       </div>
 
       <div className="card-body">

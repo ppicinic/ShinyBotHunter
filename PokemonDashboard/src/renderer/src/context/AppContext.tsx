@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { SignalRService } from '../services/signalRService'
+import { IpcSignalRService } from '../services/ipcSignalRService'
 import type {
   AppConfig,
   DashboardConfig,
@@ -16,7 +16,7 @@ interface AppContextValue {
   dashboardConfig: DashboardConfig
   subscriptions: SubscriptionState[]
   recentEncounters: PokemonData[]
-  signalR: SignalRService | null
+  signalR: IpcSignalRService | null
 }
 
 // Empty initial state — the backend sends ReceiveDashboardConfig on connect
@@ -63,7 +63,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   const [dashboardConfig, setDashboardConfig] = useState<DashboardConfig>(emptyDashboardConfig)
   const [subscriptions, setSubscriptions] = useState<SubscriptionState[]>([])
   const [recentEncounters, setRecentEncounters] = useState<PokemonData[]>([])
-  const signalRRef = useRef<SignalRService | null>(null)
+  const signalRRef = useRef<IpcSignalRService | null>(null)
   // Refs so async callbacks always have the latest values without stale closures
   const configRef = useRef<AppConfig | null>(null)
   const dashboardConfigRef = useRef<DashboardConfig>(emptyDashboardConfig)
@@ -87,7 +87,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   useEffect(() => {
     if (!config) return
 
-    const service = new SignalRService(config.backendUrl)
+    const service = new IpcSignalRService()
     signalRRef.current = service
 
     const unsubState = service.onConnectionState(setConnectionState)
