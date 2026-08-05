@@ -509,7 +509,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     onRefresh // just reference it so the parent can call loadDashboardState
   }, [onRefresh])
 
-  const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget']
+  const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget', 'NoTarget']
 
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
     setFeedback(null)

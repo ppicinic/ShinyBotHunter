@@ -132,9 +132,12 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException($"EncounterType must be supplied for Wild Pokemon Encounter Event");
                 }
                 var targetType = Enum.Parse<TargetType>(args.TargetType);
-                ITarget target = targetType == TargetType.PhaseTarget
-                                                    ? new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName)
-                                                    : new ShinyTarget();
+                ITarget target = targetType switch
+                {
+                    TargetType.PhaseTarget => new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName),
+                    TargetType.NoTarget => new NoTarget(),
+                    _ => new ShinyTarget(),
+                };
                 int xRange = args.xRange ?? 0;
                 int yRange = args.yRange ?? 0;
 
@@ -157,6 +160,12 @@ namespace ShinyBotHunter.Service
                 if (trainType != TrainType.None && (args.TargetLevel is null || args.TargetLevel <= 0))
                 {
                     throw new ArgumentException("TargetLevel must be a positive value when a train mode is enabled.");
+                }
+                // Nothing is ever a target here and there's no milestone to finish, so the training
+                // requirement is the only thing that can end the event. Without one it runs forever.
+                if (targetType == TargetType.NoTarget && trainType == TrainType.None)
+                {
+                    throw new ArgumentException("A train mode must be supplied when TargetType is NoTarget, otherwise the event has no stopping condition.");
                 }
                 int? switchSlot = null;
                 if (trainType == TrainType.Switch)
@@ -289,7 +298,8 @@ namespace ShinyBotHunter.Service
     public enum TargetType
     {
         PhaseTarget,
-        ShinyTarget
+        ShinyTarget,
+        NoTarget
     }
 
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor);

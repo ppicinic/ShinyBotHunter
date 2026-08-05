@@ -22,6 +22,8 @@ namespace ShinyBotHunter.BotEvents.Target
             this.game = game;
             this.gameFileName = gameFileName;
         }
+        public bool UsesMilestone => true;
+
         public async Task<bool> IsTargetAsync(PokemonData pokemon)
         {
             if (!pokemon.IsShiny)

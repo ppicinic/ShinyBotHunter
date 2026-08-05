@@ -128,6 +128,12 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task UpdateMilestoneState(GameState state)
         {
+            if (!state.Target.UsesMilestone)
+            {
+                // No milestone gates this run, so skip the caught-pokemon query entirely.
+                // MilestoneComplete is not read for these targets.
+                return;
+            }
             var phaseInfo = phaseInfoService.GetPhaseInfo(GameFlavor.HGSS, state.Milestone);
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(GameFlavor.HGSS)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
             bool complete = true;
@@ -173,7 +179,10 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
 
-            if (state.MilestoneComplete && (!training || state.TrainingComplete))
+            // A target without a milestone (NoTarget) has nothing to complete, so the training
+            // requirement alone ends the event -- BotService rejects that combination without one.
+            bool milestoneSatisfied = !state.Target.UsesMilestone || state.MilestoneComplete;
+            if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
                 state.SwapState(EventState.Complete);
                 await state.BotService.RefreshDashboardState();
