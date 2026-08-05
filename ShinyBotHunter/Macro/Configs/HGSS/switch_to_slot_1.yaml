@@ -1,0 +1,9 @@
+# Switch-train: swap the active pokemon out for party slot 1.
+# Slot 1 is the trainee, so the API rejects it -- this exists only to keep the slot table complete.
+name: SwitchToPartySlotOne
+flavor: HGSS
+steps:
+  - macro: SwitchPokemonInit
+  - S.PartySlotOne
+  - W.30 # TODO tune: frames until the slot submenu is up
+  - macro: SwitchPokemonConfirm

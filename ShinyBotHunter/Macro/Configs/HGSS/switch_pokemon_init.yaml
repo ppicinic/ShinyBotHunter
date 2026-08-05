@@ -1,0 +1,12 @@
+# Switch-train: from the battle command menu, open the party screen.
+# Entry state:  battle command menu is up (BattleMenuState == 1).
+# Exit state:   party screen is showing all six slots, ready for a slot tap.
+#
+# TODO fill in:
+#   - the BattlePokemonMenu coordinate in Macro/CommandPreprocessor.cs
+#   - the wait below, long enough for the party screen to finish sliding in
+name: SwitchPokemonInit
+flavor: HGSS
+steps:
+  - S.BattlePokemonMenu
+  - W.90 # TODO tune: frames until the party screen accepts a tap
