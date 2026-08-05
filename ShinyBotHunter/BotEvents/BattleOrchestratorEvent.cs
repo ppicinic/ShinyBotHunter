@@ -29,6 +29,17 @@ namespace ShinyBotHunter.BotEvents
             { 3, "MoveFour" },
         };
 
+        // Switch-train macros, keyed by the 1-based party slot of the battler we switch to.
+        private static readonly Dictionary<int, string> SwitchSlotMacros = new Dictionary<int, string>()
+        {
+            { 1, "SwitchToPartySlotOne" },
+            { 2, "SwitchToPartySlotTwo" },
+            { 3, "SwitchToPartySlotThree" },
+            { 4, "SwitchToPartySlotFour" },
+            { 5, "SwitchToPartySlotFive" },
+            { 6, "SwitchToPartySlotSix" },
+        };
+
         private const string EvolutionMacro = "W.45;T.A;W.1125;T.A;W.15";
 
         // Advances dialogue from right after the level-up fanfare to the point where the
@@ -89,6 +100,10 @@ namespace ShinyBotHunter.BotEvents
                 else if (topState == EventState.Fight)
                 {
                     await SelectMove(state);
+                }
+                else if (topState == EventState.SwitchPokemon)
+                {
+                    await SwitchPokemon(state);
                 }
                 else if (topState == EventState.WaitForMovesEnd)
                 {
@@ -177,16 +192,23 @@ namespace ShinyBotHunter.BotEvents
         private async Task ProcessLevelUp(GameState state)
         {
             var newState = await reader.GetPokemonBattleState(state.Bot);
+            Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
             state.Bot.RunMacroString("W.265;T.A;W.5;T.A");
             await state.Bot.WaitForMacroAsync();
             if (levelUp is not null)
             {
+                Console.WriteLine($"[LevelUp] {levelUp.Name} reached level {levelUp.Level}");
                 var metadata = metadataService.GetPokemonMetadata(levelUp.Species);
                 var newMoves = metadata.LevelUpMoves[GameFlavor.HGSS].Where(x => x.Level == levelUp.Level).ToList();
+                // A move the mon already knows produces no prompt at all in game, so it must never
+                // reach the learn flow -- the macros there would run against dialogue that isn't up.
+                newMoves.RemoveAll(m => levelUp.Moves.Any(k => k.Id == m.Id));
                 newMoves.Sort();
+                Console.WriteLine($"[LevelUp] moves to learn: {(newMoves.Count == 0 ? "none" : string.Join(", ", newMoves.Select(m => m.Name)))}");
                 levelUp = await ProcessMoveLearning(state, levelUp, newMoves);
+                Console.WriteLine("[LevelUp] move learning done, checking evolutions");
                 ProcessEvolutions(levelUp, metadata, state, state.BattleState!);
             }
             state.SwapState(EventState.EnemyFainted);
@@ -209,6 +231,15 @@ namespace ShinyBotHunter.BotEvents
                 {
                     state.BattleState = freshState;
                     pokemon = state.BattleState.PartyPokemon.Where(x => x.PID == pokemon.PID).First();
+                }
+                // ProcessLevelUp already filtered these, but against a snapshot taken before the
+                // level-up dialogue was advanced -- if the game auto-learned this move into a free
+                // slot during that dialogue, only the fresh read above knows. Skipping is the whole
+                // fix: an already-known move shows no prompt, so the macros below would desync us.
+                if (pokemon.Moves.Any(m => m.Id == newMove.Id))
+                {
+                    Console.WriteLine($"{pokemon.Name} already knows {newMove.Name}, skipping learn flow");
+                    continue;
                 }
                 bool hasFourMoves = true;
                 foreach(var knownMove in pokemon.Moves)
@@ -257,6 +288,14 @@ namespace ShinyBotHunter.BotEvents
             // so each Discord decision shows the current moveset.
             foreach(var newMove in newMoves)
             {
+                // No fresh read is possible here, so this leans on the same ApplyLearnedMove cache
+                // the loop already depends on: an already-known move produces no prompt in game, and
+                // running the learn macros against dialogue that isn't up would desync us.
+                if (pokemon.Moves.Any(m => m.Id == newMove.Id))
+                {
+                    Console.WriteLine($"{pokemon.Name} already knows {newMove.Name}, skipping learn flow");
+                    continue;
+                }
                 int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                 if(moveId == -1)
                 {
@@ -312,7 +351,13 @@ namespace ShinyBotHunter.BotEvents
 
         private void ProcessEvolutions(PokemonData levelUp, PokemonMetadata metadata, GameState state, PokemonBattleState battleState)
         {
-            foreach(var evoDetails in metadata.EvolutionDetails[GameFlavor.HGSS])
+            // The parser only creates this key on pokemon that are somebody's pre-evolution, so a
+            // fully-evolved mon legitimately has no entry at all. Absent means "no evolutions".
+            if (!metadata.EvolutionDetails.TryGetValue(GameFlavor.HGSS, out var evolutionDetails))
+            {
+                return;
+            }
+            foreach(var evoDetails in evolutionDetails)
             {
                 if(WillEvolve(levelUp, evoDetails, battleState))
                 {
@@ -552,9 +597,16 @@ namespace ShinyBotHunter.BotEvents
                 {
                     return EventState.Flee;
                 }
-                else if (state.BattleState!.PartyPokemon[0].HP == 0)
+                // In switch training slot 1 is the trainee and never fights, so the pokemon that has to
+                // still be standing is the battler we switch to -- not the lead.
+                int checkSlot = s.TrainType == TrainType.Switch ? s.SwitchSlot!.Value - 1 : 0;
+                if (checkSlot >= state.BattleState!.PartyPokemon.Count() || state.BattleState.PartyPokemon[checkSlot].HP == 0)
                 {
                     return EventState.Flee;
+                }
+                else if (s.TrainType == TrainType.Switch && !s.SwitchPerformed)
+                {
+                    return EventState.SwitchPokemon;
                 }
                 else if(state.BattleState.ActivePokemon.HP <= state.BattleState.ActivePokemon.MaxHP / 4 || TotalDamagePP(state.BattleState.ActivePokemon) == 0) // if we can't kill or close to dying flee.
                 {
@@ -601,6 +653,27 @@ namespace ShinyBotHunter.BotEvents
                 state.State.Push(EventState.WaitForMovesEnd);
             }
 
+        }
+
+        /// <summary>
+        /// Switch training: the trainee leads so it banks participation EXP, then we immediately swap to
+        /// the configured battler. Switching burns our turn, so we hand off to WaitForMovesEnd and the
+        /// next DecideAction fights normally with SwitchPerformed set.
+        ///
+        /// KNOWN GAP (accepted): we mark the switch done without confirming it landed. If the macro
+        /// misses -- mistuned coordinates, or the foe traps us (Arena Trap and friends) -- the trainee
+        /// is still out and the next DecideAction will fight with it instead of the battler. It fails
+        /// quietly rather than loudly. Verifying BattleState.ActivePokemon.Pokemon.PID against the
+        /// battler's after the macro would catch it if this ever becomes a problem in practice.
+        /// </summary>
+        private async Task SwitchPokemon(GameState state)
+        {
+            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, SwitchSlotMacros[state.SwitchSlot!.Value]);
+            state.Bot.RunMacroString(macro);
+            await state.Bot.WaitForMacroAsync();
+            state.SwitchPerformed = true;
+            state.State.Pop();
+            state.State.Push(EventState.WaitForMovesEnd);
         }
 
         private async Task PokemonDataPending(GameState state)
@@ -653,6 +726,8 @@ namespace ShinyBotHunter.BotEvents
                 await bot.WaitForMacroAsync();
                 state.BattleState = await reader.GetPokemonBattleState(bot);
                 state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
+                // New battle -- the trainee is back out front, so we owe another switch.
+                state.SwitchPerformed = false;
                 List<int> startPositions = new List<int>();
                 for (int i = 0; i < state.BattleState!.PartyPokemon.Count(); i++)
                 {

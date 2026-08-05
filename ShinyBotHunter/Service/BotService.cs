@@ -153,23 +153,34 @@ namespace ShinyBotHunter.Service
                         throw new ArgumentException($"Only x or y range must be supplied, not both.");
                     }
                 }
-                bool trainMode = args.TrainMode ?? false;
-                if (trainMode && (args.TargetLevel is null || args.TargetLevel <= 0))
+                TrainType trainType = args.TrainType ?? TrainType.None;
+                if (trainType != TrainType.None && (args.TargetLevel is null || args.TargetLevel <= 0))
                 {
-                    throw new ArgumentException("TargetLevel must be a positive value when TrainMode is enabled.");
+                    throw new ArgumentException("TargetLevel must be a positive value when a train mode is enabled.");
+                }
+                int? switchSlot = null;
+                if (trainType == TrainType.Switch)
+                {
+                    // Slot 1 holds the pokemon being trained, so it can never also be the battler.
+                    switchSlot = args.SwitchSlot ?? 2;
+                    if (switchSlot < 2 || switchSlot > 6)
+                    {
+                        throw new ArgumentException("SwitchSlot must be between 2 and 6 for Switch train mode.");
+                    }
                 }
 
                 var wildPokemonEvent = new OrchestratorEvent(provider, new EncounterParams(args.EncounterType.Value, yRange, xRange));
                 botEvents[pos].GameState = new GameState()
                 {
-                    OriginalBattleMode = trainMode ? BattleMode.Battle : BattleMode.Flee,
+                    OriginalBattleMode = trainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
                     GameFlavor = GameFlavor.HGSS,
                     BotService = this,
                     Target = target,
                     Milestone = args.PhaseName,
                     Bot = botEvents[pos].Bot!,
-                    TrainMode = trainMode,
-                    TargetLevel = trainMode ? args.TargetLevel : null,
+                    TrainType = trainType,
+                    TargetLevel = trainType != TrainType.None ? args.TargetLevel : null,
+                    SwitchSlot = switchSlot,
                 };
                 botEvents[pos].GameState!.State.Push(EventState.Init);
                 botEvents[pos].StartEvent(wildPokemonEvent, botEvents[pos].GameState!, args.PhaseName, this);
@@ -186,6 +197,32 @@ namespace ShinyBotHunter.Service
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        /// <summary>
+        /// Reads the live party for the bot at <paramref name="pos"/> so the dashboard can offer real
+        /// pokemon when picking a switch-train battler. Party-only read -- deliberately not GetPokemonState,
+        /// which also pulls all 18 boxes and is far too slow for a UI dropdown.
+        /// </summary>
+        public async Task<List<PartySlotInfo>> GetPartyAsync(int pos)
+        {
+            if (!botEvents.ContainsKey(pos) || botEvents[pos].Bot is null)
+            {
+                throw new ArgumentException($"There is not bot at position: {pos}");
+            }
+            var reader = provider.GetRequiredService<PokemonStateReader>();
+            var partyState = await reader.GetPartyState(botEvents[pos].Bot!);
+            var result = new List<PartySlotInfo>();
+            for (int i = 0; i < partyState.PartySize; i++)
+            {
+                var pokemon = partyState.PartyPokemon[i];
+                if (pokemon is null)
+                {
+                    continue;
+                }
+                result.Add(new PartySlotInfo(i + 1, pokemon.Name, pokemon.Level, pokemon.HP, pokemon.MaxHP, pokemon.IsShiny));
+            }
+            return result;
         }
 
         public List<EventArgumentOptions> GetAvailableActions(int pos)
@@ -214,10 +251,11 @@ namespace ShinyBotHunter.Service
         {
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
             {"Wild Encounter", new EventArgumentOptions() { Name = "Wild Encounter", RequiredParameters = ["PhaseName", "TargetType", "EncounterType"],
-                                OptionalParameters = ["TrainMode"],
+                                OptionalParameters = ["TrainType"],
                                 ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
                                     new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" },
-                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainMode", Value = "true" }, Name = "TargetLevel" }
+                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Neq, Name = "TrainType", Value = "None" }, Name = "TargetLevel" },
+                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainType", Value = "Switch" }, Name = "SwitchSlot" }
                                 ]} },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
@@ -256,6 +294,9 @@ namespace ShinyBotHunter.Service
 
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor);
 
+    /// <summary>One occupied party slot, as offered to the dashboard for picking a switch-train battler.</summary>
+    public record PartySlotInfo(int Slot, string Name, int Level, int Hp, int MaxHp, bool IsShiny);
+
     
 
     public class EventArgumentOptions
@@ -283,7 +324,8 @@ namespace ShinyBotHunter.Service
 
     public enum ConditionType
     {
-        Eq
+        Eq,
+        Neq
     }
 
     public class NewEventArguments
@@ -296,8 +338,9 @@ namespace ShinyBotHunter.Service
         public EncounterType? EncounterType { get; set; }
         public int? yRange { get; set; }
         public int? xRange { get; set; }
-        public bool? TrainMode { get; set; }
+        public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
+        public int? SwitchSlot { get; set; }
     }
 
     public class BotAndOrEvent
@@ -369,6 +412,14 @@ namespace ShinyBotHunter.Service
             EventTask = Event.ExecuteAsync(gameState, CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
+                    // Without this, an unhandled exception in the event loop is indistinguishable
+                    // from a clean finish: the task faults, Event gets cleared below, and the bot
+                    // silently vanishes from the dashboard with no trace of what happened.
+                    if (t.IsFaulted && t.Exception is not null)
+                    {
+                        Console.WriteLine($"[BotService] Event '{name}' crashed. State: {(gameState.State.Count > 0 ? gameState.State.Peek() : EventState.None)}");
+                        Console.WriteLine(t.Exception.Flatten().ToString());
+                    }
                     if (!CancellationTokenSource.IsCancellationRequested)
                     {
                         await CancellationTokenSource.CancelAsync();

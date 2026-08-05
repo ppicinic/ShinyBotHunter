@@ -13,6 +13,15 @@ namespace ShinyBotHunter.BotEvents
         Flee,
         Battle,
     }
+
+    public enum TrainType
+    {
+        None,
+        Standard,
+        // The pokemon being trained leads (slot 1) so it is sent out and earns participation EXP,
+        // then the bot immediately switches to a stronger party member which does the fighting.
+        Switch,
+    }
     public class GameState
     {
         public ITarget Target { get; set; } = null!;
@@ -35,9 +44,13 @@ namespace ShinyBotHunter.BotEvents
         public BotService BotService { get; set; } = null!;
         public List<NodePoint>? NavigationPath { get; set; } = null;
         public int NavigationPathIndex { get; set; } = 0;
-        public bool TrainMode { get; set; } = false;
+        public TrainType TrainType { get; set; } = TrainType.None;
         public int? TargetLevel { get; set; } = null;
         public bool TrainingComplete { get; set; } = false;
+        // 1-based party slot of the battler we switch to. Only set when TrainType is Switch.
+        public int? SwitchSlot { get; set; } = null;
+        // Reset at the start of every battle so we only switch once per encounter.
+        public bool SwitchPerformed { get; set; } = false;
 
         public void SwapState(EventState newState)
         {

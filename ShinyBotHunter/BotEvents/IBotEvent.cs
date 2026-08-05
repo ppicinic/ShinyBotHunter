@@ -16,6 +16,7 @@ namespace ShinyBotHunter.BotEvents
         PokemonDataPending,
         Flee,
         Fight,
+        SwitchPokemon,
         DecideAction,
         WaitForMovesEnd,
         EnemyFainted,

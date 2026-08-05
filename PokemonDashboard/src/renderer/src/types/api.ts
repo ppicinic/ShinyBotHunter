@@ -190,7 +190,10 @@ export interface AdminMetadata {
 // Note: the API returns an array of EventArgumentOptions
 // ============================================================
 
-export type ConditionType = 'Eq'
+export type ConditionType = 'Eq' | 'Neq'
+
+// Matches C# TrainType enum in GameState.cs
+export type TrainType = 'None' | 'Standard' | 'Switch'
 
 export interface Condition {
   // C# enums serialize as integers by default; accept both string and number
@@ -215,6 +218,21 @@ export interface EventArgumentOptions {
 export interface NewEventArguments {
   eventName: string
   gameName?: string
+  // C# TrainType enum, sent as its integer value (None=0, Standard=1, Switch=2)
+  trainType?: number
+  targetLevel?: number
+  // 1-based party slot of the battler to swap to, Switch train mode only
+  switchSlot?: number
+}
+
+// Matches C# PartySlotInfo record in BotService.cs (GET /api/bot/getParty/{pos})
+export interface PartySlotInfo {
+  slot: number
+  name: string
+  level: number
+  hp: number
+  maxHp: number
+  isShiny: boolean
 }
 
 // Matches C# EmulatorState record in BotService.cs

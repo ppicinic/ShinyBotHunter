@@ -38,6 +38,12 @@ namespace ShinyBotHunter.Controllers
             return Ok(botService.GetAvailableActions(pos).ToArray());
         }
 
+        [HttpGet("bot/getParty/{pos}")]
+        public async Task<ActionResult<List<PartySlotInfo>>> GetParty(int pos)
+        {
+            return Ok(await botService.GetPartyAsync(pos));
+        }
+
         [HttpPost("bot/startAction/{pos}")]
         public ActionResult<Dictionary<int, EmulatorState>> StartAction(int pos, [FromBody] NewEventArguments args)
         {

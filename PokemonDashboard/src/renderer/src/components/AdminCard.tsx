@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
-import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, PhaseInfo, PhasePokemonInfo } from '../types/api'
+import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 import { ConnectionStatus } from './ConnectionStatus'
 import { WindowLayoutTab } from './WindowLayoutTab'
@@ -23,8 +23,9 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   EncounterType: 'Encounter Type',
   xRange: 'X Range',
   yRange: 'Y Range',
-  TrainMode: 'Train Mode',
+  TrainType: 'Train Type',
   TargetLevel: 'Target Level',
+  SwitchSlot: 'Battler',
 }
 const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
 
@@ -32,12 +33,38 @@ const ENCOUNTER_TYPE_OPTIONS = ['Spin', 'Run']
 // Maps EncounterType string names to C# enum integer values (Spin=0, Run=1)
 const ENCOUNTER_TYPE_VALUES: Record<string, number> = { Spin: 0, Run: 1 }
 
+const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
+// Maps TrainType string names to C# enum integer values (None=0, Standard=1, Switch=2)
+const TRAIN_TYPE_VALUES: Record<string, number> = { None: 0, Standard: 1, Switch: 2 }
+
+/** Seed value for a freshly-discovered parameter. TrainType must default to 'None' rather than ''
+ *  so the Neq condition guarding TargetLevel starts out unmet. */
+function defaultParamValue(param: string): string {
+  switch (param.toLowerCase()) {
+    case 'soundon':
+      return 'false'
+    case 'xrange':
+    case 'yrange':
+      return '0'
+    case 'traintype':
+      return 'None'
+    case 'switchslot':
+      return '2'
+    default:
+      return ''
+  }
+}
+
 /** Evaluate whether a condition is met given the current param values.
- *  conditionType may be the string 'Eq' or the integer 0 (C# enum default serialization). */
+ *  conditionType may be the string 'Eq'/'Neq' or the integer 0/1 (C# enum default serialization). */
 function isConditionMet(condition: { conditionType: string | number; name: string; value: string }, params: Record<string, string>): boolean {
   const isEq = condition.conditionType === 'Eq' || condition.conditionType === 0
   if (isEq) {
     return params[condition.name] === condition.value
+  }
+  const isNeq = condition.conditionType === 'Neq' || condition.conditionType === 1
+  if (isNeq) {
+    return params[condition.name] !== condition.value
   }
   return false
 }
@@ -313,8 +340,27 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   const [botActions, setBotActions] = useState<Record<number, EventArgumentOptions[]>>({})
   // Per-bot action parameter values: pos -> { actionName -> { paramName -> value } }
   const [botActionParams, setBotActionParams] = useState<Record<number, Record<string, Record<string, string>>>>({})
+  // Live party per bot, loaded on demand so Switch train mode can offer real pokemon: pos -> slots
+  const [partyByPos, setPartyByPos] = useState<Record<number, PartySlotInfo[]>>({})
+  const [loadingParty, setLoadingParty] = useState<number | null>(null)
 
   const apiUrl = config?.apiUrl ?? ''
+
+  const loadParty = useCallback(async (pos: number): Promise<void> => {
+    if (!apiUrl) return
+    setLoadingParty(pos)
+    try {
+      const r = await fetch(`${apiUrl}/api/bot/getParty/${pos}`)
+      if (!r.ok) throw new Error(`Server returned ${r.status}`)
+      const party = await r.json() as PartySlotInfo[]
+      setPartyByPos((prev) => ({ ...prev, [pos]: party }))
+    } catch (err) {
+      console.error(`Failed to load party for pos ${pos}:`, err)
+      setPartyByPos((prev) => ({ ...prev, [pos]: [] }))
+    } finally {
+      setLoadingParty(null)
+    }
+  }, [apiUrl])
 
   const fetchBotActionsForState = useCallback(async (state: BotDashboardState): Promise<void> => {
     if (!apiUrl) return
@@ -352,13 +398,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
               next[pos][action.name][param] = ''
             })
             action.optionalParameters?.forEach((param) => {
-              // soundOn (case-insensitive) defaults to 'false'; other optional params default to ''
-              next[pos][action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
+              next[pos][action.name][param] = defaultParamValue(param)
             })
             action.conditionalParameters?.forEach((cp) => {
-              // xRange/yRange default to '0'; other conditional params default to ''
-              const lower = cp.name.toLowerCase()
-              next[pos][action.name][cp.name] = (lower === 'xrange' || lower === 'yrange') ? '0' : ''
+              next[pos][action.name][cp.name] = defaultParamValue(cp.name)
             })
           }
         })
@@ -402,11 +445,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
             initial[action.name][param] = ''
           })
           action.optionalParameters?.forEach((param) => {
-            initial[action.name][param] = param.toLowerCase() === 'soundon' ? 'false' : ''
+            initial[action.name][param] = defaultParamValue(param)
           })
           action.conditionalParameters?.forEach((cp) => {
-            const lower = cp.name.toLowerCase()
-            initial[action.name][cp.name] = (lower === 'xrange' || lower === 'yrange') ? '0' : ''
+            initial[action.name][cp.name] = defaultParamValue(cp.name)
           })
         })
         setParamValues(initial)
@@ -444,6 +486,24 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     return unsub
   }, [signalR, fetchBotActionsForState])
 
+  // Positions whose Wild Encounter form currently has Switch train mode picked.
+  const switchPositionsKey = Object.entries(botActionParams)
+    .filter(([, actionsForPos]) => Object.values(actionsForPos).some((p) => p['TrainType'] === 'Switch'))
+    .map(([posStr]) => posStr)
+    .join(',')
+  const loadedSwitchPositions = useRef<Set<string>>(new Set())
+
+  // Pull the live party whenever Switch train mode is newly selected, so the battler dropdown is
+  // populated with the pokemon actually in the game right now.
+  useEffect(() => {
+    if (!apiUrl) return
+    const current = new Set(switchPositionsKey ? switchPositionsKey.split(',') : [])
+    current.forEach((posStr) => {
+      if (!loadedSwitchPositions.current.has(posStr)) void loadParty(Number(posStr))
+    })
+    loadedSwitchPositions.current = current
+  }, [switchPositionsKey, apiUrl, loadParty])
+
   // Expose refresh to parent
   useEffect(() => {
     onRefresh // just reference it so the parent can call loadDashboardState
@@ -476,12 +536,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       if (soundOnKey !== undefined) {
         body['soundOn'] = params[soundOnKey] === 'true'
       }
-      const trainModeKey = Object.keys(params).find((k) => k.toLowerCase() === 'trainmode')
-      if (trainModeKey !== undefined) {
-        body['trainMode'] = params[trainModeKey] === 'true'
+      if (params['TrainType'] !== undefined) {
+        body['trainType'] = TRAIN_TYPE_VALUES[params['TrainType']] ?? 0
       }
       if (params['TargetLevel'] !== undefined && params['TargetLevel'] !== '' && params['TargetLevel'] !== '0') {
         body['targetLevel'] = parseInt(params['TargetLevel'], 10)
+      }
+      if (params['TrainType'] === 'Switch' && params['SwitchSlot'] !== undefined && params['SwitchSlot'] !== '') {
+        body['switchSlot'] = parseInt(params['SwitchSlot'], 10)
       }
 
       const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
@@ -715,13 +777,23 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 {action.optionalParameters.map((param) => (
                                   <div key={param} className="flex items-center gap-2 mt-0.5">
                                     <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-                                    {param.toLowerCase() === 'soundon' || param.toLowerCase() === 'trainmode' ? (
+                                    {param.toLowerCase() === 'soundon' ? (
                                       <input
                                         type="checkbox"
                                         checked={params[param] === 'true'}
                                         onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.checked ? 'true' : 'false')}
                                         className="w-4 h-4 accent-indigo-500"
                                       />
+                                    ) : param === 'TrainType' ? (
+                                      <select
+                                        value={params[param] ?? 'None'}
+                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
+                                        className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                                      >
+                                        {TRAIN_TYPE_OPTIONS.map((t) => (
+                                          <option key={t} value={t}>{t}</option>
+                                        ))}
+                                      </select>
                                     ) : (
                                       <input
                                         type="text"
@@ -746,17 +818,47 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                   <span className="text-xs text-slate-600">Conditional</span>
                                   {visibleConditionals.map((cp: ConditionalParameter) => {
                                     const condMet = isConditionMet(cp.condition, params)
+                                    // The battler picker lists the bot's live party. Slot 1 is the trainee
+                                    // and is never selectable.
+                                    const party = partyByPos[pos]
+                                    const isBattlerPicker = cp.name === 'SwitchSlot' && party !== undefined && party.length > 0
                                     return (
                                       <div key={cp.name} className="flex items-center gap-2 mt-0.5">
                                         <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
-                                        <input
-                                          type="number"
-                                          value={params[cp.name] ?? '0'}
-                                          onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
-                                          disabled={!condMet}
-                                          placeholder="0"
-                                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
-                                        />
+                                        {isBattlerPicker ? (
+                                          <select
+                                            value={params[cp.name] ?? '2'}
+                                            onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
+                                            disabled={!condMet}
+                                            className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-40"
+                                          >
+                                            {party.filter((p) => p.slot > 1).map((p) => (
+                                              <option key={p.slot} value={String(p.slot)}>
+                                                {`Slot ${p.slot} — ${p.name} (Lv ${p.level})`}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        ) : (
+                                          <input
+                                            type="number"
+                                            value={params[cp.name] ?? '0'}
+                                            onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
+                                            disabled={!condMet}
+                                            placeholder="0"
+                                            className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
+                                          />
+                                        )}
+                                        {cp.name === 'SwitchSlot' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => loadParty(pos)}
+                                            disabled={loadingParty === pos}
+                                            title="Reload party from the running game"
+                                            className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600 disabled:opacity-40"
+                                          >
+                                            {loadingParty === pos ? '…' : '⟳'}
+                                          </button>
+                                        )}
                                       </div>
                                     )
                                   })}

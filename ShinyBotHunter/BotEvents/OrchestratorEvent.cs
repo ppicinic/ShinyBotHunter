@@ -158,9 +158,14 @@ namespace ShinyBotHunter.BotEvents
         {
             var pokeState = await reader.GetPokemonState(state.Bot);
             var lead = pokeState.PartyPokemon[0]!;
+            bool training = state.TrainType != TrainType.None;
 
-            if (state.TrainMode && !state.TrainingComplete)
+            // No battle is in flight here, so a switch that aborted mid-encounter can't leak into the next one.
+            state.SwitchPerformed = false;
+
+            if (training && !state.TrainingComplete)
             {
+                // The trainee always leads, in both standard and switch training.
                 if (lead.Level >= state.TargetLevel!.Value)
                 {
                     state.TrainingComplete = true;
@@ -168,14 +173,14 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
 
-            if (state.MilestoneComplete && (!state.TrainMode || state.TrainingComplete))
+            if (state.MilestoneComplete && (!training || state.TrainingComplete))
             {
                 state.SwapState(EventState.Complete);
                 await state.BotService.RefreshDashboardState();
                 return;
             }
 
-            if (state.OriginalBattleMode == BattleMode.Flee || CanBattle(lead))
+            if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
             {
                 state.BattleMode = state.OriginalBattleMode;
                 state.SwapState(EventState.Encountering);
@@ -185,6 +190,27 @@ namespace ShinyBotHunter.BotEvents
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
+        }
+
+        /// <summary>
+        /// In switch training the lead only has to survive long enough to be sent out -- the battler in
+        /// the configured slot is the one that needs HP and PP. A fainted lead is still fatal though:
+        /// the game would send out someone else and the trainee would stop banking EXP entirely.
+        /// </summary>
+        private bool CanFightNextEncounter(GameState state, PokemonState pokeState, PokemonData lead)
+        {
+            if (state.TrainType != TrainType.Switch)
+            {
+                return CanBattle(lead);
+            }
+            int battlerIndex = state.SwitchSlot!.Value - 1;
+            var battler = battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+            if (battler is null)
+            {
+                // The configured slot is empty -- nothing to switch to, so treat it like a spent party.
+                return false;
+            }
+            return lead.HP > 0 && CanBattle(battler);
         }
 
         private bool CanBattle(PokemonData pokemon)

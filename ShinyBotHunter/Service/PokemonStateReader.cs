@@ -99,7 +99,11 @@ namespace ShinyBotHunter.Service
             this.battleParser = provider.GetRequiredKeyedService<IBattlePokemonParser>(GameFlavor.HGSS);
         }
 
-        public async Task<PokemonState> GetPokemonState(IMemoryClient bot)
+        /// <summary>
+        /// Reads only the field party, leaving the box data empty. Use this when the boxes are not
+        /// needed -- the box read in GetPokemonState pulls 72KB and is far too slow for interactive use.
+        /// </summary>
+        public async Task<PokemonState> GetPartyState(IMemoryClient bot)
         {
             PokemonState state = new PokemonState();
             uint anchor = await bot.ReadUIntAsync(0x21D4158);
@@ -116,6 +120,13 @@ namespace ShinyBotHunter.Service
                 }
                 state.PartyPokemon[i] = pokemon;
             }
+            return state;
+        }
+
+        public async Task<PokemonState> GetPokemonState(IMemoryClient bot)
+        {
+            PokemonState state = await GetPartyState(bot);
+            uint anchor;
             //constantly polling is too slow. load the whole party data into memory
 
             bool[][] checkMap = new bool[30][];
