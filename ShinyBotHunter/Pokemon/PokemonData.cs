@@ -104,6 +104,19 @@ namespace ShinyBotHunter.Pokemon
         public byte Happiness { get; set; }
         [BsonIgnore]
         public byte Beauty { get; set; }
+
+        /// <summary>
+        /// Status condition byte (0x88). Bits 0-2 are the remaining sleep rounds; bit 3 poisoned,
+        /// bit 4 burned, bit 5 frozen, bit 6 paralyzed, bit 7 toxic. Live state, so not persisted.
+        /// </summary>
+        [BsonIgnore]
+        public byte Status { get; set; }
+
+        [BsonIgnore]
+        public bool IsPoisoned => (Status & (StatusPoisoned | StatusToxic)) != 0;
+
+        private const byte StatusPoisoned = 0x08;
+        private const byte StatusToxic = 0x80;
     }
 
     public class Move

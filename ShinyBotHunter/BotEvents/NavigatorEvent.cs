@@ -1,6 +1,8 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -11,14 +13,39 @@ namespace ShinyBotHunter.BotEvents
         public override EventState EventState => throw new NotImplementedException();
 
         private readonly PathfindingService pathfindingService;
+        private readonly PokemonStateReader reader;
 
         // Upper bound on how long we wait for the overworld coordinates to populate after a
         // battle before giving up and proceeding anyway.
         private const int OverworldReadyTimeoutMs = 3000;
 
-        public NavigatorEvent(PathfindingService pathfindingService)
+        // How often the party is re-read while walking to catch a poison faint. Each tick costs a
+        // party read plus decrypt, so this is deliberately far slower than the battle poll.
+        private const int FaintPollIntervalMs = 1000;
+
+        // Gap between a candidate poison event and the read that confirms it. The walk macro keeps
+        // running through this window -- nothing is interrupted until both reads agree.
+        private const int PoisonConfirmDelayMs = 250;
+
+        // Tile directly below the nurse's counter, where the heal dialogue is started. Every HGSS
+        // pokemon center is its own map id but reuses one interior layout (internal name *PC0101),
+        // so this single tile is correct in all of them -- the same reason the graph puts every
+        // center's entrance node at (8,19).
+        private const int PokemonCenterHealX = 8;
+        private const int PokemonCenterHealY = 13;
+
+        // How a walk macro ended.
+        private enum SegmentOutcome
+        {
+            Completed,
+            Battle,
+            PoisonEvent,
+        }
+
+        public NavigatorEvent(PathfindingService pathfindingService, PokemonStateReader reader)
         {
             this.pathfindingService = pathfindingService;
+            this.reader = reader;
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -52,6 +79,11 @@ namespace ShinyBotHunter.BotEvents
                     return;
                 }
                 state.NavigationPath = nodePath.ToList();
+                // The graph only gets us to the center's entrance node. The walk from there to the
+                // counter used to be baked into the heal macro, where a poison faint left it pressing
+                // buttons into the faint dialogue. As a final path segment it goes through the same
+                // A* and the same faint detection as every other leg.
+                state.NavigationPath.Add(BuildHealTileNode(state.NavigationPath[^1].Node.MapId));
                 state.NavigationPathIndex = 0;
                 Console.WriteLine($"[Navigator] Path found: {string.Join(" -> ", state.NavigationPath.Select(n => $"map={n.Node.MapId}({n.Node.X},{n.Node.Y})"))}");
                 Console.WriteLine($"[Navigator] Starting from map={mapId} ({x},{y})");
@@ -65,13 +97,31 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
-                state.NavigationPath = null;
+                ClearNavigation(state, "arrived at pokemon center");
                 state.SwapState(EventState.HealAtPokemonCenter);
             }
         }
 
+        // Synthetic end-of-route node for the tile in front of the nurse. Only MapId/X/Y are read
+        // back out during navigation, and the id follows the convention the pathfinder already uses
+        // for nodes that aren't in the graph (-1 start, -2 end).
+        private static NodePoint BuildHealTileNode(int pokemonCenterMapId)
+        {
+            return new NodePoint()
+            {
+                Node = new Node()
+                {
+                    Id = -3,
+                    MapId = pokemonCenterMapId,
+                    X = PokemonCenterHealX,
+                    Y = PokemonCenterHealY,
+                },
+            };
+        }
+
         private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
+            // Navigation has already walked us onto the counter tile.
             string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "HealPokemon");
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(cancellationToken);
@@ -108,9 +158,19 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
-                state.NavigationPath = null;
+                ClearNavigation(state, "arrived back at start");
                 state.SwapState(EventState.DecideOverworldAction);
             }
+        }
+
+        // Single place navigation state is dropped, so the log always says which leg finished
+        // and how far through the path it got.
+        private static void ClearNavigation(GameState state, string reason)
+        {
+            int segments = state.NavigationPath is null ? 0 : state.NavigationPath.Count - 1;
+            Console.WriteLine($"[Navigator] Clearing navigation path ({reason}) at segment {state.NavigationPathIndex}/{segments}");
+            state.NavigationPath = null;
+            state.NavigationPathIndex = 0;
         }
 
         // Walks the NodePath segment by segment, running A* for each leg.
@@ -123,6 +183,10 @@ namespace ShinyBotHunter.BotEvents
             await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
 
             var path = state.NavigationPath!;
+
+            // Party state at the start of this navigation. A field poison tick resolving mid-walk
+            // puts dialogue on screen, which swallows the rest of the macro.
+            var partyAtStart = await ReadPartySnapshotAsync(state.Bot);
 
             while (state.NavigationPathIndex < path.Count - 1)
             {
@@ -171,9 +235,20 @@ namespace ShinyBotHunter.BotEvents
 
                 if (macro is not null)
                 {
-                    bool battleOccurred = await ExecuteSegmentMacroAsync(state, macro, cancellationToken);
-                    if (battleOccurred)
+                    var outcome = await ExecuteSegmentMacroAsync(state, macro, partyAtStart, cancellationToken);
+                    if (outcome == SegmentOutcome.Battle)
                         return true;
+                    if (outcome == SegmentOutcome.PoisonEvent)
+                    {
+                        await ClearFaintTextAsync(state, cancellationToken);
+                        // The mon that just resolved is now fainted or no longer poisoned, so
+                        // re-snapshotting stops it from tripping the poll again -- each event is
+                        // handled exactly once.
+                        partyAtStart = await ReadPartySnapshotAsync(state.Bot);
+                        // Retry this same segment: the walk stopped somewhere short of the node, so
+                        // the loop re-reads our real position and recomputes the A* from there.
+                        continue;
+                    }
                 }
 
                 // After a portal crossing, poll until we're on the destination map
@@ -195,9 +270,9 @@ namespace ShinyBotHunter.BotEvents
             return false;
         }
 
-        // Runs macro and races it against battle detection.
-        // Returns true if a battle started before the macro finished.
-        private async Task<bool> ExecuteSegmentMacroAsync(GameState state, string macro, CancellationToken cancellationToken)
+        // Runs macro and races it against battle detection and a party faint.
+        // Returns what interrupted the macro, if anything.
+        private async Task<SegmentOutcome> ExecuteSegmentMacroAsync(GameState state, string macro, PartySnapshot partyAtStart, CancellationToken cancellationToken)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -205,21 +280,113 @@ namespace ShinyBotHunter.BotEvents
 
             Task macroTask = state.Bot.WaitForMacroAsync(cancellationToken);
             Task battleTask = WaitForBattleAsync(state.Bot, cts.Token);
+            Task poisonTask = WaitForPoisonEventAsync(state.Bot, partyAtStart, cts.Token);
 
-            Task first = await Task.WhenAny(macroTask, battleTask);
+            Task first = await Task.WhenAny(macroTask, battleTask, poisonTask);
 
             cancellationToken.ThrowIfCancellationRequested();
 
             cts.Cancel();
 
-            if (ReferenceEquals(first, battleTask))
+            if (ReferenceEquals(first, battleTask) || ReferenceEquals(first, poisonTask))
             {
                 state.Bot.ClearMacro();
                 await state.Bot.WaitForMacroAsync(cancellationToken);
-                return true;
+                return ReferenceEquals(first, battleTask) ? SegmentOutcome.Battle : SegmentOutcome.PoisonEvent;
             }
 
-            return false;
+            return SegmentOutcome.Completed;
+        }
+
+        // Pushes past the field poison dialogue so the overworld accepts input again.
+        private async Task ClearFaintTextAsync(GameState state, CancellationToken cancellationToken)
+        {
+            Console.WriteLine("[Navigator] Running ClearFaintText macro");
+            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, "ClearFaintText");
+            state.Bot.RunMacroString(macro);
+            await state.Bot.WaitForMacroAsync(cancellationToken);
+        }
+
+        // Party members that could still produce a field poison message, keyed by PID rather than
+        // slot so a party reorder can't be read as a state change.
+        private record PartySnapshot(HashSet<uint> Alive, HashSet<uint> Poisoned);
+
+        // A party member whose state says a field poison tick just resolved.
+        private record PoisonEvent(uint Pid, string Name, int Hp, int MaxHp, byte Status, string Reason)
+        {
+            public override string ToString() => $"{Name} pid={Pid:X8} hp={Hp}/{MaxHp} status=0x{Status:X2} ({Reason})";
+        }
+
+        private async Task<PartySnapshot> ReadPartySnapshotAsync(IBot bot)
+        {
+            var party = await reader.GetPartyState(bot);
+            var alive = new HashSet<uint>();
+            var poisoned = new HashSet<uint>();
+            var poisonedNames = new List<string>();
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                var pokemon = party.PartyPokemon[i];
+                if (pokemon is null)
+                    continue;
+                if (pokemon.HP > 0)
+                    alive.Add(pokemon.PID);
+                if (pokemon.IsPoisoned)
+                {
+                    poisoned.Add(pokemon.PID);
+                    poisonedNames.Add($"{pokemon.Name} (0x{pokemon.Status:X2})");
+                }
+            }
+            Console.WriteLine($"[Navigator] Party snapshot: {alive.Count} alive, poisoned: {(poisonedNames.Count == 0 ? "none" : string.Join(", ", poisonedNames))}");
+            return new PartySnapshot(alive, poisoned);
+        }
+
+        /// <summary>
+        /// A field poison tick resolving on a party member -- either someone who was alive is now at
+        /// 0 HP, or someone who was poisoned no longer is (the game clears the status when the tick
+        /// is survived). Both put dialogue on screen. Only members that were already poisoned are
+        /// watched for the status change, since nothing else clears poison mid-walk.
+        /// </summary>
+        private static PoisonEvent? FindPoisonEvent(PokemonState party, PartySnapshot partyAtStart)
+        {
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                var pokemon = party.PartyPokemon[i];
+                if (pokemon is null)
+                    continue;
+                if (pokemon.HP == 0 && partyAtStart.Alive.Contains(pokemon.PID))
+                    return new PoisonEvent(pokemon.PID, pokemon.Name, pokemon.HP, pokemon.MaxHP, pokemon.Status, "fainted");
+                if (!pokemon.IsPoisoned && partyAtStart.Poisoned.Contains(pokemon.PID))
+                    return new PoisonEvent(pokemon.PID, pokemon.Name, pokemon.HP, pokemon.MaxHP, pokemon.Status, "poison cleared");
+            }
+            return null;
+        }
+
+        // Completes once a poison event is seen by two separate party reads. The battle stats block
+        // -- status, HP, level -- sits past the range the parser checksums, so a read that lands
+        // while the game is rewriting it comes back "valid" with garbage status. One such read used
+        // to be enough to abort a route mid-walk. The macro keeps running across the confirmation
+        // window, so an unconfirmed candidate costs nothing but a log line.
+        private async Task WaitForPoisonEventAsync(IBot bot, PartySnapshot partyAtStart, CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                // Cancels out of the loop once another racer wins, so a losing poll can never
+                // complete successfully and be mistaken for a poison event.
+                await Task.Delay(FaintPollIntervalMs, cancellationToken);
+                var candidate = FindPoisonEvent(await reader.GetPartyState(bot), partyAtStart);
+                if (candidate is null)
+                    continue;
+
+                await Task.Delay(PoisonConfirmDelayMs, cancellationToken);
+                var confirm = FindPoisonEvent(await reader.GetPartyState(bot), partyAtStart);
+                if (confirm is not null && confirm.Pid == candidate.Pid && confirm.Reason == candidate.Reason)
+                {
+                    Console.WriteLine($"[Navigator] Poison event confirmed: {confirm}");
+                    return;
+                }
+
+                Console.WriteLine($"[Navigator] Discarded unconfirmed poison event: saw {candidate}, re-read gave {(confirm is null ? "nothing" : confirm.ToString())}");
+            }
         }
 
         private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
