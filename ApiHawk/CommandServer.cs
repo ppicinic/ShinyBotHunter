@@ -120,7 +120,7 @@ namespace ApiHawk
             _acceptThread = new Thread(AcceptLoop) { IsBackground = true, Name = "CommandServer" };
             _acceptThread.Start();
 
-            Console.WriteLine($"[CommandServer] Listening on http://127.0.0.1:{_port}/ ...");
+            BotLog.Write($"[CommandServer] Listening on http://127.0.0.1:{_port}/ ...");
         }
 
         // ── Called by BotServerTool.UpdateValues(PreFrame) every frame ────────────
@@ -488,7 +488,7 @@ namespace ApiHawk
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[CommandServer] Accept error: {ex.Message}");
+                    BotLog.WriteThrottled("cmd-accept-error", $"[CommandServer] Accept error: {ex.Message}");
                     continue;
                 }
 
@@ -523,7 +523,7 @@ namespace ApiHawk
             }
             catch (Exception ex) when (!_disposed)
             {
-                Console.WriteLine($"[CommandServer] Request exception: {ex.Message}");
+                BotLog.WriteThrottled("cmd-request-exception", $"[CommandServer] Request exception: {ex.Message}");
                 try { context.Response.Abort(); } catch { }
             }
         }

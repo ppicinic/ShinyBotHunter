@@ -280,6 +280,36 @@ namespace ShinyBotHunter.Pathfinding
             var startNode = await firstNodeTask;
             var extraEdges = await endNodeTask;
             var botMapId = mapService.GetMapLookups(destMapId, endInternalId)[0].BotMapId;
+
+            // The start node only has edges to graph nodes and the destination is only reachable
+            // from them, so without this a same-map trip has to detour out to a real node and come
+            // back -- which for a walk home means crossing a load zone and re-entering the map.
+            // Offering the direct walk as one more edge lets Dijkstra pick it on cost, and still
+            // fall back to the graph when the direct route is blocked.
+            if (startNode.MapId == botMapId && !extraEdges.ContainsKey(startNode.Id))
+            {
+                var direct = ASearch(startMapId, startX, startY, destX, destY, capability, facing, startInternalId);
+                if (direct is not null)
+                {
+                    var lookup = mapService.GetMapLookups(destMapId, endInternalId)[0];
+                    extraEdges.Add(startNode.Id, new Edge()
+                    {
+                        FromNodeId = startNode.Id,
+                        ToNodeId = -2,
+                        ToNode = new Node()
+                        {
+                            Id = -2,
+                            MapId = botMapId,
+                            IsPokemonCenter = lookup.InternalName.EndsWith("PC0101"),
+                            X = destX,
+                            Y = destY,
+                        },
+                        CapabilityMask = capability.CapabilityMask,
+                        Cost = direct.Cost,
+                    });
+                }
+            }
+
             var nodePoint = Djitriska(startNode, capability, (x) => x.Node.MapId == botMapId && x.Node.X == destX && x.Node.Y == destY, extraEdges);
             if(nodePoint is null)
             {

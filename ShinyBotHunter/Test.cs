@@ -79,7 +79,7 @@ namespace ShinyBotHunter
                 Target = new ShinyTarget(),
                 GameFlavor = GameFlavor.HGSS,
                 OriginalBattleMode = BattleMode.Battle,
-                TrainMode = true,
+                TrainType = TrainType.Standard,
                 TargetLevel = 99,
                 Milestone = "Test",
             };

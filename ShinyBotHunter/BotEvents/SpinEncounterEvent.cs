@@ -29,10 +29,17 @@ namespace ShinyBotHunter.BotEvents
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
-            uint anchor = await bot.ReadUIntAsync(0x21D4158);
-            uint facingPtr = anchor + 0x1DC4;
-            byte facing = await bot.ReadByteAsync(facingPtr);
+            // Spinning resumes straight after a battle, when the field is still fading in and the
+            // facing byte has not settled. Reading it early picks a rotation that starts from the
+            // wrong direction, so wait for the overworld the same way navigation does.
+            if (!await Overworld.WaitForReadyAsync(bot, cancellationToken))
+            {
+                Console.WriteLine("[Spin] Overworld coordinates never settled; spinning from the current facing anyway.");
+            }
+
+            byte facing = await bot.GetFacing();
             string macro = GetSpinMacro(facing);
+            Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
 
             uint battleIndicator = 0x21E76D2;
@@ -44,8 +51,21 @@ namespace ShinyBotHunter.BotEvents
             }
             bot.ClearMacro();
             await bot.WaitForMacroAsync();
-            Console.WriteLine("Found battle");
-            return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
+
+            bool inBattle = battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
+            if (inBattle)
+            {
+                Console.WriteLine("Found battle");
+                // The orchestrator expects the encounter event to advance the state itself, the same
+                // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
+                // the stack, so the next loop spun again on top of the battle instead of fighting it.
+                // The bool is still returned for WildPokemonEncounterEvent, which drives its own
+                // state machine from it.
+                state.State.Pop();
+                // TODO we should go into Waiting if its a non wild battle
+                state.State.Push(EventState.BattleStart);
+            }
+            return inBattle;
         }
 
         private string GetSpinMacro(byte facing)
@@ -56,9 +76,16 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
-                while (facing != directions.Peek())
+                // Align the cycle to the direction we're actually facing. Bounded by the queue length:
+                // a facing value outside 0-3 -- a read that caught the field mid-load -- would never
+                // match and used to spin here forever, hanging the run with nothing in the log.
+                for (int rotations = 0; rotations < directions.Count && facing != directions.Peek(); rotations++)
                 {
                     directions.Enqueue(directions.Dequeue());
+                }
+                if (facing != directions.Peek())
+                {
+                    Console.WriteLine($"[Spin] Unexpected facing value {facing}; starting the rotation at {directions.Peek()}.");
                 }
                 directions.Enqueue(directions.Dequeue());
                 StringBuilder sb = new StringBuilder();

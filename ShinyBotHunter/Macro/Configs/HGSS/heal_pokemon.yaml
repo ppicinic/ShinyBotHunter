@@ -1,7 +1,15 @@
 name: HealPokemon
 flavor: HGSS
 steps:
- - M.Up.13.0x21DA6FC
+ # The walk from the door to the counter tile is navigation's job now, so this starts from a
+ # standstill: settle, then face the nurse. The counter above us is a wall, so T.Up can only
+ # turn us -- it can never step us off the tile.
+ #
+ # The settle has to outlast the tail end of the walk macro: starting sooner sometimes pressed A
+ # while the last step was still animating, which ate the first dialogue box.
+ - W.120
+ - T.Up
+ - W.5
  - T.A
  - W.75
  - T.A

@@ -90,6 +90,31 @@ namespace ShinyBotHunter.Bot
             return await this.memoryClient.ReadUShortAsync(address);
         }
 
+        public async Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets)
+        {
+            return await this.memoryClient.ReadBytesViaPointerAsync(anchorAddress, length, hopOffsets);
+        }
+
+        public async Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+        {
+            return await this.memoryClient.ReadByteViaPointerAsync(anchorAddress, hopOffsets);
+        }
+
+        public async Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+        {
+            return await this.memoryClient.ReadUShortViaPointerAsync(anchorAddress, hopOffsets);
+        }
+
+        public async Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+        {
+            return await this.memoryClient.ReadUIntViaPointerAsync(anchorAddress, hopOffsets);
+        }
+
+        public async Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames)
+        {
+            return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames);
+        }
+
         public void Release()
         {
             this.commandClient.Release();

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Text;
 using System.Threading;
 using BizHawk.Client.Common;
 
@@ -13,11 +15,25 @@ namespace ApiHawk
     /// Listens on http://127.0.0.1:{port}/ (port read from BIZHAWK_MEMORY_PORT, default 50001).
     /// Binding to the explicit loopback IP avoids needing a Windows URL-ACL reservation.
     ///
-    /// Wire format is unchanged — the request body is the same 9-byte binary header the
-    /// clients already build, and the response body is the raw result:
+    /// Every request starts with the same 9-byte binary header; newer opcodes append their own
+    /// fields, so the handler reads those 9 bytes first and then reads the remainder per opcode.
     ///   Request body : [cmd:1][addr:4 LE][aux:4 LE]
     ///   cmd 0x01     : read  aux bytes from addr  → response body: aux bytes
     ///   cmd 0x02     : write aux&amp;0xFF to addr      → response body: 0x01 (ack)
+    ///   cmd 0x03     : follow a pointer chain from addr, then read aux bytes.
+    ///                  extra: [hopCount:1][hops:i32 LE × hopCount]
+    ///                  → response body: aux bytes
+    ///   cmd 0x04     : read a whole party, validated, from a single frame.
+    ///                  extra: [countOffset:i32][slotsOffset:i32][slotSize:i32][slotStride:i32]
+    ///                         [maxSlots:1][maxRetryFrames:2]
+    ///                  → response body: [count:1][count × slotSize raw bytes]
+    ///
+    /// Why 0x03 and 0x04 exist: a client that reads the anchor pointer and then reads through it is
+    /// two HTTP round trips, so the pointer it uses is at least a frame stale. Doing both hops here
+    /// keeps them on one frame. 0x04 goes further and validates each slot before answering, retrying
+    /// on the next frame when a read lands mid-rewrite -- far tighter than the client noticing bad
+    /// data and polling again, and it guarantees the whole party comes from one frame rather than
+    /// slot 1 from one frame and slot 6 from three frames later.
     ///
     /// Thread model:
     ///   Accept thread — blocks on HttpListener.GetContext, hands each request to the thread
@@ -37,6 +53,23 @@ namespace ApiHawk
             public uint Aux;
             public byte[] Result = Array.Empty<byte>();
             public readonly ManualResetEventSlim Done = new ManualResetEventSlim(false);
+
+            // cmd 0x03
+            public int[] Hops = Array.Empty<int>();
+
+            // cmd 0x04
+            public int CountOffset;
+            public int SlotsOffset;
+            public int SlotSize;
+            public int SlotStride;
+            public byte MaxSlots;
+            public int MaxRetryFrames;
+            public int FramesTried;
+
+            // Set when the frame thread gives up, so the handler can answer 502 rather than hand
+            // back a short body the client would have to interpret.
+            public bool Failed;
+            public string FailureReason = string.Empty;
         }
 
         // ── Request queue: handler threads → frame thread ─────────────────────────
@@ -48,8 +81,21 @@ namespace ApiHawk
         private HttpListener? _listener;
         private Thread? _acceptThread;
 
-        // How long a handler waits for the frame thread before giving up.
+        // How long a handler waits for the frame thread before giving up. A cmd 0x04 retry budget has
+        // to stay well inside this -- at 60fps, 120 frames is 2s against this 5s ceiling.
         private const int FrameWaitTimeoutMs = 5000;
+
+        // DS main RAM, the only region any of these pointers can legitimately address.
+        private const uint MainRamStart = 0x02000000;
+        private const uint MainRamEnd = 0x02400000;
+
+        // Sanity bounds on request fields, so a malformed body can't allocate wildly or loop long.
+        private const int MaxHops = 4;
+        private const int MaxSlotSize = 0x1000;
+
+        // cmd 0x04 count byte meaning "could not be read within the frame budget". Safe as a sentinel
+        // because a real count is bounded by the request's maxSlots.
+        private const byte PartyUnavailable = 0xFF;
 
         // ── BizHawk API ───────────────────────────────────────────────────────────
         public IMemoryApi? MemoryApi { get; set; }
@@ -68,13 +114,18 @@ namespace ApiHawk
             _acceptThread = new Thread(AcceptLoop) { IsBackground = true, Name = "MemoryServer" };
             _acceptThread.Start();
 
-            Console.WriteLine($"[MemoryServer] Listening on http://127.0.0.1:{_port}/ ...");
+            BotLog.Write($"[MemoryServer] Listening on http://127.0.0.1:{_port}/ ...");
         }
 
         // ── Called by BotServerTool.UpdateValues(PostFrame) every frame ───────────
 
         public void ServiceFrame()
         {
+            // Requests that need another frame. They must not go straight back onto _queue: the
+            // drain loop below would pick them up again in this same frame and spin until the retry
+            // budget ran out, freezing the emulator for the whole request.
+            List<MemoryRequest>? retry = null;
+
             while (_queue.TryDequeue(out MemoryRequest req))
             {
                 try
@@ -85,16 +136,43 @@ namespace ApiHawk
                     }
                     else if (req.Cmd == 0x01)
                     {
-                        var list = MemoryApi.ReadByteRange((long)req.Addr, (int)req.Aux);
-                        byte[] buf = new byte[list.Count];
-                        for (int i = 0; i < list.Count; i++)
-                            buf[i] = list[i];
-                        req.Result = buf;
+                        req.Result = ReadBytes(req.Addr, (int)req.Aux);
                     }
                     else if (req.Cmd == 0x02)
                     {
                         MemoryApi.WriteByte((long)req.Addr, req.Aux & 0xFF);
                         req.Result = new byte[] { 0x01 };
+                    }
+                    else if (req.Cmd == 0x03)
+                    {
+                        uint addr = FollowPointerChain(req.Addr, req.Hops);
+                        req.Result = ReadBytes(addr, (int)req.Aux);
+                    }
+                    else if (req.Cmd == 0x04)
+                    {
+                        if (!TryReadValidatedParty(req, out byte[] party, out string reason))
+                        {
+                            req.FramesTried++;
+                            if (req.FramesTried < req.MaxRetryFrames)
+                            {
+                                // Leave Done unsignalled and try again next frame, re-following the
+                                // pointer chain so a moved anchor is picked up too.
+                                (retry ??= new List<MemoryRequest>()).Add(req);
+                                continue;
+                            }
+                            // Not a 502: giving up here is an ordinary outcome (the battle party is
+                            // only populated during a battle), and a 502 would have the client burn
+                            // its whole transient-retry budget on it. The sentinel count says
+                            // "unavailable" -- 0xFF can never be a real party size.
+                            BotLog.WriteThrottled("party-unreadable", $"[MemoryServer] Party unreadable after {req.FramesTried} frames: {reason}");
+                            req.Result = new byte[] { PartyUnavailable };
+                        }
+                        else
+                        {
+                            if (req.FramesTried > 0)
+                                BotLog.WriteThrottled("party-retried", $"[MemoryServer] Party read succeeded after {req.FramesTried} retry frame(s).");
+                            req.Result = party;
+                        }
                     }
                     else
                     {
@@ -103,15 +181,103 @@ namespace ApiHawk
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[MemoryServer] Frame processing error: {ex.Message}");
+                    BotLog.WriteThrottled("frame-error", $"[MemoryServer] Frame processing error: {ex.Message}");
+                    req.Failed = true;
+                    req.FailureReason = ex.Message;
                     req.Result = Array.Empty<byte>();
                 }
-                finally
-                {
-                    // The handler may have already given up and disposed Done on timeout.
-                    try { req.Done.Set(); } catch { }
-                }
+
+                // The handler may have already given up and disposed Done on timeout.
+                try { req.Done.Set(); } catch { }
             }
+
+            if (retry != null)
+            {
+                foreach (MemoryRequest pending in retry)
+                    _queue.Enqueue(pending);
+            }
+        }
+
+        // ── Frame-thread helpers (only ever called from ServiceFrame) ──────────────
+
+        private byte[] ReadBytes(uint address, int length)
+        {
+            var list = MemoryApi!.ReadByteRange((long)address, length);
+            byte[] buf = new byte[list.Count];
+            for (int i = 0; i < list.Count; i++)
+                buf[i] = list[i];
+            return buf;
+        }
+
+        /// <summary>
+        /// Reads the pointer at <paramref name="address"/> and applies the first offset, repeating for
+        /// each hop. Every pointer read has to land in DS main RAM; a value outside it means the read
+        /// caught the pointer being written, and continuing would read an unrelated address and hand
+        /// back believable garbage. Throwing here turns that into a 502 the client retries.
+        /// </summary>
+        private uint FollowPointerChain(uint address, int[] hops)
+        {
+            uint addr = address;
+            for (int i = 0; i < hops.Length; i++)
+            {
+                byte[] raw = ReadBytes(addr, 4);
+                if (raw.Length < 4)
+                    throw new InvalidOperationException($"pointer read at 0x{addr:X8} returned {raw.Length} bytes");
+                uint pointer = ReadU32Le(raw, 0);
+                if (pointer < MainRamStart || pointer >= MainRamEnd)
+                    throw new InvalidOperationException($"pointer 0x{pointer:X8} at 0x{addr:X8} is outside main RAM");
+                addr = (uint)(pointer + hops[i]);
+            }
+            return addr;
+        }
+
+        /// <summary>
+        /// One attempt at the whole party within this frame: follow the anchor, read the count, then
+        /// read and validate every slot. All or nothing -- a single bad slot fails the attempt so the
+        /// caller never sees a party stitched together from different frames.
+        /// </summary>
+        private bool TryReadValidatedParty(MemoryRequest req, out byte[] result, out string reason)
+        {
+            result = Array.Empty<byte>();
+
+            uint basePtr = FollowPointerChain(req.Addr, new[] { 0 });
+
+            byte[] countRaw = ReadBytes((uint)(basePtr + req.CountOffset), 1);
+            if (countRaw.Length < 1)
+            {
+                reason = "count read returned nothing";
+                return false;
+            }
+            int count = countRaw[0];
+            if (count > req.MaxSlots)
+            {
+                // Uninitialised or mid-write; a real party never exceeds the configured maximum.
+                reason = $"count {count} exceeds max {req.MaxSlots}";
+                return false;
+            }
+
+            byte[] buf = new byte[1 + count * req.SlotSize];
+            buf[0] = (byte)count;
+            for (int slot = 0; slot < count; slot++)
+            {
+                uint slotAddr = (uint)(basePtr + req.SlotsOffset + slot * req.SlotStride);
+                byte[] block = ReadBytes(slotAddr, req.SlotSize);
+                if (block.Length != req.SlotSize)
+                {
+                    reason = $"slot {slot + 1} read returned {block.Length} bytes";
+                    return false;
+                }
+                if (!PokemonValidator.IsUsable(block, out string slotReason))
+                {
+                    reason = $"slot {slot + 1}: {slotReason}";
+                    return false;
+                }
+                Buffer.BlockCopy(block, 0, buf, 1 + slot * req.SlotSize, req.SlotSize);
+            }
+
+            result = buf;
+            reason = string.Empty;
+            return true;
         }
 
         // ── HTTP accept loop ────────────────────────────────────────────────────────
@@ -131,7 +297,7 @@ namespace ApiHawk
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[MemoryServer] Accept error: {ex.Message}");
+                    BotLog.WriteThrottled("accept-error", $"[MemoryServer] Accept error: {ex.Message}");
                     continue;
                 }
 
@@ -159,12 +325,34 @@ namespace ApiHawk
                     Addr = ReadU32Le(header, 1),
                     Aux  = ReadU32Le(header, 5),
                 };
+
+                if (!TryReadOpcodeExtras(context.Request.InputStream, req))
+                {
+                    response.StatusCode = 400;
+                    response.Close();
+                    return;
+                }
+
                 _queue.Enqueue(req);
 
                 if (!req.Done.Wait(FrameWaitTimeoutMs))
                 {
-                    Console.WriteLine("[MemoryServer] Frame thread timeout.");
+                    BotLog.WriteThrottled("frame-timeout", $"[MemoryServer] Frame thread timeout (cmd 0x{req.Cmd:X2}, queue depth {_queue.Count}).");
                     response.StatusCode = 504;
+                    response.Close();
+                    return;
+                }
+
+                if (req.Failed)
+                {
+                    // 502 rather than a short body: the client's retry policy treats it as transient,
+                    // and nothing downstream has to guess whether a truncated read meant failure.
+                    byte[] message = Encoding.UTF8.GetBytes(req.FailureReason);
+                    response.StatusCode = 502;
+                    response.ContentType = "text/plain";
+                    response.ContentLength64 = message.Length;
+                    response.OutputStream.Write(message, 0, message.Length);
+                    response.OutputStream.Close();
                     response.Close();
                     return;
                 }
@@ -180,7 +368,7 @@ namespace ApiHawk
             }
             catch (Exception ex) when (!_disposed)
             {
-                Console.WriteLine($"[MemoryServer] Request exception: {ex.Message}");
+                BotLog.WriteThrottled("request-exception", $"[MemoryServer] Request exception: {ex.Message}");
                 try { response.Abort(); } catch { }
             }
             finally
@@ -190,6 +378,49 @@ namespace ApiHawk
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Reads the per-opcode fields that follow the shared 9-byte header. Opcodes 0x01/0x02 have
+        /// none, which is what keeps older clients working unchanged.
+        /// </summary>
+        private static bool TryReadOpcodeExtras(Stream stream, MemoryRequest req)
+        {
+            if (req.Cmd == 0x03)
+            {
+                byte[]? hopCountRaw = ReadExact(stream, 1);
+                if (hopCountRaw == null || hopCountRaw[0] == 0 || hopCountRaw[0] > MaxHops)
+                    return false;
+                int hopCount = hopCountRaw[0];
+                byte[]? hopsRaw = ReadExact(stream, hopCount * 4);
+                if (hopsRaw == null)
+                    return false;
+                var hops = new int[hopCount];
+                for (int i = 0; i < hopCount; i++)
+                    hops[i] = (int)ReadU32Le(hopsRaw, i * 4);
+                req.Hops = hops;
+                return true;
+            }
+
+            if (req.Cmd == 0x04)
+            {
+                byte[]? extras = ReadExact(stream, 19);
+                if (extras == null)
+                    return false;
+                req.CountOffset = (int)ReadU32Le(extras, 0);
+                req.SlotsOffset = (int)ReadU32Le(extras, 4);
+                req.SlotSize = (int)ReadU32Le(extras, 8);
+                req.SlotStride = (int)ReadU32Le(extras, 12);
+                req.MaxSlots = extras[16];
+                req.MaxRetryFrames = extras[17] | (extras[18] << 8);
+                if (req.SlotSize <= 0 || req.SlotSize > MaxSlotSize || req.MaxSlots == 0)
+                    return false;
+                if (req.MaxRetryFrames < 1)
+                    req.MaxRetryFrames = 1;
+                return true;
+            }
+
+            return true;
+        }
 
         private static byte[]? ReadExact(Stream stream, int count)
         {

@@ -69,6 +69,29 @@ namespace ShinyBotHunter.Emulators
             });
         }
 
+        // ── Pointer-chain and validated reads ─────────────────────────────────────
+        // MemoryPipeServer implements neither opcode, and nothing constructs this client today (see
+        // BotFactory -- both BizHawkMode branches use the HTTP client). Failing loudly beats silently
+        // handing back an empty buffer if that ever changes.
+
+        private const string NotSupportedMessage =
+            "The named-pipe memory server does not implement pointer-chain or validated reads. Use BizHawkMemoryClient (HTTP).";
+
+        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets)
+            => throw new NotSupportedException(NotSupportedMessage);
+
+        public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+            => throw new NotSupportedException(NotSupportedMessage);
+
+        public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+            => throw new NotSupportedException(NotSupportedMessage);
+
+        public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
+            => throw new NotSupportedException(NotSupportedMessage);
+
+        public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames)
+            => throw new NotSupportedException(NotSupportedMessage);
+
         // ── IAsyncDisposable ──────────────────────────────────────────────────────
 
         public ValueTask DisposeAsync()

@@ -1,0 +1,8 @@
+# Switch-train: swap the active pokemon out for party slot 2.
+name: SwitchToPartySlotTwo
+flavor: HGSS
+steps:
+  - macro: SwitchPokemonInit
+  - S.PartySlotTwo
+  - W.30 # TODO tune: frames until the slot submenu is up
+  - macro: SwitchPokemonConfirm

@@ -1,0 +1,9 @@
+# Switch-train: from the party-member submenu, confirm the swap and wait out the switch animation.
+# Entry state:  a party slot has been tapped and its submenu (Switch In / Summary / Item) is open.
+# Exit state:   the new pokemon is out and the opponent is taking its turn -- the caller hands off
+#               to WaitForMovesEnd from here.
+name: SwitchPokemonConfirm
+flavor: HGSS
+steps:
+  - S.SwitchInButton
+  - W.30 

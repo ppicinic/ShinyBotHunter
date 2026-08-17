@@ -8,5 +8,7 @@ namespace ShinyBotHunter.BotEvents.Target
         {
             return Task.FromResult(pokemon.IsShiny);
         }
+
+        public bool UsesMilestone => true;
     }
 }

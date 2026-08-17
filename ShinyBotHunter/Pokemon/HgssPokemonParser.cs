@@ -65,6 +65,7 @@ namespace ShinyBotHunter.Pokemon
 
             byte gender = _metadataService.GetGender(pid, species);
             // Battle stats (0x88)
+            byte status = data.Length > 136 ? data[0x88] : (byte)0;
             byte level = data.Length > 136 ? data[0x8C] : (byte)0;
             ushort hp = data.Length > 136 ? BitConverter.ToUInt16(data, 0x8E) : (ushort)0;
             ushort maxHp = data.Length > 136 ? BitConverter.ToUInt16(data, 0x90) : (ushort)0;
@@ -99,6 +100,7 @@ namespace ShinyBotHunter.Pokemon
                 Nickname = nickname,
                 OTName = otName,
                 Nature = (byte)(pid % 25),
+                Status = status,
                 Level = level,
                 HP = hp,
                 MaxHP = maxHp,
