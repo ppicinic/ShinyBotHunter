@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
-import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
+import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 import { ConnectionStatus } from './ConnectionStatus'
 import { WindowLayoutTab } from './WindowLayoutTab'
@@ -37,6 +37,8 @@ const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 // Maps TrainType string names to C# enum integer values (None=0, Standard=1, Switch=2)
 const TRAIN_TYPE_VALUES: Record<string, number> = { None: 0, Standard: 1, Switch: 2 }
 
+const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget', 'NoTarget']
+
 /** Seed value for a freshly-discovered parameter. TrainType must default to 'None' rather than ''
  *  so the Neq condition guarding TargetLevel starts out unmet. */
 function defaultParamValue(param: string): string {
@@ -67,6 +69,220 @@ function isConditionMet(condition: { conditionType: string | number; name: strin
     return params[condition.name] !== condition.value
   }
   return false
+}
+
+/** Seed values for every parameter a schema declares. */
+function initialParamsFor(schema: EventArgumentOptions): Record<string, string> {
+  const params: Record<string, string> = {}
+  schema.requiredParameters?.forEach((param) => {
+    params[param] = ''
+  })
+  schema.optionalParameters?.forEach((param) => {
+    params[param] = defaultParamValue(param)
+  })
+  schema.conditionalParameters?.forEach((cp) => {
+    params[cp.name] = defaultParamValue(cp.name)
+  })
+  return params
+}
+
+/** True once every required parameter of the schema has a value. */
+function requiredParamsFilled(schema: EventArgumentOptions, params: Record<string, string>): boolean {
+  const required = schema.requiredParameters ?? []
+  return required.every((p) => params[p]?.trim())
+}
+
+/** Maps one form's parameter values onto the JSON body of an encounter leg. */
+function buildLegBody(params: Record<string, string>): NewEventLegArguments {
+  const leg: NewEventLegArguments = {}
+  if (params['PhaseName'] !== undefined) {
+    leg.phaseName = params['PhaseName']
+  }
+  if (params['TargetType'] !== undefined) {
+    leg.targetType = params['TargetType']
+  }
+  if (params['EncounterType'] !== undefined && params['EncounterType'] !== '') {
+    leg.encounterType = ENCOUNTER_TYPE_VALUES[params['EncounterType']]
+  }
+  if (params['xRange'] !== undefined) {
+    leg.xRange = parseInt(params['xRange'], 10) || 0
+  }
+  if (params['yRange'] !== undefined) {
+    leg.yRange = parseInt(params['yRange'], 10) || 0
+  }
+  if (params['TrainType'] !== undefined) {
+    leg.trainType = TRAIN_TYPE_VALUES[params['TrainType']] ?? 0
+  }
+  if (params['TargetLevel'] !== undefined && params['TargetLevel'] !== '' && params['TargetLevel'] !== '0') {
+    leg.targetLevel = parseInt(params['TargetLevel'], 10)
+  }
+  if (params['TrainType'] === 'Switch' && params['SwitchSlot'] !== undefined && params['SwitchSlot'] !== '') {
+    leg.switchSlot = parseInt(params['SwitchSlot'], 10)
+  }
+  return leg
+}
+
+/**
+ * The inputs for one set of encounter parameters, driven entirely by the schema the server sent.
+ * Rendered once for a single action and once per leg of a chained action.
+ */
+function ActionParamFields({
+  schema,
+  params,
+  onChange,
+  availablePhases,
+  party,
+  onReloadParty,
+  partyLoading
+}: {
+  schema: EventArgumentOptions
+  params: Record<string, string>
+  onChange: (param: string, value: string) => void
+  availablePhases: PhaseInfo[]
+  party: PartySlotInfo[] | undefined
+  onReloadParty: () => void
+  partyLoading: boolean
+}): JSX.Element {
+  const visibleConditionals = (schema.conditionalParameters ?? []).filter((cp: ConditionalParameter) => {
+    return isConditionMet(cp.condition, params) || !cp.hideIfConditionNotMet
+  })
+  return (
+    <>
+      {schema.requiredParameters?.map((param) => (
+        <div key={param} className="flex items-center gap-2">
+          <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
+          {param === 'PhaseName' ? (
+            <select
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Select a milestone...</option>
+              {availablePhases.map((phase) => (
+                <option key={phase.name} value={phase.name}>{phase.name}</option>
+              ))}
+            </select>
+          ) : param === 'TargetType' ? (
+            <select
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Select target type...</option>
+              {TARGET_TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          ) : param === 'EncounterType' ? (
+            <select
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Select encounter type...</option>
+              {ENCOUNTER_TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              placeholder={param}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+            />
+          )}
+        </div>
+      ))}
+      {schema.optionalParameters && schema.optionalParameters.length > 0 && (
+        <div className="pt-0.5 border-t border-slate-700/30">
+          <span className="text-xs text-slate-600">Optional</span>
+          {schema.optionalParameters.map((param) => (
+            <div key={param} className="flex items-center gap-2 mt-0.5">
+              <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
+              {param.toLowerCase() === 'soundon' ? (
+                <input
+                  type="checkbox"
+                  checked={params[param] === 'true'}
+                  onChange={(e) => onChange(param, e.target.checked ? 'true' : 'false')}
+                  className="w-4 h-4 accent-indigo-500"
+                />
+              ) : param === 'TrainType' ? (
+                <select
+                  value={params[param] ?? 'None'}
+                  onChange={(e) => onChange(param, e.target.value)}
+                  className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  {TRAIN_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={params[param] ?? ''}
+                  onChange={(e) => onChange(param, e.target.value)}
+                  placeholder={param}
+                  className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {visibleConditionals.length > 0 && (
+        <div className="pt-0.5 border-t border-slate-700/30">
+          <span className="text-xs text-slate-600">Conditional</span>
+          {visibleConditionals.map((cp: ConditionalParameter) => {
+            const condMet = isConditionMet(cp.condition, params)
+            // The battler picker lists the bot's live party. Slot 1 is the trainee
+            // and is never selectable.
+            const isBattlerPicker = cp.name === 'SwitchSlot' && party !== undefined && party.length > 0
+            return (
+              <div key={cp.name} className="flex items-center gap-2 mt-0.5">
+                <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
+                {isBattlerPicker ? (
+                  <select
+                    value={params[cp.name] ?? '2'}
+                    onChange={(e) => onChange(cp.name, e.target.value)}
+                    disabled={!condMet}
+                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-40"
+                  >
+                    {party.filter((p) => p.slot > 1).map((p) => (
+                      <option key={p.slot} value={String(p.slot)}>
+                        {`Slot ${p.slot} — ${p.name} (Lv ${p.level})`}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="number"
+                    value={params[cp.name] ?? '0'}
+                    onChange={(e) => onChange(cp.name, e.target.value)}
+                    disabled={!condMet}
+                    placeholder="0"
+                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
+                  />
+                )}
+                {cp.name === 'SwitchSlot' && (
+                  <button
+                    type="button"
+                    onClick={onReloadParty}
+                    disabled={partyLoading}
+                    title="Reload party from the running game"
+                    className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600 disabled:opacity-40"
+                  >
+                    {partyLoading ? '…' : '⟳'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </>
+  )
 }
 
 // ============================================================
@@ -340,6 +556,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   const [botActions, setBotActions] = useState<Record<number, EventArgumentOptions[]>>({})
   // Per-bot action parameter values: pos -> { actionName -> { paramName -> value } }
   const [botActionParams, setBotActionParams] = useState<Record<number, Record<string, Record<string, string>>>>({})
+  // Legs of chained actions: pos -> { actionName -> one param record per leg }
+  const [botChainLegs, setBotChainLegs] = useState<Record<number, Record<string, Record<string, string>[]>>>({})
+  // Which action's form is showing per bot: pos -> actionName
+  const [selectedBotAction, setSelectedBotAction] = useState<Record<number, string>>({})
   // Live party per bot, loaded on demand so Switch train mode can offer real pokemon: pos -> slots
   const [partyByPos, setPartyByPos] = useState<Record<number, PartySlotInfo[]>>({})
   const [loadingParty, setLoadingParty] = useState<number | null>(null)
@@ -393,18 +613,37 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
         if (!next[pos]) next[pos] = {}
         actionList.forEach((action) => {
           if (!next[pos][action.name]) {
-            next[pos][action.name] = {}
-            action.requiredParameters?.forEach((param) => {
-              next[pos][action.name][param] = ''
-            })
-            action.optionalParameters?.forEach((param) => {
-              next[pos][action.name][param] = defaultParamValue(param)
-            })
-            action.conditionalParameters?.forEach((cp) => {
-              next[pos][action.name][cp.name] = defaultParamValue(cp.name)
-            })
+            next[pos][action.name] = initialParamsFor(action)
           }
         })
+      }
+      return next
+    })
+    // Chained actions start with a single leg; the operator adds the rest.
+    setBotChainLegs((prev) => {
+      const next = { ...prev }
+      for (const [posStr, actionList] of Object.entries(updates)) {
+        const pos = Number(posStr)
+        if (!next[pos]) next[pos] = {}
+        actionList.forEach((action) => {
+          if (action.legParameters && !next[pos][action.name]) {
+            next[pos][action.name] = [initialParamsFor(action.legParameters)]
+          }
+        })
+      }
+      return next
+    })
+    // Only one action's form shows at a time, so fall back to the first whenever the current pick
+    // is no longer on offer (the available set changes as the bot's state does).
+    setSelectedBotAction((prev) => {
+      const next = { ...prev }
+      for (const [posStr, actionList] of Object.entries(updates)) {
+        const pos = Number(posStr)
+        if (actionList.length === 0) {
+          delete next[pos]
+        } else if (!actionList.some((action) => action.name === next[pos])) {
+          next[pos] = actionList[0].name
+        }
       }
       return next
     })
@@ -440,16 +679,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
         setActions(data)
         const initial: Record<string, Record<string, string>> = {}
         data.forEach((action) => {
-          initial[action.name] = {}
-          action.requiredParameters?.forEach((param) => {
-            initial[action.name][param] = ''
-          })
-          action.optionalParameters?.forEach((param) => {
-            initial[action.name][param] = defaultParamValue(param)
-          })
-          action.conditionalParameters?.forEach((cp) => {
-            initial[action.name][cp.name] = defaultParamValue(cp.name)
-          })
+          initial[action.name] = initialParamsFor(action)
         })
         setParamValues(initial)
       })
@@ -486,11 +716,15 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     return unsub
   }, [signalR, fetchBotActionsForState])
 
-  // Positions whose Wild Encounter form currently has Switch train mode picked.
-  const switchPositionsKey = Object.entries(botActionParams)
-    .filter(([, actionsForPos]) => Object.values(actionsForPos).some((p) => p['TrainType'] === 'Switch'))
-    .map(([posStr]) => posStr)
-    .join(',')
+  // Positions whose encounter form -- single or any leg of a chain -- has Switch train mode picked.
+  const switchPositions = new Set<string>()
+  Object.entries(botActionParams).forEach(([posStr, actionsForPos]) => {
+    if (Object.values(actionsForPos).some((p) => p['TrainType'] === 'Switch')) switchPositions.add(posStr)
+  })
+  Object.entries(botChainLegs).forEach(([posStr, actionsForPos]) => {
+    if (Object.values(actionsForPos).some((legs) => legs.some((p) => p['TrainType'] === 'Switch'))) switchPositions.add(posStr)
+  })
+  const switchPositionsKey = Array.from(switchPositions).sort().join(',')
   const loadedSwitchPositions = useRef<Set<string>>(new Set())
 
   // Pull the live party whenever Switch train mode is newly selected, so the battler dropdown is
@@ -509,41 +743,20 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     onRefresh // just reference it so the parent can call loadDashboardState
   }, [onRefresh])
 
-  const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget', 'NoTarget']
-
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
     setFeedback(null)
     try {
       const params = botActionParams[pos]?.[action.name] ?? {}
-      const body: Record<string, string | boolean | number | undefined> = { eventName: action.name }
-      if (params['PhaseName'] !== undefined) {
-        body['phaseName'] = params['PhaseName']
-      }
-      if (params['TargetType'] !== undefined) {
-        body['targetType'] = params['TargetType']
-      }
-      if (params['EncounterType'] !== undefined && params['EncounterType'] !== '') {
-        body['encounterType'] = ENCOUNTER_TYPE_VALUES[params['EncounterType']] ?? params['EncounterType']
-      }
-      if (params['xRange'] !== undefined) {
-        body['xRange'] = parseInt(params['xRange'], 10) || 0
-      }
-      if (params['yRange'] !== undefined) {
-        body['yRange'] = parseInt(params['yRange'], 10) || 0
-      }
-      // Find soundOn key case-insensitively
-      const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
-      if (soundOnKey !== undefined) {
-        body['soundOn'] = params[soundOnKey] === 'true'
-      }
-      if (params['TrainType'] !== undefined) {
-        body['trainType'] = TRAIN_TYPE_VALUES[params['TrainType']] ?? 0
-      }
-      if (params['TargetLevel'] !== undefined && params['TargetLevel'] !== '' && params['TargetLevel'] !== '0') {
-        body['targetLevel'] = parseInt(params['TargetLevel'], 10)
-      }
-      if (params['TrainType'] === 'Switch' && params['SwitchSlot'] !== undefined && params['SwitchSlot'] !== '') {
-        body['switchSlot'] = parseInt(params['SwitchSlot'], 10)
+      let body: Record<string, unknown>
+      if (action.legParameters) {
+        body = { eventName: action.name, legs: (botChainLegs[pos]?.[action.name] ?? []).map(buildLegBody) }
+      } else {
+        body = { eventName: action.name, ...buildLegBody(params) }
+        // Find soundOn key case-insensitively
+        const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
+        if (soundOnKey !== undefined) {
+          body['soundOn'] = params[soundOnKey] === 'true'
+        }
       }
 
       const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
@@ -650,6 +863,30 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     }))
   }
 
+  const handleLegParamChange = (pos: number, actionName: string, legIndex: number, param: string, value: string): void => {
+    setBotChainLegs((prev) => {
+      const legs = (prev[pos]?.[actionName] ?? []).map((leg, i) => (i === legIndex ? { ...leg, [param]: value } : leg))
+      return { ...prev, [pos]: { ...prev[pos], [actionName]: legs } }
+    })
+  }
+
+  const handleAddLeg = (pos: number, action: EventArgumentOptions): void => {
+    if (!action.legParameters) return
+    setBotChainLegs((prev) => {
+      const legs = [...(prev[pos]?.[action.name] ?? []), initialParamsFor(action.legParameters!)]
+      return { ...prev, [pos]: { ...prev[pos], [action.name]: legs } }
+    })
+  }
+
+  const handleRemoveLeg = (pos: number, actionName: string, legIndex: number): void => {
+    setBotChainLegs((prev) => {
+      const legs = (prev[pos]?.[actionName] ?? []).filter((_, i) => i !== legIndex)
+      // A chain always keeps at least one leg -- an empty one is just the single-encounter form.
+      if (legs.length === 0) return prev
+      return { ...prev, [pos]: { ...prev[pos], [actionName]: legs } }
+    })
+  }
+
   return (
     <div className="p-3 space-y-4">
       {/* Active Emulators */}
@@ -666,6 +903,8 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
             {activePositions.map(({ pos, name }) => {
               const availableActions = botActions[pos] ?? []
               const posParams = botActionParams[pos] ?? {}
+              const posLegs = botChainLegs[pos] ?? {}
+              const selectedActionName = selectedBotAction[pos] ?? availableActions[0]?.name
               const emState = botState[pos] as EmulatorState | undefined
               const gameName = emState ? normalizeGameFlavor(emState.gameFlavor) : ''
               const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
@@ -708,163 +947,88 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                   </div>
                   {availableActions.length > 0 && (
                     <div className="space-y-1 pt-1 border-t border-slate-700/50">
-                      {availableActions.map((action) => {
+                      {availableActions.length > 1 && (
+                        <div className="flex items-center gap-1">
+                          {availableActions.map((action) => (
+                            <button
+                              key={action.name}
+                              onClick={() => setSelectedBotAction((prev) => ({ ...prev, [pos]: action.name }))}
+                              className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                                selectedActionName === action.name
+                                  ? 'bg-indigo-700 text-white'
+                                  : 'bg-card-border text-slate-400 hover:text-white'
+                              }`}
+                            >
+                              {action.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Only the selected action's form renders, so its Run button is unambiguous. */}
+                      {availableActions.filter((action) => action.name === selectedActionName).map((action) => {
                         const params = posParams[action.name] ?? {}
-                        const hasParams = (action.requiredParameters?.length ?? 0) > 0
-                        const allFilled = !hasParams || action.requiredParameters!.every((p) => params[p]?.trim())
+                        const legs = posLegs[action.name] ?? []
+                        const allFilled = action.legParameters
+                          ? legs.length > 0 && legs.every((leg) => requiredParamsFilled(action.legParameters!, leg))
+                          : requiredParamsFilled(action, params)
                         return (
                           <div key={action.name} className="space-y-1">
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-slate-300">{action.name}</span>
-                              <button
-                                onClick={() => handleRunBotAction(pos, action)}
-                                disabled={!allFilled}
-                                className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                              >
-                                Run
-                              </button>
-                            </div>
-                            {action.requiredParameters?.map((param) => (
-                              <div key={param} className="flex items-center gap-2">
-                                <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-                                {param === 'PhaseName' ? (
-                                  <select
-                                    value={params[param] ?? ''}
-                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                              <div className="flex items-center gap-1.5">
+                                {action.legParameters && (
+                                  <button
+                                    onClick={() => handleAddLeg(pos, action)}
+                                    className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
                                   >
-                                    <option value="">Select a milestone...</option>
-                                    {availablePhases.map((phase) => (
-                                      <option key={phase.name} value={phase.name}>{phase.name}</option>
-                                    ))}
-                                  </select>
-                                ) : param === 'TargetType' ? (
-                                  <select
-                                    value={params[param] ?? ''}
-                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                                  >
-                                    <option value="">Select target type...</option>
-                                    {TARGET_TYPE_OPTIONS.map((t) => (
-                                      <option key={t} value={t}>{t}</option>
-                                    ))}
-                                  </select>
-                                ) : param === 'EncounterType' ? (
-                                  <select
-                                    value={params[param] ?? ''}
-                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                                  >
-                                    <option value="">Select encounter type...</option>
-                                    {ENCOUNTER_TYPE_OPTIONS.map((t) => (
-                                      <option key={t} value={t}>{t}</option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={params[param] ?? ''}
-                                    onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                    placeholder={param}
-                                    className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                                  />
+                                    + Leg
+                                  </button>
                                 )}
+                                <button
+                                  onClick={() => handleRunBotAction(pos, action)}
+                                  disabled={!allFilled}
+                                  className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                                >
+                                  Run
+                                </button>
                               </div>
-                            ))}
-                            {action.optionalParameters && action.optionalParameters.length > 0 && (
-                              <div className="pt-0.5 border-t border-slate-700/30">
-                                <span className="text-xs text-slate-600">Optional</span>
-                                {action.optionalParameters.map((param) => (
-                                  <div key={param} className="flex items-center gap-2 mt-0.5">
-                                    <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-                                    {param.toLowerCase() === 'soundon' ? (
-                                      <input
-                                        type="checkbox"
-                                        checked={params[param] === 'true'}
-                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.checked ? 'true' : 'false')}
-                                        className="w-4 h-4 accent-indigo-500"
-                                      />
-                                    ) : param === 'TrainType' ? (
-                                      <select
-                                        value={params[param] ?? 'None'}
-                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                        className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                            </div>
+                            {action.legParameters ? (
+                              legs.map((leg, legIndex) => (
+                                <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1 space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-slate-400">Leg {legIndex + 1}</span>
+                                    {legs.length > 1 && (
+                                      <button
+                                        onClick={() => handleRemoveLeg(pos, action.name, legIndex)}
+                                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
                                       >
-                                        {TRAIN_TYPE_OPTIONS.map((t) => (
-                                          <option key={t} value={t}>{t}</option>
-                                        ))}
-                                      </select>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        value={params[param] ?? ''}
-                                        onChange={(e) => handleBotParamChange(pos, action.name, param, e.target.value)}
-                                        placeholder={param}
-                                        className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                                      />
+                                        Remove
+                                      </button>
                                     )}
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                            {action.conditionalParameters && action.conditionalParameters.length > 0 && (() => {
-                              const visibleConditionals = action.conditionalParameters.filter((cp: ConditionalParameter) => {
-                                const condMet = isConditionMet(cp.condition, params)
-                                return condMet || !cp.hideIfConditionNotMet
-                              })
-                              if (visibleConditionals.length === 0) return null
-                              return (
-                                <div className="pt-0.5 border-t border-slate-700/30">
-                                  <span className="text-xs text-slate-600">Conditional</span>
-                                  {visibleConditionals.map((cp: ConditionalParameter) => {
-                                    const condMet = isConditionMet(cp.condition, params)
-                                    // The battler picker lists the bot's live party. Slot 1 is the trainee
-                                    // and is never selectable.
-                                    const party = partyByPos[pos]
-                                    const isBattlerPicker = cp.name === 'SwitchSlot' && party !== undefined && party.length > 0
-                                    return (
-                                      <div key={cp.name} className="flex items-center gap-2 mt-0.5">
-                                        <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
-                                        {isBattlerPicker ? (
-                                          <select
-                                            value={params[cp.name] ?? '2'}
-                                            onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
-                                            disabled={!condMet}
-                                            className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-40"
-                                          >
-                                            {party.filter((p) => p.slot > 1).map((p) => (
-                                              <option key={p.slot} value={String(p.slot)}>
-                                                {`Slot ${p.slot} — ${p.name} (Lv ${p.level})`}
-                                              </option>
-                                            ))}
-                                          </select>
-                                        ) : (
-                                          <input
-                                            type="number"
-                                            value={params[cp.name] ?? '0'}
-                                            onChange={(e) => handleBotParamChange(pos, action.name, cp.name, e.target.value)}
-                                            disabled={!condMet}
-                                            placeholder="0"
-                                            className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
-                                          />
-                                        )}
-                                        {cp.name === 'SwitchSlot' && (
-                                          <button
-                                            type="button"
-                                            onClick={() => loadParty(pos)}
-                                            disabled={loadingParty === pos}
-                                            title="Reload party from the running game"
-                                            className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600 disabled:opacity-40"
-                                          >
-                                            {loadingParty === pos ? '…' : '⟳'}
-                                          </button>
-                                        )}
-                                      </div>
-                                    )
-                                  })}
+                                  <ActionParamFields
+                                    schema={action.legParameters!}
+                                    params={leg}
+                                    onChange={(param, value) => handleLegParamChange(pos, action.name, legIndex, param, value)}
+                                    availablePhases={availablePhases}
+                                    party={partyByPos[pos]}
+                                    onReloadParty={() => loadParty(pos)}
+                                    partyLoading={loadingParty === pos}
+                                  />
                                 </div>
-                              )
-                            })()}
+                              ))
+                            ) : (
+                              <ActionParamFields
+                                schema={action}
+                                params={params}
+                                onChange={(param, value) => handleBotParamChange(pos, action.name, param, value)}
+                                availablePhases={availablePhases}
+                                party={partyByPos[pos]}
+                                onReloadParty={() => loadParty(pos)}
+                                partyLoading={loadingParty === pos}
+                              />
+                            )}
                           </div>
                         )
                       })}

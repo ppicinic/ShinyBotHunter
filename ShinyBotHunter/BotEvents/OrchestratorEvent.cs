@@ -1,5 +1,6 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
@@ -23,6 +24,12 @@ namespace ShinyBotHunter.BotEvents
             }
         } = new GameState();
         public override EventState EventState => throw new NotImplementedException();
+
+        // The catch check is the one read worth waiting a long time for -- see
+        // ReadStateForCatchCheckAsync.
+        private const int CatchReadAttempts = 5;
+        private const int CatchReadRetryDelayMs = 1000;
+
         private EncounterParams encounterParams;
         private IBotEvent<GameState> battleEvent;
         private NavigatorEvent navigatorEvent;
@@ -47,17 +54,24 @@ namespace ShinyBotHunter.BotEvents
         public override async Task<EventState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
             GameState = state;
-            if(state.State.Count == 1 && state.State.Peek() == EventState.Resume)
+            // Resume can sit on top of an unfinished state, not just on an idle stack: an encounter
+            // during a heal trip or the walk home leaves the navigation state underneath. Popping
+            // back to it lets that leg carry on instead of spinning on a state nothing handles.
+            if(state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                
-                await CheckForCatchAsync(state);
-
-                if (state.State.Count > 1)
+                if (await CheckForCatchAsync(state))
                 {
                     state.State.Pop();
+                    if (state.State.Count == 0)
+                    {
+                        state.State.Push(EventState.DecideOverworldAction);
+                    }
                 }
-                else { 
-                    state.SwapState(EventState.DecideOverworldAction);
+                else
+                {
+                    // Back to Waiting rather than onwards: the event stays alive on the dashboard and
+                    // another Resume can record the catch.
+                    state.SwapState(EventState.Waiting);
                 }
             }
             if(state.State.Count > 0 && state.State.Peek() == EventState.Init)
@@ -68,8 +82,11 @@ namespace ShinyBotHunter.BotEvents
                     state.StartMapId = await state.Bot.GetMapId();
                     state.StartX = await state.Bot.GetTrainerXPos();
                     state.StartY = await state.Bot.GetTrainerYPos();
-                    await UpdateMilestoneState(state);
+                    Console.WriteLine($"[Orchestrator] Start tile captured: map={state.StartMapId} ({state.StartX},{state.StartY})");
                 }
+                // Every Init, not just the first: a chained leg re-enters here with the start tile
+                // already captured and still needs its milestone state read fresh.
+                await UpdateMilestoneState(state);
                 state.SwapState(EventState.DecideOverworldAction);
             }
             while(state.State.Count != 0 && state.State.Peek() != EventState.Complete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
@@ -82,7 +99,16 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if(topState == EventState.Encountering)
                 {
-                    await new RunEncounterEvent(state.Bot, encounterParams).ExecuteWithResultAsync(state, cancellationToken);
+                    // Dispatch on the configured type. This used to always build a RunEncounterEvent,
+                    // so picking Spin quietly paced an axis instead. EncounterEventTypeFactory looks
+                    // like the obvious fix but its Run branch returns RunEncounterEventDeprecated,
+                    // which would swap the current implementation out from under Run.
+                    // The two report different result types, so they only meet at the non-generic
+                    // IBotEvent -- which is fine, the result was always discarded here.
+                    IBotEvent encounter = encounterParams.type == EncounterType.Spin
+                        ? new SpinEncounterEvent(state.Bot)
+                        : new RunEncounterEvent(state.Bot, encounterParams);
+                    await encounter.ExecuteAsync(state, cancellationToken);
                 }
                 else if(topState == EventState.BattleStart)
                 {
@@ -108,9 +134,38 @@ namespace ShinyBotHunter.BotEvents
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
         }
 
-        private async Task CheckForCatchAsync(GameState state)
+        // BotService is absent when the orchestrator is driven from the Test harness rather than the
+        // dashboard, so nothing to notify.
+        private static async Task RefreshDashboardAsync(GameState state)
         {
-            bool found = (await reader.GetPokemonState(state.Bot)).Search(state.TargetPokemon!.PokemonData);
+            if (state.BotService is not null)
+            {
+                await state.BotService.RefreshDashboardState();
+            }
+        }
+
+        /// <summary>
+        /// Returns false when the check could not be carried out at all, so the caller can leave the
+        /// run parked rather than moving on and losing the catch.
+        /// </summary>
+        private async Task<bool> CheckForCatchAsync(GameState state)
+        {
+            if (state.TargetPokemon is null)
+            {
+                // Waiting wasn't a target sighting -- a wipe parks here too, and there is nothing
+                // to look for in the party.
+                await UpdateMilestoneState(state);
+                return true;
+            }
+            // Boxes are required here: a caught pokemon may have gone straight to the PC, so this is
+            // the one read that must not be narrowed to the party.
+            PokemonState? pokemonState = await ReadStateForCatchCheckAsync(state);
+            if (pokemonState is null)
+            {
+                // TargetPokemon is deliberately left set so a later resume can still record it.
+                return false;
+            }
+            bool found = pokemonState.Search(state.TargetPokemon!.PokemonData);
 
             Console.WriteLine($"Found pokemon: {found}");
             if (found)
@@ -124,6 +179,34 @@ namespace ShinyBotHunter.BotEvents
             }
             state.TargetPokemon = null;
             await UpdateMilestoneState(state);
+            return true;
+        }
+
+        /// <summary>
+        /// Reads party and boxes for the catch check, retrying when the emulator can't produce a
+        /// validated party.
+        ///
+        /// This read failing must never fault the event. The pokemon is already caught in game at this
+        /// point, so a dropped run means it is never written to persistence and the milestone never
+        /// completes -- state that has to be repaired by hand. Returning null instead parks the run so
+        /// the check can be retried.
+        /// </summary>
+        private async Task<PokemonState?> ReadStateForCatchCheckAsync(GameState state)
+        {
+            for (int attempt = 1; attempt <= CatchReadAttempts; attempt++)
+            {
+                try
+                {
+                    return await reader.GetPokemonState(state.Bot);
+                }
+                catch (PartyReadUnavailableException ex)
+                {
+                    Console.WriteLine($"[Orchestrator] Catch check read failed (attempt {attempt}/{CatchReadAttempts}): {ex.Message}");
+                    await Task.Delay(CatchReadRetryDelayMs);
+                }
+            }
+            Console.WriteLine("[Orchestrator] Could not read party and boxes to confirm the catch. The pokemon is caught in game but not yet recorded -- staying in Waiting so Resume can try again.");
+            return null;
         }
 
         private async Task UpdateMilestoneState(GameState state)
@@ -162,7 +245,10 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task DecideOverworldAction(GameState state)
         {
-            var pokeState = await reader.GetPokemonState(state.Bot);
+            // Party only. This runs before every encounter and reads nothing but the lead and the
+            // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
+            // thrown away every time.
+            var pokeState = await reader.GetPartyState(state.Bot);
             var lead = pokeState.PartyPokemon[0]!;
             bool training = state.TrainType != TrainType.None;
 
@@ -184,8 +270,12 @@ namespace ShinyBotHunter.BotEvents
             bool milestoneSatisfied = !state.Target.UsesMilestone || state.MilestoneComplete;
             if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
-                state.SwapState(EventState.Complete);
-                await state.BotService.RefreshDashboardState();
+                // Walk home before finishing so whatever runs next starts from a known tile instead
+                // of wherever the last encounter happened to leave us.
+                state.CompleteAfterReturn = true;
+                state.BattleMode = BattleMode.Flee;
+                state.SwapState(EventState.ReturnToStart);
+                await RefreshDashboardAsync(state);
                 return;
             }
 
@@ -224,7 +314,8 @@ namespace ShinyBotHunter.BotEvents
 
         private bool CanBattle(PokemonData pokemon)
         {
-            if(pokemon.HP < pokemon.MaxHP / 4)
+            // Same boundary the battle loop flees on -- see BattleReadiness.
+            if(BattleReadiness.IsTooHurtToFight(pokemon.HP, pokemon.MaxHP))
             {
                 return false;
             }

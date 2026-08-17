@@ -28,9 +28,13 @@ namespace ShinyBotHunter.Bot
             this.bot = memoryClient;
         }
 
+        // These four go through the anchor. Reading the anchor and then reading through it as two
+        // calls put a frame between them, so the pointer could already have moved; the ViaPointer
+        // reads do both hops inside one emulator frame.
+
         public async Task<byte> GetBattleMenuState()
         {
-            return await bot.ReadByteAsync(await bot.ReadUIntAsync(Anchor) + BattleMenuState);
+            return await bot.ReadByteViaPointerAsync(Anchor, (int)BattleMenuState);
         }
 
         public async Task<byte> GetBattleValue()
@@ -40,12 +44,12 @@ namespace ShinyBotHunter.Bot
 
         public async Task<byte> GetBattleState()
         {
-            return await bot.ReadByteAsync(await bot.ReadUIntAsync(Anchor) + BattleState);
+            return await bot.ReadByteViaPointerAsync(Anchor, (int)BattleState);
         }
 
         public async Task<ushort> GetMapId()
         {
-            return await bot.ReadUShortAsync(await bot.ReadUIntAsync(Anchor) - MapId);
+            return await bot.ReadUShortViaPointerAsync(Anchor, -(int)MapId);
         }
 
         private short to_s16(uint u32)
@@ -65,7 +69,7 @@ namespace ShinyBotHunter.Bot
 
         public async Task<byte> GetFacing()
         {
-            return await bot.ReadByteAsync(await bot.ReadUIntAsync(Anchor) + Facing);
+            return await bot.ReadByteViaPointerAsync(Anchor, (int)Facing);
         }
     }
 }

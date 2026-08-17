@@ -213,6 +213,23 @@ export interface EventArgumentOptions {
   requiredParameters?: string[]
   optionalParameters?: string[]
   conditionalParameters?: ConditionalParameter[]
+  // Present on actions that take a list of legs. Its fields are rendered once per leg.
+  legParameters?: EventArgumentOptions
+}
+
+// Matches C# NewEventLegArguments in BotService.cs -- one leg of a chained action.
+export interface NewEventLegArguments {
+  phaseName?: string
+  targetType?: string
+  // C# EncounterType enum, sent as its integer value (Spin=0, Run=1)
+  encounterType?: number
+  xRange?: number
+  yRange?: number
+  // C# TrainType enum, sent as its integer value (None=0, Standard=1, Switch=2)
+  trainType?: number
+  targetLevel?: number
+  // 1-based party slot of the battler to swap to, Switch train mode only
+  switchSlot?: number
 }
 
 export interface NewEventArguments {
@@ -223,6 +240,8 @@ export interface NewEventArguments {
   targetLevel?: number
   // 1-based party slot of the battler to swap to, Switch train mode only
   switchSlot?: number
+  // Chained actions only; the flat fields above carry a single encounter.
+  legs?: NewEventLegArguments[]
 }
 
 // Matches C# PartySlotInfo record in BotService.cs (GET /api/bot/getParty/{pos})

@@ -1,6 +1,8 @@
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Util;
@@ -15,10 +17,6 @@ namespace ShinyBotHunter.BotEvents
         private readonly PathfindingService pathfindingService;
         private readonly PokemonStateReader reader;
 
-        // Upper bound on how long we wait for the overworld coordinates to populate after a
-        // battle before giving up and proceeding anyway.
-        private const int OverworldReadyTimeoutMs = 3000;
-
         // How often the party is re-read while walking to catch a poison faint. Each tick costs a
         // party read plus decrypt, so this is deliberately far slower than the battle poll.
         private const int FaintPollIntervalMs = 1000;
@@ -26,6 +24,13 @@ namespace ShinyBotHunter.BotEvents
         // Gap between a candidate poison event and the read that confirms it. The walk macro keeps
         // running through this window -- nothing is interrupted until both reads agree.
         private const int PoisonConfirmDelayMs = 250;
+
+        // How many times a party read is retried before giving up on getting a plausible one.
+        private const int PartyReadAttempts = 3;
+
+        // Highest HP any gen 4 pokemon can have (Blissey at level 100 is 714). Anything above this
+        // means the read landed mid-rewrite.
+        private const int MaxPossibleHp = 999;
 
         // Tile directly below the nurse's counter, where the heal dialogue is started. Every HGSS
         // pokemon center is its own map id but reuses one interior layout (internal name *PC0101),
@@ -122,10 +127,41 @@ namespace ShinyBotHunter.BotEvents
         private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
             // Navigation has already walked us onto the counter tile.
-            string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "HealPokemon");
+            bool anyFainted = await HasFaintedPartyMemberAsync(state.Bot, cancellationToken);
+            string macroName = anyFainted ? "HealPokemonFainted" : "HealPokemon";
+            Console.WriteLine($"[Navigator] Healing with {macroName}");
+            string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, macroName);
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(cancellationToken);
             state.SwapState(EventState.ReturnToStart);
+        }
+
+        /// <summary>
+        /// A fainted party member adds a dialogue box to the nurse's closing text, which needs the
+        /// longer heal macro. Uses a validated read because HP lives in the unchecksummed battle
+        /// stats block -- guessing wrong either strands a box on screen or presses A into the
+        /// overworld.
+        /// </summary>
+        private async Task<bool> HasFaintedPartyMemberAsync(IBot bot, CancellationToken cancellationToken)
+        {
+            var party = await ReadValidatedPartyWithRetriesAsync(bot, cancellationToken);
+            if (party is null)
+            {
+                // Assume nothing fainted: the plain macro is the long-standing behaviour, so an
+                // unreadable party degrades to what the bot did before rather than to a new risk.
+                Console.WriteLine("[Navigator] Could not read party before healing; assuming no fainted members");
+                return false;
+            }
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                var pokemon = party.PartyPokemon[i];
+                if (pokemon is not null && pokemon.HP == 0)
+                {
+                    Console.WriteLine($"[Navigator] Fainted party member: slot {i + 1} {pokemon.Name}");
+                    return true;
+                }
+            }
+            return false;
         }
 
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
@@ -136,18 +172,31 @@ namespace ShinyBotHunter.BotEvents
                 var mapId = (int)await state.Bot.GetMapId();
                 var x = await state.Bot.GetTrainerXPos();
                 var y = await state.Bot.GetTrainerYPos();
+
+                // Already home -- pathfinding a zero-length route would either fail or emit an
+                // empty macro, so short circuit. Common when the run ends between encounters.
+                if (mapId == state.StartMapId && x == state.StartX && y == state.StartY)
+                {
+                    FinishReturn(state, "already at start");
+                    return;
+                }
+
                 var facing = await state.Bot.GetFacing();
                 var nodePath = await pathfindingService.FindNodePath(
                     mapId, x, y,
                     state.StartMapId, state.StartX, state.StartY,
                     new Capability(), facing);
                 if (nodePath is null)
-                { 
+                {
+                    Console.WriteLine($"[Navigator] No path back to start from map={mapId} ({x},{y}) -- completing in place");
+                    state.CompleteAfterReturn = false;
                     state.SwapState(EventState.Complete);
                     return;
                 }
                 state.NavigationPath = nodePath.ToList();
                 state.NavigationPathIndex = 0;
+                Console.WriteLine($"[Navigator] Return path found: {string.Join(" -> ", state.NavigationPath.Select(n => $"map={n.Node.MapId}({n.Node.X},{n.Node.Y})"))}");
+                Console.WriteLine($"[Navigator] Returning to start map={state.StartMapId} ({state.StartX},{state.StartY}) from map={mapId} ({x},{y})");
             }
 
             bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
@@ -158,7 +207,25 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
-                ClearNavigation(state, "arrived back at start");
+                FinishReturn(state, "arrived back at start");
+            }
+        }
+
+        /// <summary>
+        /// Ends a return-to-start leg. A run whose end condition is already met finishes here rather
+        /// than at the point the condition was noticed, so the next event always begins from the
+        /// same tile.
+        /// </summary>
+        private static void FinishReturn(GameState state, string reason)
+        {
+            ClearNavigation(state, reason);
+            if (state.CompleteAfterReturn)
+            {
+                state.CompleteAfterReturn = false;
+                state.SwapState(EventState.Complete);
+            }
+            else
+            {
                 state.SwapState(EventState.DecideOverworldAction);
             }
         }
@@ -186,7 +253,7 @@ namespace ShinyBotHunter.BotEvents
 
             // Party state at the start of this navigation. A field poison tick resolving mid-walk
             // puts dialogue on screen, which swallows the rest of the macro.
-            var partyAtStart = await ReadPartySnapshotAsync(state.Bot);
+            var partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
 
             while (state.NavigationPathIndex < path.Count - 1)
             {
@@ -244,7 +311,7 @@ namespace ShinyBotHunter.BotEvents
                         // The mon that just resolved is now fainted or no longer poisoned, so
                         // re-snapshotting stops it from tripping the poll again -- each event is
                         // handled exactly once.
-                        partyAtStart = await ReadPartySnapshotAsync(state.Bot);
+                        partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
                         // Retry this same segment: the walk stopped somewhere short of the node, so
                         // the loop re-reads our real position and recomputes the A* from there.
                         continue;
@@ -317,23 +384,117 @@ namespace ShinyBotHunter.BotEvents
             public override string ToString() => $"{Name} pid={Pid:X8} hp={Hp}/{MaxHp} status=0x{Status:X2} ({Reason})";
         }
 
-        private async Task<PartySnapshot> ReadPartySnapshotAsync(IBot bot)
+        /// <summary>
+        /// Rejects a party entry whose live stats can't be real. The battle stats block sits past the
+        /// range the parser checksums, so a read landing while the game rewrites it comes back
+        /// "valid" with garbage -- HP above max, or a status byte with a sleep counter and poison set
+        /// at once. Acting on those is what aborted routes mid-walk for no reason.
+        /// </summary>
+        private static bool IsPlausible(PokemonData pokemon)
         {
-            var party = await reader.GetPartyState(bot);
-            var alive = new HashSet<uint>();
-            var poisoned = new HashSet<uint>();
-            var poisonedNames = new List<string>();
+            if (pokemon.Level < 1 || pokemon.Level > 100)
+                return false;
+            if (pokemon.MaxHP < 1 || pokemon.MaxHP > MaxPossibleHp)
+                return false;
+            if (pokemon.HP > pokemon.MaxHP)
+                return false;
+            return IsValidStatus(pokemon.Status);
+        }
+
+        // Only one major status at a time, so the byte is either clear, a sleep counter, or exactly
+        // one of the single-status bits.
+        private static bool IsValidStatus(byte status)
+        {
+            if (status == 0)
+                return true;
+            if ((status & 0x07) != 0)
+                return (status & 0xF8) == 0;
+            return status == 0x08 || status == 0x10 || status == 0x20 || status == 0x40 || status == 0x80;
+        }
+
+        // A party read with every live entry plausible, or null when the read caught a rewrite.
+        private async Task<PokemonState?> ReadValidatedPartyAsync(IBot bot)
+        {
+            PokemonState party;
+            try
+            {
+                party = await reader.GetPartyState(bot);
+            }
+            catch (PartyReadUnavailableException ex)
+            {
+                // The emulator already retried per frame and gave up. Nothing to add by retrying here.
+                Console.WriteLine($"[Navigator] Party read unavailable: {ex.Message}");
+                return null;
+            }
             for (int i = 0; i < party.PartySize; i++)
             {
                 var pokemon = party.PartyPokemon[i];
-                if (pokemon is null)
+                if (pokemon is not null && !IsPlausible(pokemon))
+                {
+                    Console.WriteLine($"[Navigator] Discarded implausible party read: slot {i + 1} {pokemon.Name} lv={pokemon.Level} hp={pokemon.HP}/{pokemon.MaxHP} status=0x{pokemon.Status:X2}");
+                    return null;
+                }
+            }
+            return party;
+        }
+
+        private async Task<PokemonState?> ReadValidatedPartyWithRetriesAsync(IBot bot, CancellationToken cancellationToken)
+        {
+            for (int attempt = 0; attempt < PartyReadAttempts; attempt++)
+            {
+                var party = await ReadValidatedPartyAsync(bot);
+                if (party is not null)
+                    return party;
+                await Task.Delay(PoisonConfirmDelayMs, cancellationToken);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The baseline every later poll is compared against, so a single bad read here would make
+        /// every subsequent good read look like a state change. Two agreeing reads are required
+        /// before a member counts as alive or poisoned; anything they disagree on is left out, which
+        /// costs at most a missed event rather than a route aborted on garbage.
+        /// </summary>
+        private async Task<PartySnapshot> ReadPartySnapshotAsync(IBot bot, CancellationToken cancellationToken)
+        {
+            var first = await ReadValidatedPartyWithRetriesAsync(bot, cancellationToken);
+            await Task.Delay(PoisonConfirmDelayMs, cancellationToken);
+            var second = await ReadValidatedPartyWithRetriesAsync(bot, cancellationToken);
+            if (first is null || second is null)
+            {
+                // Nothing trustworthy to watch. An empty snapshot simply means no poison event can
+                // fire for this leg -- a real faint still stops the walk when the battle check or
+                // the next segment's snapshot catches up.
+                Console.WriteLine("[Navigator] Party snapshot unavailable (reads kept coming back implausible); poison watch disabled for this leg");
+                return new PartySnapshot([], []);
+            }
+
+            var alive = new HashSet<uint>();
+            var poisoned = new HashSet<uint>();
+            var poisonedNames = new List<string>();
+            var secondById = new Dictionary<uint, PokemonData>();
+            for (int i = 0; i < second.PartySize; i++)
+            {
+                var pokemon = second.PartyPokemon[i];
+                if (pokemon is not null)
+                    secondById[pokemon.PID] = pokemon;
+            }
+            for (int i = 0; i < first.PartySize; i++)
+            {
+                var pokemon = first.PartyPokemon[i];
+                if (pokemon is null || !secondById.TryGetValue(pokemon.PID, out var confirm))
                     continue;
-                if (pokemon.HP > 0)
+                if (pokemon.HP > 0 && confirm.HP > 0)
                     alive.Add(pokemon.PID);
-                if (pokemon.IsPoisoned)
+                if (pokemon.IsPoisoned && confirm.IsPoisoned)
                 {
                     poisoned.Add(pokemon.PID);
                     poisonedNames.Add($"{pokemon.Name} (0x{pokemon.Status:X2})");
+                }
+                else if (pokemon.IsPoisoned != confirm.IsPoisoned)
+                {
+                    Console.WriteLine($"[Navigator] Snapshot reads disagree on {pokemon.Name} poison (0x{pokemon.Status:X2} vs 0x{confirm.Status:X2}); not watching it");
                 }
             }
             Console.WriteLine($"[Navigator] Party snapshot: {alive.Count} alive, poisoned: {(poisonedNames.Count == 0 ? "none" : string.Join(", ", poisonedNames))}");
@@ -373,12 +534,21 @@ namespace ShinyBotHunter.BotEvents
                 // Cancels out of the loop once another racer wins, so a losing poll can never
                 // complete successfully and be mistaken for a poison event.
                 await Task.Delay(FaintPollIntervalMs, cancellationToken);
-                var candidate = FindPoisonEvent(await reader.GetPartyState(bot), partyAtStart);
+                var candidateParty = await ReadValidatedPartyAsync(bot);
+                if (candidateParty is null)
+                    continue;
+                var candidate = FindPoisonEvent(candidateParty, partyAtStart);
                 if (candidate is null)
                     continue;
 
                 await Task.Delay(PoisonConfirmDelayMs, cancellationToken);
-                var confirm = FindPoisonEvent(await reader.GetPartyState(bot), partyAtStart);
+                var confirmParty = await ReadValidatedPartyAsync(bot);
+                if (confirmParty is null)
+                {
+                    Console.WriteLine($"[Navigator] Discarded unconfirmed poison event: saw {candidate}, re-read was implausible");
+                    continue;
+                }
+                var confirm = FindPoisonEvent(confirmParty, partyAtStart);
                 if (confirm is not null && confirm.Pid == candidate.Pid && confirm.Reason == candidate.Reason)
                 {
                     Console.WriteLine($"[Navigator] Poison event confirmed: {confirm}");
@@ -414,20 +584,8 @@ namespace ShinyBotHunter.BotEvents
 
         // After a battle the overworld coordinates read (0,0) for a moment while the field
         // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
-        private async Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
-        {
-            var sw = Stopwatch.StartNew();
-            while (!cancellationToken.IsCancellationRequested && sw.ElapsedMilliseconds < OverworldReadyTimeoutMs)
-            {
-                var x = await bot.GetTrainerXPos();
-                var y = await bot.GetTrainerYPos();
-                // Neither coord can be negative. An edge tile (one == 0) is valid, but both-zero
-                // and any negative are the not-loaded values (e.g. (0,0), (0,-1)).
-                if (x >= 0 && y >= 0 && (x > 0 || y > 0))
-                    return;
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-            }
-        }
+        private static Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
+            => Overworld.WaitForReadyAsync(bot, cancellationToken);
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {

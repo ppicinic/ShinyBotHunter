@@ -123,76 +123,32 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Wild Encounter")
             {
-                if(args.PhaseName is null || args.TargetType is null)
-                {
-                    throw new ArgumentException($"PhaseName cannot be null for Wild Pokemon Encounter Event.");
-                }
-                if(args.EncounterType is null)
-                {
-                    throw new ArgumentException($"EncounterType must be supplied for Wild Pokemon Encounter Event");
-                }
-                var targetType = Enum.Parse<TargetType>(args.TargetType);
-                ITarget target = targetType switch
-                {
-                    TargetType.PhaseTarget => new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, botEvents[pos].Bot!.GameFileName),
-                    TargetType.NoTarget => new NoTarget(),
-                    _ => new ShinyTarget(),
-                };
-                int xRange = args.xRange ?? 0;
-                int yRange = args.yRange ?? 0;
+                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName);
 
-                if(args.EncounterType == EncounterType.Run)
-                {
-                    if(yRange < 0 || xRange < 0)
-                    {
-                        throw new ArgumentException($"X and Y range must be non-negative values");
-                    }
-                    if(yRange == 0 && xRange == 0)
-                    {
-                        throw new ArgumentException($"A x or y range must be supplied for Run Encounter Event");
-                    }
-                    if(yRange > 0 && xRange > 0)
-                    {
-                        throw new ArgumentException($"Only x or y range must be supplied, not both.");
-                    }
-                }
-                TrainType trainType = args.TrainType ?? TrainType.None;
-                if (trainType != TrainType.None && (args.TargetLevel is null || args.TargetLevel <= 0))
-                {
-                    throw new ArgumentException("TargetLevel must be a positive value when a train mode is enabled.");
-                }
-                // Nothing is ever a target here and there's no milestone to finish, so the training
-                // requirement is the only thing that can end the event. Without one it runs forever.
-                if (targetType == TargetType.NoTarget && trainType == TrainType.None)
-                {
-                    throw new ArgumentException("A train mode must be supplied when TargetType is NoTarget, otherwise the event has no stopping condition.");
-                }
-                int? switchSlot = null;
-                if (trainType == TrainType.Switch)
-                {
-                    // Slot 1 holds the pokemon being trained, so it can never also be the battler.
-                    switchSlot = args.SwitchSlot ?? 2;
-                    if (switchSlot < 2 || switchSlot > 6)
-                    {
-                        throw new ArgumentException("SwitchSlot must be between 2 and 6 for Switch train mode.");
-                    }
-                }
-
-                var wildPokemonEvent = new OrchestratorEvent(provider, new EncounterParams(args.EncounterType.Value, yRange, xRange));
-                botEvents[pos].GameState = new GameState()
-                {
-                    OriginalBattleMode = trainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
-                    GameFlavor = GameFlavor.HGSS,
-                    BotService = this,
-                    Target = target,
-                    Milestone = args.PhaseName,
-                    Bot = botEvents[pos].Bot!,
-                    TrainType = trainType,
-                    TargetLevel = trainType != TrainType.None ? args.TargetLevel : null,
-                    SwitchSlot = switchSlot,
-                };
+                var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
+                botEvents[pos].GameState = NewGameStateForLeg(pos, leg);
                 botEvents[pos].GameState!.State.Push(EventState.Init);
-                botEvents[pos].StartEvent(wildPokemonEvent, botEvents[pos].GameState!, args.PhaseName, this);
+                botEvents[pos].StartEvent(wildPokemonEvent, botEvents[pos].GameState!, leg.PhaseName, this);
+
+                return GetBotDashboardState();
+            }
+            else if(args.EventName == "Chained Encounter")
+            {
+                if (args.Legs is null || args.Legs.Count == 0)
+                {
+                    throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
+                }
+                // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
+                // after leg 1 has already been running for an hour.
+                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName)).ToList();
+
+                var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
+                // The chain shares one GameState across all legs so the start tile survives leg
+                // boundaries; ChainedOrchestratorEvent re-applies each leg's own fields as it goes.
+                botEvents[pos].GameState = NewGameStateForLeg(pos, legs[0]);
+                botEvents[pos].GameState!.State.Push(EventState.Init);
+                string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
+                botEvents[pos].StartEvent(chainedEvent, botEvents[pos].GameState!, name, this);
 
                 return GetBotDashboardState();
             }
@@ -206,6 +162,93 @@ namespace ShinyBotHunter.Service
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        /// <summary>
+        /// Validates one encounter leg's arguments and resolves its target. Shared by the single
+        /// "Wild Encounter" action and every leg of a "Chained Encounter", so both reject the same
+        /// bad input.
+        /// </summary>
+        private EventLeg ValidateAndBuildLeg(NewEventLegArguments args, string gameFileName)
+        {
+            if (args.PhaseName is null || args.TargetType is null)
+            {
+                throw new ArgumentException($"PhaseName cannot be null for Wild Pokemon Encounter Event.");
+            }
+            if (args.EncounterType is null)
+            {
+                throw new ArgumentException($"EncounterType must be supplied for Wild Pokemon Encounter Event");
+            }
+            var targetType = Enum.Parse<TargetType>(args.TargetType);
+            ITarget target = targetType switch
+            {
+                TargetType.PhaseTarget => new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, gameFileName),
+                TargetType.NoTarget => new NoTarget(),
+                _ => new ShinyTarget(),
+            };
+            int xRange = args.xRange ?? 0;
+            int yRange = args.yRange ?? 0;
+
+            if (args.EncounterType == EncounterType.Run)
+            {
+                if (yRange < 0 || xRange < 0)
+                {
+                    throw new ArgumentException($"X and Y range must be non-negative values");
+                }
+                if (yRange == 0 && xRange == 0)
+                {
+                    throw new ArgumentException($"A x or y range must be supplied for Run Encounter Event");
+                }
+                if (yRange > 0 && xRange > 0)
+                {
+                    throw new ArgumentException($"Only x or y range must be supplied, not both.");
+                }
+            }
+            TrainType trainType = args.TrainType ?? TrainType.None;
+            if (trainType != TrainType.None && (args.TargetLevel is null || args.TargetLevel <= 0))
+            {
+                throw new ArgumentException("TargetLevel must be a positive value when a train mode is enabled.");
+            }
+            // Nothing is ever a target here and there's no milestone to finish, so the training
+            // requirement is the only thing that can end the event. Without one it runs forever.
+            if (targetType == TargetType.NoTarget && trainType == TrainType.None)
+            {
+                throw new ArgumentException("A train mode must be supplied when TargetType is NoTarget, otherwise the event has no stopping condition.");
+            }
+            int? switchSlot = null;
+            if (trainType == TrainType.Switch)
+            {
+                // Slot 1 holds the pokemon being trained, so it can never also be the battler.
+                switchSlot = args.SwitchSlot ?? 2;
+                if (switchSlot < 2 || switchSlot > 6)
+                {
+                    throw new ArgumentException("SwitchSlot must be between 2 and 6 for Switch train mode.");
+                }
+            }
+
+            return new EventLeg(
+                target,
+                args.PhaseName,
+                new EncounterParams(args.EncounterType.Value, yRange, xRange),
+                trainType,
+                trainType != TrainType.None ? args.TargetLevel : null,
+                switchSlot);
+        }
+
+        private GameState NewGameStateForLeg(int pos, EventLeg leg)
+        {
+            return new GameState()
+            {
+                OriginalBattleMode = leg.TrainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
+                GameFlavor = GameFlavor.HGSS,
+                BotService = this,
+                Target = leg.Target,
+                Milestone = leg.PhaseName,
+                Bot = botEvents[pos].Bot!,
+                TrainType = leg.TrainType,
+                TargetLevel = leg.TargetLevel,
+                SwitchSlot = leg.SwitchSlot,
+            };
         }
 
         /// <summary>
@@ -248,7 +291,7 @@ namespace ShinyBotHunter.Service
             else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
             {
                 // TODO continue game.
-                return [actionMap["Wild Encounter"]];
+                return [actionMap["Wild Encounter"], actionMap["Chained Encounter"]];
             }
             else
             {
@@ -256,16 +299,25 @@ namespace ShinyBotHunter.Service
             }
         }
 
+        // The parameters of a single encounter. Also serves as the per-leg schema of a chain, so the
+        // dashboard renders one set of fields per leg without a second definition to keep in sync.
+        private static EventArgumentOptions EncounterParameters(string name) => new EventArgumentOptions()
+        {
+            Name = name,
+            RequiredParameters = ["PhaseName", "TargetType", "EncounterType"],
+            OptionalParameters = ["TrainType"],
+            ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
+                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" },
+                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Neq, Name = "TrainType", Value = "None" }, Name = "TargetLevel" },
+                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainType", Value = "Switch" }, Name = "SwitchSlot" }
+            ]
+        };
+
         private static Dictionary<string, EventArgumentOptions> actionMap = new Dictionary<string, EventArgumentOptions>()
         {
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
-            {"Wild Encounter", new EventArgumentOptions() { Name = "Wild Encounter", RequiredParameters = ["PhaseName", "TargetType", "EncounterType"],
-                                OptionalParameters = ["TrainType"],
-                                ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
-                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" },
-                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Neq, Name = "TrainType", Value = "None" }, Name = "TargetLevel" },
-                                    new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainType", Value = "Switch" }, Name = "SwitchSlot" }
-                                ]} },
+            {"Wild Encounter", EncounterParameters("Wild Encounter") },
+            {"Chained Encounter", new EventArgumentOptions() { Name = "Chained Encounter", LegParameters = EncounterParameters("Leg") } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -315,6 +367,9 @@ namespace ShinyBotHunter.Service
         public string[]? RequiredParameters { get; set; }
         public string[]? OptionalParameters { get; set; }
         public ConditionalParameters[] ConditionalParameters { get; set; } = [];
+        // Set on actions that take a list of legs instead of a single set of parameters. The
+        // dashboard renders one copy of this schema per leg.
+        public EventArgumentOptions? LegParameters { get; set; }
     }
 
     public class ConditionalParameters
@@ -338,6 +393,19 @@ namespace ShinyBotHunter.Service
         Neq
     }
 
+    /// <summary>Parameters of one encounter leg. A chained action posts a list of these.</summary>
+    public class NewEventLegArguments
+    {
+        public string? PhaseName { get; set; }
+        public string? TargetType { get; set; }
+        public EncounterType? EncounterType { get; set; }
+        public int? yRange { get; set; }
+        public int? xRange { get; set; }
+        public TrainType? TrainType { get; set; }
+        public int? TargetLevel { get; set; }
+        public int? SwitchSlot { get; set; }
+    }
+
     public class NewEventArguments
     {
         public string EventName { get; set; } = "";
@@ -351,6 +419,23 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+        // Only used by chained actions. The flat fields above stay in place for single encounters.
+        public List<NewEventLegArguments>? Legs { get; set; }
+
+        public NewEventLegArguments ToLeg()
+        {
+            return new NewEventLegArguments()
+            {
+                PhaseName = PhaseName,
+                TargetType = TargetType,
+                EncounterType = EncounterType,
+                yRange = yRange,
+                xRange = xRange,
+                TrainType = TrainType,
+                TargetLevel = TargetLevel,
+                SwitchSlot = SwitchSlot,
+            };
+        }
     }
 
     public class BotAndOrEvent

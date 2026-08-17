@@ -51,6 +51,9 @@ namespace ShinyBotHunter.BotEvents
         public int? SwitchSlot { get; set; } = null;
         // Reset at the start of every battle so we only switch once per encounter.
         public bool SwitchPerformed { get; set; } = false;
+        // Set once the run's end condition is met. ReturnToStart reads it to decide whether arriving
+        // back at the start tile finishes the event or hands back to the overworld loop.
+        public bool CompleteAfterReturn { get; set; } = false;
 
         public void SwapState(EventState newState)
         {

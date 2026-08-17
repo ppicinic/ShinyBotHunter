@@ -97,6 +97,10 @@ namespace ApiHawk
             int memPort = GetPort("BIZHAWK_MEMORY_PORT",  50101);
             int cmdPort = GetPort("BIZHAWK_COMMAND_PORT", 50100);
 
+            // Before anything that might log. EmuHawk gives this assembly no usable console, so the
+            // file is the only place diagnostics survive.
+            BotLog.Init(memPort);
+
             _memoryServer = new MemoryServer(memPort)
             {
                 MemoryApi = _memoryApi
@@ -120,13 +124,13 @@ namespace ApiHawk
                            + $"Win32 error {ex.ErrorCode}. If the port is 'in use by another process' but nothing "
                            + "is listening, it is likely inside a reserved http.sys exclusion range "
                            + "(check: netsh int ipv4 show excludedportrange protocol=tcp). Pick ports outside that range.";
-                Console.WriteLine(msg);
+                BotLog.Write(msg);
                 UpdateStatus(msg);
                 throw;
             }
 
             UpdateStatus($"Listening (HTTP) — memory: {memPort} | command: {cmdPort}");
-            Console.WriteLine($"[BotServerTool] Started. Memory port: {memPort}, Command port: {cmdPort}");
+            BotLog.Write($"[BotServerTool] Started. Memory port: {memPort}, Command port: {cmdPort}");
         }
 
         private void StopServers()
@@ -135,6 +139,7 @@ namespace ApiHawk
             _memoryServer = null;
             _commandServer?.Dispose();
             _commandServer = null;
+            BotLog.Shutdown();
         }
 
         // ── Port from environment variables ───────────────────────────────────────

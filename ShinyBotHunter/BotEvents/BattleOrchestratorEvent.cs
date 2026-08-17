@@ -10,6 +10,7 @@ using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
 using ShinyBotHunter.Util;
+using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using YamlDotNet.Core;
 using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
@@ -42,6 +43,16 @@ namespace ShinyBotHunter.BotEvents
 
         private const string EvolutionMacro = "W.45;T.A;W.1125;T.A;W.15";
 
+        // Settles through the level-up fanfare, then pages past the stat panel with two A presses.
+        //
+        // The leading wait carries ~1s of deliberate margin. It is measured from whenever this macro
+        // starts, and that moment moved earlier when the battle-state read got faster: ProcessLevelUp's
+        // own read shortened, and WaitForLevelUpOrField now polls on a much finer grain, so the level
+        // field is seen updating before the panel accepts input. The margin is safe to overshoot --
+        // the stat panel waits for a button, so waiting too long only costs time, while waiting too
+        // little drops the press and desyncs every macro after it.
+        private const string LevelUpAdvanceMacro = "W.325;T.A;W.5;T.A";
+
         // Advances dialogue from right after the level-up fanfare to the point where the
         // move-learn decision (or auto-learn text) is ready to act on.
         private const string LevelUpPrePromptMacro = "W.340";
@@ -66,6 +77,16 @@ namespace ShinyBotHunter.BotEvents
         private PokemonStateReader reader;
         private SmogonDamageService damageService;
         private IPointerService pointerService;
+
+        // How long to wait for the battler to actually be out before calling the switch failed. Has to
+        // outlast the switch animation plus the opponent's reply.
+        private const int SwitchConfirmTimeoutMs = 4000;
+
+        private const int MaxSwitchAttempts = 3;
+
+        // Attempts spent on the current battle's switch. One instance serves one bot's battles in
+        // sequence, so a field is enough; reset per battle in PokemonDataPending.
+        private int switchAttempts = 0;
         public BattleOrchestratorEvent(HgssPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, IServiceProvider provider)
         {
@@ -181,7 +202,9 @@ namespace ShinyBotHunter.BotEvents
                 // long gone by this point in the flow, so there's nothing for the battle
                 // reader's enemy pointer chain to resolve to. Safe here: any move-learn
                 // decision has already fully resolved back to a normal screen by this point.
-                var freshParty = await reader.GetPokemonState(state.Bot);
+                // Party only: nothing below touches the boxes, and the box dump would drag a 72KB
+                // read into the evolution flow.
+                var freshParty = await reader.GetPartyState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
             }
             Console.WriteLine("end evolution");
@@ -195,7 +218,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
-            state.Bot.RunMacroString("W.265;T.A;W.5;T.A");
+            state.Bot.RunMacroString(LevelUpAdvanceMacro);
             await state.Bot.WaitForMacroAsync();
             if (levelUp is not null)
             {
@@ -608,7 +631,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     return EventState.SwitchPokemon;
                 }
-                else if(state.BattleState.ActivePokemon.HP <= state.BattleState.ActivePokemon.MaxHP / 4 || TotalDamagePP(state.BattleState.ActivePokemon) == 0) // if we can't kill or close to dying flee.
+                else if(BattleReadiness.IsTooHurtToFight(state.BattleState.ActivePokemon.HP, state.BattleState.ActivePokemon.MaxHP) || TotalDamagePP(state.BattleState.ActivePokemon) == 0) // if we can't kill or close to dying flee.
                 {
                     return EventState.Flee;
                 }
@@ -660,20 +683,86 @@ namespace ShinyBotHunter.BotEvents
         /// the configured battler. Switching burns our turn, so we hand off to WaitForMovesEnd and the
         /// next DecideAction fights normally with SwitchPerformed set.
         ///
-        /// KNOWN GAP (accepted): we mark the switch done without confirming it landed. If the macro
-        /// misses -- mistuned coordinates, or the foe traps us (Arena Trap and friends) -- the trainee
-        /// is still out and the next DecideAction will fight with it instead of the battler. It fails
-        /// quietly rather than loudly. Verifying BattleState.ActivePokemon.Pokemon.PID against the
-        /// battler's after the macro would catch it if this ever becomes a problem in practice.
+        /// The switch is confirmed by PID before it counts as done. Marking it done blind used to mean
+        /// a missed tap left the trainee out and the next DecideAction fought with it -- no EXP for the
+        /// battler and nothing in the log to say so. A mistimed macro now retries and, if it keeps
+        /// failing, flees loudly instead of quietly training the wrong pokemon.
         /// </summary>
         private async Task SwitchPokemon(GameState state)
         {
+            int battlerIndex = state.SwitchSlot!.Value - 1;
+            uint expectedPid = state.BattleState!.PartyPokemon[battlerIndex].PID;
+            string battlerName = state.BattleState.PartyPokemon[battlerIndex].Name;
+
             string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, SwitchSlotMacros[state.SwitchSlot!.Value]);
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync();
-            state.SwitchPerformed = true;
+
+            SwitchOutcome outcome = await WaitForSwitchAsync(state, expectedPid);
+            if (outcome == SwitchOutcome.Landed)
+            {
+                switchAttempts = 0;
+                state.SwitchPerformed = true;
+                state.State.Pop();
+                state.State.Push(EventState.WaitForMovesEnd);
+                return;
+            }
+
+            if (outcome == SwitchOutcome.BattleOver)
+            {
+                // Escaped or wiped mid-switch; nothing left to switch into.
+                Console.WriteLine("[Battle] Battle ended while switching.");
+                state.State.Pop();
+                state.State.Push(EventState.BattleComplete);
+                return;
+            }
+
+            switchAttempts++;
+            if (switchAttempts < MaxSwitchAttempts)
+            {
+                Console.WriteLine($"[Battle] Switch to slot {state.SwitchSlot!.Value} ({battlerName}) did not land, retrying ({switchAttempts}/{MaxSwitchAttempts}).");
+                // Stay in SwitchPokemon so the macro runs again from the command menu.
+                return;
+            }
+
+            // Fighting on would put EXP into the battler's place with the trainee, which is the exact
+            // opposite of what switch training is for -- so give up on the encounter instead.
+            Console.WriteLine($"[Battle] Switch to slot {state.SwitchSlot!.Value} ({battlerName}) failed {switchAttempts} times; fleeing. Check the party-screen tap coordinates and the SwitchPokemonInit settle.");
+            switchAttempts = 0;
             state.State.Pop();
-            state.State.Push(EventState.WaitForMovesEnd);
+            state.State.Push(EventState.Flee);
+        }
+
+        private enum SwitchOutcome
+        {
+            Landed,
+            NotLanded,
+            BattleOver,
+        }
+
+        /// <summary>
+        /// Polls until the battler is the active pokemon. The switch animation and the opponent's reply
+        /// run on after the macro ends, so a single read straight afterwards would often still show the
+        /// trainee and be mistaken for a failed switch.
+        /// </summary>
+        private async Task<SwitchOutcome> WaitForSwitchAsync(GameState state, uint expectedPid)
+        {
+            var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
+            {
+                if (!IsBattle(await state.Bot.GetBattleValue()))
+                {
+                    return SwitchOutcome.BattleOver;
+                }
+                var battleState = await reader.GetPokemonBattleState(state.Bot);
+                if (battleState is not null && battleState.ActivePokemon.PID == expectedPid)
+                {
+                    state.BattleState = battleState;
+                    return SwitchOutcome.Landed;
+                }
+                await Task.Delay(Constant.PollIntervalMs);
+            }
+            return SwitchOutcome.NotLanded;
         }
 
         private async Task PokemonDataPending(GameState state)
@@ -728,10 +817,16 @@ namespace ShinyBotHunter.BotEvents
                 state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
                 // New battle -- the trainee is back out front, so we owe another switch.
                 state.SwitchPerformed = false;
-                List<int> startPositions = new List<int>();
-                for (int i = 0; i < state.BattleState!.PartyPokemon.Count(); i++)
+                switchAttempts = 0;
+                if (state.BattleState is null)
                 {
-                    startPositions.Add(i);
+                    // Same reasoning as the unreadable-pokemon case below: without a battle state
+                    // there is nothing to decide an action from, and dereferencing it would fault the
+                    // whole event.
+                    Console.WriteLine("[Battle] Battle state unreadable at battle start; fleeing.");
+                    state.State.Pop();
+                    state.State.Push(EventState.Flee);
+                    return;
                 }
                 if (pokemon is null)
                 {

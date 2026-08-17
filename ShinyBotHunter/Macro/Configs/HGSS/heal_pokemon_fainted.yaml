@@ -1,0 +1,32 @@
+name: HealPokemonFainted
+flavor: HGSS
+# Same as HealPokemon, but a party with a fainted member gets one extra dialogue box during the
+# closing text, so there is an additional W.120 + T.A before the final settle. Running the plain
+# macro here leaves that box on screen and the overworld stops accepting input.
+steps:
+ # The walk from the door to the counter tile is navigation's job now, so this starts from a
+ # standstill: settle, then face the nurse. The counter above us is a wall, so T.Up can only
+ # turn us -- it can never step us off the tile.
+ #
+ # The settle has to outlast the tail end of the walk macro: starting sooner sometimes pressed A
+ # while the last step was still animating, which ate the first dialogue box.
+ - W.120
+ - T.Up
+ - W.5
+ - T.A
+ - W.75
+ - T.A
+ - W.75
+ - T.A
+ - W.120
+ - T.A
+ - W.665
+ - T.A
+ - W.90
+ - T.A
+ - W.150
+ - T.A
+ # The extra box only a fainted party produces.
+ - W.120
+ - T.A
+ - W.30
