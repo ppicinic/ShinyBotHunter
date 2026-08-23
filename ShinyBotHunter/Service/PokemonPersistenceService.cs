@@ -120,12 +120,12 @@ namespace ShinyBotHunter.Service
             var toReturn = new GameEncounterResponse()
             {
                 AllPokemonCounts = cache.AllPokemonCounts.Clone(),
-                PokemonEncounters = cache.PokemonEncounterCache.Where(x => request.Species.Contains(x.Key)).Select(x => new KeyValuePair<int, PokemonCounts>(x.Key, x.Value.Clone())).ToDictionary(),
+                PokemonEncounters = cache.PokemonEncounterCache.Where(x => request.FormCodes.Contains(x.Key)).Select(x => new KeyValuePair<string, PokemonCounts>(x.Key, x.Value.Clone())).ToDictionary(),
                 PhaseEncounters = cache.PhaseEncounterCache.Where(x => request.Phases.Contains(x.Key)).Select(x => new KeyValuePair<string, PhaseEncounterResponse>(x.Key, new PhaseEncounterResponse()
                 {
                     AllPokemonCounts = x.Value.AllPokemonCounts.Clone(),
                     PhaseCount = x.Value.PhaseCount,
-                    PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.Species.Contains(y.Key)).Select(y => new KeyValuePair<int, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
+                    PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.FormCodes.Contains(y.Key)).Select(y => new KeyValuePair<string, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
                 })).ToDictionary(),
                 LatestEncounters = cache.LatestEncounters.Reverse().ToArray(),
                 CaughtPokemons = cache.CaughtPokemon.ToArray()
@@ -143,12 +143,12 @@ namespace ShinyBotHunter.Service
             var toReturn = new GameEncounterResponseBase()
             {
                 AllPokemonCounts = cache.AllPokemonCounts.Clone(),
-                PokemonEncounters = cache.PokemonEncounterCache.Where(x => request.Species.Contains(x.Key)).Select(x => new KeyValuePair<int, PokemonCounts>(x.Key, x.Value.Clone())).ToDictionary(),
+                PokemonEncounters = cache.PokemonEncounterCache.Where(x => request.FormCodes.Contains(x.Key)).Select(x => new KeyValuePair<string, PokemonCounts>(x.Key, x.Value.Clone())).ToDictionary(),
                 PhaseEncounters = cache.PhaseEncounterCache.Where(x => request.Phases.Contains(x.Key)).Select(x => new KeyValuePair<string, PhaseEncounterResponse>(x.Key, new PhaseEncounterResponse()
                 {
                     AllPokemonCounts = x.Value.AllPokemonCounts.Clone(),
                     PhaseCount = x.Value.PhaseCount,
-                    PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.Species.Contains(y.Key)).Select(y => new KeyValuePair<int, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
+                    PokemonEncounters = x.Value.PokemonEncounterCache.Where(y => request.FormCodes.Contains(y.Key)).Select(y => new KeyValuePair<string, PokemonCounts>(y.Key, y.Value.Clone())).ToDictionary()
                 })).ToDictionary(),
                 CaughtPokemons = cache.CaughtPokemon.ToArray()
             };
@@ -181,7 +181,7 @@ namespace ShinyBotHunter.Service
 
         private async Task LoadCacheAsync(GameFlavor game)
         {
-            await GetOrLoadCacheAsync(new CacheLoadRequest(game, new List<int>(), new List<string>(), new List<string>()));
+            await GetOrLoadCacheAsync(new CacheLoadRequest(game, new List<string>(), new List<string>(), new List<string>()));
         }
 
 
@@ -204,16 +204,16 @@ namespace ShinyBotHunter.Service
                 }
             }
             var cache = gameCache[request.Game];
-            foreach(var species in request.Species)
+            foreach(var formCode in request.FormCodes)
             {
-                if (!cache.PokemonEncounterCache.ContainsKey(species))
+                if (!cache.PokemonEncounterCache.ContainsKey(formCode))
                 {
                     try
                     {
                         await semaphore.WaitAsync();
-                        if (!cache.PokemonEncounterCache.ContainsKey(species))
+                        if (!cache.PokemonEncounterCache.ContainsKey(formCode))
                         {
-                            await LoadSpeciesCache(cache, request.Game, species);
+                            await LoadFormCache(cache, request.Game, formCode);
                         }
                     }
                     finally
@@ -239,16 +239,16 @@ namespace ShinyBotHunter.Service
                         semaphore.Release();
                     }
                 }
-                foreach(var species in request.Species)
+                foreach(var formCode in request.FormCodes)
                 {
-                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(species))
+                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
                     {
                         try
                         {
                             await semaphore.WaitAsync();
-                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(species))
+                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
                             {
-                                await LoadPhaseSpeciesCache(cache, request.Game, phase, species);
+                                await LoadPhaseFormCache(cache, request.Game, phase, formCode);
                             }
                         }
                         finally
@@ -283,16 +283,16 @@ namespace ShinyBotHunter.Service
                 }
             }
             var cache = gameFlavorCache.GameLevelCache[gameFileName];
-            foreach (var species in request.Species)
+            foreach (var formCode in request.FormCodes)
             {
-                if (!cache.PokemonEncounterCache.ContainsKey(species))
+                if (!cache.PokemonEncounterCache.ContainsKey(formCode))
                 {
                     try
                     {
                         await semaphore.WaitAsync();
-                        if (!cache.PokemonEncounterCache.ContainsKey(species))
+                        if (!cache.PokemonEncounterCache.ContainsKey(formCode))
                         {
-                            await LoadGameLevelSpeciesCache(cache, gameFileName, species);
+                            await LoadGameLevelFormCache(cache, gameFileName, formCode);
                         }
                     }
                     finally
@@ -318,16 +318,16 @@ namespace ShinyBotHunter.Service
                         semaphore.Release();
                     }
                 }
-                foreach (var species in request.Species)
+                foreach (var formCode in request.FormCodes)
                 {
-                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(species))
+                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
                     {
                         try
                         {
                             await semaphore.WaitAsync();
-                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(species))
+                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
                             {
-                                await LoadGameLevelPhaseSpeciesCache(cache, gameFileName, phase, species);
+                                await LoadGameLevelPhaseFormCache(cache, gameFileName, phase, formCode);
                             }
                         }
                         finally
@@ -339,11 +339,11 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        private async Task LoadPhaseSpeciesCache(GameEncounterCache cache, GameFlavor game, string phase, int species)
+        private async Task LoadPhaseFormCache(GameEncounterCache cache, GameFlavor game, string phase, string formCode)
         {
-            (long, long) encounters = await _encounterDao.GetAllPhaseSpeciesEncountersForGame(game, phase, species);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseSpeciesShiniesCountAsync(game, phase, species);
-            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(species, new PokemonCounts()
+            (long, long) encounters = await _encounterDao.GetAllPhaseFormEncountersForGame(game, phase, formCode);
+            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseFormShiniesCountAsync(game, phase, formCode);
+            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
             {
                 Encounters = encounters.Item1,
                 ShinyEncounters = encounters.Item2,
@@ -368,11 +368,11 @@ namespace ShinyBotHunter.Service
             });
         }
 
-        private async Task LoadSpeciesCache(GameEncounterCache cache, GameFlavor game, int species)
+        private async Task LoadFormCache(GameEncounterCache cache, GameFlavor game, string formCode)
         {
-            (long, long) encounters = await _encounterDao.GetAllSpeciesEncountersForGame(game, species);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtSpeciesShiniesCountAsync(game, species);
-            cache.PokemonEncounterCache.TryAdd(species, new PokemonCounts()
+            (long, long) encounters = await _encounterDao.GetAllFormEncountersForGame(game, formCode);
+            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtFormShiniesCountAsync(game, formCode);
+            cache.PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
             {
                 Encounters = encounters.Item1,
                 ShinyEncounters = encounters.Item2,
@@ -425,11 +425,11 @@ namespace ShinyBotHunter.Service
             gameFlavorCache.GameLevelCache.TryAdd(gameFileName, thisGameCache);
         }
 
-        private async Task LoadGameLevelPhaseSpeciesCache(GameEncounterCacheBase cache, string gameFileName, string phase, int species)
+        private async Task LoadGameLevelPhaseFormCache(GameEncounterCacheBase cache, string gameFileName, string phase, string formCode)
         {
-            (long, long) encounters = await _encounterDao.GetAllPhaseSpeciesEncountersForGameName(gameFileName, phase, species);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseSpeciesShiniesCountAsync(gameFileName, phase, species);
-            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(species, new PokemonCounts()
+            (long, long) encounters = await _encounterDao.GetAllPhaseFormEncountersForGameName(gameFileName, phase, formCode);
+            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseFormShiniesCountAsync(gameFileName, phase, formCode);
+            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
             {
                 Encounters = encounters.Item1,
                 ShinyEncounters = encounters.Item2,
@@ -454,11 +454,11 @@ namespace ShinyBotHunter.Service
             });
         }
 
-        private async Task LoadGameLevelSpeciesCache(GameEncounterCacheBase cache, string gameFileName, int species)
+        private async Task LoadGameLevelFormCache(GameEncounterCacheBase cache, string gameFileName, string formCode)
         {
-            (long, long) encounters = await _encounterDao.GetAllSpeciesEncountersForGameName(gameFileName, species);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtSpeciesShiniesCountAsync(gameFileName, species);
-            cache.PokemonEncounterCache.TryAdd(species, new PokemonCounts()
+            (long, long) encounters = await _encounterDao.GetAllFormEncountersForGameName(gameFileName, formCode);
+            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtFormShiniesCountAsync(gameFileName, formCode);
+            cache.PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
             {
                 Encounters = encounters.Item1,
                 ShinyEncounters = encounters.Item2,
@@ -477,10 +477,10 @@ namespace ShinyBotHunter.Service
 
     public class CacheLoadRequest
     {
-        public CacheLoadRequest(GameFlavor game, List<int> species, List<string> phases, List<string> gameFileNames)
+        public CacheLoadRequest(GameFlavor game, List<string> formCodes, List<string> phases, List<string> gameFileNames)
         {
             Game = game;
-            Species = species;
+            FormCodes = formCodes;
             Phases = phases;
             GameFileNames = gameFileNames;
         }
@@ -490,22 +490,22 @@ namespace ShinyBotHunter.Service
         public CacheLoadRequest(List<PersistPokemonData> pokemonData)
         {
             Game = pokemonData[0].Game;
-            HashSet<int> species = new HashSet<int>();
+            HashSet<string> formCodes = new HashSet<string>();
             HashSet<string> phases = new HashSet<string>();
             HashSet<string> gameNames = new HashSet<string>();
             foreach(var pokemon in pokemonData)
             {
-                species.Add(pokemon.PokemonData.Species);
+                formCodes.Add(pokemon.PokemonData.FormCode);
                 phases.Add(pokemon.Phase);
                 gameNames.Add(pokemon.GameFileName);
             }
-            Species = species.ToList();
+            FormCodes = formCodes.ToList();
             Phases = phases.ToList();
             GameFileNames = gameNames.ToList();
         }
 
         public GameFlavor Game { get; private set; }
-        public List<int> Species { get; private set;  }
+        public List<string> FormCodes { get; private set;  }
         public List<string> Phases { get; private set; }
         public List<string> GameFileNames { get; private set; } = new List<string>();
     }
@@ -519,14 +519,18 @@ namespace ShinyBotHunter.Service
     public class GameEncounterResponseBase
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
-        public Dictionary<int, PokemonCounts> PokemonEncounters { get; set; } = new();
+        // Keyed by form code, not species id: a milestone can list several forms of one species
+        // (male/female, or Unown's 28), and each row needs its own counts.
+        public Dictionary<string, PokemonCounts> PokemonEncounters { get; set; } = new();
         public Dictionary<string, PhaseEncounterResponse> PhaseEncounters { get; set; } = new();
         public CaughtPokemon[] CaughtPokemons { get; set; } = [];
     }
     public class PhaseEncounterResponse
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
-        public Dictionary<int, PokemonCounts> PokemonEncounters { get; set; } = new();
+        // Keyed by form code, not species id: a milestone can list several forms of one species
+        // (male/female, or Unown's 28), and each row needs its own counts.
+        public Dictionary<string, PokemonCounts> PokemonEncounters { get; set; } = new();
         public int PhaseCount { get; set; } = 0;
     }
 
@@ -552,13 +556,13 @@ namespace ShinyBotHunter.Service
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
         public ConcurrentDictionary<string, PhaseEncounterCache> PhaseEncounterCache { get; set; } = new();
-        public ConcurrentDictionary<int, PokemonCounts> PokemonEncounterCache { get; set; } = new();
+        public ConcurrentDictionary<string, PokemonCounts> PokemonEncounterCache { get; set; } = new();
         public ConcurrentBag<CaughtPokemon> CaughtPokemon { get; set; } = new();
 
         internal virtual void Increment(PersistPokemonData encounter)
         {
             AllPokemonCounts.Increment(encounter);
-            PokemonEncounterCache[encounter.PokemonData.Species].Increment(encounter);
+            PokemonEncounterCache[encounter.PokemonData.FormCode].Increment(encounter);
             PhaseEncounterCache[encounter.Phase].Increment(encounter);
         }
         internal virtual void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
@@ -566,21 +570,21 @@ namespace ShinyBotHunter.Service
             AllPokemonCounts.Increment(caughtPokemon, encounter);
             CaughtPokemon.Add(caughtPokemon);
             PhaseEncounterCache[encounter.Phase].Increment(caughtPokemon, encounter);
-            PokemonEncounterCache[encounter.PokemonData.Species].Increment(caughtPokemon, encounter);
+            PokemonEncounterCache[encounter.PokemonData.FormCode].Increment(caughtPokemon, encounter);
         }
     }
 
     public class PhaseEncounterCache
     {
         public PokemonCounts AllPokemonCounts { get; set; } = new();
-        public ConcurrentDictionary<int, PokemonCounts> PokemonEncounterCache { get; set; } = new();
+        public ConcurrentDictionary<string, PokemonCounts> PokemonEncounterCache { get; set; } = new();
         private int phaseCount = 0;
         public int PhaseCount { get => phaseCount; set => Interlocked.Exchange(ref phaseCount, value); }
 
         internal void Increment(PersistPokemonData encounter)
         {
             AllPokemonCounts.Increment(encounter);
-            PokemonEncounterCache[encounter.PokemonData.Species].Increment(encounter);
+            PokemonEncounterCache[encounter.PokemonData.FormCode].Increment(encounter);
             if (encounter.PokemonData.IsShiny)
             {
                 PhaseCount = 0;
@@ -594,7 +598,7 @@ namespace ShinyBotHunter.Service
         internal void Increment(CaughtPokemon caughtPokemon, PersistPokemonData encounter)
         {
             AllPokemonCounts.Increment(caughtPokemon, encounter);
-            PokemonEncounterCache[encounter.PokemonData.Species].Increment(caughtPokemon, encounter);
+            PokemonEncounterCache[encounter.PokemonData.FormCode].Increment(caughtPokemon, encounter);
         }
     }
 

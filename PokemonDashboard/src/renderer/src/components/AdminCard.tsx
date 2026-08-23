@@ -1162,6 +1162,7 @@ const EMPTY_POKEMON = (): PhasePokemonInfo => ({
   speciesId: 0,
   amount: 1,
   formCode: '',
+  hasFemaleForm: false,
   requireSpecificForm: false
 })
 

@@ -45,8 +45,8 @@ export interface PokemonCounts {
 
 export interface PhaseEncounterResponse {
   allPokemonCounts: PokemonCounts
-  // C# Dictionary<int, PokemonCounts> — JSON keys are numbers
-  pokemonEncounters: Record<number, PokemonCounts>
+  // C# Dictionary<string, PokemonCounts> — keyed by form code, so each form counts separately
+  pokemonEncounters: Record<string, PokemonCounts>
   // Number of pokemon encountered since the last shiny seen for this milestone
   phaseCount: number
 }
@@ -62,8 +62,8 @@ export interface CaughtPokemon {
 // C# GameEncounterResponseBase — base encounter data (game-level or game-file-level)
 export interface GameEncounterResponseBase {
   allPokemonCounts: PokemonCounts
-  // C# Dictionary<int, PokemonCounts> — JSON keys are numbers
-  pokemonEncounters: Record<number, PokemonCounts>
+  // C# Dictionary<string, PokemonCounts> — keyed by form code, so each form counts separately
+  pokemonEncounters: Record<string, PokemonCounts>
   // C# Dictionary<string, PhaseEncounterResponse> — JSON keys are phase name strings
   phaseEncounters: Record<string, PhaseEncounterResponse>
   // C# CaughtPokemon[] — caught shinies for this scope
@@ -141,6 +141,9 @@ export interface PhasePokemonInfo {
   amount: number
   formCode: string
   requireSpecificForm: boolean
+  // Derived server-side: lets a male form be told apart from a genderless one, which the form code
+  // alone cannot express (only ";f" is ever appended).
+  hasFemaleForm: boolean
 }
 
 export interface PhaseInfo {

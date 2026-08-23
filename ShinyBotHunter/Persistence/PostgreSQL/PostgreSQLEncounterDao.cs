@@ -80,39 +80,39 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             );
         }
 
-        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGame(GameFlavor game, string phase, int species)
+        public async Task<(long, long)> GetAllPhaseFormEncountersForGame(GameFlavor game, string phase, string formCode)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             return (
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
+                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.FormCode == formCode).LongCountAsync(),
+                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.FormCode == formCode && x.IsShiny).LongCountAsync()
             );
         }
 
-        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGameName(string gameFileName, string phase, int species)
+        public async Task<(long, long)> GetAllPhaseFormEncountersForGameName(string gameFileName, string phase, string formCode)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.FormCode == formCode).LongCountAsync(),
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.FormCode == formCode && x.IsShiny).LongCountAsync()
             );
         }
 
-        public async Task<(long, long)> GetAllSpeciesEncountersForGame(GameFlavor game, int species)
+        public async Task<(long, long)> GetAllFormEncountersForGame(GameFlavor game, string formCode)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             return (
-                await context.Encounters.Where(x => x.Game == game && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Species == species && x.IsShiny).LongCountAsync()
+                await context.Encounters.Where(x => x.Game == game && x.FormCode == formCode).LongCountAsync(),
+                await context.Encounters.Where(x => x.Game == game && x.FormCode == formCode && x.IsShiny).LongCountAsync()
             );
         }
 
-        public async Task<(long, long)> GetAllSpeciesEncountersForGameName(string gameFileName, int species)
+        public async Task<(long, long)> GetAllFormEncountersForGameName(string gameFileName, string formCode)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
             return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species && x.IsShiny).LongCountAsync()
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.FormCode == formCode).LongCountAsync(),
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.FormCode == formCode && x.IsShiny).LongCountAsync()
             );
         }
 
