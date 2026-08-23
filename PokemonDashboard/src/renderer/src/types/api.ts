@@ -185,6 +185,25 @@ export interface GameMetadata {
 export interface AdminMetadata {
   // key = game name (e.g. "HGSS")
   games: Record<string, GameMetadata>
+  // Backend ApplicationSettings.EnableMacroRecording — gates the dev-mode recorder tab.
+  macroRecordingEnabled: boolean
+}
+
+// ============================================================
+// Macro recorder types (dev mode)
+// Matches C# MacroRecordResult / MacroRecordStatus in MacroRecordingService.cs
+// ============================================================
+
+export interface MacroRecordResult {
+  yaml: string
+  frameCount: number
+  stepCount: number
+}
+
+export interface MacroRecordStatus {
+  recording: boolean
+  runCount: number
+  frameCount: number
 }
 
 // ============================================================

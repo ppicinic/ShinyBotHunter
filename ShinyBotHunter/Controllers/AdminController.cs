@@ -11,11 +11,13 @@ namespace ShinyBotHunter.Controllers
         private AdminService adminService;
         private PhaseInfoService phaseInfoService;
         private string romDirectory;
+        private bool macroRecordingEnabled;
         public AdminController(AdminService adminService, PhaseInfoService phaseInfoService, IOptions<ApplicationSettings> appSettings) 
         {
             this.adminService = adminService;
             this.phaseInfoService = phaseInfoService;
             this.romDirectory = appSettings.Value.ROMBaseDirectory;
+            this.macroRecordingEnabled = appSettings.Value.EnableMacroRecording;
         }
 
         
@@ -47,7 +49,8 @@ namespace ShinyBotHunter.Controllers
             var phases = this.phaseInfoService.GetAllPhases(gameFlavors);
             AdminMetadata metadata = new AdminMetadata()
             {
-                Games = gameFlavors.Select(x => new KeyValuePair<string, GameMetadata>(x.ToString(), new GameMetadata() { Phases = phases[x] })).ToDictionary()
+                Games = gameFlavors.Select(x => new KeyValuePair<string, GameMetadata>(x.ToString(), new GameMetadata() { Phases = phases[x] })).ToDictionary(),
+                MacroRecordingEnabled = macroRecordingEnabled
             };
             return Ok(metadata);
         }
@@ -74,6 +77,9 @@ namespace ShinyBotHunter.Controllers
     public class AdminMetadata
     {
         public Dictionary<string, GameMetadata> Games { get; set; } = null!;
+
+        /// <summary>Drives whether the dashboard shows the dev-mode macro recorder tab.</summary>
+        public bool MacroRecordingEnabled { get; set; }
     }
 
     public class GameMetadata

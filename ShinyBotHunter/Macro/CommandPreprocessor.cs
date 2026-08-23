@@ -41,6 +41,62 @@ namespace ShinyBotHunter.Macro
             { "PartySlotSix",   (192, 132) },     // TODO party screen, slot 6
             { "SwitchInButton", (126, 76) },     // TODO "Switch In" entry on the party-member submenu
         };
+
+        /// <summary>
+        /// Shorthands whose coordinates are still unmeasured placeholders (see the TODOs above).
+        /// The macro recorder must not snap a recorded touch onto one of these, or it would bake a
+        /// known-wrong coordinate into a freshly recorded macro under a name that looks correct.
+        /// </summary>
+        private static readonly HashSet<string> PlaceholderShorthands = new()
+        {
+            "BattlePokemonMenu", "PartySlotOne", "PartySlotTwo", "PartySlotThree",
+            "PartySlotFour", "PartySlotFive", "PartySlotSix", "SwitchInButton",
+        };
+
+        /// <summary>
+        /// Reverse of <see cref="ConvertTouchShorthands"/>: finds the nearest named touch target to a
+        /// recorded pixel, used by the macro recorder to emit <c>S.Pokedex</c> instead of raw coords.
+        /// </summary>
+        /// <param name="alternates">Other shorthands sharing the winner's exact coordinates
+        /// (e.g. NewMove and DoNotLearnComplete are both 128,70), so callers can surface the ambiguity.</param>
+        /// <returns>false when nothing measured lies within <paramref name="radius"/>.</returns>
+        public static bool TryFindShorthand(int x, int y, int radius, out string name, out string[] alternates)
+        {
+            name = "";
+            alternates = Array.Empty<string>();
+
+            string? best = null;
+            (int X, int Y) bestCoords = default;
+            int bestDistSq = int.MaxValue;
+            int radiusSq = radius * radius;
+
+            foreach (var (candidate, coords) in TouchShorthands)
+            {
+                if (PlaceholderShorthands.Contains(candidate)) continue;
+
+                int dx = coords.X - x;
+                int dy = coords.Y - y;
+                int distSq = (dx * dx) + (dy * dy);
+
+                // Ties keep the first declared entry, so the result is stable.
+                if (distSq > radiusSq || distSq >= bestDistSq) continue;
+
+                best = candidate;
+                bestCoords = coords;
+                bestDistSq = distSq;
+            }
+
+            if (best is null) return false;
+
+            name = best;
+            alternates = TouchShorthands
+                .Where(kv => kv.Key != best
+                             && !PlaceholderShorthands.Contains(kv.Key)
+                             && kv.Value == bestCoords)
+                .Select(kv => kv.Key)
+                .ToArray();
+            return true;
+        }
         public int DefaultTapFrames { get; set; } = 3;
 
         private static readonly Regex TapRegex = new(@"T\.([^;:.]+)", RegexOptions.Compiled);

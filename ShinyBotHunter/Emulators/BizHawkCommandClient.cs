@@ -102,6 +102,52 @@ namespace ShinyBotHunter.Emulators
             }, ct);
         }
 
+        // -- Macro recording -------------------------------------------------------
+
+        /// <summary>
+        /// An emulator running a BotServer.dll built before macro recording existed has no /record/*
+        /// route, so its HttpListener answers 404. That is permanent, not transient — surfaced as a
+        /// plain HttpRequestException it would burn the full retry budget and then report a bare
+        /// "404 (Not Found)" that says nothing about the real cause.
+        /// </summary>
+        private const string StaleToolMessage =
+            "The emulator's BotServer.dll has no /record endpoints, so it predates macro recording. "
+            + "Rebuild the ApiHawk project, copy BotServer.dll into your BizHawk ExternalTools folder, "
+            + "and restart the emulator.";
+
+        public Task StartRecordingAsync(CancellationToken ct = default)
+            => PostRecordAsync("record/start", ct);
+
+        public Task<string> StopRecordingAsync(CancellationToken ct = default)
+            => PostRecordAsync("record/stop", ct);
+
+        public Task<string> GetRecordingStatusAsync(CancellationToken ct = default)
+            => ExecuteWithRetryAsync(async () =>
+            {
+                using var resp = await _http.GetAsync("record/status", ct).ConfigureAwait(false);
+                ThrowIfStaleTool(resp);
+                resp.EnsureSuccessStatusCode();
+                return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            }, ct);
+
+        private Task<string> PostRecordAsync(string path, CancellationToken ct)
+            => ExecuteWithRetryAsync(async () =>
+            {
+                using var resp = await _http.PostAsync(path, new StringContent(""), ct).ConfigureAwait(false);
+                ThrowIfStaleTool(resp);
+                resp.EnsureSuccessStatusCode();
+                return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            }, ct);
+
+        // InvalidOperationException is deliberate: BizHawkClientBase.IsTransient does not match it, so
+        // this fails on the first attempt instead of retrying, and DevController turns it into a 400
+        // carrying this message straight to the dashboard banner.
+        private static void ThrowIfStaleTool(HttpResponseMessage resp)
+        {
+            if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                throw new InvalidOperationException(StaleToolMessage);
+        }
+
         // ── Internal ──────────────────────────────────────────────────────────────
 
         // Synchronous send: blocks until the server acks the command, preserving ordering

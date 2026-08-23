@@ -110,6 +110,23 @@ namespace ShinyBotHunter.Emulators
             void Complete() => tcs.TrySetResult();
         }
 
+        // -- Macro recording -------------------------------------------------------
+        // Recording is HTTP-only. This named-pipe client predates the HTTP command server and is not
+        // constructed by BotFactory; rather than invent a pipe framing for the record commands that
+        // nothing would exercise, these fail loudly if the client is ever wired back up.
+
+        private const string RecordingUnsupported =
+            "Macro recording is only implemented for the HTTP command server (BizHawkCommandClient).";
+
+        public Task StartRecordingAsync(CancellationToken ct = default)
+            => throw new NotSupportedException(RecordingUnsupported);
+
+        public Task<string> StopRecordingAsync(CancellationToken ct = default)
+            => throw new NotSupportedException(RecordingUnsupported);
+
+        public Task<string> GetRecordingStatusAsync(CancellationToken ct = default)
+            => throw new NotSupportedException(RecordingUnsupported);
+
         // ── IAsyncDisposable ──────────────────────────────────────────────────────
 
         public ValueTask DisposeAsync()

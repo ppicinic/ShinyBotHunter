@@ -321,6 +321,14 @@ namespace ShinyBotHunter.Service
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
+        /// <summary>The bot at a display position, or null when nothing is running there.</summary>
+        public IBot? GetBotAt(int pos)
+            => botEvents.TryGetValue(pos, out var entry) ? entry.Bot : null;
+
+        /// <summary>True when an event currently owns the bot at this position.</summary>
+        public bool HasRunningEvent(int pos)
+            => botEvents.TryGetValue(pos, out var entry) && entry.Event is not null;
+
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
             return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, GameFlavor.HGSS))).ToDictionary();

@@ -19,6 +19,15 @@
         public ulong? ShinyLogChannel { get; set; } = null!;
         public ulong? ShinyLogMention { get; set; } = null!;
         public string BizHawkMode { get; set; } = "LuaNet";
+
+        // Dev-only macro recorder. Off by default: when false the /api/dev/* routes 404 and the
+        // dashboard hides the tab. Requires BizHawkMode == "ApiHawk".
+        public bool EnableMacroRecording { get; set; } = false;
+        // A recorded press this long or shorter becomes T.<Btn> (which replays as 3 frames);
+        // anything longer keeps its exact count as H.<Btn>.<n>.
+        public int MacroRecordTapMaxFrames { get; set; } = 5;
+        // Pixel radius within which a recorded touch snaps to a CommandPreprocessor shorthand.
+        public int MacroRecordTouchSnapRadius { get; set; } = 6;
         public ulong? DiscordNewMoveChannelId { get; set; }
     }
 }
