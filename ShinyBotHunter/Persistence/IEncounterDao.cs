@@ -10,6 +10,10 @@ namespace ShinyBotHunter.Persistence
         Task<(long, long)> GetAllPhaseEncountersForGame(GameFlavor game, string phase);
         Task<(long, long)> GetAllPhaseEncountersForGameName(string gameFileName, string phase);
         Task<(long, long)> GetAllPhaseFormEncountersForGame(GameFlavor game, string phase, string formCode);
+        Task<(long, long)> GetAllPhaseSpeciesEncountersForGame(GameFlavor game, string phase, int species);
+        Task<(long, long)> GetAllPhaseSpeciesEncountersForGameName(string gameFileName, string phase, int species);
+        Task<(long, long)> GetAllSpeciesEncountersForGame(GameFlavor game, int species);
+        Task<(long, long)> GetAllSpeciesEncountersForGameName(string gameFileName, int species);
         Task<(long, long)> GetAllPhaseFormEncountersForGameName(string gameFileName, string phase, string formCode);
         Task<(long, long)> GetAllFormEncountersForGame(GameFlavor game, string formCode);
         Task<(long, long)> GetAllFormEncountersForGameName(string gameFileName, string formCode);

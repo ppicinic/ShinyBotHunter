@@ -296,5 +296,41 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             ProducerQueue.Writer.TryComplete();
             await ProducerQueue.Reader.Completion;
         }
+
+        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGame(GameFlavor game, string phase, int species)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return (
+                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species).LongCountAsync(),
+                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
+            );
+        }
+
+        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGameName(string gameFileName, string phase, int species)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return (
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species).LongCountAsync(),
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
+            );
+        }
+
+        public async Task<(long, long)> GetAllSpeciesEncountersForGame(GameFlavor game, int species)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return (
+                await context.Encounters.Where(x => x.Game == game && x.Species == species).LongCountAsync(),
+                await context.Encounters.Where(x => x.Game == game && x.Species == species && x.IsShiny).LongCountAsync()
+            );
+        }
+
+        public async Task<(long, long)> GetAllSpeciesEncountersForGameName(string gameFileName, int species)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return (
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species).LongCountAsync(),
+                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species && x.IsShiny).LongCountAsync()
+            );
+        }
     }
 }

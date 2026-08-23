@@ -134,10 +134,12 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
             </thead>
             <tbody>
               {pokemonList.map((pkmn) => {
-                // Keyed by form code so each row counts only its own form -- male and female rows,
-                // or Unown's 28 forms, no longer share one species-level total.
-                const phaseCounts = phaseData?.pokemonEncounters?.[pkmn.formCode]
-                const totalCounts = scopedData?.pokemonEncounters?.[pkmn.formCode]
+                // A row that pins a form counts only that form (male and female, or Unown's 28,
+                // stay separate); a row that accepts any form counts the whole species. Must match
+                // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
+                const countKey = pkmn.requireSpecificForm ? pkmn.formCode : `#${pkmn.speciesId}`
+                const phaseCounts = phaseData?.pokemonEncounters?.[countKey]
+                const totalCounts = scopedData?.pokemonEncounters?.[countKey]
                 const shiniesCaught = totalCounts?.shiniesCaught ?? 0
                 const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
                 // Missed = shiny encounters that were not caught
@@ -148,9 +150,16 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                 const isTrackedOnly = amountRequired === 0
                 const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
                 // Phase card shows target (shiny) sprites since these are the pokemon being hunted
-                // Only ";f" is ever encoded, so a plain code means male when the species has a
-                // female form, and carries no gender at all when it does not.
-                const genderSymbol = pkmn.formCode.endsWith(';f') ? '♀' : pkmn.hasFemaleForm ? '♂' : ''
+                // Only shown when the row actually pins a form -- otherwise it accepts either
+                // gender and marking it would be a lie. Within a pinned row, ";f" is the only thing
+                // ever encoded, so a plain code means male when the species has a female form.
+                const genderSymbol = !pkmn.requireSpecificForm
+                  ? ''
+                  : pkmn.formCode.endsWith(';f')
+                    ? '♀'
+                    : pkmn.hasFemaleForm
+                      ? '♂'
+                      : ''
                 const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
 
                 return (

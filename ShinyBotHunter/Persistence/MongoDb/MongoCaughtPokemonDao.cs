@@ -115,6 +115,33 @@ namespace ShinyBotHunter.Persistence.MongoDb
             var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.FormCode, formCode);
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
+        public async Task<long> GetAllCaughtSpeciesShiniesCountAsync(GameFlavor game, int species)
+        {
+            var builder = Builders<CaughtPokemon>.Filter;
+            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Pokemon.Species, species);
+            return await _caughtPokemon.CountDocumentsAsync(filter);
+        }
+
+        public async Task<long> GetAllCaughtPhaseSpeciesShiniesCountAsync(GameFlavor game, string phase, int species)
+        {
+            var builder = Builders<CaughtPokemon>.Filter;
+            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.Species, species);
+            return await _caughtPokemon.CountDocumentsAsync(filter);
+        }
+
+        public async Task<long> GetAllCaughtSpeciesShiniesCountAsync(string gameFileName, int species)
+        {
+            var builder = Builders<CaughtPokemon>.Filter;
+            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Pokemon.Species, species);
+            return await _caughtPokemon.CountDocumentsAsync(filter);
+        }
+
+        public async Task<long> GetAllCaughtPhaseSpeciesShiniesCountAsync(string gameFileName, string phase, int species)
+        {
+            var builder = Builders<CaughtPokemon>.Filter;
+            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.Species, species);
+            return await _caughtPokemon.CountDocumentsAsync(filter);
+        }
     }
 
     public class CaughtPokemon
@@ -125,5 +152,6 @@ namespace ShinyBotHunter.Persistence.MongoDb
         public Guid Id { get; set; }
         public required string Phase { get; set; }
         public required string GameFileName { get; set; }
+
     }
 }

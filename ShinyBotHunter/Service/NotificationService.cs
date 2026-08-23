@@ -21,7 +21,7 @@ namespace ShinyBotHunter.Service
         public Task<CacheLoadRequest> BuildNotificationRequestAsync(EncounterNotification message)
         {
             var phaseInfo = phaseInfoService.GetPhaseInfo(message.game, message.phase);
-            return Task.FromResult(new CacheLoadRequest(message.game, phaseInfo.Pokemon.Select(x => x.FormCode).ToList(), new List<string>() { phaseInfo.Name }, new List<string>() { message.gameFileName }));
+            return Task.FromResult(new CacheLoadRequest(message.game, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phaseInfo.Name }, new List<string>() { message.gameFileName }));
         }
 
         public async Task NotifyAsync(GameEncounterResponse response, EncounterNotification message)
