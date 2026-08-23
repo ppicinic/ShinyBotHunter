@@ -496,9 +496,9 @@ namespace ShinyBotHunter.Pathfinding
             return node;
         }
 
-        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, int? destBotMapId = null, bool overshootFinalStep = false)
+        public string? Pathfind(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, int? destBotMapId = null, bool overshootFinalStep = false, IReadOnlyDictionary<(int X, int Y), int>? tilePenalties = null)
         {
-            MapPoint? point = ASearch(mapId, startX, startY, destX, destY, capability, facing);
+            MapPoint? point = ASearch(mapId, startX, startY, destX, destY, capability, facing, tilePenalties: tilePenalties);
             if(point is null)
             {
                 return null;
@@ -566,7 +566,7 @@ namespace ShinyBotHunter.Pathfinding
         //    return mapPoints;
         //}
         
-        public MapPoint? ASearch(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, bool internalId = false)
+        public MapPoint? ASearch(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, bool internalId = false, IReadOnlyDictionary<(int X, int Y), int>? tilePenalties = null)
         {
             Map map = mapService.GetMap(mapId, internalId);
             Dictionary<PlayerState, int> visited = new Dictionary<PlayerState, int>();
@@ -590,7 +590,7 @@ namespace ShinyBotHunter.Pathfinding
                     return top;
 
                 }
-                var points = GetNeighboringMapPoints(map, top, capability);
+                var points = GetNeighboringMapPoints(map, top, capability, tilePenalties);
                 foreach(var point in points)
                 {
                     var state = point.PlayerState;
@@ -906,29 +906,38 @@ namespace ShinyBotHunter.Pathfinding
             return path;
         }
 
-        private List<MapPoint> GetNeighboringMapPoints(Map map, MapPoint top, Capability capability)
+        private static int Penalty(IReadOnlyDictionary<(int X, int Y), int>? tilePenalties, int x, int y)
+        {
+            if (tilePenalties is null)
+            {
+                return 0;
+            }
+            return tilePenalties.TryGetValue((x, y), out int penalty) ? penalty : 0;
+        }
+
+        private List<MapPoint> GetNeighboringMapPoints(Map map, MapPoint top, Capability capability, IReadOnlyDictionary<(int X, int Y), int>? tilePenalties)
         {
             List<MapPoint> neighbors = new List<MapPoint>();
             if(top.ActionNeeded == MoveAction.Portal) // if we hit a portal we can't move around we're on the portal.
             {
                 return neighbors;
             }
-            MapPoint? left = GetNeighboringMapPoint(top.X - 1, top.Y, top, map, capability);
+            MapPoint? left = GetNeighboringMapPoint(top.X - 1, top.Y, top, map, capability, tilePenalties);
             if(left is not null)
             {
                 neighbors.Add(left);
             }
-            MapPoint? right = GetNeighboringMapPoint(top.X + 1, top.Y, top, map, capability);
+            MapPoint? right = GetNeighboringMapPoint(top.X + 1, top.Y, top, map, capability, tilePenalties);
             if (right is not null)
             {
                 neighbors.Add(right);
             }
-            MapPoint? up = GetNeighboringMapPoint(top.X, top.Y - 1, top, map, capability);
+            MapPoint? up = GetNeighboringMapPoint(top.X, top.Y - 1, top, map, capability, tilePenalties);
             if (up is not null)
             {
                 neighbors.Add(up);
             }
-            MapPoint? down = GetNeighboringMapPoint(top.X, top.Y + 1, top, map, capability);
+            MapPoint? down = GetNeighboringMapPoint(top.X, top.Y + 1, top, map, capability, tilePenalties);
             if (down is not null)
             {
                 neighbors.Add(down);
@@ -936,7 +945,7 @@ namespace ShinyBotHunter.Pathfinding
             return neighbors;
         }
 
-        private MapPoint? GetNeighboringMapPoint(int x, int y, MapPoint top, Map map, Capability capability)
+        private MapPoint? GetNeighboringMapPoint(int x, int y, MapPoint top, Map map, Capability capability, IReadOnlyDictionary<(int X, int Y), int>? tilePenalties)
         {
             
 
@@ -954,7 +963,11 @@ namespace ShinyBotHunter.Pathfinding
                 X = x,
                 Y = y,
                 CameFrom = top,
-                Cost = top.Cost,
+                // Learned penalties ride on the ordinary step cost, so a tile the bot got stuck on
+                // (standing beside a sign and pressing into it) becomes expensive rather than
+                // forbidden -- A* routes around it when there is an alternative and still uses it
+                // when there is not.
+                Cost = top.Cost + Penalty(tilePenalties, x, y),
                 BoulderState = top.BoulderState,
                 InitialStrength = top.InitialStrength,
             };
@@ -1022,7 +1035,7 @@ namespace ShinyBotHunter.Pathfinding
             {
                 if(top.X > x)
                 {
-                    return GetNeighboringMapPoint(x - 1, y, top, map, capability);
+                    return GetNeighboringMapPoint(x - 1, y, top, map, capability, tilePenalties);
                 }
                 return null;
             }
@@ -1030,7 +1043,7 @@ namespace ShinyBotHunter.Pathfinding
             {
                 if(top.X < x)
                 {
-                    return GetNeighboringMapPoint(x + 1, y, top, map, capability);
+                    return GetNeighboringMapPoint(x + 1, y, top, map, capability, tilePenalties);
                 }
                 return null;
             }
@@ -1038,7 +1051,7 @@ namespace ShinyBotHunter.Pathfinding
             {
                 if(top.Y < y)
                 {
-                    return GetNeighboringMapPoint(x, y + 1, top, map, capability);
+                    return GetNeighboringMapPoint(x, y + 1, top, map, capability, tilePenalties);
                 }
             }
             else if(tile == Constant.MAP_Grass)
@@ -1146,7 +1159,7 @@ namespace ShinyBotHunter.Pathfinding
                 }
                 int newY = point.Direction == Direction.Up ? point.Y - 1 : point.Direction == Direction.Down ? point.Y + 1 : point.Y;
                 int newX = point.Direction == Direction.Left ? point.X - 1 : point.Direction == Direction.Right ? point.X + 1 : point.X;
-                var newPoint = GetNeighboringMapPoint(newX, newY, top, map, capability); // this needs to search until water. or we need to confirm if 0x22 is a surf tile (Tohjo Falls)
+                var newPoint = GetNeighboringMapPoint(newX, newY, top, map, capability, tilePenalties); // this needs to search until water. or we need to confirm if 0x22 is a surf tile (Tohjo Falls)
                 if(newPoint is null)
                 {
                     return null;
@@ -1167,7 +1180,7 @@ namespace ShinyBotHunter.Pathfinding
                 }
                 int newY = point.Direction == Direction.Up ? point.Y - 1 : point.Direction == Direction.Down ? point.Y + 1 : point.Y;
                 int newX = point.Direction == Direction.Left ? point.X - 1 : point.Direction == Direction.Right ? point.X + 1 : point.X;
-                var newPoint = GetNeighboringMapPoint(newX, newY, top, map, capability);
+                var newPoint = GetNeighboringMapPoint(newX, newY, top, map, capability, tilePenalties);
                 if (newPoint is null)
                 {
                     return null;

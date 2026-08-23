@@ -41,7 +41,14 @@ namespace ShinyBotHunter.BotEvents
             { 6, "SwitchToPartySlotSix" },
         };
 
-        private const string EvolutionMacro = "W.45;T.A;W.1125;T.A;W.15";
+        // Settle, advance the opening text, sit through the evolution animation, dismiss the result.
+        //
+        // The long wait has to outlast the animation, which varies by species -- it was about a
+        // second short for the slowest ones, so the final tap landed while the animation was still
+        // playing, got swallowed, and left the result screen up with nothing to dismiss it. Padded by
+        // 120 frames. Overshooting is safe: the result screen waits for a button, so a late tap still
+        // lands, while an early one is simply lost.
+        private const string EvolutionMacro = "W.45;T.A;W.1245;T.A;W.15";
 
         // Settles through the level-up fanfare, then pages past the stat panel with two A presses.
         //
@@ -68,6 +75,12 @@ namespace ShinyBotHunter.BotEvents
         private const string EvolutionLearnMoveInit = "T.A;W.150;T.A;W.150;";
         private const string EvolutionLearnMoveMacroTemplate = $"{EvolutionLearnMoveInit}S.125.75.5;W.240;S.Evo{{0}}.5;W.15;S.60.165.5;W.320;T.A;W.150;T.A;W.90;T.A;W.150;T.A;W.15";
         private const string EvolutionDoNotLearnMacro = $"{EvolutionLearnMoveInit}S.125.125.5;W.240;S.125.75.5;W.180;T.A;W.15";
+
+        // The post-evolution free-slot path: with an open move slot the game learns the move outright
+        // and only shows "<Pokemon> learned <Move>!", so this just settles and advances that text.
+        // Deliberately not built on EvolutionLearnMoveInit -- there is no prompt to walk into here.
+        // The level-up equivalent is FreeSlotMacro.
+        private const string EvolutionFreeSlotMacro = "W.160;T.A;W.15";
 
         private HgssPokemonParser parser;
         private PokemonPersistenceService persistenceService;
@@ -317,6 +330,27 @@ namespace ShinyBotHunter.BotEvents
                 if (pokemon.Moves.Any(m => m.Id == newMove.Id))
                 {
                     Console.WriteLine($"{pokemon.Name} already knows {newMove.Name}, skipping learn flow");
+                    continue;
+                }
+                bool hasFourMoves = true;
+                foreach(var knownMove in pokemon.Moves)
+                {
+                    if(knownMove.Id == 0)
+                    {
+                        hasFourMoves = false;
+                    }
+                }
+                if (!hasFourMoves)
+                {
+                    // An open slot means the game just learns the move -- there is no "forget which?"
+                    // prompt at all. Asking Discord here answered a question nobody was asked, and the
+                    // replace macros below would then run against dialogue that isn't on screen. It
+                    // also crashed outright: the prompt builds a button per move slot, and an empty
+                    // slot has no move metadata to name it.
+                    Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
+                    state.Bot.RunMacroString(EvolutionFreeSlotMacro);
+                    await state.Bot.WaitForMacroAsync();
+                    ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                     continue;
                 }
                 int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);

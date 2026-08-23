@@ -109,7 +109,10 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                 // Missed = shiny encounters that were not caught
                 const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
                 const amountRequired = pkmn.amount
-                const isComplete = shiniesCaught >= amountRequired
+                // Amount 0 means "track this pokemon's encounters but don't require it". Without the
+                // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
+                const isTrackedOnly = amountRequired === 0
+                const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
                 // Phase card shows target (shiny) sprites since these are the pokemon being hunted
                 const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
 
@@ -150,7 +153,14 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
                     {/* Shinies caught / needed */}
                     <td className={`py-2 text-center font-medium text-sm ${isComplete ? 'text-green-400' : 'text-white'}`}>
-                      <div>{shiniesCaught}/{amountRequired}</div>
+                      {isTrackedOnly ? (
+                        <div>
+                          {shiniesCaught}
+                          <span className="ml-1 text-xs text-slate-500 font-normal">tracked</span>
+                        </div>
+                      ) : (
+                        <div>{shiniesCaught}/{amountRequired}</div>
+                      )}
                       {shiniesMissed > 0 && (
                         <div className="text-xs text-red-400 font-normal">({shiniesMissed} missed)</div>
                       )}

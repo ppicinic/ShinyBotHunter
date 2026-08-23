@@ -57,12 +57,23 @@ public sealed class DiscordBotService
         var channel = _client.GetGuild(guildId).GetTextChannel(newMoveChannelId);
         eb.WithTitle($"{pokemon.Name} - New Move");
         eb.WithDescription($"{pokemon.Name} is trying to learn a new move, {newMove.Name}. Should {pokemon.Name} forget a move to learn {newMove.Name}");
-        // 2. Build 5 distinct buttons with unique IDs
-        var component = new ComponentBuilder()
-            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move1).Name, "move_0", ButtonStyle.Primary)
-            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move2).Name, "move_1", ButtonStyle.Secondary)
-            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move3).Name, "move_2", ButtonStyle.Success)
-            .WithButton(metadataService.GetPokemonMoveMetadata(pokemon.Move4).Name, "move_3", ButtonStyle.Danger)
+        // 2. One button per occupied move slot, plus Do Not Learn.
+        // Empty slots are skipped: there is no move to forget, and no metadata entry to name the
+        // button either -- looking one up threw KeyNotFoundException and killed the run. The custom
+        // id stays bound to the slot index rather than the button position, so the answer still
+        // identifies the right slot when a slot is missing.
+        var moveStyles = new[] { ButtonStyle.Primary, ButtonStyle.Secondary, ButtonStyle.Success, ButtonStyle.Danger };
+        var componentBuilder = new ComponentBuilder();
+        var knownMoves = pokemon.Moves;
+        for (int slot = 0; slot < knownMoves.Length; slot++)
+        {
+            if (knownMoves[slot].Id <= 0)
+            {
+                continue;
+            }
+            componentBuilder.WithButton(metadataService.GetPokemonMoveMetadata(knownMoves[slot].Id).Name, $"move_{slot}", moveStyles[slot]);
+        }
+        var component = componentBuilder
             .WithButton("Do Not Learn", "do_not_learn", ButtonStyle.Primary)
             .Build();
 
