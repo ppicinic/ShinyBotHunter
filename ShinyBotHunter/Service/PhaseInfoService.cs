@@ -167,6 +167,15 @@ namespace ShinyBotHunter.Service
         public int Amount { get; set; } = 0;
         public string FormCode { get; set; } = "";
         public bool RequireSpecificForm { get; set; } = false;
+
+        /// <summary>
+        /// Whether this species has a distinct female form. Derived from pokemon metadata and filled in
+        /// on the way out, never stored: it lets a client tell a male form from a genderless one, which
+        /// the form code alone cannot express (GetFormCode only ever appends ";f", so male and
+        /// genderless both come through as the plain slug).
+        /// </summary>
+        [BsonIgnore]
+        public bool HasFemaleForm { get; set; } = false;
     }
 
 }

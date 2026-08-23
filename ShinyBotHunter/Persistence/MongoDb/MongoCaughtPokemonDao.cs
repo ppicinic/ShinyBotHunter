@@ -70,10 +70,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
             return await _caughtPokemon.Find(filter).ToListAsync();
         }
 
-        public async Task<long> GetAllCaughtSpeciesShiniesCountAsync(GameFlavor game, int species)
+        public async Task<long> GetAllCaughtFormShiniesCountAsync(GameFlavor game, string formCode)
         {
             var builder = Builders<CaughtPokemon>.Filter;
-            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Pokemon.Species, species);
+            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Pokemon.FormCode, formCode);
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
         public async Task<long> GetAllCaughtPhaseShiniesCountAsync(GameFlavor game, string phase)
@@ -83,10 +83,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
 
-        public async Task<long> GetAllCaughtPhaseSpeciesShiniesCountAsync(GameFlavor game, string phase, int species)
+        public async Task<long> GetAllCaughtPhaseFormShiniesCountAsync(GameFlavor game, string phase, string formCode)
         {
             var builder = Builders<CaughtPokemon>.Filter;
-            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.Species, species);
+            var filter = builder.Eq(x => x.Game, game) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.FormCode, formCode);
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
 
@@ -96,10 +96,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
             return await _caughtPokemon.Find(filter).ToListAsync();
         }
 
-        public async Task<long> GetAllCaughtSpeciesShiniesCountAsync(string gameFileName, int species)
+        public async Task<long> GetAllCaughtFormShiniesCountAsync(string gameFileName, string formCode)
         {
             var builder = Builders<CaughtPokemon>.Filter;
-            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Pokemon.Species, species);
+            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Pokemon.FormCode, formCode);
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
         public async Task<long> GetAllCaughtPhaseShiniesCountAsync(string gameFileName, string phase)
@@ -109,10 +109,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
 
-        public async Task<long> GetAllCaughtPhaseSpeciesShiniesCountAsync(string gameFileName, string phase, int species)
+        public async Task<long> GetAllCaughtPhaseFormShiniesCountAsync(string gameFileName, string phase, string formCode)
         {
             var builder = Builders<CaughtPokemon>.Filter;
-            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.Species, species);
+            var filter = builder.Eq(x => x.GameFileName, gameFileName) & builder.Eq(x => x.Phase, phase) & builder.Eq(x => x.Pokemon.FormCode, formCode);
             return await _caughtPokemon.CountDocumentsAsync(filter);
         }
     }

@@ -1162,6 +1162,7 @@ const EMPTY_POKEMON = (): PhasePokemonInfo => ({
   speciesId: 0,
   amount: 1,
   formCode: '',
+  hasFemaleForm: false,
   requireSpecificForm: false
 })
 
@@ -1283,7 +1284,9 @@ function PhaseEditorTab(): JSX.Element {
     if (!form) return
     const phaseName = isNewPhase ? newPhaseName.trim() : selectedPhase
     if (!phaseName) { showFeedback('Milestone name is required', true); return }
-    if (form.pokemon.length === 0) { showFeedback('At least one Pokémon is required', true); return }
+    // An empty milestone is legitimate: with no requirements UpdateMilestoneState treats it as
+    // already satisfied, so it never blocks a run. That makes it the catch-all bucket for training,
+    // keeping those encounters out of a real milestone's phase counters.
 
     setSaving(true)
     setFeedback(null)
@@ -1423,9 +1426,11 @@ function PhaseEditorTab(): JSX.Element {
                     {/* Amount */}
                     <div className="w-20">
                       <label className="block text-xs text-slate-500 mb-0.5">Amount</label>
+                      {/* 0 is meaningful: the pokemon is tracked in the phase stats but not required,
+                          so it never blocks the milestone and the bot never stops for it. */}
                       <input
                         type="number"
-                        min={1}
+                        min={0}
                         value={pkmn.amount}
                         onChange={(e) => updatePokemon(idx, { amount: Number(e.target.value) })}
                         disabled={isReadOnly}

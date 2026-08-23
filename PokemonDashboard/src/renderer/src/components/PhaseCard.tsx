@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import { getSpriteUrl } from '../utils/sprites'
@@ -32,6 +32,38 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const phaseCount = phaseData?.phaseCount ?? null
 
   const pokemonList: PhasePokemonInfo[] = phaseInfo?.pokemon ?? []
+
+  // The phase card sizes its rows to the space available rather than scrolling: the whole point is
+  // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
+  // SPRITE_MIN..SPRITE_MAX, so a short milestone doesn't get comically large art and a long one
+  // stays legible. Recent encounters and the admin card still scroll -- their content is unbounded.
+  const ROW_MIN = 28
+  const SPRITE_MIN = 24
+  const SPRITE_MAX = 96
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLTableSectionElement>(null)
+  const [rowHeight, setRowHeight] = useState<number | null>(null)
+
+  useLayoutEffect(() => {
+    const body = bodyRef.current
+    if (!body || pokemonList.length === 0) {
+      setRowHeight(null)
+      return
+    }
+    const measure = (): void => {
+      const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0)
+      setRowHeight(Math.max(ROW_MIN, Math.floor(available / pokemonList.length)))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(body)
+    return () => observer.disconnect()
+  }, [pokemonList.length])
+
+  // Leave room for the row's own vertical padding so sprites never force a row taller than its slot.
+  const spriteSize = rowHeight === null
+    ? SPRITE_MAX
+    : Math.min(SPRITE_MAX, Math.max(SPRITE_MIN, rowHeight - 4))
 
   // Encounter rate polling
   const [encounterRate, setEncounterRate] = useState<number | null>(null)
@@ -84,46 +116,56 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
         </div>
       </div>
 
-      <div className="card-body overflow-auto flex-1">
+      <div ref={bodyRef} className="flex-1 overflow-hidden px-2 py-1">
         {pokemonList.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
             {phaseInfo === null ? 'Loading milestone requirements...' : 'No Pokémon defined for this milestone.'}
           </div>
         ) : (
           <table className="w-full border-collapse">
-            <thead>
+            <thead ref={headRef}>
               <tr className="border-b border-card-border">
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3 w-24"></th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Name</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Milestone Encounters</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2 pr-3">Game Encounters</th>
-                <th className="text-center text-xs text-slate-400 font-medium pb-2">Shinies Caught</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3 w-24"></th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Name</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Milestone Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Game Encounters</th>
+                <th className="text-center text-xs text-slate-400 font-medium pb-1">Shinies Caught</th>
               </tr>
             </thead>
             <tbody>
               {pokemonList.map((pkmn) => {
-                const phaseCounts = phaseData?.pokemonEncounters?.[pkmn.speciesId]
-                const totalCounts = scopedData?.pokemonEncounters?.[pkmn.speciesId]
+                // Keyed by form code so each row counts only its own form -- male and female rows,
+                // or Unown's 28 forms, no longer share one species-level total.
+                const phaseCounts = phaseData?.pokemonEncounters?.[pkmn.formCode]
+                const totalCounts = scopedData?.pokemonEncounters?.[pkmn.formCode]
                 const shiniesCaught = totalCounts?.shiniesCaught ?? 0
                 const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
                 // Missed = shiny encounters that were not caught
                 const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
                 const amountRequired = pkmn.amount
-                const isComplete = shiniesCaught >= amountRequired
+                // Amount 0 means "track this pokemon's encounters but don't require it". Without the
+                // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
+                const isTrackedOnly = amountRequired === 0
+                const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
                 // Phase card shows target (shiny) sprites since these are the pokemon being hunted
+                // Only ";f" is ever encoded, so a plain code means male when the species has a
+                // female form, and carries no gender at all when it does not.
+                const genderSymbol = pkmn.formCode.endsWith(';f') ? '♀' : pkmn.hasFemaleForm ? '♂' : ''
                 const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
 
                 return (
                   <tr
                     key={pkmn.speciesId}
                     className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''}`}
+                    style={rowHeight === null ? undefined : { height: rowHeight }}
                   >
                     {/* Sprite */}
-                    <td className="py-2 pr-3 text-center">
+                    <td className="py-0 pr-3 text-center">
                       <img
                         src={spritePath}
                         alt={pkmn.name}
-                        className="w-24 h-24 object-contain mx-auto"
+                        style={{ width: spriteSize, height: spriteSize }}
+                        className="object-contain mx-auto"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none'
                         }}
@@ -131,26 +173,36 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                     </td>
 
                     {/* Name */}
-                    <td className="py-2 pr-3 text-center">
+                    <td className="py-0 pr-3 text-center">
                       <span className="text-white font-semibold text-sm capitalize">{pkmn.name}</span>
+                      {genderSymbol && (
+                        <span className={`ml-1 text-sm ${genderSymbol === '♀' ? 'text-pink-400' : 'text-sky-400'}`}>{genderSymbol}</span>
+                      )}
                       {isComplete && (
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-700/50 text-green-300">✓</span>
                       )}
                     </td>
 
                     {/* Phase encounters */}
-                    <td className="py-2 pr-3 text-center text-white font-medium text-sm">
+                    <td className="py-0 pr-3 text-center text-white font-medium text-sm">
                       {(phaseCounts?.encounters ?? 0).toLocaleString()}
                     </td>
 
                     {/* Game encounters */}
-                    <td className="py-2 pr-3 text-center text-white font-medium text-sm">
+                    <td className="py-0 pr-3 text-center text-white font-medium text-sm">
                       {(totalCounts?.encounters ?? 0).toLocaleString()}
                     </td>
 
                     {/* Shinies caught / needed */}
-                    <td className={`py-2 text-center font-medium text-sm ${isComplete ? 'text-green-400' : 'text-white'}`}>
-                      <div>{shiniesCaught}/{amountRequired}</div>
+                    <td className={`py-0 text-center font-medium text-sm ${isComplete ? 'text-green-400' : 'text-white'}`}>
+                      {isTrackedOnly ? (
+                        <div>
+                          {shiniesCaught}
+                          <span className="ml-1 text-xs text-slate-500 font-normal">tracked</span>
+                        </div>
+                      ) : (
+                        <div>{shiniesCaught}/{amountRequired}</div>
+                      )}
                       {shiniesMissed > 0 && (
                         <div className="text-xs text-red-400 font-normal">({shiniesMissed} missed)</div>
                       )}

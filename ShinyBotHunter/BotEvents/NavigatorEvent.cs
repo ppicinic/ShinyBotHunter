@@ -39,12 +39,30 @@ namespace ShinyBotHunter.BotEvents
         private const int PokemonCenterHealX = 8;
         private const int PokemonCenterHealY = 13;
 
+        // How long the trainer can stay on one tile mid-walk before the segment counts as blocked.
+        // Has to outlast a warp transition, which freezes the coordinates for around a second.
+        private const int StallTimeoutMs = 2500;
+        private const int StallPollIntervalMs = 250;
+
+        // Extra cost applied to a tile the bot got stuck on. Large next to a normal step (1, or 2
+        // through a turn) so A* takes any reasonable detour, but finite so the tile stays usable when
+        // it is the only way through.
+        private const int StuckTilePenalty = 25;
+
+        // Recovery attempts allowed on one segment before the route is abandoned. Without a cap a
+        // sign that cannot be routed around would retry forever.
+        private const int MaxBlockedRetries = 3;
+
+        // Dismisses whatever dialogue is up. B rather than A: A on a signpost just reopens it.
+        private const string DismissTextMacro = "T.B;W.30;T.B;W.30";
+
         // How a walk macro ended.
         private enum SegmentOutcome
         {
             Completed,
             Battle,
             PoisonEvent,
+            Blocked,
         }
 
         public NavigatorEvent(PathfindingService pathfindingService, PokemonStateReader reader)
@@ -255,8 +273,18 @@ namespace ShinyBotHunter.BotEvents
             // puts dialogue on screen, which swallows the rest of the macro.
             var partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
 
+            int blockedRetries = 0;
+            int retriesForSegment = state.NavigationPathIndex;
+
             while (state.NavigationPathIndex < path.Count - 1)
             {
+                // The cap is per segment, so progress resets the budget.
+                if (state.NavigationPathIndex != retriesForSegment)
+                {
+                    retriesForSegment = state.NavigationPathIndex;
+                    blockedRetries = 0;
+                }
+
                 var toNode = path[state.NavigationPathIndex + 1].Node;
 
                 var mapId = (int)await state.Bot.GetMapId();
@@ -297,7 +325,7 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex}: map={mapId} ({x},{y}) -> ({destX},{destY}) portal={toNodeIsPortal} overshoot={overshoot}");
-                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destBotMapId, overshoot);
+                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destBotMapId, overshoot, PenaltiesForMap(state, mapId));
                 Console.WriteLine($"[Navigator] Macro: {(macro ?? "null")}");
 
                 if (macro is not null)
@@ -314,6 +342,18 @@ namespace ShinyBotHunter.BotEvents
                         partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
                         // Retry this same segment: the walk stopped somewhere short of the node, so
                         // the loop re-reads our real position and recomputes the A* from there.
+                        continue;
+                    }
+                    if (outcome == SegmentOutcome.Blocked)
+                    {
+                        blockedRetries++;
+                        if (blockedRetries > MaxBlockedRetries)
+                        {
+                            Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex} blocked {MaxBlockedRetries} times; abandoning the route.");
+                            return false;
+                        }
+                        await RecoverFromBlockedSegmentAsync(state, cancellationToken);
+                        // Retry with the penalty in place, so the recomputed A* prefers another way.
                         continue;
                     }
                 }
@@ -348,21 +388,85 @@ namespace ShinyBotHunter.BotEvents
             Task macroTask = state.Bot.WaitForMacroAsync(cancellationToken);
             Task battleTask = WaitForBattleAsync(state.Bot, cts.Token);
             Task poisonTask = WaitForPoisonEventAsync(state.Bot, partyAtStart, cts.Token);
+            Task stallTask = WaitForStallAsync(state.Bot, cts.Token);
 
-            Task first = await Task.WhenAny(macroTask, battleTask, poisonTask);
+            Task first = await Task.WhenAny(macroTask, battleTask, poisonTask, stallTask);
 
             cancellationToken.ThrowIfCancellationRequested();
 
             cts.Cancel();
 
-            if (ReferenceEquals(first, battleTask) || ReferenceEquals(first, poisonTask))
+            if (!ReferenceEquals(first, macroTask))
             {
                 state.Bot.ClearMacro();
                 await state.Bot.WaitForMacroAsync(cancellationToken);
-                return ReferenceEquals(first, battleTask) ? SegmentOutcome.Battle : SegmentOutcome.PoisonEvent;
+                if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
+                if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
+                return SegmentOutcome.Blocked;
             }
 
             return SegmentOutcome.Completed;
+        }
+
+        /// <summary>
+        /// Completes when the trainer has stopped moving for <see cref="StallTimeoutMs"/> while a walk
+        /// macro is still running. The macro holds a direction until the coordinate reaches its target,
+        /// so anything that blocks movement -- most often a signpost message opened by pressing into
+        /// it from the tile alongside -- holds that direction forever with nothing else noticing.
+        /// </summary>
+        private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
+        {
+            short lastX = await bot.GetTrainerXPos();
+            short lastY = await bot.GetTrainerYPos();
+            var still = Stopwatch.StartNew();
+            while (true)
+            {
+                await Task.Delay(StallPollIntervalMs, cancellationToken);
+                short x = await bot.GetTrainerXPos();
+                short y = await bot.GetTrainerYPos();
+                if (x != lastX || y != lastY)
+                {
+                    lastX = x;
+                    lastY = y;
+                    still.Restart();
+                    continue;
+                }
+                if (still.ElapsedMilliseconds >= StallTimeoutMs)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears whatever locked movement and makes the tile we are standing on expensive, so the
+        /// recomputed route prefers to go around it. The tile is the trainer's own position, not the
+        /// obstacle it is facing: the obstacle is already impassable to A*, and it is standing here
+        /// and pressing into it that opens the message.
+        /// </summary>
+        private async Task RecoverFromBlockedSegmentAsync(GameState state, CancellationToken cancellationToken)
+        {
+            state.Bot.RunMacroString(DismissTextMacro);
+            await state.Bot.WaitForMacroAsync(cancellationToken);
+
+            int mapId = (int)await state.Bot.GetMapId();
+            int x = await state.Bot.GetTrainerXPos();
+            int y = await state.Bot.GetTrainerYPos();
+
+            if (!state.TilePenalties.TryGetValue(mapId, out var penalties))
+            {
+                penalties = new Dictionary<(int X, int Y), int>();
+                state.TilePenalties[mapId] = penalties;
+            }
+            penalties.TryGetValue((x, y), out int existing);
+            penalties[(x, y)] = existing + StuckTilePenalty;
+
+            Console.WriteLine($"[Navigator] Movement blocked at map={mapId} ({x},{y}); dismissed the dialogue and set tile cost {penalties[(x, y)]}.");
+        }
+
+        private static IReadOnlyDictionary<(int X, int Y), int>? PenaltiesForMap(GameState state, int mapId)
+        {
+            return state.TilePenalties.TryGetValue(mapId, out var penalties) ? penalties : null;
         }
 
         // Pushes past the field poison dialogue so the overworld accepts input again.

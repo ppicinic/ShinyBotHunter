@@ -11,11 +11,26 @@ namespace ShinyBotHunter.Controllers
         private PhaseInfoService phaseInfoService;
         private PokemonPersistenceService pokemonPersistenceService;
         private IEncounterDao encounterDao;
-        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao)
+        private PokemonMetadataService pokemonMetadataService;
+        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao, PokemonMetadataService pokemonMetadataService)
         {
             this.phaseInfoService = phaseInfoService;
             this.pokemonPersistenceService = pokemonPersistenceService;
             this.encounterDao = encounterDao;
+            this.pokemonMetadataService = pokemonMetadataService;
+        }
+
+        /// <summary>
+        /// Fills in the derived HasFemaleForm flag so the dashboard can render a gender marker. Not
+        /// stored on the phase, so it has to be applied on every read.
+        /// </summary>
+        private PhaseInfo WithFormMetadata(PhaseInfo phaseInfo)
+        {
+            foreach (var pokemon in phaseInfo.Pokemon)
+            {
+                pokemon.HasFemaleForm = pokemonMetadataService.GetPokemonMetadata(pokemon.SpeciesId).HasFemaleForm;
+            }
+            return phaseInfo;
         }
 
         [HttpGet("phaseinfo/{game}/{phase}")]
@@ -29,8 +44,8 @@ namespace ShinyBotHunter.Controllers
                 {
                     return NotFound();
                 }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.SpeciesId).ToList(), new List<string>() { phase }, new List<string>()));
-                return Ok(new WrappedPokemonPhase(phaseInfo, rsp));
+                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.FormCode).ToList(), new List<string>() { phase }, new List<string>()));
+                return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
             }
             catch (Exception e)
             {
@@ -50,8 +65,8 @@ namespace ShinyBotHunter.Controllers
                 {
                     return NotFound();
                 }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.SpeciesId).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
-                return Ok(new WrappedPokemonPhase(phaseInfo, rsp));
+                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.FormCode).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
+                return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
             }
             catch (Exception e)
             {
