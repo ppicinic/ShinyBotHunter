@@ -44,7 +44,7 @@ namespace ShinyBotHunter.Controllers
                 {
                     return NotFound();
                 }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.FormCode).ToList(), new List<string>() { phase }, new List<string>()));
+                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>()));
                 return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
             }
             catch (Exception e)
@@ -65,7 +65,7 @@ namespace ShinyBotHunter.Controllers
                 {
                     return NotFound();
                 }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.FormCode).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
+                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
                 return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
             }
             catch (Exception e)
