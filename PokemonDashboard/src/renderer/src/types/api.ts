@@ -206,6 +206,19 @@ export interface MacroRecordStatus {
   frameCount: number
 }
 
+// Matches C# LocationInfo in LocationService.cs.
+// mapId is the raw game map id — the value Pathfind and the M. warp guard use.
+// botMapId is the shared internal layout id, null when the raw id is not in the lookup table.
+export interface LocationInfo {
+  mapId: number
+  botMapId: number | null
+  internalName: string | null
+  x: number
+  y: number
+  facing: number
+  facingName: string
+}
+
 // ============================================================
 // Bot control types (fetched from REST API GET /api/getTopLevelActions)
 // Matches C# EventArgumentOptions / NewEventArguments in BotService.cs

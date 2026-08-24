@@ -12,10 +12,31 @@ namespace ShinyBotHunter.Controllers
     public class DevController : ApiControllerBase
     {
         private readonly MacroRecordingService macroRecordingService;
+        private readonly LocationService locationService;
 
-        public DevController(MacroRecordingService macroRecordingService)
+        public DevController(MacroRecordingService macroRecordingService, LocationService locationService)
         {
             this.macroRecordingService = macroRecordingService;
+            this.locationService = locationService;
+        }
+
+        // -- Location readout ------------------------------------------------------
+        // Independent of macro recording: this reads over the memory server, so it keeps working
+        // during a recording or while a bot event is running.
+
+        [HttpGet("dev/location/{pos}")]
+        public async Task<ActionResult<LocationInfo>> GetLocation(int pos)
+        {
+            if (!locationService.Enabled) return NotFound();
+
+            try
+            {
+                return Ok(await locationService.GetLocationAsync(pos));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
         [HttpPost("dev/macroRecord/start/{pos}")]

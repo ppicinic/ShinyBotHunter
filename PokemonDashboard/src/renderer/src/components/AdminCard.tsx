@@ -3,7 +3,7 @@ import { useAppContext } from '../context/AppContext'
 import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 import { ConnectionStatus } from './ConnectionStatus'
-import { MacroRecordTab } from './MacroRecordTab'
+import { DevModeTab } from './DevModeTab'
 import { WindowLayoutTab } from './WindowLayoutTab'
 
 type TabId = 'config' | 'botControl' | 'phaseEditor' | 'windows' | 'macroRecord'
@@ -1586,7 +1586,7 @@ export function AdminCard(): JSX.Element {
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
         {activeTab === 'windows' && <WindowLayoutTab />}
-        {activeTab === 'macroRecord' && macroRecordingEnabled && <MacroRecordTab />}
+        {activeTab === 'macroRecord' && macroRecordingEnabled && <DevModeTab />}
       </div>
     </div>
   )
