@@ -178,6 +178,21 @@ namespace ShinyBotHunter.Bot
             await this.commandClient.WaitForMacroAsync(ct);
         }
 
+        public async Task StartRecordingAsync(CancellationToken ct = default)
+        {
+            await this.commandClient.StartRecordingAsync(ct);
+        }
+
+        public async Task<string> StopRecordingAsync(CancellationToken ct = default)
+        {
+            return await this.commandClient.StopRecordingAsync(ct);
+        }
+
+        public async Task<string> GetRecordingStatusAsync(CancellationToken ct = default)
+        {
+            return await this.commandClient.GetRecordingStatusAsync(ct);
+        }
+
         public async Task WriteByteAsync(uint address, byte value)
         {
             await this.memoryClient.WriteByteAsync(address, value);

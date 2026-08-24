@@ -24,5 +24,18 @@
 
         public Task WaitForMacroAsync(CancellationToken ct = default);
         Task FlushSave(CancellationToken ct = default);
+
+        // -- Macro recording (dev only) --------------------------------------------
+        // While recording, the emulator stops applying bot input entirely so a human can play
+        // and have every frame captured. Only supported by the ApiHawk command server.
+
+        /// <summary>Begin capturing per-frame input. Clears any running macro.</summary>
+        Task StartRecordingAsync(CancellationToken ct = default);
+
+        /// <summary>Stop capturing and return the raw run-length-encoded frame text.</summary>
+        Task<string> StopRecordingAsync(CancellationToken ct = default);
+
+        /// <summary>Raw status line: <c>recording|runs|frames</c>.</summary>
+        Task<string> GetRecordingStatusAsync(CancellationToken ct = default);
     }
 }

@@ -185,6 +185,38 @@ export interface GameMetadata {
 export interface AdminMetadata {
   // key = game name (e.g. "HGSS")
   games: Record<string, GameMetadata>
+  // Backend ApplicationSettings.EnableMacroRecording — gates the dev-mode recorder tab.
+  macroRecordingEnabled: boolean
+}
+
+// ============================================================
+// Macro recorder types (dev mode)
+// Matches C# MacroRecordResult / MacroRecordStatus in MacroRecordingService.cs
+// ============================================================
+
+export interface MacroRecordResult {
+  yaml: string
+  frameCount: number
+  stepCount: number
+}
+
+export interface MacroRecordStatus {
+  recording: boolean
+  runCount: number
+  frameCount: number
+}
+
+// Matches C# LocationInfo in LocationService.cs.
+// mapId is the raw game map id — the value Pathfind and the M. warp guard use.
+// botMapId is the shared internal layout id, null when the raw id is not in the lookup table.
+export interface LocationInfo {
+  mapId: number
+  botMapId: number | null
+  internalName: string | null
+  x: number
+  y: number
+  facing: number
+  facingName: string
 }
 
 // ============================================================

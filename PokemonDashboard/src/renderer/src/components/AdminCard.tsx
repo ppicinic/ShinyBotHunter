@@ -3,16 +3,21 @@ import { useAppContext } from '../context/AppContext'
 import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 import { ConnectionStatus } from './ConnectionStatus'
+import { DevModeTab } from './DevModeTab'
 import { WindowLayoutTab } from './WindowLayoutTab'
 
-type TabId = 'config' | 'botControl' | 'phaseEditor' | 'windows'
+type TabId = 'config' | 'botControl' | 'phaseEditor' | 'windows' | 'macroRecord'
 
-const TABS: { id: TabId; label: string }[] = [
+const BASE_TABS: { id: TabId; label: string }[] = [
   { id: 'config', label: 'Dashboard Config' },
   { id: 'botControl', label: 'Bot Control' },
   { id: 'phaseEditor', label: 'Milestone Editor' },
   { id: 'windows', label: 'Window Layout' }
 ]
+
+// Only shown when the backend reports EnableMacroRecording. The endpoints 404 regardless, so this
+// is presentation only.
+const DEV_MODE_TAB: { id: TabId; label: string } = { id: 'macroRecord', label: 'Dev Mode' }
 
 // Maps internal parameter names to user-friendly display labels
 const PARAM_DISPLAY_NAMES: Record<string, string> = {
@@ -1520,6 +1525,25 @@ function PhaseEditorTab(): JSX.Element {
 export function AdminCard(): JSX.Element {
   const [activeTab, setActiveTab] = useState<TabId>('config')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [macroRecordingEnabled, setMacroRecordingEnabled] = useState(false)
+
+  const { config } = useAppContext()
+  const apiUrl = config?.apiUrl ?? ''
+
+  useEffect(() => {
+    if (!apiUrl) return
+    fetch(`${apiUrl}/api/metadata`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: AdminMetadata | null) => setMacroRecordingEnabled(data?.macroRecordingEnabled ?? false))
+      .catch(() => setMacroRecordingEnabled(false))
+  }, [apiUrl])
+
+  const tabs = macroRecordingEnabled ? [...BASE_TABS, DEV_MODE_TAB] : BASE_TABS
+
+  // If the flag is turned off while the dev tab is open, fall back rather than render nothing.
+  useEffect(() => {
+    if (!macroRecordingEnabled && activeTab === 'macroRecord') setActiveTab('config')
+  }, [macroRecordingEnabled, activeTab])
 
   const handleRefresh = (): void => {
     setRefreshKey((k) => k + 1)
@@ -1543,7 +1567,7 @@ export function AdminCard(): JSX.Element {
 
       {/* Tab bar */}
       <div className="tab-bar px-2">
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
@@ -1562,6 +1586,7 @@ export function AdminCard(): JSX.Element {
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
         {activeTab === 'windows' && <WindowLayoutTab />}
+        {activeTab === 'macroRecord' && macroRecordingEnabled && <DevModeTab />}
       </div>
     </div>
   )

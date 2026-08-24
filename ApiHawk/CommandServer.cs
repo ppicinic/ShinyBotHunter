@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -75,10 +75,38 @@ namespace ApiHawk
             public string MacroStr = "";
         }
 
+        /// <summary>One run of consecutive frames that shared the same input state.</summary>
+        private sealed class InputRun
+        {
+            public int Frames;
+            public string Buttons = "";   // comma-joined pressed buttons, "" when none
+            public bool Touch;
+            public int X;
+            public int Y;
+        }
+
         // ── Frame-thread state ────────────────────────────────────────────────────
         private readonly Stack<StackEntry> _commandStack = new Stack<StackEntry>();
         private readonly Dictionary<string, bool> _heldButtons = new Dictionary<string, bool>();
         private bool _clearHold;
+
+        // -- Macro recording ------------------------------------------------------
+        // While recording, the frame thread stops driving the joypad entirely so the human's
+        // physical input reaches the core untouched, and instead samples what the core is about
+        // to consume. _recordRuns is appended by the frame thread and read by handler threads,
+        // so every touch of it is under _recordLock.
+        private static readonly string[] RecordButtons =
+            { "Up", "Down", "Left", "Right", "A", "B", "X", "Y", "L", "R", "Start", "Select" };
+
+        private const int MaxRecordFrames = 108000;   // ~30 min at 60fps -- memory backstop
+
+        private readonly object _recordLock = new object();
+        private readonly List<InputRun> _recordRuns = new List<InputRun>();
+        private int _recordFrames;
+        private volatile bool _recording;
+        // Set by the handler thread on start; the frame thread performs the actual stack wipe so
+        // _commandStack/_heldButtons are only ever touched from the frame thread.
+        private volatile bool _recordResetPending;
 
         // ── Incoming commands from handler threads → frame thread ─────────────────
         private readonly ConcurrentQueue<string> _commandQueue = new ConcurrentQueue<string>();
@@ -127,6 +155,23 @@ namespace ApiHawk
 
         public void ServiceFrame()
         {
+            if (_recording)
+            {
+                if (_recordResetPending)
+                {
+                    _commandStack.Clear();
+                    _heldButtons.Clear();
+                    _recordResetPending = false;
+                }
+
+                // Drop anything the bot tries to submit mid-recording rather than letting it
+                // queue up and fire the moment recording stops.
+                while (_commandQueue.TryDequeue(out string _)) { }
+
+                CaptureFrame();
+                return;   // never StepStack/ApplyJoypad while recording
+            }
+
             while (_commandQueue.TryDequeue(out string cmd))
             {
                 if (cmd == null) continue;
@@ -512,6 +557,15 @@ namespace ApiHawk
                     case "/flush":
                         HandleFlushRequest(context);
                         break;
+                    case "/record/start":
+                        HandleRecordStart(context);
+                        break;
+                    case "/record/stop":
+                        HandleRecordStop(context);
+                        break;
+                    case "/record/status":
+                        HandleRecordStatus(context);
+                        break;
                     case "/ping":
                         Respond(context, "pong");
                         break;
@@ -601,6 +655,117 @@ namespace ApiHawk
 
         // ── HTTP helpers ──────────────────────────────────────────────────────────
 
+        // ── Macro recording ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Frame thread. Samples the input the core is about to consume and run-length-encodes it.
+        /// Uses Get() rather than GetImmediate() because Get() reports the state after any tool
+        /// overrides -- and while recording we apply none, so it is exactly the human's input,
+        /// including the Touch X / Touch Y analog axes.
+        /// </summary>
+        private void CaptureFrame()
+        {
+            if (JoypadApi == null) return;
+            if (_recordFrames >= MaxRecordFrames) return;
+
+            IReadOnlyDictionary<string, object> state;
+            try
+            {
+                state = JoypadApi.Get(null);
+            }
+            catch (Exception ex)
+            {
+                BotLog.WriteThrottled("record-joypad-read", $"[CommandServer] Joypad read failed while recording: {ex.Message}");
+                return;
+            }
+
+            var pressed = new List<string>();
+            foreach (string name in RecordButtons)
+            {
+                if (state.TryGetValue(name, out object v) && v is bool b && b)
+                    pressed.Add(name);
+            }
+
+            bool touch = state.TryGetValue("Touch", out object t) && t is bool tb && tb;
+            int x = touch ? ReadAxis(state, "Touch X") : 0;
+            int y = touch ? ReadAxis(state, "Touch Y") : 0;
+            string buttons = string.Join(",", pressed.ToArray());
+
+            lock (_recordLock)
+            {
+                _recordFrames++;
+
+                if (_recordRuns.Count > 0)
+                {
+                    var last = _recordRuns[_recordRuns.Count - 1];
+                    if (last.Buttons == buttons && last.Touch == touch && last.X == x && last.Y == y)
+                    {
+                        last.Frames++;
+                        return;
+                    }
+                }
+
+                _recordRuns.Add(new InputRun { Frames = 1, Buttons = buttons, Touch = touch, X = x, Y = y });
+            }
+        }
+
+        private static int ReadAxis(IReadOnlyDictionary<string, object> state, string key)
+        {
+            if (!state.TryGetValue(key, out object v) || v == null) return 0;
+            try { return Convert.ToInt32(v); } catch { return 0; }
+        }
+
+        /// <summary>One run per line: <c>frames|btn1,btn2|x|y</c>; x/y empty when not touching.</summary>
+        private string SerializeRuns()
+        {
+            var sb = new StringBuilder();
+            lock (_recordLock)
+            {
+                foreach (var r in _recordRuns)
+                {
+                    sb.Append(r.Frames).Append('|').Append(r.Buttons).Append('|');
+                    if (r.Touch) sb.Append(r.X).Append('|').Append(r.Y);
+                    else sb.Append('|');
+                    sb.Append('\n');
+                }
+            }
+            return sb.ToString();
+        }
+
+        private void HandleRecordStart(HttpListenerContext context)
+        {
+            lock (_recordLock)
+            {
+                _recordRuns.Clear();
+                _recordFrames = 0;
+            }
+            _recordResetPending = true;
+            _recording = true;
+            BotLog.Write("[CommandServer] Macro recording started.");
+            Respond(context, "ok");
+        }
+
+        private void HandleRecordStop(HttpListenerContext context)
+        {
+            _recording = false;
+            _recordResetPending = false;
+            string body = SerializeRuns();
+            int frames;
+            lock (_recordLock) { frames = _recordFrames; }
+            BotLog.Write($"[CommandServer] Macro recording stopped after {frames} frames.");
+            Respond(context, body);
+        }
+
+        private void HandleRecordStatus(HttpListenerContext context)
+        {
+            int runs, frames;
+            lock (_recordLock)
+            {
+                runs = _recordRuns.Count;
+                frames = _recordFrames;
+            }
+            Respond(context, $"{(_recording ? "recording" : "idle")}|{runs}|{frames}");
+        }
         private static string ReadBodyText(HttpListenerRequest request)
         {
             using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
@@ -624,6 +789,8 @@ namespace ApiHawk
         public void Dispose()
         {
             _disposed = true;
+            _recording = false;
+            _recordResetPending = false;
             try { _listener?.Stop(); } catch { }
             try { _listener?.Close(); } catch { }
 

@@ -413,6 +413,8 @@ namespace ShinyBotHunter
                 .AddSingleton<PhaseInfoService>()
                 .AddSingleton<AdminService>()
                 .AddSingleton<BotService>()
+                .AddSingleton<MacroRecordingService>()
+                .AddSingleton<LocationService>()
                 .AddSingleton<BizHawkLuaLoader>()
                 .AddSingleton<EncounterEventTypeFactory>()
                 .AddSingleton<PokemonStateReader>()
