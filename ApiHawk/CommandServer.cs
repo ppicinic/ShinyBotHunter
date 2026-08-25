@@ -88,6 +88,9 @@ namespace ApiHawk
         // ── Frame-thread state ────────────────────────────────────────────────────
         private readonly Stack<StackEntry> _commandStack = new Stack<StackEntry>();
         private readonly Dictionary<string, bool> _heldButtons = new Dictionary<string, bool>();
+#if APIHAWK_INPUT_DIAG
+        private string _lastDiag = "";
+#endif
 
         // -- Macro recording ------------------------------------------------------
         // While recording, the frame thread stops driving the joypad entirely so the human's
@@ -489,11 +492,11 @@ namespace ApiHawk
             // That window is the ONLY place they are observable: MainForm calls
             // InputManager.AfterFrame() -- which clears the override -- before UpdateToolsAfter(),
             // so nothing polling from Lua or a tool's PostFrame can ever see these values.
-            if (analog.Count > 0)
             {
                 var seen = JoypadApi.Get(null);
-                BotLog.Write($"[diag] set(X={analog["Touch X"]},Y={analog["Touch Y"]}) -> "
-                           + $"core sees X={seen["Touch X"]} Y={seen["Touch Y"]} Touch={seen["Touch"]}");
+                var line = $"set={(analog.Count > 0 ? $"({analog["Touch X"]},{analog["Touch Y"]})" : "none")} "
+                         + $"core X={seen["Touch X"]} Y={seen["Touch Y"]} Touch={seen["Touch"]}";
+                if (line != _lastDiag) { BotLog.Write($"[diag] {line}"); _lastDiag = line; }
             }
 #endif
         }
