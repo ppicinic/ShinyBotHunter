@@ -1,5 +1,4 @@
-﻿using Discord;
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
@@ -16,12 +15,6 @@ namespace ShinyBotHunter.BotEvents
     
 public class WildPokemonEncounterEvent : IBotEvent
     {
-        public static Dictionary<byte, string> NATURE_NAMES = new Dictionary<byte, string>() {
-            { 0, "Hardy" }, {  1, "Lonely" }, {  2, "Brave" }, {  3, "Adamant" }, {  4, "Naughty" }, 
-            { 5, "Bold" }, {  6, "Docile" }, {  7, "Relaxed" }, {  8, "Impish" }, {  9, "Lax" }, 
-            { 10, "Timid" }, {  11, "Hasty" }, {  12, "Serious" }, {  13, "Jolly" }, {  14, "Naive" }, 
-            { 15, "Modest" }, { 16, "Mild" }, {  17, "Quiet" }, {  18, "Bashful" }, {  19, "Rash" }, 
-            { 20, "Calm" }, {  21, "Gentle" }, {  22, "Sassy" }, {  23, "Careful" }, {  24, "Quirky" } };
     public enum WildPokemonState
         {
             NotStarted,
@@ -40,8 +33,7 @@ public class WildPokemonEncounterEvent : IBotEvent
         private GameFlavor gameFlavor;
         private string phase;
         private ITarget target;
-        private DiscordBotService discordBotService;
-        private ApplicationSettings appSettings;
+        private ShinyAlertService shinyAlertService;
         private BotService botService;
         private PokemonStateReader reader;
         private PhaseInfoService phaseInfoService;
@@ -54,8 +46,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             this.bot = bot; 
             parser = provider.GetRequiredService<HgssPokemonParser>();
             persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
-            discordBotService = provider.GetRequiredService<DiscordBotService>();
-            appSettings = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value;
+            shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             reader = provider.GetRequiredService<PokemonStateReader>();
             phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
             this.gameFlavor = gameFlavor;
@@ -128,42 +119,6 @@ public class WildPokemonEncounterEvent : IBotEvent
             }
         }
 
-        private async Task NotifyDiscordOfTarget(PersistPokemonData persistPokemonData)
-        {
-            EmbedBuilder eb = new EmbedBuilder();
-            eb.WithColor(Color.Gold);
-            bool isFemale = persistPokemonData.PokemonData.FormCode.EndsWith(";f");
-            string formCode = persistPokemonData.PokemonData.FormCode.Split(";f")[0];
-            string spriteFolder = persistPokemonData.PokemonData.IsShiny ? (isFemale ? "Female_Shiny" : "Shiny") : (isFemale ? "Female_Default" : "Default");
-            string spritePath = $"{appSettings.SpriteBaseDirectory}{spriteFolder}/{formCode}.png";
-            string attachment = $"attachment://{Path.GetFileName(spritePath)}";
-            Console.WriteLine(attachment);
-            eb.WithThumbnailUrl(attachment);
-            eb.WithTitle($":sparkles: Shiny {persistPokemonData.PokemonData.Name} encountered! :sparkles:");
-            eb.AddField("Nature", NATURE_NAMES[persistPokemonData.PokemonData.Nature]);
-            eb.AddField("Shiny Value", persistPokemonData.PokemonData.ShinyValue);
-            var pokemon = persistPokemonData.PokemonData;
-            int ivSum = pokemon.IVHp + pokemon.IVAtk + pokemon.IVDef + pokemon.IVSpAtk + pokemon.IVSpDef + pokemon.IVSpe;
-            eb.AddField($"IVs ({ivSum})", $"```╔═══╤═══╤═══╤═══╤═══╤═══╗\r\n║HP │ATK│DEF│SPA│SPD│SPE║\r\n╠═══╪═══╪═══╪═══╪═══╪═══╣\r\n║{PadIv(pokemon.IVHp)} │{PadIv(pokemon.IVAtk)} │{PadIv(pokemon.IVDef)} │{PadIv(pokemon.IVSpAtk)} │{PadIv(pokemon.IVSpDef)} │{PadIv(pokemon.IVSpe)} ║\r\n╚═══╧═══╧═══╧═══╧═══╧═══╝```");
-            await discordBotService.SendMessageAsync(new DiscordMessage()
-            {
-                StringMessage = $"<@&{appSettings.ShinyLogMention}>",
-                GuildId = appSettings.DiscordGuildId,
-                ChannelId = appSettings.ShinyLogChannel,
-                EmbedMessage = eb.Build(),
-                Files = [spritePath]
-            });
-        }
-
-        private string PadIv(byte iv)
-        {
-            if (iv < 10)
-            {
-                return $"0{iv}";
-            }
-            return $"{iv}";
-        }
-
         private async Task CheckForCatchAsync()
         {
             Console.WriteLine("Checking for pokemon");
@@ -173,8 +128,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             Console.WriteLine($"Found pokemon: {found}");
             if (found)
             {
-                // TODO put this in macro yaml
-                bot.RunMacroString("S.Save.3;W.5;T.A;W.60;T.A;W.90;T.A;W.1260;T.B;W.60;T.B;W.5");
+                bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameFlavor, "SaveGame"));
                 await bot.WaitForMacroAsync();
                 await persistenceService.AddCaughtPokemonAsync(foundShinyPokemon!);
                 await Task.Delay(1000);
@@ -326,7 +280,7 @@ public class WildPokemonEncounterEvent : IBotEvent
                 if (await target.IsTargetAsync(pokemon))
                 {
                     foundShinyPokemon = persistPokemon;
-                    await NotifyDiscordOfTarget(persistPokemon);
+                    await shinyAlertService.NotifyTargetFoundAsync(persistPokemon);
                     State = WildPokemonState.Waiting;
                 }
                 else

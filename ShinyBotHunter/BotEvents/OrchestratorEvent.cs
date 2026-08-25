@@ -170,8 +170,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"Found pokemon: {found}");
             if (found)
             {
-                // TODO put this in macro yaml
-                state.Bot.RunMacroString("S.Save.3;W.5;T.A;W.60;T.A;W.90;T.A;W.1260;T.B;W.60;T.B;W.5");
+                state.Bot.RunMacroString(MacroRegistry.Instance.GetMacro(state.GameFlavor, "SaveGame"));
                 await state.Bot.WaitForMacroAsync();
                 await persistenceService.AddCaughtPokemonAsync(state.TargetPokemon!);
                 await Task.Delay(1000);

@@ -436,6 +436,7 @@ namespace ShinyBotHunter
                 .AddSingleton<DiscordSocketClient>()
                 .AddSingleton<InteractionService>(sp => new InteractionService(sp.GetRequiredService<DiscordSocketClient>(), interactionServiceConfig))
                 .AddSingleton<DiscordBotService>()
+                .AddSingleton<ShinyAlertService>()
                 .AddSingleton<NotificationService>();
         }
     }

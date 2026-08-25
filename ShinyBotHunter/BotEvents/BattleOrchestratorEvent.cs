@@ -90,6 +90,7 @@ namespace ShinyBotHunter.BotEvents
         private PokemonStateReader reader;
         private SmogonDamageService damageService;
         private IPointerService pointerService;
+        private ShinyAlertService shinyAlertService;
 
         // How long to wait for the battler to actually be out before calling the switch failed. Has to
         // outlast the switch animation plus the opponent's reply.
@@ -101,7 +102,7 @@ namespace ShinyBotHunter.BotEvents
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
         public BattleOrchestratorEvent(HgssPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
-                                        PokemonMetadataService metadataService, SmogonDamageService damageService, IServiceProvider provider)
+                                        PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
             this.parser = parser;
             this.persistenceService = persistenceService;
@@ -110,6 +111,7 @@ namespace ShinyBotHunter.BotEvents
             this.reader = reader;
             this.metadataService = metadataService;
             this.damageService = damageService;
+            this.shinyAlertService = shinyAlertService;
             this.pointerService = provider.GetRequiredKeyedService<IPointerService>(GameFlavor.HGSS);
         }
 
@@ -884,7 +886,7 @@ namespace ShinyBotHunter.BotEvents
                     if (await state.Target.IsTargetAsync(pokemon))
                     {
                         state.TargetPokemon = persistPokemon;
-                        await NotifyDiscordOfTarget(persistPokemon);
+                        await shinyAlertService.NotifyTargetFoundAsync(persistPokemon);
                         state.State.Pop();
                         state.State.Push(EventState.Waiting);
                     }
@@ -902,40 +904,5 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        private async Task NotifyDiscordOfTarget(PersistPokemonData persistPokemonData)
-        {
-            EmbedBuilder eb = new EmbedBuilder();
-            eb.WithColor(Color.Gold);
-            bool isFemale = persistPokemonData.PokemonData.FormCode.EndsWith(";f");
-            string formCode = persistPokemonData.PokemonData.FormCode.Split(";f")[0];
-            string spriteFolder = persistPokemonData.PokemonData.IsShiny ? (isFemale ? "Female_Shiny" : "Shiny") : (isFemale ? "Female_Default" : "Default");
-            string spritePath = $"{appSettings.SpriteBaseDirectory}{spriteFolder}/{formCode}.png";
-            string attachment = $"attachment://{Path.GetFileName(spritePath)}";
-            Console.WriteLine(attachment);
-            eb.WithThumbnailUrl(attachment);
-            eb.WithTitle($":sparkles: Shiny {persistPokemonData.PokemonData.Name} encountered! :sparkles:");
-            eb.AddField("Nature", WildPokemonEncounterEvent.NATURE_NAMES[persistPokemonData.PokemonData.Nature]);
-            eb.AddField("Shiny Value", persistPokemonData.PokemonData.ShinyValue);
-            var pokemon = persistPokemonData.PokemonData;
-            int ivSum = pokemon.IVHp + pokemon.IVAtk + pokemon.IVDef + pokemon.IVSpAtk + pokemon.IVSpDef + pokemon.IVSpe;
-            eb.AddField($"IVs ({ivSum})", $"```╔═══╤═══╤═══╤═══╤═══╤═══╗\r\n║HP │ATK│DEF│SPA│SPD│SPE║\r\n╠═══╪═══╪═══╪═══╪═══╪═══╣\r\n║{PadIv(pokemon.IVHp)} │{PadIv(pokemon.IVAtk)} │{PadIv(pokemon.IVDef)} │{PadIv(pokemon.IVSpAtk)} │{PadIv(pokemon.IVSpDef)} │{PadIv(pokemon.IVSpe)} ║\r\n╚═══╧═══╧═══╧═══╧═══╧═══╝```");
-            await discordBotService.SendMessageAsync(new DiscordMessage()
-            {
-                StringMessage = $"<@&{appSettings.ShinyLogMention}>",
-                GuildId = appSettings.DiscordGuildId,
-                ChannelId = appSettings.ShinyLogChannel,
-                EmbedMessage = eb.Build(),
-                Files = [spritePath]
-            });
-        }
-
-        private string PadIv(byte iv)
-        {
-            if (iv < 10)
-            {
-                return $"0{iv}";
-            }
-            return $"{iv}";
-        }
     }
 }

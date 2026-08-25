@@ -45,9 +45,26 @@ namespace ShinyBotHunter.Controllers
         }
 
         [HttpPost("bot/startAction/{pos}")]
-        public ActionResult<Dictionary<int, EmulatorState>> StartAction(int pos, [FromBody] NewEventArguments args)
+        public async Task<ActionResult<Dictionary<int, EmulatorState>>> StartAction(int pos, [FromBody] NewEventArguments args)
         {
-            return Ok(botService.ExecuteEvent(pos, args));
+            try
+            {
+                return Ok(await botService.ExecuteEvent(pos, args));
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FileNotFoundException)
+            {
+                // These are the "you asked for something that cannot work" cases -- bad arguments, an
+                // unmeasured config value, a full party. The dashboard shows the response body
+                // verbatim, so return the message alone rather than letting it become a 500 carrying
+                // the whole developer exception page. Anything else still surfaces as a 500, because
+                // an unexpected exception is a bug and should look like one.
+                return new ContentResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Content = ex.Message,
+                    ContentType = "text/plain",
+                };
+            }
         }
 
         [HttpPost("bot/cancelAction")]

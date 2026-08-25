@@ -30,15 +30,19 @@ namespace ShinyBotHunter.Macro
             { "EvoMoveTwo",    (60, 55) },
             { "EvoMoveThree",    (60, 85) },
             { "EvoMoveFour",    (60, 115) },
+            // Party screen slots, measured against a real party of six -- see EggHuntConfig, which
+            // carries its own copy for the egg hunt rather than reading these (its touch coordinates
+            // are operator-editable at runtime; these are compiled in).
+            { "PartySlotOne",   (60, 25) },
+            { "PartySlotTwo",   (192, 35) },
+            { "PartySlotThree", (60, 75) },
+            { "PartySlotFour",  (192, 85) },
+            { "PartySlotFive",  (60, 125) },
+            { "PartySlotSix",   (192, 135) },
+            { "Summary",        (176, 42) },     // "Summary" on the party-member submenu
             // Switch-train flow. TODO fill in every coordinate below -- they are placeholders and
             // will tap the wrong pixels until measured against the running game.
             { "BattlePokemonMenu", (220, 170) },  // TODO "Pokemon" button on the battle command menu
-            { "PartySlotOne",   (60, 26) },     // TODO party screen, slot 1
-            { "PartySlotTwo",   (192, 34) },     // TODO party screen, slot 2
-            { "PartySlotThree", (60, 72) },     // TODO party screen, slot 3
-            { "PartySlotFour",  (192, 80) },     // TODO party screen, slot 4
-            { "PartySlotFive",  (60, 122) },     // TODO party screen, slot 5
-            { "PartySlotSix",   (192, 132) },     // TODO party screen, slot 6
             { "SwitchInButton", (126, 76) },     // TODO "Switch In" entry on the party-member submenu
         };
 
@@ -49,8 +53,7 @@ namespace ShinyBotHunter.Macro
         /// </summary>
         private static readonly HashSet<string> PlaceholderShorthands = new()
         {
-            "BattlePokemonMenu", "PartySlotOne", "PartySlotTwo", "PartySlotThree",
-            "PartySlotFour", "PartySlotFive", "PartySlotSix", "SwitchInButton",
+            "BattlePokemonMenu", "SwitchInButton",
         };
 
         /// <summary>

@@ -69,32 +69,38 @@ namespace ShinyBotHunter.Macro
             return runs;
         }
 
-        /// <summary>Renders a recorded trace as a macro YAML document ready to paste into Macro/Configs.</summary>
+        /// <summary>
+        /// Renders a recorded trace as a macro YAML document ready to paste into Macro/Configs.
+        ///
+        /// Every run is encoded, leading and trailing idle included. A leading pause is as much a
+        /// deliberate part of the recording as a button press, and for a macro that exists to wait
+        /// out something like an NPC's exit line, the trailing wait is often the entire reason it was
+        /// recorded -- trimming it used to silently discard exactly the timing being captured.
+        /// </summary>
         public string Encode(IReadOnlyList<RecordedInputRun> runs, string macroName, GameFlavor flavor)
         {
-            List<RecordedInputRun> trimmed = Trim(runs);
             int capturedFrames = runs.Sum(r => r.Frames);
 
             StringBuilder sb = new();
             sb.Append("# Recorded macro — ").Append(capturedFrames).Append(" frames captured, ")
-              .Append(trimmed.Count).Append(" steps after trimming leading/trailing idle.").Append('\n');
+              .Append(runs.Count).Append(" steps.").Append('\n');
             sb.Append("# Timings are a literal frame trace. Consider replacing fixed waits with W.R[min,max]\n");
             sb.Append("# where the game's timing actually varies.\n");
             sb.Append("name: ").Append(SanitizeName(macroName)).Append('\n');
             sb.Append("flavor: ").Append(flavor).Append('\n');
 
-            if (trimmed.Count == 0)
+            if (runs.Count == 0)
             {
-                sb.Append("# No input was captured — nothing but idle frames.\n");
+                sb.Append("# Nothing was captured.\n");
                 sb.Append("steps: []\n");
                 return sb.ToString();
             }
 
             sb.Append("steps:\n");
-            for (int i = 0; i < trimmed.Count; i++)
+            for (int i = 0; i < runs.Count; i++)
             {
-                int frames = trimmed[i].Frames + (i == 0 ? FirstStepFrameCompensation : 0);
-                (List<string> actions, string comment) = EncodeRun(trimmed[i], frames);
+                int frames = runs[i].Frames + (i == 0 ? FirstStepFrameCompensation : 0);
+                (List<string> actions, string comment) = EncodeRun(runs[i], frames);
 
                 string body = actions.Count == 1
                     ? actions[0]
@@ -106,19 +112,6 @@ namespace ShinyBotHunter.Macro
             }
 
             return sb.ToString();
-        }
-
-        /// <summary>Drops leading and trailing idle runs; gaps between real input are preserved.</summary>
-        private static List<RecordedInputRun> Trim(IReadOnlyList<RecordedInputRun> runs)
-        {
-            int start = 0;
-            int end = runs.Count - 1;
-            while (start <= end && runs[start].IsIdle) start++;
-            while (end >= start && runs[end].IsIdle) end--;
-
-            List<RecordedInputRun> result = new();
-            for (int i = start; i <= end; i++) result.Add(runs[i]);
-            return result;
         }
 
         private (List<string> Actions, string Comment) EncodeRun(RecordedInputRun run, int frames)

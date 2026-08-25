@@ -74,6 +74,18 @@ namespace ShinyBotHunter.Pokemon
         [BsonRepresentation(BsonType.Boolean)]
         public bool IsShiny => ShinyValue < 8;
 
+        /// <summary>
+        /// Bit 30 of the IV word at 0x38. An egg stores the species, PID and IVs of the pokemon
+        /// inside it, so this flag is the only thing separating an egg sitting in the party from the
+        /// pokemon it hatches into. The game clears it the moment the hatch animation starts, which
+        /// is how a hatch is detected.
+        ///
+        /// Not persisted: an egg is a transient state of a party slot, not a property of the
+        /// encounter that gets written out once it hatches.
+        /// </summary>
+        [BsonIgnore]
+        public bool IsEgg => ((IVs >> 30) & 1) == 1;
+
         [BsonIgnore]
         public byte Move1PP { get; internal set; }
         [BsonIgnore]
