@@ -494,8 +494,10 @@ namespace ApiHawk
             // so nothing polling from Lua or a tool's PostFrame can ever see these values.
             {
                 var seen = JoypadApi.Get(null);
-                var line = $"set={(analog.Count > 0 ? $"({analog["Touch X"]},{analog["Touch Y"]})" : "none")} "
-                         + $"core X={seen["Touch X"]} Y={seen["Touch Y"]} Touch={seen["Touch"]}";
+                var held = string.Join("+", seen.Where(kv => kv.Value is bool b && b).Select(kv => kv.Key));
+                var line = $"sent[axis={(analog.Count > 0 ? $"({analog["Touch X"]},{analog["Touch Y"]})" : "-")} "
+                         + $"btn={(buttons.Count > 0 ? string.Join("+", buttons.Keys) : "-")}]  "
+                         + $"core[X={seen["Touch X"]} Y={seen["Touch Y"]} held={(held.Length > 0 ? held : "-")}]";
                 if (line != _lastDiag) { BotLog.Write($"[diag] {line}"); _lastDiag = line; }
             }
 #endif
