@@ -1,7 +1,21 @@
-# Place the following BizHawk 2.9.1 DLLs here (copy from D:\BizHawk\):
+# Place the following BizHawk 2.11.2 reference assemblies here:
 #   BizHawk.Client.Common.dll
-#   EmuHawk.exe
 #   BizHawk.Common.dll
 #   BizHawk.Emulation.Common.dll
+#   EmuHawk.exe
+#
+# They must come from the ppicinic/BizHawk fork, branch fix/4535-sticky-analog, which
+# carries the fix for TASEmulators/BizHawk#4535 (sticky analog XOR-cancelled to neutral
+# by mouse-bound axes -- this broke NDS touch input via joypad.setanalog).
+#
+# Build that fork and copy from its output/ directory:
+#   <fork>\output\dll\BizHawk.Client.Common.dll
+#   <fork>\output\dll\BizHawk.Common.dll
+#   <fork>\output\dll\BizHawk.Emulation.Common.dll
+#   <fork>\output\EmuHawk.exe
+#
+# Build the fork with Dist/BuildRelease.sh (not a bare `dotnet build`) so the assemblies
+# are stamped 2.11.2.0. A bare build stamps them 1.0.0.0, and BotServer.dll then fails to
+# bind against the real EmuHawk process at runtime.
 #
 # These files are gitignored (binary DLLs should not be committed).
