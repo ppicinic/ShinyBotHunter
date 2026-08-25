@@ -1,0 +1,62 @@
+# Recorded macro — 3003 frames captured, 53 steps.
+# Timings are a literal frame trace. Consider replacing fixed waits with W.R[min,max]
+# where the game's timing actually varies.
+#
+# Recorded with the fixed encoder, so the trailing W.300 is the real time the aide takes to walk off
+# after handing over the egg -- not a placeholder.
+name: ReceiveTogepiEgg
+flavor: HGSS
+steps:
+  - W.15
+  - H.A.11
+  - W.65
+  - H.A.7
+  - W.52
+  - H.A.8
+  - W.113
+  - H.A.7
+  - W.361
+  - H.A.7
+  - W.53
+  - H.A.6
+  - W.91
+  - H.A.7
+  - W.68
+  - H.A.8
+  - W.69
+  - H.A.7
+  - W.73
+  - H.A.9
+  - W.91
+  - H.A.10
+  - W.46
+  - H.A.14
+  - W.57
+  - H.A.14
+  - W.48
+  - H.A.14
+  - W.117
+  - H.Left.15
+  - W.46
+  - H.Left.13
+  - W.27
+  - H.Left.7
+  - W.19
+  - H.Down.44
+  - W.432
+  - H.A.9
+  - W.83
+  - H.A.9
+  - W.59
+  - H.A.10
+  - W.53
+  - H.A.9
+  - W.57
+  - H.A.8
+  - W.131
+  - H.A.10
+  - W.52
+  - H.A.12
+  - W.120
+  - H.A.6
+  - W.300

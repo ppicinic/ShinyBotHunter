@@ -1,0 +1,16 @@
+# Recorded macro — 1340 frames captured, 7 steps.
+# Timings are a literal frame trace. Consider replacing fixed waits with W.R[min,max]
+# where the game's timing actually varies.
+#
+# Generic: progresses any HGSS egg-hatch animation and prompt text (not Togepi-specific), captured
+# starting from the moment the hatch animation begins. The shiny sparkle plays during this animation,
+# so the caller reads IsShiny straight off the party mon right after this macro finishes -- no summary
+# screen needed. Played blind, not polled for -- see HgssTogepiEggEvent.
+name: HatchEggAnimation
+flavor: HGSS
+steps:
+  - W.60
+  - H.A.8
+  - W.1000
+  - H.B.10
+  - W.200

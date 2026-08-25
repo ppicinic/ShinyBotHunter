@@ -1,0 +1,19 @@
+# Saves through the touch-screen menu, from the overworld back to the overworld.
+# This sequence used to live as a raw string in OrchestratorEvent and WildPokemonEncounterEvent,
+# both of which carried a "TODO put this in macro yaml" next to it.
+name: SaveGame
+flavor: HGSS
+steps:
+ - S.Save.3
+ - W.5
+ - T.A
+ - W.60
+ - T.A
+ - W.90
+ - T.A
+ # the save itself, which is slow
+ - W.1260
+ - T.B
+ - W.60
+ - T.B
+ - W.5

@@ -110,7 +110,7 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        public Dictionary<int, EmulatorState> ExecuteEvent(int pos, NewEventArguments args)
+        public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
         {
             if (!botEvents.ContainsKey(pos))
             {
@@ -152,6 +152,34 @@ namespace ShinyBotHunter.Service
 
                 return GetBotDashboardState();
             }
+            else if(args.EventName == "HGSS Togepi Egg")
+            {
+                if (args.PhaseName is null)
+                {
+                    throw new ArgumentException("PhaseName cannot be null for the Togepi egg hunt.");
+                }
+                // Before the event is constructed or started, so a full party comes back as a plain
+                // error on the start request instead of faulting a background task the dashboard
+                // cannot report on.
+                await EnsurePartyHasRoomForEggAsync(pos);
+                // Constructing the event loads and validates its config, so a corridor or a touch
+                // coordinate that was never measured fails here with a message rather than after the
+                // dashboard has already reported the hunt as running.
+                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, provider, this);
+                botEvents[pos].GameState = new GameState()
+                {
+                    GameFlavor = GameFlavor.HGSS,
+                    BotService = this,
+                    Bot = botEvents[pos].Bot!,
+                    Milestone = args.PhaseName,
+                    // Nothing in this event consults the target -- the egg is the only thing it ever
+                    // looks at -- but GameState requires one and shiny is what the hunt is for.
+                    Target = new ShinyTarget(),
+                };
+                botEvents[pos].StartEvent(eggEvent, botEvents[pos].GameState!, $"Togepi Egg: {args.PhaseName}", this);
+
+                return GetBotDashboardState();
+            }
             else if(args.EventName == "Resume")
             {
                 botEvents[pos].GameState!.SwapState(EventState.Resume);
@@ -161,6 +189,36 @@ namespace ShinyBotHunter.Service
             else
             {
                 throw new Exception($"{args.EventName} does not exist.");
+            }
+        }
+
+        /// <summary>
+        /// Rejects an egg hunt whose party has no free slot.
+        ///
+        /// A gift egg has to go somewhere: with a full party the NPC never hands it over, so no
+        /// attempt could ever complete. Checked here rather than inside the event so the operator gets
+        /// a plain error back from the start request -- an event that throws on its first await only
+        /// faults its own task, which the dashboard reports as nothing more than the bot vanishing.
+        /// </summary>
+        private async Task EnsurePartyHasRoomForEggAsync(int pos)
+        {
+            const int fullPartySize = 6;
+            List<PartySlotInfo> party;
+            try
+            {
+                party = await GetPartyAsync(pos);
+            }
+            catch (Exception ex)
+            {
+                // A transient bad read is not grounds for refusing to start -- the event polls the
+                // party itself and reports properly if this is more than a blip.
+                Console.WriteLine($"[BotService] Could not read the party to check for a free egg slot: {ex.Message}");
+                return;
+            }
+            if (party.Count >= fullPartySize)
+            {
+                throw new InvalidOperationException(
+                    $"Party is full ({party.Count}/{fullPartySize}). The egg needs a free party slot or the NPC will not hand it over. Deposit or release a pokemon before starting this hunt.");
             }
         }
 
@@ -291,7 +349,7 @@ namespace ShinyBotHunter.Service
             else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
             {
                 // TODO continue game.
-                return [actionMap["Wild Encounter"], actionMap["Chained Encounter"]];
+                return [actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"]];
             }
             else
             {
@@ -318,6 +376,9 @@ namespace ShinyBotHunter.Service
             {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
             {"Wild Encounter", EncounterParameters("Wild Encounter") },
             {"Chained Encounter", new EventArgumentOptions() { Name = "Chained Encounter", LegParameters = EncounterParameters("Leg") } },
+            // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
+            // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.
+            {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 

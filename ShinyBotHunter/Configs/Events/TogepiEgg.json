@@ -1,0 +1,38 @@
+{
+  // Macros are looked up by name in Macro/Configs/HGSS. Record them with the Dev Mode macro
+  // recorder and paste the YAML it produces over the placeholder files.
+  "receiveEggMacro": "ReceiveTogepiEgg",
+
+  "eggSpecies": 175,
+
+  // The tile and facing ReceiveTogepiEgg is recorded from. The event walks here once at startup and
+  // saves, so every soft reset afterwards lands here too -- the operator does not need to know the
+  // spot or park the save on it. Skipped entirely (no walk, no save) if already standing here.
+  "startMapId": 157,
+  "startX": 6,
+  "startY": 9,
+  "startFacing": "Up",
+  "startPositionSettleMs": 1000,
+
+  // The corridor the bot paces to rack up steps. Absolute tile coordinates on the chosen axis.
+  // ReceiveTogepiEgg already ends standing on it.
+  "hatchAxis": "x",
+  "hatchLow": 458,
+  "hatchHigh": 500,
+
+  // Touch screen coordinates, 256x192. Measured against the running game.
+  "pokemonMenuTouch": { "x": 45, "y": 75 },
+  "partySlotTouch": [
+    { "x": 60, "y": 25 },
+    { "x": 192, "y": 35 },
+    { "x": 60, "y": 75 },
+    { "x": 192, "y": 85 },
+    { "x": 60, "y": 125 },
+    { "x": 192, "y": 135 }
+  ],
+  "summaryTouch": { "x": 176, "y": 42 },
+
+  "summaryHoldMs": 5000,
+  "softResetDelayMs": 15000,
+  "postContinueDelayMs": 4000
+}
