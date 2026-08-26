@@ -61,9 +61,20 @@ namespace ShinyBotHunter.Controllers
         /// .sav sitting beside its ROM and could say nothing about what game a file actually was.
         /// </summary>
         [HttpGet("getAllGames")]
-        public ActionResult<GameRomInfo[]> GetAllGames()
+        public ActionResult<GameRomInfo[]> GetAllGames() => Ok(Describe(romInfoService.GetAll()));
+
+        /// <summary>
+        /// Rescans and rehashes the ROM folder. Scanning reads every ROM, so it happens at startup and
+        /// on request rather than behind ordinary lookups — this is how the dashboard picks up a ROM
+        /// added or replaced while the app was running.
+        /// </summary>
+        [HttpPost("refreshGames")]
+        public async Task<ActionResult<GameRomInfo[]>> RefreshGames()
+            => Ok(Describe(await romInfoService.RefreshAsync()));
+
+        private static GameRomInfo[] Describe(IEnumerable<RomInfo> roms)
         {
-            var games = romInfoService.GetAll()
+            return roms
                 .Select(r => new GameRomInfo
                 {
                     Handle = r.Handle,
@@ -78,7 +89,6 @@ namespace ShinyBotHunter.Controllers
                     RevisionSupport = r.RevisionSupport.ToString(),
                 })
                 .ToArray();
-            return Ok(games);
         }
     }
 

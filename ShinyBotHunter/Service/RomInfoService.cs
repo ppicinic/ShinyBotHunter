@@ -72,9 +72,15 @@ namespace ShinyBotHunter.Service
         };
 
         /// <summary>
-        /// Known-good dump hashes, lowercase SHA1. Sourced from pokebot-gen3's ROM table and confirmed
-        /// against the local library. Only games listed here can be judged; anything absent reports
-        /// <see cref="RomVerification.NoReferenceData"/> rather than being called suspect.
+        /// Canonical dump hashes, lowercase SHA1. GBA entries come from pokebot-gen3's ROM table; NDS
+        /// entries from the pret decompilation projects' own <c>rom.sha1</c> files. Only games listed
+        /// here can be judged; anything absent reports <see cref="RomVerification.NoReferenceData"/>
+        /// rather than being called suspect.
+        ///
+        /// A ROM can fail to match and still be a perfectly playable dump — NDS dumps in particular
+        /// vary in secure-area handling and header patches without the game code differing. That is why
+        /// a mismatch warns rather than blocks, and why <see cref="ApplicationSettings.TrustedRomHashes"/>
+        /// exists.
         /// </summary>
         private static readonly Dictionary<string, string> KnownGoodHashes = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -84,10 +90,16 @@ namespace ShinyBotHunter.Service
             ["3ccbbd45f8553c36463f13b938e833f652b793e4"] = "Pokemon Sapphire (USA) rev0",
             ["4722efb8cd45772ca32555b98fd3b9719f8e60a9"] = "Pokemon Sapphire (USA, Europe) rev1",
             ["89b45fb172e6b55d51fc0e61989775187f6fe63c"] = "Pokemon Sapphire (USA, Europe) rev2",
+            ["4fcded0e2713dc03929845de631d0932ea2b5a37"] = "Pokemon HeartGold (USA)",
+            ["f8dc38ea20c17541a43b58c5e6d18c1732c7e582"] = "Pokemon SoulSilver (USA)",
         };
 
         /// <summary>Games we hold reference hashes for. Others cannot be judged either way.</summary>
-        private static readonly HashSet<GameFlavor> FlavorsWithReferenceHashes = new() { GameFlavor.RS };
+        private static readonly HashSet<GameFlavor> FlavorsWithReferenceHashes = new()
+        {
+            GameFlavor.RS,
+            GameFlavor.HGSS,
+        };
 
         /// <summary>
         /// The revision each flavor is actually exercised on. Everything else still runs — it is only
@@ -101,38 +113,64 @@ namespace ShinyBotHunter.Service
         };
 
         private readonly string romDirectory;
+        private readonly IReadOnlyDictionary<string, string> trustedHashes;
         private readonly ILogger<RomInfoService> logger;
 
-        // Hashing every ROM on each scan would re-read well over a gigabyte, and the dashboard scans
-        // on refresh. Keyed on the identity of the file contents as far as the filesystem reports it.
+        // Rehashing on every lookup would re-read gigabytes, so a scan is an explicit operation:
+        // once at startup, and again only when someone asks for a refresh. Everything in between is
+        // served from this snapshot.
+        private volatile IReadOnlyList<RomInfo> snapshot = Array.Empty<RomInfo>();
+
+        // Survives a refresh so rescanning only rehashes files that are new or actually changed.
         private readonly ConcurrentDictionary<string, (long Size, DateTime WriteUtc, RomInfo Info)> cache = new();
 
         public RomInfoService(IOptions<ApplicationSettings> appSettings, ILogger<RomInfoService> logger)
         {
             this.romDirectory = appSettings.Value.ROMBaseDirectory;
+            this.trustedHashes = appSettings.Value.TrustedRomHashes ?? new Dictionary<string, string>();
             this.logger = logger;
         }
 
-        /// <summary>Every ROM in the ROM directory whose header could be parsed.</summary>
-        public IReadOnlyList<RomInfo> GetAll()
+        /// <summary>Scans and hashes the ROM folder once at application start.</summary>
+        public Task InitAsync() => RefreshAsync();
+
+        /// <summary>
+        /// Rescans the ROM folder, picking up files added or replaced since the last scan. This is the
+        /// only thing that reads ROMs from disk — lookups never do.
+        /// </summary>
+        public async Task<IReadOnlyList<RomInfo>> RefreshAsync()
         {
             if (!Directory.Exists(romDirectory))
             {
                 logger.LogWarning("ROM directory {Dir} does not exist.", romDirectory);
-                return Array.Empty<RomInfo>();
+                snapshot = Array.Empty<RomInfo>();
+                return snapshot;
             }
 
-            List<RomInfo> results = new();
-            foreach (string path in Directory.EnumerateFiles(romDirectory))
-            {
-                string ext = Path.GetExtension(path).ToLowerInvariant();
-                if (ext != ".gba" && ext != ".nds") continue;
+            string[] paths = Directory.EnumerateFiles(romDirectory)
+                .Where(p =>
+                {
+                    string ext = Path.GetExtension(p).ToLowerInvariant();
+                    return ext == ".gba" || ext == ".nds";
+                })
+                .ToArray();
 
-                RomInfo? info = TryRead(path);
-                if (info is not null) results.Add(info);
-            }
-            return results.OrderBy(r => r.Handle, StringComparer.OrdinalIgnoreCase).ToList();
+            // Hashing is IO-bound and files run to 128 MB apiece, so read them concurrently rather
+            // than serially stalling startup.
+            RomInfo?[] scanned = await Task.WhenAll(paths.Select(p => Task.Run(() => TryRead(p))));
+
+            snapshot = scanned
+                .Where(r => r is not null)
+                .Select(r => r!)
+                .OrderBy(r => r.Handle, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            logger.LogInformation("Scanned {Count} ROM(s) in {Dir}.", snapshot.Count, romDirectory);
+            return snapshot;
         }
+
+        /// <summary>Every ROM found by the last scan. Does not touch the disk.</summary>
+        public IReadOnlyList<RomInfo> GetAll() => snapshot;
 
         /// <summary>
         /// Resolves the file handle the dashboard passes around (a ROM's base filename) to its real
@@ -160,7 +198,7 @@ namespace ShinyBotHunter.Service
 
             try
             {
-                RomInfo info = ReadHeader(path, fi);
+                RomInfo info = ReadHeader(path, fi, trustedHashes);
                 cache[path] = (fi.Length, fi.LastWriteTimeUtc, info);
                 LogFindings(info);
                 return info;
@@ -172,7 +210,7 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        private static RomInfo ReadHeader(string path, FileInfo fi)
+        private static RomInfo ReadHeader(string path, FileInfo fi, IReadOnlyDictionary<string, string> trusted)
         {
             string ext = Path.GetExtension(path).ToLowerInvariant();
             bool isGba = ext == ".gba";
@@ -213,21 +251,14 @@ namespace ShinyBotHunter.Service
 
             string language = Regions.TryGetValue(regionChar, out string? lang) ? lang : $"Unknown ({regionChar})";
 
-            // Only hash games we can actually judge. Nothing can be concluded about a game with no
-            // reference hashes, and hashing it anyway would re-read every 128 MB NDS ROM — including
-            // the per-instance copies the bot makes — for a verdict of "unknown".
-            bool canVerify = flavor is not null && FlavorsWithReferenceHashes.Contains(flavor.Value);
-            string sha1 = "";
-            RomVerification verification = RomVerification.NoReferenceData;
+            fs.Seek(0, SeekOrigin.Begin);
+            string sha1 = Convert.ToHexString(SHA1.HashData(fs)).ToLowerInvariant();
 
-            if (canVerify)
-            {
-                fs.Seek(0, SeekOrigin.Begin);
-                sha1 = Convert.ToHexString(SHA1.HashData(fs)).ToLowerInvariant();
-                verification = KnownGoodHashes.ContainsKey(sha1)
-                    ? RomVerification.Verified
-                    : RomVerification.Unrecognized;
-            }
+            bool canVerify = flavor is not null && FlavorsWithReferenceHashes.Contains(flavor.Value);
+            RomVerification verification;
+            if (KnownGoodHashes.ContainsKey(sha1) || trusted.ContainsKey(sha1)) verification = RomVerification.Verified;
+            else if (canVerify) verification = RomVerification.Unrecognized;
+            else verification = RomVerification.NoReferenceData;
 
             RevisionSupport support = flavor is not null
                 && TestedRevisions.TryGetValue(flavor.Value, out int tested)
@@ -256,8 +287,9 @@ namespace ShinyBotHunter.Service
             if (info.Verification == RomVerification.Unrecognized)
             {
                 logger.LogWarning(
-                    "ROM {Handle} identifies as {Game} but its SHA1 {Sha1} matches no known-good dump. " +
-                    "Patched ROMs invalidate the address tables and legality checks.",
+                    "ROM {Handle} identifies as {Game} but its SHA1 {Sha1} matches no canonical dump. " +
+                    "If this ROM is known to work, add that hash to ApplicationSettings:TrustedRomHashes; " +
+                    "otherwise treat it as suspect, since patched ROMs invalidate address tables and legality checks.",
                     info.Handle, info.DisplayName, info.Sha1);
             }
 
