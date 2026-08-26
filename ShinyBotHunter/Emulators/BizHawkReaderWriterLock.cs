@@ -9,7 +9,9 @@ namespace ShinyBotHunter.Emulators
         private int slots;
         public BizHawkReaderWriterLock(IOptions<ApplicationSettings> settings)
         {
-            slots = settings.Value.MaxEmulators["DS"];
+            // Sized against every console's budget: this gate is global, and a GBA shutdown must
+            // still serialise against DS launches.
+            slots = settings.Value.TotalMaxEmulators;
             _readerLock = new SemaphoreSlim(slots, slots);
             _writerLock = new SemaphoreSlim(1, 1);
         }

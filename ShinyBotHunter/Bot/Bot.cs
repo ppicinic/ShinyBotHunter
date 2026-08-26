@@ -1,5 +1,8 @@
-﻿using ShinyBotHunter.Emulators;
+﻿using System.Text;
+using ShinyBotHunter.Context;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Bot
 {
@@ -10,12 +13,14 @@ namespace ShinyBotHunter.Bot
         private ICommandClient commandClient;
         private IMemoryClient memoryClient;
         private IDataReader dataReader;
-        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader)
+        private GameContext? context;
+        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader, GameContext? context = null)
         {
             this.launcher = launcher;
             this.commandClient = commandClient;
             this.memoryClient = memoryClient;
             this.dataReader = reader;
+            this.context = context;
         }
 
         public void ClearMacro()
@@ -56,6 +61,8 @@ namespace ShinyBotHunter.Bot
 
         public string GameFileName => this.launcher.GameFileName;
 
+        public GameFlavor GameFlavor => this.context?.GameFlavor ?? GameFlavor.HGSS;
+
         public IDataReader Reader => throw new NotImplementedException();
 
         public void HoldFrames(string button, int frames)
@@ -68,6 +75,50 @@ namespace ShinyBotHunter.Bot
             await this.launcher.LaunchAsync();
             await Task.Delay(5000);
             Connect();
+            await VerifyLoadedGameAsync();
+        }
+
+        /// <summary>
+        /// Confirms the core is running the ROM we launched, by reading the game code back out of
+        /// emulator memory. The file header says what is on disk; only this says what actually loaded.
+        ///
+        /// A mismatch throws, because the alternative is a bot reading a wrong game's memory map and
+        /// persisting believable garbage. A read that comes back as non-ASCII is treated as "this
+        /// console's runtime header is not reachable through the default memory domain" and only
+        /// warns — that is a capability gap, not evidence of a wrong game.
+        /// </summary>
+        private async Task VerifyLoadedGameAsync()
+        {
+            if (context?.Rom is null) return;
+
+            string expected = context.Rom.GameCode;
+            string actual;
+            try
+            {
+                uint address = RomInfoService.RuntimeGameCodeAddress(context.ConsoleType);
+                byte[] raw = await this.memoryClient.ReadBytesAsync(address, 4);
+                if (raw.Length != 4 || !raw.All(b => b >= 0x20 && b < 0x7F))
+                {
+                    Console.WriteLine(
+                        $"[{context.SourceGameName}] Runtime game-code check skipped: read at 0x{address:X8} " +
+                        $"returned non-ASCII bytes, so this core's header is not reachable via the default memory domain.");
+                    return;
+                }
+                actual = Encoding.ASCII.GetString(raw);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[{context.SourceGameName}] Runtime game-code check skipped: {ex.Message}");
+                return;
+            }
+
+            if (!string.Equals(actual, expected, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Emulator at position {context.DisplayPosition} loaded game code '{actual}', but ROM " +
+                    $"'{context.SourceGameName}' has header game code '{expected}' ({context.Rom.DisplayName}). " +
+                    "Refusing to run against an unexpected game.");
+            }
         }
 
         public async Task<byte> ReadByteAsync(uint address)

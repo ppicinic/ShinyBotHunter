@@ -10,13 +10,13 @@ namespace ShinyBotHunter.Controllers
     {
         private AdminService adminService;
         private PhaseInfoService phaseInfoService;
-        private string romDirectory;
+        private RomInfoService romInfoService;
         private bool macroRecordingEnabled;
-        public AdminController(AdminService adminService, PhaseInfoService phaseInfoService, IOptions<ApplicationSettings> appSettings) 
+        public AdminController(AdminService adminService, PhaseInfoService phaseInfoService, RomInfoService romInfoService, IOptions<ApplicationSettings> appSettings)
         {
             this.adminService = adminService;
             this.phaseInfoService = phaseInfoService;
-            this.romDirectory = appSettings.Value.ROMBaseDirectory;
+            this.romInfoService = romInfoService;
             this.macroRecordingEnabled = appSettings.Value.EnableMacroRecording;
         }
 
@@ -55,22 +55,30 @@ namespace ShinyBotHunter.Controllers
             return Ok(metadata);
         }
 
+        /// <summary>
+        /// Detected ROMs, keyed by file handle. Previously this listed every file in the ROM directory
+        /// and took the second-to-last dot-separated segment, which emitted a duplicate entry for each
+        /// .sav sitting beside its ROM and could say nothing about what game a file actually was.
+        /// </summary>
         [HttpGet("getAllGames")]
-        public ActionResult<string[]> GetAllGames()
+        public ActionResult<GameRomInfo[]> GetAllGames()
         {
-            var files = Directory.GetFiles(romDirectory);
-            List<string> result = new List<string>();
-            for (int i = 0; i < files.Length; i++)
-            {
-                var file = files[i];
-                var parts = file.Split('\\', '/', '.');
-                if (parts.Length >= 2)
+            var games = romInfoService.GetAll()
+                .Select(r => new GameRomInfo
                 {
-                    result.Add(parts[parts.Length - 2]);
-                }
-
-            }
-            return Ok(result.ToArray());
+                    Handle = r.Handle,
+                    Console = r.Console.ToString(),
+                    Flavor = r.Flavor?.ToString(),
+                    GameName = r.GameName,
+                    GameCode = r.GameCode,
+                    Language = r.Language,
+                    Revision = r.Revision,
+                    DisplayName = r.DisplayName,
+                    Verification = r.Verification.ToString(),
+                    RevisionSupport = r.RevisionSupport.ToString(),
+                })
+                .ToArray();
+            return Ok(games);
         }
     }
 
@@ -85,5 +93,20 @@ namespace ShinyBotHunter.Controllers
     public class GameMetadata
     {
         public PhaseInfo[] Phases { get;set; } = null!;
+    }
+
+    /// <summary>Dashboard view of a detected ROM. <see cref="Handle"/> is what gets posted back.</summary>
+    public class GameRomInfo
+    {
+        public string Handle { get; set; } = null!;
+        public string Console { get; set; } = null!;
+        public string? Flavor { get; set; }
+        public string GameName { get; set; } = null!;
+        public string GameCode { get; set; } = null!;
+        public string Language { get; set; } = null!;
+        public int Revision { get; set; }
+        public string DisplayName { get; set; } = null!;
+        public string Verification { get; set; } = null!;
+        public string RevisionSupport { get; set; } = null!;
     }
 }
