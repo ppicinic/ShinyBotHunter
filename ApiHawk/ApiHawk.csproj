@@ -7,7 +7,9 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
-    <LangVersion>9.0</LangVersion>
+    <!-- LangVersion is independent of TargetFramework: net48 is required because EmuHawk loads
+         external tools in-process via Assembly.LoadFrom, but modern C# compiles fine against it. -->
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.6.3" />
@@ -15,12 +17,15 @@
 
   <ItemGroup>
     <!--
-      BizHawk 2.9.1 reference DLLs.
-      Copy the following files from D:\BizHawk\ into ApiHawk\lib\:
-        BizHawk.Client.Common.dll
-        EmuHawk.exe
-        BizHawk.Common.dll
-        BizHawk.Emulation.Common.dll
+      BizHawk 2.11.2 reference DLLs, built from the ppicinic/BizHawk fork on branch
+      fix/4535-sticky-analog (which carries the fix for TASEmulators/BizHawk#4535 —
+      sticky analog being XOR-cancelled to neutral by mouse-bound axes).
+
+      Refresh these by building that fork and copying from its output/ directory:
+        <fork>\output\dll\BizHawk.Client.Common.dll
+        <fork>\output\dll\BizHawk.Common.dll
+        <fork>\output\dll\BizHawk.Emulation.Common.dll
+        <fork>\output\EmuHawk.exe
       These are not deployed with the output — Private=false keeps them out of the build output.
     -->
     <Reference Include="BizHawk.Client.Common">
@@ -42,8 +47,10 @@
   </ItemGroup>
 
   <!--
-    After building, manually copy BotServer.dll from the build output to D:\BizHawk\ExternalTools\.
-    Example (Debug):  bin\Debug\net48\BotServer.dll  →  D:\BizHawk\ExternalTools\BotServer.dll
-    Example (Release): bin\Release\net48\BotServer.dll → D:\BizHawk\ExternalTools\BotServer.dll
+    After building, manually copy BotServer.dll from the build output to the emulator's
+    ExternalTools folder — this must be the BizHawk build the DLLs above came from, since
+    ApplicationSettings.BizHawkBaseDirectory points EmuHawk at it.
+    Example (Debug):   bin\Debug\net48\BotServer.dll   → D:\BizHawk-2.11\ExternalTools\BotServer.dll
+    Example (Release): bin\Release\net48\BotServer.dll → D:\BizHawk-2.11\ExternalTools\BotServer.dll
   -->
 </Project>

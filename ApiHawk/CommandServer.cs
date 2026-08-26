@@ -88,7 +88,9 @@ namespace ApiHawk
         // ── Frame-thread state ────────────────────────────────────────────────────
         private readonly Stack<StackEntry> _commandStack = new Stack<StackEntry>();
         private readonly Dictionary<string, bool> _heldButtons = new Dictionary<string, bool>();
-        private bool _clearHold;
+#if APIHAWK_INPUT_DIAG
+        private string _lastDiag = "";
+#endif
 
         // -- Macro recording ------------------------------------------------------
         // While recording, the frame thread stops driving the joypad entirely so the human's
@@ -440,7 +442,7 @@ namespace ApiHawk
             if (JoypadApi == null) return;
 
             var buttons = new Dictionary<string, bool>();
-            var analog  = new Dictionary<string, int?>();
+            var analog  = new Dictionary<string, int>();
 
             foreach (var kvp in _heldButtons)
                 buttons[kvp.Key] = true;
@@ -466,7 +468,6 @@ namespace ApiHawk
                                 buttons["Touch"] = true;
                                 analog["Touch X"] = btn.X;
                                 analog["Touch Y"] = btn.Y;
-                                _clearHold = true;
                             }
                             else
                             {
@@ -477,16 +478,29 @@ namespace ApiHawk
                 }
             }
 
-            if (analog.Count == 0 && _clearHold)
-            {
-                ClientApi?.ClearAutohold();
-                _clearHold = false;
-            }
-
-            if (analog.Count > 0)
-                JoypadApi.SetAnalog(analog);
-
+            // Both calls go out every frame, unconditionally. Since BizHawk's fix for #4535 these
+            // route through OverrideAdapter rather than the sticky/autohold controller: the values
+            // apply to this frame only, and any axis absent from the dictionary is left to the user.
+            // Passing an empty dictionary is therefore how a touch is released -- which is why the
+            // old ClearAutohold() dance is gone, and why this must not be skipped when empty.
+            JoypadApi.SetAnalog(analog);
             JoypadApi.Set(buttons);
+
+#if APIHAWK_INPUT_DIAG
+            // Opt-in diagnostic (build with -p:DefineConstants=APIHAWK_INPUT_DIAG).
+            // Reads back through the adapter chain in the same frame window the values were set.
+            // That window is the ONLY place they are observable: MainForm calls
+            // InputManager.AfterFrame() -- which clears the override -- before UpdateToolsAfter(),
+            // so nothing polling from Lua or a tool's PostFrame can ever see these values.
+            {
+                var seen = JoypadApi.Get(null);
+                var held = string.Join("+", seen.Where(kv => kv.Value is bool b && b).Select(kv => kv.Key));
+                var line = $"sent[axis={(analog.Count > 0 ? $"({analog["Touch X"]},{analog["Touch Y"]})" : "-")} "
+                         + $"btn={(buttons.Count > 0 ? string.Join("+", buttons.Keys) : "-")}]  "
+                         + $"core[X={seen["Touch X"]} Y={seen["Touch Y"]} held={(held.Length > 0 ? held : "-")}]";
+                if (line != _lastDiag) { BotLog.Write($"[diag] {line}"); _lastDiag = line; }
+            }
+#endif
         }
 
         // ── Completion signalling (frame thread → waiters) ────────────────────────
