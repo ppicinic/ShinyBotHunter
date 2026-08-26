@@ -6,17 +6,6 @@ namespace ShinyBotHunter
     {
         public Dictionary<string, int> MaxEmulators { get; set; } = null!;
 
-        /// <summary>
-        /// SHA1 -> description for ROMs the operator has verified themselves. These count as verified
-        /// alongside the canonical dump hashes.
-        ///
-        /// This exists because a ROM can fail to match a canonical hash and still be a good dump — NDS
-        /// dumps vary in secure-area handling and header patches without the game code differing, and
-        /// the bot's own memory addresses are the real proof that a ROM behaves as expected. Pinning a
-        /// hash here says "this exact file is the one that works", which still catches the thing worth
-        /// catching: that file silently changing.
-        /// </summary>
-        public Dictionary<string, string> TrustedRomHashes { get; set; } = new();
 
         /// <summary>Emulator budget for one console. Keys are <see cref="ConsoleType"/> names.</summary>
         public int MaxEmulatorsFor(ConsoleType console)

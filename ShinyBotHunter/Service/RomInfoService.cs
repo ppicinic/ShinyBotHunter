@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Context;
@@ -12,9 +11,11 @@ namespace ShinyBotHunter.Service
     /// Renaming a ROM must not change behaviour, and a mislabeled ROM must be detected rather than
     /// believed — both fall out of reading the header instead of the name.
     ///
-    /// Scanning also hashes each file and compares against known-good dumps. That matters more than it
-    /// looks: a patched ROM redirects its entry point into injected code, which moves the game out from
-    /// under the symbol-derived address tables and makes any legality verdict meaningless.
+    /// Identity comes from the header alone, deliberately. Checking dumps against known-good hashes was
+    /// tried and dropped: it rejected ROMs that demonstrably work, because dumps vary in secure-area
+    /// handling and header patches without the game code differing at all. The header states what the
+    /// game is, which is the question being asked, and it answers it without a reference table to keep
+    /// current.
     /// </summary>
     public class RomInfoService
     {
@@ -72,36 +73,6 @@ namespace ShinyBotHunter.Service
         };
 
         /// <summary>
-        /// Canonical dump hashes, lowercase SHA1. GBA entries come from pokebot-gen3's ROM table; NDS
-        /// entries from the pret decompilation projects' own <c>rom.sha1</c> files. Only games listed
-        /// here can be judged; anything absent reports <see cref="RomVerification.NoReferenceData"/>
-        /// rather than being called suspect.
-        ///
-        /// A ROM can fail to match and still be a perfectly playable dump — NDS dumps in particular
-        /// vary in secure-area handling and header patches without the game code differing. That is why
-        /// a mismatch warns rather than blocks, and why <see cref="ApplicationSettings.TrustedRomHashes"/>
-        /// exists.
-        /// </summary>
-        private static readonly Dictionary<string, string> KnownGoodHashes = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["f28b6ffc97847e94a6c21a63cacf633ee5c8df1e"] = "Pokemon Ruby (USA) rev0",
-            ["610b96a9c9a7d03d2bafb655e7560ccff1a6d894"] = "Pokemon Ruby (USA, Europe) rev1",
-            ["5b64eacf892920518db4ec664e62a086dd5f5bc8"] = "Pokemon Ruby (USA, Europe) rev2",
-            ["3ccbbd45f8553c36463f13b938e833f652b793e4"] = "Pokemon Sapphire (USA) rev0",
-            ["4722efb8cd45772ca32555b98fd3b9719f8e60a9"] = "Pokemon Sapphire (USA, Europe) rev1",
-            ["89b45fb172e6b55d51fc0e61989775187f6fe63c"] = "Pokemon Sapphire (USA, Europe) rev2",
-            ["4fcded0e2713dc03929845de631d0932ea2b5a37"] = "Pokemon HeartGold (USA)",
-            ["f8dc38ea20c17541a43b58c5e6d18c1732c7e582"] = "Pokemon SoulSilver (USA)",
-        };
-
-        /// <summary>Games we hold reference hashes for. Others cannot be judged either way.</summary>
-        private static readonly HashSet<GameFlavor> FlavorsWithReferenceHashes = new()
-        {
-            GameFlavor.RS,
-            GameFlavor.HGSS,
-        };
-
-        /// <summary>
         /// The revision each flavor is actually exercised on. Everything else still runs — it is only
         /// flagged as unproven, so promoting a revision later is a change here plus recorded macros,
         /// never a refactor.
@@ -113,7 +84,6 @@ namespace ShinyBotHunter.Service
         };
 
         private readonly string romDirectory;
-        private readonly IReadOnlyDictionary<string, string> trustedHashes;
         private readonly ILogger<RomInfoService> logger;
 
         // Rehashing on every lookup would re-read gigabytes, so a scan is an explicit operation:
@@ -127,7 +97,6 @@ namespace ShinyBotHunter.Service
         public RomInfoService(IOptions<ApplicationSettings> appSettings, ILogger<RomInfoService> logger)
         {
             this.romDirectory = appSettings.Value.ROMBaseDirectory;
-            this.trustedHashes = appSettings.Value.TrustedRomHashes ?? new Dictionary<string, string>();
             this.logger = logger;
         }
 
@@ -198,7 +167,7 @@ namespace ShinyBotHunter.Service
 
             try
             {
-                RomInfo info = ReadHeader(path, fi, trustedHashes);
+                RomInfo info = ReadHeader(path);
                 cache[path] = (fi.Length, fi.LastWriteTimeUtc, info);
                 LogFindings(info);
                 return info;
@@ -210,7 +179,7 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        private static RomInfo ReadHeader(string path, FileInfo fi, IReadOnlyDictionary<string, string> trusted)
+        private static RomInfo ReadHeader(string path)
         {
             string ext = Path.GetExtension(path).ToLowerInvariant();
             bool isGba = ext == ".gba";
@@ -251,15 +220,6 @@ namespace ShinyBotHunter.Service
 
             string language = Regions.TryGetValue(regionChar, out string? lang) ? lang : $"Unknown ({regionChar})";
 
-            fs.Seek(0, SeekOrigin.Begin);
-            string sha1 = Convert.ToHexString(SHA1.HashData(fs)).ToLowerInvariant();
-
-            bool canVerify = flavor is not null && FlavorsWithReferenceHashes.Contains(flavor.Value);
-            RomVerification verification;
-            if (KnownGoodHashes.ContainsKey(sha1) || trusted.ContainsKey(sha1)) verification = RomVerification.Verified;
-            else if (canVerify) verification = RomVerification.Unrecognized;
-            else verification = RomVerification.NoReferenceData;
-
             RevisionSupport support = flavor is not null
                 && TestedRevisions.TryGetValue(flavor.Value, out int tested)
                 && tested == revision
@@ -277,22 +237,11 @@ namespace ShinyBotHunter.Service
                 Title: title,
                 Language: language,
                 Revision: revision,
-                Sha1: sha1,
-                Verification: verification,
                 RevisionSupport: support);
         }
 
         private void LogFindings(RomInfo info)
         {
-            if (info.Verification == RomVerification.Unrecognized)
-            {
-                logger.LogWarning(
-                    "ROM {Handle} identifies as {Game} but its SHA1 {Sha1} matches no canonical dump. " +
-                    "If this ROM is known to work, add that hash to ApplicationSettings:TrustedRomHashes; " +
-                    "otherwise treat it as suspect, since patched ROMs invalidate address tables and legality checks.",
-                    info.Handle, info.DisplayName, info.Sha1);
-            }
-
             if (info.IsKnownGame && info.RevisionSupport == RevisionSupport.SupportedUntested)
             {
                 logger.LogWarning(

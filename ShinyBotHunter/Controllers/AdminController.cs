@@ -85,7 +85,6 @@ namespace ShinyBotHunter.Controllers
                     Language = r.Language,
                     Revision = r.Revision,
                     DisplayName = r.DisplayName,
-                    Verification = r.Verification.ToString(),
                     RevisionSupport = r.RevisionSupport.ToString(),
                 })
                 .ToArray();
@@ -116,7 +115,6 @@ namespace ShinyBotHunter.Controllers
         public string Language { get; set; } = null!;
         public int Revision { get; set; }
         public string DisplayName { get; set; } = null!;
-        public string Verification { get; set; } = null!;
         public string RevisionSupport { get; set; } = null!;
     }
 }
