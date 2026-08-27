@@ -58,6 +58,11 @@ namespace ShinyBotHunter.Emulators
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();
             process.StartInfo.Environment["BIZHAWK_MEMORY_PORT"] = this.memoryPort.ToString();
+            // Per-instance save directory. BizHawk names a save after the game rather than the file,
+            // so byte-identical ROM copies would otherwise all write to one SaveRAM file and overwrite
+            // each other. The configured Save RAM path contains %BIZHAWK_SAVE_SLOT%, which resolves to
+            // this; unset, it resolves to nothing and the path is what it always was.
+            process.StartInfo.Environment["BIZHAWK_SAVE_SLOT"] = $"bot{context.DisplayPosition}";
         }
 
         public string GameFileName 
