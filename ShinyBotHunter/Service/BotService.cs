@@ -117,40 +117,59 @@ namespace ShinyBotHunter.Service
                 {
                     throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
                 }
-                if (string.IsNullOrWhiteSpace(args.GameName)) throw new ArgumentException("A game must be chosen for the shiny starter hunt.");
-                if (string.IsNullOrWhiteSpace(args.Starter)) throw new ArgumentException("At least one starter must be chosen for the shiny starter hunt.");
                 if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
 
-                RomInfo rom = romInfoService.GetByHandle(args.GameName)
-                    ?? throw new ArgumentException($"No ROM named '{args.GameName}' was found.");
-                if (rom.Flavor != GameFlavor.RS)
+                // Each queue entry picks its own ROM, starter and recording label, like chained
+                // encounter legs. The flat fields remain usable as a single-entry shorthand.
+                List<NewEventLegArguments> rawEntries;
+                if (args.Legs is { Count: > 0 })
                 {
-                    throw new ArgumentException(
-                        $"'{args.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                    rawEntries = args.Legs;
+                }
+                else if (!string.IsNullOrWhiteSpace(args.GameName) && !string.IsNullOrWhiteSpace(args.Starter))
+                {
+                    rawEntries = [new NewEventLegArguments { GameName = args.GameName, Starter = args.Starter, RecordingName = args.RecordingName }];
+                }
+                else
+                {
+                    throw new ArgumentException("At least one starter entry (game + starter) is required for the shiny starter hunt.");
                 }
 
-                // "Mudkip" hunts one; "Mudkip, Treecko, Torchic" hunts a queue in that order.
-                List<string> starters = args.Starter
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .ToList();
+                var entries = new List<StarterHuntEntry>();
+                RomInfo? firstRom = null;
+                foreach (NewEventLegArguments raw in rawEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(raw.GameName)) throw new ArgumentException("Every starter entry must pick a game.");
+                    if (string.IsNullOrWhiteSpace(raw.Starter)) throw new ArgumentException("Every starter entry must pick a starter.");
 
-                int budget = settings.MaxEmulatorsFor(rom.Console);
+                    RomInfo rom = romInfoService.GetByHandle(raw.GameName)
+                        ?? throw new ArgumentException($"No ROM named '{raw.GameName}' was found.");
+                    if (rom.Flavor != GameFlavor.RS)
+                    {
+                        throw new ArgumentException(
+                            $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                    }
+                    firstRom ??= rom;
+
+                    string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
+                    entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording));
+                }
+
+                int budget = settings.MaxEmulatorsFor(firstRom!.Console);
                 int requested = args.Emulators ?? 1;
                 if (requested < 1 || requested > budget)
                 {
-                    throw new ArgumentException($"Emulators must be between 1 and {budget} for {rom.Console}.");
+                    throw new ArgumentException($"Emulators must be between 1 and {budget} for {firstRom.Console}.");
                 }
 
-                string recordingName = string.IsNullOrWhiteSpace(args.RecordingName) ? args.GameName : args.RecordingName;
-                var hunt = new MultiStarterHuntEvent(args.GameName, starters, args.PhaseName, recordingName,
-                    requested, budget, StarterHuntConfig.Load(), provider);
+                var hunt = new MultiStarterHuntEvent(entries, args.PhaseName, requested, budget, StarterHuntConfig.Load(), provider);
 
                 // The shared state is what the dashboard reads: the event holds it at Waiting while a
                 // shiny is parked, which is what surfaces Resume.
                 var huntState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
                 huntState.State.Push(EventState.Running);
                 var huntEvent = new BotAndOrEvent { GameState = huntState };
-                huntEvent.StartSpecialEvent(hunt, $"Shiny hunt: {string.Join(", ", starters)}", botEvents, huntState);
+                huntEvent.StartSpecialEvent(hunt, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", botEvents, huntState);
                 botEvents.Add(newPos, huntEvent);
                 return GetBotDashboardState();
             }
@@ -542,6 +561,12 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+
+        // Starter-hunt queue entries. Each entry picks its own ROM and label, the way chained
+        // encounter legs each pick their own phase.
+        public string? GameName { get; set; }
+        public string? Starter { get; set; }
+        public string? RecordingName { get; set; }
     }
 
     public class NewEventArguments

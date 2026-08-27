@@ -14,7 +14,12 @@
   },
   {
     "Name": "Shiny Starter Hunt",
-    "RequiredParameters": [ "GameName", "Starter", "PhaseName" ],
-    "OptionalParameters": [ "Emulators", "RecordingName" ]
+    "RequiredParameters": [ "PhaseName" ],
+    "OptionalParameters": [ "Emulators" ],
+    "LegParameters": {
+      "Name": "Starter",
+      "RequiredParameters": [ "GameName", "Starter" ],
+      "OptionalParameters": [ "RecordingName" ]
+    }
   }
 ]

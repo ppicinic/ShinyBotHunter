@@ -134,6 +134,13 @@ function buildLegBody(params: Record<string, string>): NewEventLegArguments {
   if (params['TrainType'] === 'Switch' && params['SwitchSlot'] !== undefined && params['SwitchSlot'] !== '') {
     leg.switchSlot = parseInt(params['SwitchSlot'], 10)
   }
+  // Same rule as the flat forms: anything the allowlist does not model goes through under its own
+  // name, so a schema with new leg parameters works without another silent-drop bug here.
+  for (const [key, value] of Object.entries(params)) {
+    if (LEG_PARAM_KEYS.has(key)) continue
+    if (value === '') continue
+    ;(leg as Record<string, unknown>)[key] = value
+  }
   return leg
 }
 
@@ -148,7 +155,8 @@ function ActionParamFields({
   availablePhases,
   party,
   onReloadParty,
-  partyLoading
+  partyLoading,
+  games
 }: {
   schema: EventArgumentOptions
   params: Record<string, string>
@@ -157,6 +165,9 @@ function ActionParamFields({
   party: PartySlotInfo[] | undefined
   onReloadParty: () => void
   partyLoading: boolean
+  // Detected ROMs, for schemas whose entries pick a game (the starter hunt's legs do). When absent,
+  // GameName falls through to a plain text input like any other parameter.
+  games?: GameRomInfo[]
 }): JSX.Element {
   const visibleConditionals = (schema.conditionalParameters ?? []).filter((cp: ConditionalParameter) => {
     return isConditionMet(cp.condition, params) || !cp.hideIfConditionNotMet
@@ -166,7 +177,18 @@ function ActionParamFields({
       {schema.requiredParameters?.map((param) => (
         <div key={param} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-          {param === 'PhaseName' ? (
+          {param === 'GameName' && games ? (
+            <select
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Select a game...</option>
+              {games.map((game) => (
+                <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
+              ))}
+            </select>
+          ) : param === 'PhaseName' ? (
             <select
               value={params[param] ?? ''}
               onChange={(e) => onChange(param, e.target.value)}
@@ -561,6 +583,32 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   const [loadingState, setLoadingState] = useState(true)
   // Per-action parameter values: actionName -> { paramName -> value }
   const [paramValues, setParamValues] = useState<Record<string, Record<string, string>>>({})
+  // Entries for top-level actions that take a list (the starter hunt's queue): actionName -> one
+  // param record per entry, mirroring how per-bot chained legs are held.
+  const [topLegs, setTopLegs] = useState<Record<string, Record<string, string>[]>>({})
+
+  const handleTopLegChange = (actionName: string, index: number, param: string, value: string): void => {
+    setTopLegs((prev) => {
+      const legs = [...(prev[actionName] ?? [])]
+      legs[index] = { ...legs[index], [param]: value }
+      return { ...prev, [actionName]: legs }
+    })
+  }
+
+  const handleTopAddLeg = (action: EventArgumentOptions, current: Record<string, string>[]): void => {
+    if (!action.legParameters) return
+    setTopLegs((prev) => ({
+      ...prev,
+      [action.name]: [...(prev[action.name] ?? current), initialParamsFor(action.legParameters!)]
+    }))
+  }
+
+  const handleTopRemoveLeg = (actionName: string, index: number): void => {
+    setTopLegs((prev) => ({
+      ...prev,
+      [actionName]: (prev[actionName] ?? []).filter((_, i) => i !== index)
+    }))
+  }
   const [submitting, setSubmitting] = useState<string | null>(null)
   const [cancelling, setCancelling] = useState<number | null>(null)
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
@@ -573,8 +621,9 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
    * before a milestone, so the list follows from that choice rather than being global -- offering
    * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads.
    */
-  const phasesForSelectedGame = (params: Record<string, string>): PhaseInfo[] => {
-    const rom = allGames.find((g) => g.handle === params['GameName'])
+  const phasesForSelectedGame = (params: Record<string, string>, legs?: Record<string, string>[]): PhaseInfo[] => {
+    const handle = params['GameName'] ?? legs?.find((leg) => leg['GameName'])?.['GameName']
+    const rom = allGames.find((g) => g.handle === handle)
     return rom?.flavor ? (metadata?.games[rom.flavor]?.phases ?? []) : []
   }
   // Per-bot available actions: pos -> EventArgumentOptions[]
@@ -824,6 +873,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     try {
       const params = paramValues[action.name] ?? {}
       const body: Record<string, unknown> = { eventName: action.name }
+      if (action.legParameters) {
+        const legs = topLegs[action.name] ?? [initialParamsFor(action.legParameters)]
+        body['legs'] = legs.map(buildLegBody)
+      }
       if (params['GameName'] !== undefined) {
         body['gameName'] = params['GameName']
       }
@@ -1106,8 +1159,13 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
             {actions.map((action) => {
               const params = paramValues[action.name] ?? {}
               const hasParams = (action.requiredParameters?.length ?? 0) > 0
-              const allParamsFilled = !hasParams || action.requiredParameters!.every((p) => params[p]?.trim())
+              const flatFilled = !hasParams || action.requiredParameters!.every((p) => params[p]?.trim())
+              const actionLegs = topLegs[action.name] ?? (action.legParameters ? [initialParamsFor(action.legParameters)] : [])
+              const legsFilled = !action.legParameters
+                || (actionLegs.length > 0 && actionLegs.every((leg) => requiredParamsFilled(action.legParameters!, leg)))
+              const allParamsFilled = flatFilled && legsFilled
               const isSubmitting = submitting === action.name
+              const legLabel = action.legParameters?.name ?? 'Entry'
 
               return (
                 <div
@@ -1116,14 +1174,53 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-white">{action.name}</span>
-                    <button
-                      onClick={() => handleStartAction(action)}
-                      disabled={isSubmitting || !allParamsFilled}
-                      className="px-3 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                    >
-                      {isSubmitting ? 'Starting...' : 'Start'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {action.legParameters && (
+                        <button
+                          onClick={() => handleTopAddLeg(action, actionLegs)}
+                          className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
+                        >
+                          + {legLabel}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleStartAction(action)}
+                        disabled={isSubmitting || !allParamsFilled}
+                        className="px-3 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
+                      >
+                        {isSubmitting ? 'Starting...' : 'Start'}
+                      </button>
+                    </div>
                   </div>
+
+                  {action.legParameters && actionLegs.map((leg, legIndex) => (
+                    <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1.5 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400">{legLabel} {legIndex + 1}</span>
+                        {actionLegs.length > 1 && (
+                          <button
+                            onClick={() => handleTopRemoveLeg(action.name, legIndex)}
+                            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <ActionParamFields
+                        schema={action.legParameters!}
+                        params={leg}
+                        onChange={(param, value) => {
+                          if (!topLegs[action.name]) setTopLegs((prev) => ({ ...prev, [action.name]: actionLegs }))
+                          handleTopLegChange(action.name, legIndex, param, value)
+                        }}
+                        availablePhases={[]}
+                        party={undefined}
+                        onReloadParty={() => undefined}
+                        partyLoading={false}
+                        games={allGames}
+                      />
+                    </div>
+                  ))}
 
                   {action.requiredParameters?.map((param) => (
                     <div key={param} className="flex items-center gap-2">
@@ -1143,13 +1240,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                         <select
                           value={params[param] ?? ''}
                           onChange={(e) => handleParamChange(action.name, param, e.target.value)}
-                          disabled={!params['GameName']}
+                          disabled={!(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])}
                           className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
                         >
                           <option value="">
-                            {params['GameName'] ? 'Select a milestone...' : 'Pick a game first'}
+                            {(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])
+                              ? 'Select a milestone...' : 'Pick a game first'}
                           </option>
-                          {phasesForSelectedGame(params).map((phase) => (
+                          {phasesForSelectedGame(params, actionLegs).map((phase) => (
                             <option key={phase.name} value={phase.name}>{phase.name}</option>
                           ))}
                         </select>

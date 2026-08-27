@@ -1,4 +1,4 @@
-using ShinyBotHunter.Bot;
+﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
@@ -31,10 +31,8 @@ namespace ShinyBotHunter.BotEvents
         private readonly IServiceProvider provider;
         private readonly StarterHuntConfig config;
         private readonly int emulatorsPerWave;
-        private readonly string romHandle;
-        private readonly IReadOnlyList<string> starters;
+        private readonly IReadOnlyList<StarterHuntEntry> queue;
         private readonly string milestone;
-        private readonly string recordingName;
         private readonly int emulatorBudget;
 
         private sealed record ParkedShiny(
@@ -55,13 +53,11 @@ namespace ShinyBotHunter.BotEvents
 
         public PokemonData? Result { get; private set; }
 
-        public MultiStarterHuntEvent(string romHandle, IReadOnlyList<string> starters, string milestone,
-            string recordingName, int emulatorsPerWave, int emulatorBudget, StarterHuntConfig config, IServiceProvider provider)
+        public MultiStarterHuntEvent(IReadOnlyList<StarterHuntEntry> queue, string milestone,
+            int emulatorsPerWave, int emulatorBudget, StarterHuntConfig config, IServiceProvider provider)
         {
-            this.romHandle = romHandle;
-            this.starters = starters;
+            this.queue = queue;
             this.milestone = milestone;
-            this.recordingName = recordingName;
             this.emulatorsPerWave = emulatorsPerWave;
             this.emulatorBudget = emulatorBudget;
             this.config = config;
@@ -70,9 +66,9 @@ namespace ShinyBotHunter.BotEvents
             this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
 
             config.Validate();
-            foreach (string starter in starters)
+            foreach (StarterHuntEntry entry in queue)
             {
-                config.MacroForStarter(starter);
+                config.MacroForStarter(entry.Starter);
             }
         }
 
@@ -91,15 +87,15 @@ namespace ShinyBotHunter.BotEvents
             ReportAndClearStalePending(progress);
             await stateStore.SaveAsync(progress);
 
-            foreach (string starter in starters)
+            foreach (StarterHuntEntry entry in queue)
             {
-                if (StarterHuntStateStore.IsDone(progress, starter))
+                if (StarterHuntStateStore.IsDone(progress, entry.Starter))
                 {
-                    Console.WriteLine($"[StarterHunt] {starter} is already caught for '{milestone}'; skipping.");
+                    Console.WriteLine($"[StarterHunt] {entry.Starter} is already caught for '{milestone}'; skipping.");
                     continue;
                 }
 
-                await HuntOneStarterAsync(starter, cancellationToken);
+                await HuntOneStarterAsync(entry, cancellationToken);
                 if (cancellationToken.IsCancellationRequested) break;
             }
 
@@ -122,8 +118,8 @@ namespace ShinyBotHunter.BotEvents
             return Result;
         }
 
-        /// <summary>Runs waves for one starter until an emulator parks with a keeper.</summary>
-        private async Task HuntOneStarterAsync(string starter, CancellationToken cancellationToken)
+        /// <summary>Runs waves for one queue entry until an emulator parks with a keeper.</summary>
+        private async Task HuntOneStarterAsync(StarterHuntEntry entry, CancellationToken cancellationToken)
         {
             // Parked emulators keep holding slots from the budget, so a deep queue narrows the waves
             // rather than exceeding what the machine was told it may run.
@@ -141,14 +137,14 @@ namespace ShinyBotHunter.BotEvents
             IReadOnlyList<string> retired = await stateStore.GetRetiredCopiesAsync(GameFlavor.RS);
             List<string> unavailable;
             lock (gate) { unavailable = retired.Concat(parked.Select(p => p.CopyHandle)).ToList(); }
-            List<int> copyIds = StarterHuntStateStore.AllocateCopyIds(romHandle, waveSize, unavailable);
+            List<int> copyIds = StarterHuntStateStore.AllocateCopyIds(entry.RomHandle, waveSize, unavailable);
 
             Console.WriteLine(
-                $"[StarterHunt] Hunting {starter} on {waveSize} emulator(s), copies " +
-                $"[{string.Join(", ", copyIds.Select(id => romHandle + id))}].");
+                $"[StarterHunt] Hunting {entry.Starter} on {waveSize} emulator(s) of {entry.RomHandle}, copies " +
+                $"[{string.Join(", ", copyIds.Select(id => entry.RomHandle + id))}].");
 
             using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var runs = copyIds.Select(id => RunOneAsync(starter, id, wave.Token)).ToList();
+            var runs = copyIds.Select(id => RunOneAsync(entry, id, wave.Token)).ToList();
 
             bool found = false;
             while (runs.Count > 0)
@@ -171,20 +167,19 @@ namespace ShinyBotHunter.BotEvents
                 Result = winner.HuntState.TargetPokemon?.PokemonData;
                 SetDashboardState(EventState.Waiting);
                 Console.WriteLine(
-                    $"[StarterHunt] Shiny {starter} parked on {winner.CopyHandle} (position {winner.Position}). " +
+                    $"[StarterHunt] Shiny {entry.Starter} parked on {winner.CopyHandle} (position {winner.Position}). " +
                     $"{CountParked()} waiting. Stopping this wave and moving on.");
                 await wave.CancelAsync();
             }
         }
 
         /// <summary>One emulator's hunt on its own freshly allocated copy.</summary>
-        private async Task<ParkedShiny?> RunOneAsync(string starter, int copyId, CancellationToken cancellationToken)
+        private async Task<ParkedShiny?> RunOneAsync(StarterHuntEntry entry, int copyId, CancellationToken cancellationToken)
         {
             int position = ClaimPosition();
-            GameContext context = botFactory.BuildGameContext(romHandle, copyId, position);
+            GameContext context = botFactory.BuildGameContext(entry.RomHandle, copyId, position);
             IBot bot = botFactory.CreateBot(context);
 
-            var entry = new StarterHuntEntry(romHandle, starter, recordingName);
             var hunt = new StarterHuntEvent(bot, context, entry, config, provider);
             GameState huntState = new()
             {
@@ -209,9 +204,9 @@ namespace ShinyBotHunter.BotEvents
                 StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
                 progress.PendingShinies.Add(new PendingShiny
                 {
-                    Starter = starter,
+                    Starter = entry.Starter,
                     RomHandle = context.GameName,
-                    RecordingName = recordingName,
+                    RecordingName = entry.RecordingName,
                     PID = shiny.PID,
                     Species = shiny.Species,
                     FoundUtc = DateTime.UtcNow,
@@ -219,7 +214,7 @@ namespace ShinyBotHunter.BotEvents
                 });
                 await stateStore.SaveAsync(progress);
 
-                return new ParkedShiny(starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
+                return new ParkedShiny(entry.Starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
             }
             catch (OperationCanceledException)
             {
