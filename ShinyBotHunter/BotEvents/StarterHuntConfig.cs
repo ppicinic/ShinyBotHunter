@@ -32,11 +32,14 @@ namespace ShinyBotHunter.BotEvents
         public int SaveSettleMs { get; set; } = 10000;
 
         /// <summary>
-        /// Pause once the battle starts, before the starter is read and the reset decision is made.
-        /// Without it a non-shiny is gone before it is ever on screen, which makes a run impossible to
-        /// watch or sanity-check. Set to 0 once the hunt is trusted and the seconds matter.
+        /// How long to keep trying to read the starter after the battle begins. The battle flag turns
+        /// on before the pokemon is out of its ball, so the first reads legitimately fail; this is the
+        /// budget for the game to settle, not an expected wait.
         /// </summary>
-        public int StarterVisiblePauseMs { get; set; } = 1500;
+        public int StarterReadTimeoutMs { get; set; } = 20000;
+
+        /// <summary>How long to wait between read attempts while the game settles.</summary>
+        public int StarterReadPollIntervalMs { get; set; } = 500;
 
         public int SaveMenuActionId { get; set; } = 5;
 
@@ -99,9 +102,13 @@ namespace ShinyBotHunter.BotEvents
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
             Positive(SoftResetSettleMs, nameof(SoftResetSettleMs));
             Positive(SaveSettleMs, nameof(SaveSettleMs));
-            if (StarterVisiblePauseMs < 0)
+            Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));
+            Positive(StarterReadPollIntervalMs, nameof(StarterReadPollIntervalMs));
+            if (StarterReadPollIntervalMs > StarterReadTimeoutMs)
             {
-                throw new InvalidOperationException($"{path}: StarterVisiblePauseMs cannot be negative.");
+                throw new InvalidOperationException(
+                    $"{path}: StarterReadPollIntervalMs ({StarterReadPollIntervalMs}) exceeds " +
+                    $"StarterReadTimeoutMs ({StarterReadTimeoutMs}), so the starter would be read once at most.");
             }
 
             if (BattlePollIntervalMs > BattleWaitTimeoutMs)

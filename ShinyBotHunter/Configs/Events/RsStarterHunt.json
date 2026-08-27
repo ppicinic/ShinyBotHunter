@@ -32,9 +32,11 @@
   // Safety pause after saving, so SaveRAM is flushed before anything closes the emulator.
   "SaveSettleMs": 10000,
 
-  // Pause once the battle starts, before the starter is read and the reset decision is made. Without
-  // it a non-shiny is gone before it is ever on screen. Set to 0 once the hunt is trusted.
-  "StarterVisiblePauseMs": 1500,
+  // How long to keep trying to read the starter after the battle begins. The battle flag turns on
+  // before the pokemon is out of its ball, so early reads legitimately fail and are retried; this is
+  // the budget for the game to settle, not an expected wait.
+  "StarterReadTimeoutMs": 20000,
+  "StarterReadPollIntervalMs": 500,
 
   // Start-menu entry id for SAVE. Derived from the menu action order in the decompilation; kept
   // here because a wrong value must be correctable without a rebuild. The bot reads the live menu
