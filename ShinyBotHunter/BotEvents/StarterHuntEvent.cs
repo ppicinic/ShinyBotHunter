@@ -244,6 +244,16 @@ namespace ShinyBotHunter.BotEvents
         /// signal lives in gBattleMainFunc and gBattlerControllerFuncs, but those are ROM function
         /// pointers that move between revisions and would pin the hunt to rev2.
         /// </summary>
+        /// <summary>
+        /// The value gBattleCommunication[1] holds once the FIGHT/BAG/POKEMON/RUN menu is up and
+        /// waiting for input. Derived from probing a live battle rather than from a symbol: the
+        /// byte reads 0 for the whole intro, steps through 2 as the intro hands over, and settles at
+        /// 4 when the menu appears. gBattleCommunication is RAM and revision-invariant, unlike the
+        /// controller callbacks that would name this state directly but live in ROM and move per
+        /// revision. Re-derivable any time by enabling LogBattleStateProbe.
+        /// </summary>
+        private const byte ActionMenuCommValue = 4;
+
         private async Task<bool> AdvanceUntilStarterIsOutAsync(CancellationToken cancellationToken)
         {
             bot.RunRepeatMacro(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.BattleAdvanceMacro));
@@ -262,31 +272,26 @@ namespace ShinyBotHunter.BotEvents
                             seenOnField = true;
                         }
 
+                        byte[] comm = await bot.ReadBytesAsync(BattleCommunicationAddress, 4);
+
                         if (config.LogBattleStateProbe)
                         {
-                            // Records what the candidate action-menu variables actually hold as the
-                            // battle progresses, so the stop condition can key on the menu being up
-                            // rather than on a duration. Both live in RAM, unlike gBattleMainFunc and
-                            // gBattlerControllerFuncs, which are ROM pointers that move per revision.
-                            byte[] comm = await bot.ReadBytesAsync(BattleCommunicationAddress, 4);
                             byte cursor = await bot.ReadByteAsync(ActionSelectionCursorAddress);
                             Console.WriteLine(
                                 $"[StarterHunt] probe t+{(int)(DateTime.UtcNow - started).TotalMilliseconds}ms " +
                                 $"onField={seenOnField} comm=[{string.Join(",", comm)}] cursor={cursor}");
                         }
+
+                        // Both, not either: the species appears mid-intro, and the menu value alone
+                        // could in principle recur in a state where the party is not what we think.
+                        if (seenOnField && comm[1] == ActionMenuCommValue)
+                        {
+                            return true;
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[StarterHunt] {entry.RecordingName}: field check failed ({ex.Message}).");
-                    }
-
-                    // Keeps pressing past the pokemon appearing, which is the point: the mon is on the
-                    // field well before the intro text is done and the action menu is up, and stopping
-                    // at the first sighting meant B was never pressed at all.
-                    bool longEnough = (DateTime.UtcNow - started).TotalMilliseconds >= config.BattleAdvanceMinMs;
-                    if (seenOnField && longEnough)
-                    {
-                        return true;
+                        Console.WriteLine($"[StarterHunt] {entry.RecordingName}: battle state check failed ({ex.Message}).");
                     }
 
                     await Task.Delay(config.BattlePollIntervalMs, cancellationToken);

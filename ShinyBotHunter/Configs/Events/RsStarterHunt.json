@@ -59,12 +59,7 @@
   // analysed and logged regardless of this setting, since the keep decision depends on it.
   "LogLegalityForEveryEncounter": true,
 
-  // Minimum time to keep pressing B once the battle is under way. The pokemon reaches the field well
-  // before the intro text is done, so stopping at the first sighting meant B was never pressed at
-  // all. Replaced by a menu-state check once the probe below identifies one.
-  "BattleAdvanceMinMs": 5000,
-
-  // Logs the candidate action-menu variables during each battle, so the stop condition can key on
-  // the FIGHT/BAG/POKEMON/RUN menu being up rather than on a duration. Turn off once identified.
-  "LogBattleStateProbe": true
+  // Logs the battle-state bytes during each battle. Only needed to re-derive the action-menu
+  // signal the stop condition keys on (gBattleCommunication[1] == 4 once the menu is up).
+  "LogBattleStateProbe": false
 }
