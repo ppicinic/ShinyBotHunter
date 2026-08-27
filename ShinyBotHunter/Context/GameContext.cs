@@ -42,6 +42,24 @@ namespace ShinyBotHunter.Context
         public int Revision => Rom?.Revision ?? 0;
 
         /// <summary>
+        /// Directory name this emulator's saves go under, so a save says which ROM copy produced it
+        /// rather than which slot happened to run it. Sanitised because it becomes a real directory,
+        /// though a handle is a filename already.
+        /// </summary>
+        public string SaveSlotName
+        {
+            get
+            {
+                string name = GameName;
+                foreach (char invalid in Path.GetInvalidFileNameChars())
+                {
+                    name = name.Replace(invalid, '_');
+                }
+                return name;
+            }
+        }
+
+        /// <summary>
         /// File extension for this console's ROMs. BizHawk picks its core from the extension — no core
         /// is ever named on the command line — so this is also what selects melonDS vs mGBA.
         /// </summary>

@@ -31,6 +31,13 @@ namespace ShinyBotHunter.BotEvents
         public int SoftResetSettleMs { get; set; } = 4000;
         public int SaveSettleMs { get; set; } = 10000;
 
+        /// <summary>
+        /// Pause once the battle starts, before the starter is read and the reset decision is made.
+        /// Without it a non-shiny is gone before it is ever on screen, which makes a run impossible to
+        /// watch or sanity-check. Set to 0 once the hunt is trusted and the seconds matter.
+        /// </summary>
+        public int StarterVisiblePauseMs { get; set; } = 1500;
+
         public int SaveMenuActionId { get; set; } = 5;
 
         public bool LogLegalityForEveryEncounter { get; set; } = true;
@@ -92,6 +99,10 @@ namespace ShinyBotHunter.BotEvents
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
             Positive(SoftResetSettleMs, nameof(SoftResetSettleMs));
             Positive(SaveSettleMs, nameof(SaveSettleMs));
+            if (StarterVisiblePauseMs < 0)
+            {
+                throw new InvalidOperationException($"{path}: StarterVisiblePauseMs cannot be negative.");
+            }
 
             if (BattlePollIntervalMs > BattleWaitTimeoutMs)
             {

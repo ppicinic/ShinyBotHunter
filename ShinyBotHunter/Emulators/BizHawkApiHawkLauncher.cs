@@ -87,11 +87,12 @@ namespace ShinyBotHunter.Emulators
             // Pass ports via the same env vars as the Lua launcher
             _process.StartInfo.EnvironmentVariables["BIZHAWK_COMMAND_PORT"] = CommandPort.ToString();
             _process.StartInfo.EnvironmentVariables["BIZHAWK_MEMORY_PORT"]  = MemoryPort.ToString();
-            // Per-instance save directory. BizHawk names a save after the game rather than the file,
-            // so byte-identical ROM copies would otherwise all write to one SaveRAM file and overwrite
-            // each other. The configured Save RAM path contains %BIZHAWK_SAVE_SLOT%, which resolves to
-            // this; unset, it resolves to nothing and the path is what it always was.
-            _process.StartInfo.EnvironmentVariables["BIZHAWK_SAVE_SLOT"] = $"bot{context.DisplayPosition}";
+            // Per-instance save directory, named after the ROM copy so a save on disk says which copy
+            // produced it. BizHawk names the save file itself after the game rather than the file, so
+            // byte-identical copies would otherwise all write to one SaveRAM file and overwrite each
+            // other. The configured Save RAM path contains %BIZHAWK_SAVE_SLOT%, which resolves to this;
+            // unset, it resolves to nothing and the path is what it always was.
+            _process.StartInfo.EnvironmentVariables["BIZHAWK_SAVE_SLOT"] = context.SaveSlotName;
 
         }
 
