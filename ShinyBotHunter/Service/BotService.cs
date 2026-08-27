@@ -20,8 +20,12 @@ namespace ShinyBotHunter.Service
         private EventArgumentOptions[] specialEvents;
         private IHubContext<ElectronHub, IElectronClient> hubContext;
         private string bizHawkMode;
-        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext)
+        private ApplicationSettings settings;
+        private RomInfoService romInfoService;
+        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext, RomInfoService romInfoService)
         {
+            this.settings = appSettings.Value;
+            this.romInfoService = romInfoService;
             // Display slots and ports are one pool shared by every console, so the ceiling on
             // concurrently running emulators is the sum of the per-console budgets.
             this.maxEmulators = appSettings.Value.TotalMaxEmulators;
@@ -107,6 +111,39 @@ namespace ShinyBotHunter.Service
                     throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
                 }
             }
+            else if(args.EventName == "Shiny Starter Hunt")
+            {
+                if (positions.Count() != 0)
+                {
+                    throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
+                }
+                if (string.IsNullOrWhiteSpace(args.GameName)) throw new ArgumentException("A game must be chosen for the shiny starter hunt.");
+                if (string.IsNullOrWhiteSpace(args.Starter)) throw new ArgumentException("A starter must be chosen for the shiny starter hunt.");
+                if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
+
+                RomInfo rom = romInfoService.GetByHandle(args.GameName)
+                    ?? throw new ArgumentException($"No ROM named '{args.GameName}' was found.");
+                if (rom.Flavor != GameFlavor.RS)
+                {
+                    throw new ArgumentException(
+                        $"'{args.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                }
+
+                int requested = args.Emulators ?? 1;
+                int budget = settings.MaxEmulatorsFor(rom.Console);
+                if (requested < 1 || requested > budget)
+                {
+                    throw new ArgumentException($"Emulators must be between 1 and {budget} for {rom.Console}.");
+                }
+
+                string recordingName = string.IsNullOrWhiteSpace(args.RecordingName) ? args.GameName : args.RecordingName;
+                var hunt = new MultiStarterHuntEvent(args.GameName, args.Starter, args.PhaseName, recordingName,
+                    requested, StarterHuntConfig.Load(), provider);
+                var huntEvent = new BotAndOrEvent();
+                huntEvent.StartSpecialEvent(hunt, $"Shiny {args.Starter}", botEvents);
+                botEvents.Add(newPos, huntEvent);
+                return GetBotDashboardState();
+            }
             else
             {
                 throw new Exception($"{args.EventName} does not exist.");
@@ -153,43 +190,6 @@ namespace ShinyBotHunter.Service
                 string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
                 botEvents[pos].StartEvent(chainedEvent, botEvents[pos].GameState!, name, this);
 
-                return GetBotDashboardState();
-            }
-            else if(args.EventName == "Shiny Starter Hunt")
-            {
-                if (string.IsNullOrWhiteSpace(args.Starter))
-                {
-                    throw new ArgumentException("A starter must be chosen for the shiny starter hunt.");
-                }
-                if (string.IsNullOrWhiteSpace(args.PhaseName))
-                {
-                    throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
-                }
-                IBot bot = botEvents[pos].Bot!;
-                if (bot.GameFlavor != GameFlavor.RS)
-                {
-                    throw new ArgumentException(
-                        $"The shiny starter hunt is implemented for Ruby/Sapphire; this emulator is running {bot.GameFlavor}.");
-                }
-
-                GameContext context = botEvents[pos].Context
-                    ?? throw new InvalidOperationException($"No game context recorded for the bot at position {pos}.");
-                // Encounters are filed under a name the operator chooses, so a hunt can be grouped
-                // however they like rather than by whichever ROM copy happened to run it.
-                string recordingName = string.IsNullOrWhiteSpace(args.RecordingName) ? bot.GameFileName : args.RecordingName;
-                var entry = new StarterHuntEntry(context.SourceGameName, args.Starter, recordingName);
-                var hunt = new StarterHuntEvent(bot, context, entry, StarterHuntConfig.Load(), provider);
-
-                botEvents[pos].GameState = new GameState()
-                {
-                    GameFlavor = bot.GameFlavor,
-                    BotService = this,
-                    Bot = bot,
-                    Milestone = args.PhaseName,
-                    Target = new ShinyTarget(),
-                };
-                botEvents[pos].GameState!.State.Push(EventState.Init);
-                botEvents[pos].StartEvent(hunt, botEvents[pos].GameState!, $"Shiny {args.Starter}", this);
                 return GetBotDashboardState();
             }
             else if(args.EventName == "HGSS Togepi Egg")
@@ -393,12 +393,6 @@ namespace ShinyBotHunter.Service
                 {
                     actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"],
                 };
-                // Offered per flavor rather than always, so the dashboard cannot start a hunt against
-                // a game that has no macros for it.
-                if (botEvent.Bot?.GameFlavor == GameFlavor.RS)
-                {
-                    actions = [actionMap["Shiny Starter Hunt"]];
-                }
                 return actions;
             }
             else
@@ -431,7 +425,6 @@ namespace ShinyBotHunter.Service
             {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
             // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
             // only per-hunt choices are which starter to take and what to file the encounters under.
-            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter", "PhaseName"], OptionalParameters = ["RecordingName"] } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -543,6 +536,8 @@ namespace ShinyBotHunter.Service
         public int? SwitchSlot { get; set; }
         /// <summary>Which starter to take, for the shiny starter hunt.</summary>
         public string? Starter { get; set; }
+        /// <summary>How many emulators the shiny starter hunt should run at once.</summary>
+        public int? Emulators { get; set; }
         /// <summary>
         /// What to file this hunt's encounters under. Deliberately not GameName, which already means
         /// which ROM to launch and renders as a ROM picker.

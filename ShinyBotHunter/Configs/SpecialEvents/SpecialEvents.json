@@ -11,5 +11,10 @@
   },
   {
     "Name": "HGSS Shiny Starter Hunt"
+  },
+  {
+    "Name": "Shiny Starter Hunt",
+    "RequiredParameters": [ "GameName", "Starter", "PhaseName" ],
+    "OptionalParameters": [ "Emulators", "RecordingName" ]
   }
 ]
