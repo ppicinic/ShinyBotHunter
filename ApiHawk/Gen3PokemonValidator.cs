@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace ApiHawk
 {
@@ -45,17 +45,26 @@ namespace ApiHawk
         private const int MaxPossibleHp = 999;
 
         /// <summary>
-        /// Substructure order by personality % 24. Index i of a row gives the stored slot that the
-        /// i-th logical block (Growth, Attacks, EVs, Miscellaneous) occupies.
+        /// Substructure source slot by personality % 24: row[i] is the storage slot holding the i-th
+        /// logical block (Growth, Attacks, EVs, Miscellaneous).
+        ///
+        /// These 24 rows are NOT the permutations in lexicographic order, which is what they were
+        /// before and what looked plausible enough to survive review and a round-trip test. Ten rows
+        /// differ, and with a wrong row the checksum still passes -- it sums all four blocks and is
+        /// blind to their order -- so the failure was silent: whatever block landed in the Growth
+        /// position was read as the species. A fresh mon's EV block gave species 0; the Attacks block
+        /// gave the first move's id, which is how a Mudkip hunt logged a Nidorino (move 33, Tackle).
+        /// Values verbatim from pokebot-gen3's POKEMON_DATA_SUBSTRUCTS_ORDER, which is proven against
+        /// live games; pinned by test against that reference.
         /// </summary>
         private static readonly int[][] SubstructOrder =
         {
-            new[] { 0, 1, 2, 3 }, new[] { 0, 1, 3, 2 }, new[] { 0, 2, 1, 3 }, new[] { 0, 2, 3, 1 },
-            new[] { 0, 3, 1, 2 }, new[] { 0, 3, 2, 1 }, new[] { 1, 0, 2, 3 }, new[] { 1, 0, 3, 2 },
-            new[] { 1, 2, 0, 3 }, new[] { 1, 2, 3, 0 }, new[] { 1, 3, 0, 2 }, new[] { 1, 3, 2, 0 },
-            new[] { 2, 0, 1, 3 }, new[] { 2, 0, 3, 1 }, new[] { 2, 1, 0, 3 }, new[] { 2, 1, 3, 0 },
-            new[] { 2, 3, 0, 1 }, new[] { 2, 3, 1, 0 }, new[] { 3, 0, 1, 2 }, new[] { 3, 0, 2, 1 },
-            new[] { 3, 1, 0, 2 }, new[] { 3, 1, 2, 0 }, new[] { 3, 2, 0, 1 }, new[] { 3, 2, 1, 0 },
+            new[] { 0, 1, 2, 3 }, new[] { 0, 1, 3, 2 }, new[] { 0, 2, 1, 3 }, new[] { 0, 3, 1, 2 },
+            new[] { 0, 2, 3, 1 }, new[] { 0, 3, 2, 1 }, new[] { 1, 0, 2, 3 }, new[] { 1, 0, 3, 2 },
+            new[] { 2, 0, 1, 3 }, new[] { 3, 0, 1, 2 }, new[] { 2, 0, 3, 1 }, new[] { 3, 0, 2, 1 },
+            new[] { 1, 2, 0, 3 }, new[] { 1, 3, 0, 2 }, new[] { 2, 1, 0, 3 }, new[] { 3, 1, 0, 2 },
+            new[] { 2, 3, 0, 1 }, new[] { 3, 2, 0, 1 }, new[] { 1, 2, 3, 0 }, new[] { 1, 3, 2, 0 },
+            new[] { 2, 1, 3, 0 }, new[] { 3, 1, 2, 0 }, new[] { 2, 3, 1, 0 }, new[] { 3, 2, 1, 0 },
         };
 
         public static bool IsUsable(byte[] raw, out string reason)

@@ -9,14 +9,18 @@ namespace ShinyBotHunter.Tests
     /// </summary>
     public class Gen3PokemonParserTests
     {
-        private static readonly int[][] SubstructOrder =
+        // Transcribed independently from pokebot-gen3's POKEMON_DATA_SUBSTRUCTS_ORDER, NOT copied
+        // from the parser. The pin test below compares the parser's table against this, which is the
+        // only defence that works here: a round trip shares the table with the decoder, so it passes
+        // with any permutation table -- including the wrong lexicographic one this file used to hold.
+        private static readonly int[][] ReferenceSubstructOrder =
         {
-            new[] { 0, 1, 2, 3 }, new[] { 0, 1, 3, 2 }, new[] { 0, 2, 1, 3 }, new[] { 0, 2, 3, 1 },
-            new[] { 0, 3, 1, 2 }, new[] { 0, 3, 2, 1 }, new[] { 1, 0, 2, 3 }, new[] { 1, 0, 3, 2 },
-            new[] { 1, 2, 0, 3 }, new[] { 1, 2, 3, 0 }, new[] { 1, 3, 0, 2 }, new[] { 1, 3, 2, 0 },
-            new[] { 2, 0, 1, 3 }, new[] { 2, 0, 3, 1 }, new[] { 2, 1, 0, 3 }, new[] { 2, 1, 3, 0 },
-            new[] { 2, 3, 0, 1 }, new[] { 2, 3, 1, 0 }, new[] { 3, 0, 1, 2 }, new[] { 3, 0, 2, 1 },
-            new[] { 3, 1, 0, 2 }, new[] { 3, 1, 2, 0 }, new[] { 3, 2, 0, 1 }, new[] { 3, 2, 1, 0 },
+            new[] { 0, 1, 2, 3 }, new[] { 0, 1, 3, 2 }, new[] { 0, 2, 1, 3 }, new[] { 0, 3, 1, 2 },
+            new[] { 0, 2, 3, 1 }, new[] { 0, 3, 2, 1 }, new[] { 1, 0, 2, 3 }, new[] { 1, 0, 3, 2 },
+            new[] { 2, 0, 1, 3 }, new[] { 3, 0, 1, 2 }, new[] { 2, 0, 3, 1 }, new[] { 3, 0, 2, 1 },
+            new[] { 1, 2, 0, 3 }, new[] { 1, 3, 0, 2 }, new[] { 2, 1, 0, 3 }, new[] { 3, 1, 0, 2 },
+            new[] { 2, 3, 0, 1 }, new[] { 3, 2, 0, 1 }, new[] { 1, 2, 3, 0 }, new[] { 1, 3, 2, 0 },
+            new[] { 2, 1, 3, 0 }, new[] { 3, 1, 2, 0 }, new[] { 2, 3, 1, 0 }, new[] { 3, 2, 1, 0 },
         };
 
         /// <summary>
@@ -38,7 +42,7 @@ namespace ShinyBotHunter.Tests
 
             // Scramble into stored order, which is the inverse of how the parser unscrambles.
             byte[] scrambled = new byte[48];
-            int[] order = SubstructOrder[pid % 24];
+            int[] order = ReferenceSubstructOrder[pid % 24];
             for (int slot = 0; slot < 4; slot++)
             {
                 Buffer.BlockCopy(logical, slot * 12, scrambled, order[slot] * 12, 12);
@@ -84,6 +88,37 @@ namespace ShinyBotHunter.Tests
             Assert.False(mon!.IsCorrupt, $"PID {pid} (order {pid % 24}) failed to decode.");
             Assert.Equal(252, mon.Species);   // Treecko, national
             Assert.Equal(5, mon.Level);
+        }
+
+
+        [Fact]
+        public void SubstructOrderMatchesThePokebotReferenceExactly()
+        {
+            // The failure a wrong table produces is silent: the checksum sums all four blocks and is
+            // blind to their order, so whatever block lands in the Growth position is read as the
+            // species. Live, that logged a Nidorino (move 33, Tackle, read as species 33) and a run
+            // of species-0 mons (the zeroed EV block) in a Mudkip hunt.
+            var field = typeof(Gen3PokemonParser).GetField("SubstructOrder",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            var actual = (int[][])field.GetValue(null)!;
+
+            Assert.Equal(24, actual.Length);
+            for (int row = 0; row < 24; row++)
+            {
+                Assert.True(actual[row].SequenceEqual(ReferenceSubstructOrder[row]),
+                    $"row {row}: parser has [{string.Join(",", actual[row])}], reference is [{string.Join(",", ReferenceSubstructOrder[row])}]");
+            }
+        }
+
+        [Fact]
+        public void ObservedNidorinoPidDecodesToTheChosenSpecies()
+        {
+            // PID A705319E is class 22, one of the ten rows the old table had wrong; live it decoded a
+            // Mudkip as Nidorino. Mudkip is internal 283.
+            var mon = Gen3PokemonParser.Decode(Build(0xA705319E, 0x12345678, internalSpecies: 283))!;
+
+            Assert.False(mon.IsCorrupt);
+            Assert.Equal(258, mon.Species);
         }
 
         [Fact]
