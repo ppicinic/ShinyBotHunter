@@ -161,6 +161,10 @@ namespace ShinyBotHunter.Service
                 {
                     throw new ArgumentException("A starter must be chosen for the shiny starter hunt.");
                 }
+                if (string.IsNullOrWhiteSpace(args.PhaseName))
+                {
+                    throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
+                }
                 IBot bot = botEvents[pos].Bot!;
                 if (bot.GameFlavor != GameFlavor.RS)
                 {
@@ -181,7 +185,7 @@ namespace ShinyBotHunter.Service
                     GameFlavor = bot.GameFlavor,
                     BotService = this,
                     Bot = bot,
-                    Milestone = "1-1 Starters",
+                    Milestone = args.PhaseName,
                     Target = new ShinyTarget(),
                 };
                 botEvents[pos].GameState!.State.Push(EventState.Init);
@@ -427,7 +431,7 @@ namespace ShinyBotHunter.Service
             {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
             // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
             // only per-hunt choices are which starter to take and what to file the encounters under.
-            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter"], OptionalParameters = ["RecordingName"] } },
+            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter", "PhaseName"], OptionalParameters = ["RecordingName"] } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 

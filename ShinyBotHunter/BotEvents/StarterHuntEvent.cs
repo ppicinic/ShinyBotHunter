@@ -76,7 +76,7 @@ namespace ShinyBotHunter.BotEvents
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                PokemonData? starter = await AttemptAsync(cancellationToken);
+                PokemonData? starter = await AttemptAsync(state.Milestone, cancellationToken);
 
                 if (starter is null)
                 {
@@ -125,7 +125,7 @@ namespace ShinyBotHunter.BotEvents
         /// One reset cycle: continue, take the ball, advance into the battle, read what came out.
         /// </summary>
         /// <returns>null when the attempt could not produce a readable starter, which is retried.</returns>
-        private async Task<PokemonData?> AttemptAsync(CancellationToken cancellationToken)
+        private async Task<PokemonData?> AttemptAsync(string milestone, CancellationToken cancellationToken)
         {
             RunMacro(config.ContinueMacro);
             await bot.WaitForMacroAsync(cancellationToken);
@@ -162,7 +162,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 PokemonData = starter,
                 Game = GameFlavor.RS,
-                Phase = "1-1 Starters",
+                Phase = milestone,
                 GameFileName = entry.RecordingName,
                 DateTime = DateTime.UtcNow,
             });
