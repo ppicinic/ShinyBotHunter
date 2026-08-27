@@ -567,6 +567,16 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+
+  /**
+   * Milestones belonging to whichever ROM the action has selected. Top-level actions pick a game
+   * before a milestone, so the list follows from that choice rather than being global -- offering
+   * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads.
+   */
+  const phasesForSelectedGame = (params: Record<string, string>): PhaseInfo[] => {
+    const rom = allGames.find((g) => g.handle === params['GameName'])
+    return rom?.flavor ? (metadata?.games[rom.flavor]?.phases ?? []) : []
+  }
   // Per-bot available actions: pos -> EventArgumentOptions[]
   const [botActions, setBotActions] = useState<Record<number, EventArgumentOptions[]>>({})
   // Per-bot action parameter values: pos -> { actionName -> { paramName -> value } }
@@ -1114,6 +1124,20 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                           <option value="">Select a game...</option>
                           {allGames.map((game) => (
                             <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
+                          ))}
+                        </select>
+                      ) : param === 'PhaseName' ? (
+                        <select
+                          value={params[param] ?? ''}
+                          onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                          disabled={!params['GameName']}
+                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                        >
+                          <option value="">
+                            {params['GameName'] ? 'Select a milestone...' : 'Pick a game first'}
+                          </option>
+                          {phasesForSelectedGame(params).map((phase) => (
+                            <option key={phase.name} value={phase.name}>{phase.name}</option>
                           ))}
                         </select>
                       ) : (
