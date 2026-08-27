@@ -5,6 +5,7 @@ using MongoDB.Driver;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Context;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -54,6 +55,7 @@ namespace ShinyBotHunter.BotEvents
         private static readonly object _locker=new object();
         private IServiceProvider serviceProvider;
         private BotFactory botFactory;
+        private RomInfoService romInfoService;
         private HgssShinyStarterEventFactory shinyStarterEventFactory;
         private IMongoCollection<BaseGameState> _collection;
 
@@ -78,13 +80,30 @@ namespace ShinyBotHunter.BotEvents
             } 
         }
 
-        public MultiShinyHunterEvent(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider serviceProvider, HgssShinyStarterEventFactory shinyStarterEventFactory, MongoDbConnection dbConnection)
+        public MultiShinyHunterEvent(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider serviceProvider, HgssShinyStarterEventFactory shinyStarterEventFactory, MongoDbConnection dbConnection, RomInfoService romInfoService)
         {
-            this.maxEmulators = appSettings.Value.MaxEmulators["DS"];
+            this.maxEmulators = appSettings.Value.MaxEmulatorsFor(ConsoleType.DS);
+            this.romInfoService = romInfoService;
             this.serviceProvider = serviceProvider;
             this.botFactory = botFactory;
             this.shinyStarterEventFactory = shinyStarterEventFactory;
             _collection = dbConnection.GetDatabase().GetCollection<BaseGameState>("PhaseStates");
+        }
+
+        /// <summary>
+        /// Resolves which ROM file to use for a game by asking what the ROMs actually are, rather than
+        /// assuming a filename. A renamed ROM keeps working, and a missing one fails here by name
+        /// instead of surfacing later as an emulator that opened nothing.
+        /// </summary>
+        private string RomHandleFor(string gameName)
+        {
+            var rom = romInfoService.FindByGame(gameName).FirstOrDefault();
+            if (rom is null)
+            {
+                throw new InvalidOperationException(
+                    $"No ROM in the ROM folder identifies as {gameName}. The starter hunt needs one.");
+            }
+            return rom.Handle;
         }
 
         public async override Task<List<StarterPokemonData>> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -124,7 +143,7 @@ namespace ShinyBotHunter.BotEvents
             List<Task> tasks = new List<Task>();
             for(int i = 0; i < maxEmulators; i++)
             {
-                var context = botFactory.BuildGameContext("Pokemon HeartGold", i + 1, i);
+                var context = botFactory.BuildGameContext(RomHandleFor("Pokemon HeartGold"), i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
                 CreateSaveEvent createSave = new CreateSaveEvent(bot, context, serviceProvider);
                 tasks.Add(createSave.ExecuteAsync(new GameState()));
@@ -147,7 +166,7 @@ namespace ShinyBotHunter.BotEvents
             List<IBot> bots = new List<IBot>();
             for (int i = 0; i < maxEmulators; i++)
             {
-                var context = botFactory.BuildGameContext("Pokemon HeartGold", i + 1, i);
+                var context = botFactory.BuildGameContext(RomHandleFor("Pokemon HeartGold"), i + 1, i);
                 IBot bot = botFactory.CreateBot(context);
                 bots.Add(bot);
                 HgssShinyStarterEvent hgssShinyStarter = shinyStarterEventFactory.CreateEvent(bot, GameFlavor.HGSS);
@@ -166,7 +185,7 @@ namespace ShinyBotHunter.BotEvents
                 var pokemonData = await task;
                 if (pokemonData is not null)
                 {
-                    gameState.PokemonData.Add(new StarterPokemonData() { PokemonData = pokemonData, Game = "Pokemon HeartGold", GameId = (tasks.IndexOf(task) + 1).ToString() });
+                    gameState.PokemonData.Add(new StarterPokemonData() { PokemonData = pokemonData, Game = RomHandleFor("Pokemon HeartGold"), GameId = (tasks.IndexOf(task) + 1).ToString() });
                     gameState.State = ShinyStarterStates.HuntRestOfShinies;
                     await SaveStateAsync(gameState);
                     await cancellationTokenSource.CancelAsync();
@@ -307,13 +326,13 @@ namespace ShinyBotHunter.BotEvents
         {
             var _ = Task.Run(async () =>
             {
-                var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
+                var context = botFactory.BuildGameContext(RomHandleFor("Pokemon SoulSilver"), gameId, placement);
                 IBot bot = botFactory.CreateBot(context);
                 var e = shinyStarterEventFactory.CreateEvent(bot, context.GameFlavor);
                 var pokemonData = await e.ExecuteWithResultAsync(new GameState(), token);
                 if (pokemonData is not null)
                 {
-                    await channel.Writer.WriteAsync(new StarterPokemonData() { Game = "Pokemon SoulSilver", GameId = gameId.ToString(), PokemonData = pokemonData });
+                    await channel.Writer.WriteAsync(new StarterPokemonData() { Game = RomHandleFor("Pokemon SoulSilver"), GameId = gameId.ToString(), PokemonData = pokemonData });
                 }
             });
         }
@@ -321,7 +340,7 @@ namespace ShinyBotHunter.BotEvents
         private void CreateAndHuntTask(int gameId, int placement, Channel<StarterPokemonData> channel, CancellationToken token)
         {
             var _ = Task.Run(async () => {
-                var context = botFactory.BuildGameContext("Pokemon SoulSilver", gameId, placement);
+                var context = botFactory.BuildGameContext(RomHandleFor("Pokemon SoulSilver"), gameId, placement);
                 IBot createBot = botFactory.CreateBot(context);
                 CreateSaveEvent saveEvent = new CreateSaveEvent(createBot, context, serviceProvider);
                 await saveEvent.ExecuteAsync(new GameState());
@@ -332,7 +351,7 @@ namespace ShinyBotHunter.BotEvents
                 if (pokemonData is not null)
                 {
                     await Task.Delay(10000);
-                    await channel.Writer.WriteAsync(new StarterPokemonData() { Game = "Pokemon SoulSilver", GameId = gameId.ToString(), PokemonData = pokemonData });
+                    await channel.Writer.WriteAsync(new StarterPokemonData() { Game = RomHandleFor("Pokemon SoulSilver"), GameId = gameId.ToString(), PokemonData = pokemonData });
                 }
             });
         }

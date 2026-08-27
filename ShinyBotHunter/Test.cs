@@ -60,8 +60,8 @@ namespace ShinyBotHunter
             string c = Console.ReadLine()!;
             while (c != "c")
             {
-                var state = await reader.GetPokemonBattleState(mem);
-                var state2 = await reader.GetPokemonState(mem);
+                var state = await reader.GetPokemonBattleState(mem, GameFlavor.HGSS);
+                var state2 = await reader.GetPokemonState(mem, GameFlavor.HGSS);
                 c = Console.ReadLine()!;
             }
         }
@@ -129,7 +129,7 @@ namespace ShinyBotHunter
             var bot = new BizHawkCommandClient(port: 50000);
             mem.Connect();
             bot.Connect();
-            var startState= await reader.GetPokemonState(mem);
+            var startState= await reader.GetPokemonState(mem, GameFlavor.HGSS);
             for(int i = 0; i < startState.PartySize; i++)
             {
                 Console.WriteLine(startState.PartyPokemon[i]!.PID);
@@ -159,7 +159,7 @@ namespace ShinyBotHunter
                     string[] parts = c.Split(",");
                     int searchValue = Int32.Parse(parts[0]);
                     int[] ppSearchValues = [Int32.Parse(parts[1]), Int32.Parse(parts[2]), Int32.Parse(parts[3]), Int32.Parse(parts[4])];
-                    var state = await reader.GetPokemonState(mem);
+                    var state = await reader.GetPokemonState(mem, GameFlavor.HGSS);
                     var anchor = await mem.ReadUIntAsync(0x21D4158);
                     var foeAnchor = await mem.ReadUIntAsync(anchor + 0x6930);
                     var pokemon = parser.Parse(await mem.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));

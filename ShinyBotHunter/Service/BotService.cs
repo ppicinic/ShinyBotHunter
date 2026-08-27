@@ -125,7 +125,7 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Wild Encounter")
             {
-                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName);
+                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor);
 
                 var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
                 botEvents[pos].GameState = NewGameStateForLeg(pos, leg);
@@ -142,7 +142,7 @@ namespace ShinyBotHunter.Service
                 }
                 // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
                 // after leg 1 has already been running for an hour.
-                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName)).ToList();
+                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor)).ToList();
 
                 var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
                 // The chain shares one GameState across all legs so the start tile survives leg
@@ -167,10 +167,10 @@ namespace ShinyBotHunter.Service
                 // Constructing the event loads and validates its config, so a corridor or a touch
                 // coordinate that was never measured fails here with a message rather than after the
                 // dashboard has already reported the hunt as running.
-                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, provider, this);
+                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, botEvents[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
                 botEvents[pos].GameState = new GameState()
                 {
-                    GameFlavor = GameFlavor.HGSS,
+                    GameFlavor = botEvents[pos].Bot!.GameFlavor,
                     BotService = this,
                     Bot = botEvents[pos].Bot!,
                     Milestone = args.PhaseName,
@@ -229,7 +229,7 @@ namespace ShinyBotHunter.Service
         /// "Wild Encounter" action and every leg of a "Chained Encounter", so both reject the same
         /// bad input.
         /// </summary>
-        private EventLeg ValidateAndBuildLeg(NewEventLegArguments args, string gameFileName)
+        private EventLeg ValidateAndBuildLeg(NewEventLegArguments args, string gameFileName, GameFlavor flavor)
         {
             if (args.PhaseName is null || args.TargetType is null)
             {
@@ -242,7 +242,7 @@ namespace ShinyBotHunter.Service
             var targetType = Enum.Parse<TargetType>(args.TargetType);
             ITarget target = targetType switch
             {
-                TargetType.PhaseTarget => new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, gameFileName),
+                TargetType.PhaseTarget => new PhaseTarget(provider, flavor, args.PhaseName, gameFileName),
                 TargetType.NoTarget => new NoTarget(),
                 _ => new ShinyTarget(),
             };
@@ -300,7 +300,7 @@ namespace ShinyBotHunter.Service
             return new GameState()
             {
                 OriginalBattleMode = leg.TrainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
-                GameFlavor = GameFlavor.HGSS,
+                GameFlavor = botEvents[pos].Bot!.GameFlavor,
                 BotService = this,
                 Target = leg.Target,
                 Milestone = leg.PhaseName,
@@ -394,7 +394,7 @@ namespace ShinyBotHunter.Service
 
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
-            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, GameFlavor.HGSS))).ToDictionary();
+            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, x.Value.Bot?.GameFlavor ?? x.Value.GameState?.GameFlavor ?? GameFlavor.HGSS))).ToDictionary();
         }
 
         public async Task<Dictionary<int, EmulatorState>> CancelBotOrEventAsync(int pos)

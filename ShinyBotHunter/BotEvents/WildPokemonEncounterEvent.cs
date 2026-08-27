@@ -27,7 +27,7 @@ public class WildPokemonEncounterEvent : IBotEvent
         IBotEvent<bool> encounteringEvent;
         private WildPokemonState State { get; set; }
         private IBot bot;
-        private HgssPokemonParser parser;
+        private IPokemonParser parser;
         private PokemonPersistenceService persistenceService;
         private PersistPokemonData? foundShinyPokemon = null;
         private GameFlavor gameFlavor;
@@ -44,7 +44,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             encounteringEvent = encounterFactory.GetEncounterEvent(bot, encounterParams);
             State = WildPokemonState.NotStarted;
             this.bot = bot; 
-            parser = provider.GetRequiredService<HgssPokemonParser>();
+            parser = provider.GetRequiredService<GameServices>().Parser(bot.GameFlavor);
             persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             reader = provider.GetRequiredService<PokemonStateReader>();
@@ -136,7 +136,7 @@ public class WildPokemonEncounterEvent : IBotEvent
             }
             foundShinyPokemon = null;
             var phaseInfo = phaseInfoService.GetPhaseInfo(this.gameFlavor, this.phase);
-            var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(GameFlavor.HGSS)).Where(x => x.GameFileName == bot.GameFileName).ToList();
+            var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(gameFlavor)).Where(x => x.GameFileName == bot.GameFileName).ToList();
             bool complete = true;
             if(phaseInfo is not null)
             {

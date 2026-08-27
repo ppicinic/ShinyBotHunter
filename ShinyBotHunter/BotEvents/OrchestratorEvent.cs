@@ -216,8 +216,8 @@ namespace ShinyBotHunter.BotEvents
                 // MilestoneComplete is not read for these targets.
                 return;
             }
-            var phaseInfo = phaseInfoService.GetPhaseInfo(GameFlavor.HGSS, state.Milestone);
-            var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(GameFlavor.HGSS)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
+            var phaseInfo = phaseInfoService.GetPhaseInfo(state.GameFlavor, state.Milestone);
+            var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(state.GameFlavor)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
             bool complete = true;
             if (phaseInfo is not null)
             {

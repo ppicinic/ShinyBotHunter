@@ -8,10 +8,10 @@ namespace ShinyBotHunter.BotEvents.Factories
 {
     public class HgssShinyStarterEventFactory
     {
-        private HgssPokemonParser parser;
+        private IPokemonParser parser;
         private PokemonPersistenceService encounterDao;
 
-        public HgssShinyStarterEventFactory(HgssPokemonParser parser, PokemonPersistenceService encounterDao)
+        public HgssShinyStarterEventFactory(IPokemonParser parser, PokemonPersistenceService encounterDao)
         {
             this.parser = parser;
             this.encounterDao = encounterDao;

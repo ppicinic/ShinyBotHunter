@@ -110,11 +110,7 @@ namespace ShinyBotHunter.Service
     }
     public class PokemonStateReader
     {
-        private HgssPokemonParser parser;
-        private IPointerService pointerService;
-        private IBattlePokemonParser battleParser;
-        // Size of a party-sized pokemon structure (stored data plus battle stats).
-        private const int PokemonBlockSize = 0xEC;
+        private readonly GameServices games;
 
         // The in-battle mirror of a pokemon, a different and shorter structure.
         private const int BattlePokemonBlockSize = 108;
@@ -131,32 +127,34 @@ namespace ShinyBotHunter.Service
             return frames < 1 ? 1 : frames;
         }
 
-        public PokemonStateReader(HgssPokemonParser parser, IServiceProvider provider)
+        public PokemonStateReader(GameServices games)
         {
-            this.parser = parser;
-            this.pointerService = provider.GetRequiredKeyedService<IPointerService>(GameFlavor.HGSS);
-            this.battleParser = provider.GetRequiredKeyedService<IBattlePokemonParser>(GameFlavor.HGSS);
+            this.games = games;
         }
 
         /// <summary>
         /// Reads only the field party, leaving the box data empty. Use this when the boxes are not
         /// needed -- the box read in GetPokemonState pulls 72KB and is far too slow for interactive use.
         /// </summary>
-        public async Task<PokemonState> GetPartyState(IMemoryClient bot)
+        public Task<PokemonState> GetPartyState(IBot bot) => GetPartyState(bot, bot.GameFlavor);
+
+        /// <inheritdoc cref="GetPartyState(IBot)"/>
+        public async Task<PokemonState> GetPartyState(IMemoryClient bot, GameFlavor flavor)
         {
+            IPointerService pointers = games.Pointers(flavor);
             PokemonState state = new PokemonState();
             var blocks = await bot.ReadValidatedPartyAsync(
-                anchorAddress: 0x21D4158,
-                countOffset: -0x23F44,
-                slotsOffset: -0x23F40,
-                slotSize: PokemonBlockSize,
-                slotStride: PokemonBlockSize,
+                anchorAddress: pointers.Anchor,
+                countOffset: pointers.PartySize,
+                slotsOffset: pointers.PartySlots,
+                slotSize: pointers.PartyPokemonSize,
+                slotStride: pointers.PartyPokemonSize,
                 maxSlots: MaxPartySize,
                 maxRetryFrames: DefaultPartyRetryFrames);
             state.PartySize = blocks.Length;
             for (int i = 0; i < blocks.Length; i++)
             {
-                state.PartyPokemon[i] = ParseValidated(blocks[i], $"party slot {i + 1}");
+                state.PartyPokemon[i] = ParseValidated(blocks[i], $"party slot {i + 1}", flavor);
             }
             return state;
         }
@@ -165,43 +163,54 @@ namespace ShinyBotHunter.Service
         /// Parses a block the emulator already validated. The emulator checked the same things the
         /// parser reports as IsCorrupt, so a failure here means the two disagree -- worth surfacing
         /// rather than silently retrying, since the likely cause is the validator's copy of the
-        /// crypto having drifted from HgssPokemonParser's.
+        /// crypto having drifted from the parser's.
         /// </summary>
-        private PokemonData ParseValidated(byte[] block, string what)
+        private PokemonData ParseValidated(byte[] block, string what, GameFlavor flavor)
         {
-            var pokemon = parser.Parse(block);
+            var pokemon = games.Parser(flavor).Parse(block);
             if (pokemon is null || pokemon.IsCorrupt)
             {
                 throw new InvalidOperationException(
-                    $"{what} passed emulator-side validation but the parser rejected it. " +
-                    "ApiHawk's PokemonValidator and HgssPokemonParser may have diverged.");
+                    $"{what} passed emulator-side validation but the {flavor} parser rejected it. " +
+                    "ApiHawk's validator and the parser may have diverged.");
             }
             return pokemon;
         }
 
-        public async Task<PokemonState> GetPokemonState(IMemoryClient bot)
+        public Task<PokemonState> GetPokemonState(IBot bot) => GetPokemonState(bot, bot.GameFlavor);
+
+        /// <inheritdoc cref="GetPokemonState(IBot)"/>
+        public async Task<PokemonState> GetPokemonState(IMemoryClient bot, GameFlavor flavor)
         {
-            PokemonState state = await GetPartyState(bot);
+            IPointerService pointers = games.Pointers(flavor);
+            IPokemonParser parser = games.Parser(flavor);
+            int boxCount = pointers.BoxCount;
+            int boxCapacity = pointers.BoxCapacity;
+            int boxStride = pointers.BoxStride;
+            int boxSlotSize = pointers.BoxPokemonSize;
+
+            PokemonState state = await GetPartyState(bot, flavor);
             uint anchor;
             //constantly polling is too slow. load the whole party data into memory
 
-            bool[][] checkMap = new bool[30][];
-            for (int i = 0; i < 18; i++)
+            bool[][] checkMap = new bool[boxCount][];
+            for (int i = 0; i < boxCount; i++)
             {
-                checkMap[i] = new bool[30];
-                for (int j = 0; j < 30; j++)
+                checkMap[i] = new bool[boxCapacity];
+                for (int j = 0; j < boxCapacity; j++)
                 {
                     checkMap[i][j] = false;
                 }
             }
-            anchor = await bot.ReadUIntAsync(0x21D4158);
-            byte[] fullBoxData = await bot.ReadBytesAsync(anchor - 0x148D8, (18 * 4096));
-            for (int box = 0; box < 18; box++)
+            anchor = await bot.ReadUIntAsync(pointers.Anchor);
+            uint boxBase = (uint)(anchor + pointers.BoxStorage);
+            byte[] fullBoxData = await bot.ReadBytesAsync(boxBase, boxCount * boxStride);
+            for (int box = 0; box < boxCount; box++)
             {
-                for (int slot = 0; slot < 30; slot++)
+                for (int slot = 0; slot < boxCapacity; slot++)
                 {
 
-                    byte[] data = fullBoxData[((box * 4096) + (slot * 136))..((box * 4096) + (slot * 136) + 136)];
+                    byte[] data = fullBoxData[((box * boxStride) + (slot * boxSlotSize))..((box * boxStride) + (slot * boxSlotSize) + boxSlotSize)];
                     bool isEmpty = BitConverter.ToUInt32(data, 0) == 0 && BitConverter.ToUInt16(data, 4) == 0;
                     if (isEmpty)
                     {
@@ -218,9 +227,9 @@ namespace ShinyBotHunter.Service
                     }
                 }
             }
-            for (uint box = 0; box < 18; box++)
+            for (uint box = 0; box < boxCount; box++)
             {
-                for (uint slot = 0; slot < 30; slot++)
+                for (uint slot = 0; slot < boxCapacity; slot++)
                 {
                     if (!checkMap[box][slot])
                     {
@@ -228,8 +237,8 @@ namespace ShinyBotHunter.Service
                         do
                         {
                             await Task.Delay(100);
-                            anchor = await bot.ReadUIntAsync(0x21D4158);
-                            byte[] boxData = await bot.ReadBytesAsync((anchor - 0x148D8) + (box * 4096) + (slot * 136), 136);
+                            anchor = await bot.ReadUIntAsync(pointers.Anchor);
+                            byte[] boxData = await bot.ReadBytesAsync((uint)(anchor + pointers.BoxStorage) + (box * (uint)boxStride) + (slot * (uint)boxSlotSize), boxSlotSize);
                             boxPokemon = parser.Parse(boxData);
                         } while (boxPokemon is null || boxPokemon.IsCorrupt);
                         state.BoxPokemon[box][slot] = boxPokemon;
@@ -241,8 +250,16 @@ namespace ShinyBotHunter.Service
             return state;
         }
 
-        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot, int timeoutMs = 1000)
+        public Task<PokemonBattleState?> GetPokemonBattleState(IBot bot, int timeoutMs = 1000)
+            => GetPokemonBattleState(bot, bot.GameFlavor, timeoutMs);
+
+        /// <inheritdoc cref="GetPokemonBattleState(IBot, int)"/>
+        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot, GameFlavor flavor, int timeoutMs = 1000)
         {
+            IPointerService pointerService = games.Pointers(flavor);
+            IPokemonParser parser = games.Parser(flavor);
+            IBattlePokemonParser battleParser = games.BattleParser(flavor);
+            int PokemonBlockSize = pointerService.PartyPokemonSize;
             List<PokemonData> partyPokemon = new List<PokemonData>();
             byte[][] battleBlocks;
             try
@@ -267,7 +284,7 @@ namespace ShinyBotHunter.Service
             }
             foreach (var block in battleBlocks)
             {
-                partyPokemon.Add(ParseValidated(block, $"battle party slot {partyPokemon.Count + 1}"));
+                partyPokemon.Add(ParseValidated(block, $"battle party slot {partyPokemon.Count + 1}", flavor));
             }
 
             // anchor -> +EnemyAnchor -> deref -> +Enemy, all inside one frame.

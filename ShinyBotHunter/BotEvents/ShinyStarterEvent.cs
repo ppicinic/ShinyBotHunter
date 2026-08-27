@@ -10,10 +10,10 @@ namespace ShinyBotHunter.BotEvents
     {
         private IBot bot;
         private GameFlavor flavor;
-        private HgssPokemonParser parser;
+        private IPokemonParser parser;
         private PokemonPersistenceService encounterService;
 
-        public HgssShinyStarterEvent(HgssPokemonParser parser, PokemonPersistenceService encounterService, IBot bot, GameFlavor flavor)
+        public HgssShinyStarterEvent(IPokemonParser parser, PokemonPersistenceService encounterService, IBot bot, GameFlavor flavor)
         {
             this.bot = bot;
             this.flavor = flavor;
@@ -61,7 +61,7 @@ namespace ShinyBotHunter.BotEvents
                             {
                                 PokemonData = starter,
                                 DateTime = now,
-                                Game = GameFlavor.HGSS,
+                                Game = flavor,
                                 Phase = "1-1 Starters",
                                 GameFileName = bot.GameFileName,
                             };
@@ -82,7 +82,7 @@ namespace ShinyBotHunter.BotEvents
                     await this.encounterService.AddEncounterAsync(pokemonData);
                     if (!shinyFound)
                     {
-                        bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SoftReset"));
+                        bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, "SoftReset"));
                         await Task.Delay(15000);
                     }
 
@@ -102,7 +102,7 @@ namespace ShinyBotHunter.BotEvents
                     await Task.Delay(2000);
                 }
                 // run save game macro
-                bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveStarter"));
+                bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, "SaveStarter"));
                 await bot.WaitForMacroAsync();
                 await bot.FlushSave();
                 // Pass successful shiny to producer-consumer queue
