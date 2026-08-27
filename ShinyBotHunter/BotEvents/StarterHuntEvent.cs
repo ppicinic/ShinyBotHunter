@@ -493,14 +493,14 @@ namespace ShinyBotHunter.BotEvents
             // is made first and the save written minutes later, so a run interrupted in between leaves
             // a copy with nothing behind it -- and treating that as ready means continuing a game that
             // was never started, which desyncs every macro after it instead of failing.
+            bool recordedSaveExists = await stateStore.IsSaveCreatedAsync(GameFlavor.RS, context.GameName);
             string extension = context.RomExtension;
             string target = $"{romDirectory}{context.GameName}{extension}";
 
             // Both have to hold. The record alone is not enough -- a copy deleted by hand takes its
             // save with it while the record survives -- and the copy alone is not enough either,
             // since it exists for minutes before its save does.
-            bool recorded = await stateStore.IsSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName);
-            if (recorded && File.Exists(target))
+            if (recordedSaveExists && File.Exists(target))
             {
                 return;
             }
@@ -522,7 +522,7 @@ namespace ShinyBotHunter.BotEvents
 
             // Only now, once the save is actually on disk. Recording it earlier would make an
             // interrupted creation look complete.
-            await stateStore.MarkSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName);
+            await stateStore.MarkSaveCreatedAsync(GameFlavor.RS, context.GameName);
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: save created on {context.GameName}.");
         }
 

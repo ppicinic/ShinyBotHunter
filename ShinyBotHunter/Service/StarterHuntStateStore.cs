@@ -59,11 +59,29 @@ namespace ShinyBotHunter.Service
                 new ReplaceOptions { IsUpsert = true });
         }
 
+        /// <summary>
+        /// A save belongs to a ROM copy, not to a milestone, so created saves live in one document
+        /// per flavor. Keying them by milestone -- as they briefly were -- meant a hunt started under
+        /// a different milestone missed the record and replayed the new-game macro against a copy
+        /// that already had a save, which desyncs at the main menu: a Continue entry appears once a
+        /// save exists and every recorded press lands one row off.
+        /// </summary>
+        private const string CreatedSavesDocName = "Created Saves";
+
         /// <summary>Whether this ROM copy already has a save that finished being written.</summary>
-        public async Task<bool> IsSaveCreatedAsync(GameFlavor game, string milestone, string romHandle)
+        public async Task<bool> IsSaveCreatedAsync(GameFlavor game, string romHandle)
         {
-            StarterHuntGameState? state = await collection.Find(KeyFor(game, milestone)).FirstOrDefaultAsync();
-            return state is not null && state.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase);
+            StarterHuntGameState? saves = await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            if (saves is not null && saves.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Saves recorded before this moved to its own document sit inside per-milestone hunt
+            // documents. Read those too, or every copy from that era would be re-created -- which is
+            // exactly the desync this exists to prevent.
+            var legacy = await collection.Find(x => x.Game == game && x.Name != CreatedSavesDocName).ToListAsync();
+            return legacy.Any(x => x.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -73,9 +91,9 @@ namespace ShinyBotHunter.Service
         /// emulators create their saves at once, and replacing the document would let one overwrite
         /// what another had just recorded.
         /// </summary>
-        public Task MarkSaveCreatedAsync(GameFlavor game, string milestone, string romHandle)
+        public Task MarkSaveCreatedAsync(GameFlavor game, string romHandle)
             => collection.UpdateOneAsync(
-                KeyFor(game, milestone),
+                KeyFor(game, CreatedSavesDocName),
                 Builders<StarterHuntGameState>.Update
                     .AddToSet(x => x.SavesCreated, romHandle)
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
