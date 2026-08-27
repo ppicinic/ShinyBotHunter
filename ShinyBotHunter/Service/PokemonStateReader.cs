@@ -150,7 +150,9 @@ namespace ShinyBotHunter.Service
                 slotSize: pointers.PartyPokemonSize,
                 slotStride: pointers.PartyPokemonSize,
                 maxSlots: MaxPartySize,
-                maxRetryFrames: DefaultPartyRetryFrames);
+                maxRetryFrames: DefaultPartyRetryFrames,
+                addressing: pointers.PartyAddressing,
+                scheme: pointers.PokemonScheme);
             state.PartySize = blocks.Length;
             for (int i = 0; i < blocks.Length; i++)
             {

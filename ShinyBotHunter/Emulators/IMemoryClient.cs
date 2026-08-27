@@ -43,6 +43,8 @@ namespace ShinyBotHunter.Emulators
             int slotSize,
             int slotStride,
             int maxSlots,
-            int maxRetryFrames);
+            int maxRetryFrames,
+            PartyAddressing addressing = PartyAddressing.Anchor,
+            PokemonScheme scheme = PokemonScheme.Gen4);
     }
 }

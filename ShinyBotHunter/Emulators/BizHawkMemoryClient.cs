@@ -1,4 +1,4 @@
-using ShinyBotHunter.Context;
+﻿using ShinyBotHunter.Context;
 using System.Buffers.Binary;
 using System.Net.Http;
 
@@ -99,10 +99,14 @@ namespace ShinyBotHunter.Emulators
             int slotSize,
             int slotStride,
             int maxSlots,
-            int maxRetryFrames)
+            int maxRetryFrames,
+            PartyAddressing addressing = PartyAddressing.Anchor,
+            PokemonScheme scheme = PokemonScheme.Gen4)
         {
-            // [cmd][anchor:4][unused:4][countOffset:4][slotsOffset:4][slotSize:4][slotStride:4][maxSlots:1][maxRetryFrames:2]
-            var body = new byte[9 + 19];
+            // [cmd][anchor:4][unused:4][countOffset:4][slotsOffset:4][slotSize:4][slotStride:4][maxSlots:1][maxRetryFrames:2][addressing:1][scheme:1]
+            // The last two bytes are a later addition; an emulator-side tool built before them treats
+            // their absence as anchor addressing and Gen 4 validation, which is what it always did.
+            var body = new byte[9 + 21];
             WriteHeader(body, 0x04, anchorAddress, 0);
             BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(9), countOffset);
             BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(13), slotsOffset);
@@ -110,6 +114,8 @@ namespace ShinyBotHunter.Emulators
             BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(21), slotStride);
             body[25] = (byte)maxSlots;
             BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(26), (ushort)maxRetryFrames);
+            body[28] = (byte)addressing;
+            body[29] = (byte)scheme;
 
             byte[] result = await PostAsync(body);
             EnsureOpcodeSupported(result, 0x04);

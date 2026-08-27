@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -44,6 +45,10 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0xEC, read.SlotSize);
             Assert.Equal(0xEC, read.SlotStride);
             Assert.Equal(6, read.MaxSlots);
+            // Gen 4 reaches the party through a pointer and stores it in its own structure; asking
+            // the emulator to validate it any other way rejects every slot.
+            Assert.Equal(PartyAddressing.Anchor, read.Addressing);
+            Assert.Equal(PokemonScheme.Gen4, read.Scheme);
         }
 
         [Fact]

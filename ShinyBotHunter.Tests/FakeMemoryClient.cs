@@ -8,7 +8,7 @@ namespace ShinyBotHunter.Tests
     /// </summary>
     public class FakeMemoryClient : IMemoryClient
     {
-        public record PartyRead(uint Anchor, int CountOffset, int SlotsOffset, int SlotSize, int SlotStride, int MaxSlots, int MaxRetryFrames);
+        public record PartyRead(uint Anchor, int CountOffset, int SlotsOffset, int SlotSize, int SlotStride, int MaxSlots, int MaxRetryFrames, PartyAddressing Addressing, PokemonScheme Scheme);
 
         public PartyRead? LastPartyRead { get; private set; }
         public List<(uint Address, int Length)> ByteReads { get; } = new();
@@ -23,9 +23,10 @@ namespace ShinyBotHunter.Tests
             this.slotSize = slotSize;
         }
 
-        public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames)
+        public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4)
         {
-            LastPartyRead = new PartyRead(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames);
+            LastPartyRead = new PartyRead(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme);
             byte[][] blocks = new byte[partySize][];
             for (int i = 0; i < partySize; i++) blocks[i] = new byte[slotSize];
             return Task.FromResult(blocks);

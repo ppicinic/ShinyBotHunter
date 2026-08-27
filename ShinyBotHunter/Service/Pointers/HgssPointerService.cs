@@ -1,4 +1,6 @@
-﻿namespace ShinyBotHunter.Service.Pointers
+﻿using ShinyBotHunter.Emulators;
+
+namespace ShinyBotHunter.Service.Pointers
 {
     public class HgssPointerService : IPointerService
     {
@@ -31,5 +33,9 @@
         public int BoxCapacity => 30;
 
         public int BoxStride => 4096;
+
+        public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
+
+        public PokemonScheme PokemonScheme => PokemonScheme.Gen4;
     }
 }
