@@ -16,8 +16,9 @@
   // Frames the emulator keeps retrying a party read before giving up.
   "PartyRetryFrames": 120,
 
-  // How long to keep advancing the battle intro before calling it stuck. The starter becomes
-  // readable well inside this; the ceiling only exists so a desync fails instead of hanging.
+  // How long to keep pressing B for the starter to come out. B is held for this whole stretch, so it
+  // covers the ball, the intro text and the throw; the ceiling only exists so a desync resets
+  // instead of hanging.
   "BattleWaitTimeoutMs": 30000,
 
   // Polling interval while waiting for the battle to start.
@@ -37,11 +38,6 @@
   // the budget for the game to settle, not an expected wait.
   "StarterReadTimeoutMs": 20000,
   "StarterReadPollIntervalMs": 500,
-
-  // The run waits for the starter to actually appear on the battlefield rather than waiting a fixed
-  // time and hoping. This is the budget for that, not an expected wait; the run continues either way
-  // since the pokemon has already been read and verified.
-  "StarterOnFieldTimeoutMs": 20000,
 
   // Settle once it is on the field: the species appears slightly before the sprite finishes
   // arriving. Set to 0 once the hunt is trusted.

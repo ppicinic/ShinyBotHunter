@@ -42,13 +42,6 @@ namespace ShinyBotHunter.BotEvents
         public int StarterReadPollIntervalMs { get; set; } = 500;
 
         /// <summary>
-        /// How long to wait for the starter to appear on the battlefield before moving on anyway.
-        /// A budget, not an expected wait: the run continues either way, since the pokemon has
-        /// already been read and verified by then.
-        /// </summary>
-        public int StarterOnFieldTimeoutMs { get; set; } = 20000;
-
-        /// <summary>
         /// Settle time once the starter is on the field. The species appears slightly before the
         /// sprite has finished arriving, so a moment here is what makes a run watchable. Set to 0
         /// once the hunt is trusted and the seconds matter.
@@ -118,7 +111,6 @@ namespace ShinyBotHunter.BotEvents
             Positive(SaveSettleMs, nameof(SaveSettleMs));
             Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));
             Positive(StarterReadPollIntervalMs, nameof(StarterReadPollIntervalMs));
-            Positive(StarterOnFieldTimeoutMs, nameof(StarterOnFieldTimeoutMs));
             if (StarterOnFieldSettleMs < 0)
             {
                 throw new InvalidOperationException($"{path}: StarterOnFieldSettleMs cannot be negative.");

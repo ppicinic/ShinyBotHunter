@@ -143,9 +143,9 @@ namespace ShinyBotHunter.BotEvents
             RunMacro(config.MacroForStarter(entry.Starter));
             await bot.WaitForMacroAsync(cancellationToken);
 
-            if (!await AdvanceIntoBattleAsync(cancellationToken))
+            if (!await AdvanceUntilStarterIsOutAsync(cancellationToken))
             {
-                Console.WriteLine($"[StarterHunt] {entry.RecordingName}: battle never started; resetting.");
+                Console.WriteLine($"[StarterHunt] {entry.RecordingName}: the starter never came out; resetting.");
                 return null;
             }
 
@@ -154,8 +154,6 @@ namespace ShinyBotHunter.BotEvents
             {
                 return null;
             }
-
-            await WaitUntilStarterIsOnFieldAsync(cancellationToken);
 
             await persistence.AddEncounterAsync(new PersistPokemonData
             {
@@ -190,49 +188,52 @@ namespace ShinyBotHunter.BotEvents
         }
 
         /// <summary>
-        /// Waits until the starter is actually out on the battlefield.
+        /// Holds B until the starter is out on the battlefield.
         ///
-        /// The party is filled the moment the ball is chosen, well before the throw animation, so a
-        /// correct read still lands while the screen shows nothing -- waiting a fixed time after it
-        /// was only ever a guess at how long the animation takes.
+        /// The pressing has to continue for the whole stretch, which is what went wrong before: the
+        /// mash was stopped as soon as gBattleTypeFlags turned on, but that is battle *start*, with
+        /// the intro text still to advance. Nothing was pressing B after that, so the game sat waiting
+        /// for input until the wait timed out and the run reset without the pokemon ever appearing.
         ///
-        /// gBattleMons holds the active battler, and it carries the starter's species once the mon is
-        /// on the field, which is the state worth waiting for. The precise "FIGHT/BAG/POKEMON/RUN is
-        /// up" signal lives in gBattleMainFunc and gBattlerControllerFuncs, but those are ROM
-        /// function pointers that move between revisions, and keying on them would pin the hunt to
-        /// rev2 and break the other revisions this deliberately still supports.
+        /// gBattleMons holds the active battler and carries the starter's species once it is on the
+        /// field, so that is the condition to stop on. The precise "FIGHT/BAG/POKEMON/RUN is up"
+        /// signal lives in gBattleMainFunc and gBattlerControllerFuncs, but those are ROM function
+        /// pointers that move between revisions and would pin the hunt to rev2.
         /// </summary>
-        private async Task WaitUntilStarterIsOnFieldAsync(CancellationToken cancellationToken)
+        private async Task<bool> AdvanceUntilStarterIsOutAsync(CancellationToken cancellationToken)
         {
-            DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.StarterOnFieldTimeoutMs);
-
-            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+            bot.RunRepeatMacro(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.BattleAdvanceMacro));
+            try
             {
-                try
+                DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
+                while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
                 {
-                    ushort active = await bot.ReadUShortAsync(pointers.BattlePokemon);
-                    if (active == expectedInternalSpecies)
+                    try
                     {
-                        // Settles the last of the animation; the species appears a little before the
-                        // sprite has finished arriving.
-                        if (config.StarterOnFieldSettleMs > 0)
+                        if (await bot.ReadUShortAsync(pointers.BattlePokemon) == expectedInternalSpecies)
                         {
-                            await Task.Delay(config.StarterOnFieldSettleMs, cancellationToken);
+                            return true;
                         }
-                        return;
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[StarterHunt] {entry.RecordingName}: field check failed ({ex.Message}).");
-                }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[StarterHunt] {entry.RecordingName}: field check failed ({ex.Message}).");
+                    }
 
-                await Task.Delay(config.StarterReadPollIntervalMs, cancellationToken);
+                    await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
+                }
+                return false;
             }
-
-            // Not fatal: the pokemon was already read and verified, so this only means the run moves
-            // on without having seen it settle.
-            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: starter never appeared on the field; continuing.");
+            finally
+            {
+                // Only now: pressing stops once the pokemon is out, not when the battle began.
+                bot.ClearMacro();
+                if (config.StarterOnFieldSettleMs > 0)
+                {
+                    // The species lands slightly before the sprite has finished arriving.
+                    await Task.Delay(config.StarterOnFieldSettleMs, CancellationToken.None);
+                }
+            }
         }
 
         /// <summary>
