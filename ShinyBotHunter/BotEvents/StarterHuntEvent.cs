@@ -306,6 +306,9 @@ namespace ShinyBotHunter.BotEvents
             }
 
             File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);
+            // Without this every copy hashes the same, resolves to the same game database entry, and
+            // shares one save file with all the others. See RomSaveIsolation.
+            RomSaveIsolation.Stamp(target, context.GameId);
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save.");
 
             await bot.LaunchAsync();
