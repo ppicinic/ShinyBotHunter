@@ -1,0 +1,9 @@
+# GBA soft reset: A+B+Start+Select together. The DS combo (Start+Select+L+R) does not apply.
+#
+# Held for 10 frames rather than tapped. A reset that fails to register is silent -- the
+# macro carries on against a game that never restarted, and everything after it is
+# meaningless -- whereas holding the combo longer than needed costs nothing.
+name: SoftReset
+flavor: RS
+steps:
+  - ["H.A.10", "H.B.10", "H.Start.10", "H.Select.10"]

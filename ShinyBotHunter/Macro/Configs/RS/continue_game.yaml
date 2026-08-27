@@ -1,0 +1,13 @@
+# Title screen -> loaded save, standing in front of Birch's bag.
+name: ContinueGame
+flavor: RS
+steps:
+  - W.200
+  - H.A.9
+  - W.61
+  - H.A.13
+  - W.66
+  - H.A.8
+  - W.69
+  - H.A.7
+  - W.128
