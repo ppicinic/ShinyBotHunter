@@ -66,6 +66,17 @@ namespace ShinyBotHunter.BotEvents
                     "Remove it from the hunt state to run it again.");
                 return null;
             }
+            // Anything still pending belongs to a previous run, and its emulator went with the
+            // process. Reported rather than silently dropped, so a shiny that was found and never
+            // played out leaves a trace.
+            foreach (PendingShiny lost in progress.PendingShinies)
+            {
+                Console.WriteLine(
+                    $"[StarterHunt] Discarding a shiny {lost.Starter} (PID {lost.PID:X8}) left unsaved by an " +
+                    "earlier run; its emulator is gone.");
+            }
+            progress.PendingShinies.Clear();
+
             progress.CurrentStarter = starter;
             await stateStore.SaveAsync(progress);
 

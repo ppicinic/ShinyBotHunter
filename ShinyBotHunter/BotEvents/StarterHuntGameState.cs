@@ -1,4 +1,4 @@
-using MongoDB.Bson.Serialization.Attributes;
+﻿using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 
@@ -24,16 +24,14 @@ namespace ShinyBotHunter.BotEvents
         public string? CurrentStarter { get; set; }
 
         /// <summary>
-        /// Shinies found but not yet played out and saved. A hunt parks rather than finishing when it
-        /// finds one, and that pause can outlive the process.
+        /// Shinies found but not yet played out and saved, within the current run.
+        ///
+        /// Deliberately not carried across a restart. A parked shiny only exists as a live emulator
+        /// sitting mid-battle, and that emulator dies with the process, so a pending entry that
+        /// survived would describe something that is no longer there. A hunt clears these when it
+        /// starts and reports what it dropped.
         /// </summary>
         public List<PendingShiny> PendingShinies { get; set; } = new();
-
-        /// <summary>Encounters seen across the whole hunt, for progress rather than statistics.</summary>
-        public long TotalEncounters { get; set; }
-
-        /// <summary>Shinies rejected as illegal, which is the number the QA pass exists to measure.</summary>
-        public long RejectedIllegalShinies { get; set; }
 
         public DateTime StartedUtc { get; set; }
 
@@ -56,10 +54,7 @@ namespace ShinyBotHunter.BotEvents
 
         public DateTime FoundUtc { get; set; }
 
-        /// <summary>
-        /// The pokemon itself, so a restart can still report what is waiting without the emulator it
-        /// was found on being available.
-        /// </summary>
+        /// <summary>The pokemon itself, so the entry says what is waiting without reading it again.</summary>
         [BsonIgnoreIfNull]
         public PokemonData? PokemonData { get; set; }
     }
