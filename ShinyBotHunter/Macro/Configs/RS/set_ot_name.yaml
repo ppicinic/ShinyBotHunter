@@ -1,0 +1,52 @@
+# Default OT name entry: drives the R/S name keyboard by cursor position and confirms.
+#
+# Deliberately its own macro rather than part of create_new_save. The name is the one
+# thing an operator is likely to want to change, and a custom-name feature swaps which
+# macro the starter-hunt config names here -- no edit to the surrounding save flow.
+#
+# Every position below is relative to where the cursor starts on the keyboard, so a
+# dropped or mistimed press does not just mistype one letter, it shifts every press
+# after it. Treat the waits as load-bearing.
+name: SetOTName
+flavor: RS
+steps:
+  - H.Right.9
+  - W.9
+  - T.Right
+  - W.6
+  - T.Right
+  - W.19
+  - T.Down
+  - W.6
+  - T.Down
+  - W.29
+  - H.A.9
+  - W.93
+  - T.Up
+  - W.78
+  - H.Select.11
+  - W.90
+  - T.Left
+  - W.10
+  - T.Left
+  - W.18
+  - H.A.9
+  - W.13
+  - H.Right.6
+  - W.4
+  - H.A.9
+  - W.9
+  - T.Right
+  - W.7
+  - T.Right
+  - W.11
+  - T.Right
+  - W.7
+  - H.A.9
+  - W.45
+  - H.Start.9
+  - W.62
+  - H.Start.12
+  - W.48
+  - H.A.11
+  - W.120

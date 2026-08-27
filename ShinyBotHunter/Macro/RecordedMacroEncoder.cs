@@ -83,7 +83,7 @@ namespace ShinyBotHunter.Macro
 
             StringBuilder sb = new();
             sb.Append("# Recorded macro — ").Append(capturedFrames).Append(" frames captured, ")
-              .Append(runs.Count).Append(" steps.").Append('\n');
+              .Append(runs.Count).Append(" input runs.").Append('\n');
             sb.Append("# Timings are a literal frame trace. Consider replacing fixed waits with W.R[min,max]\n");
             sb.Append("# where the game's timing actually varies.\n");
             sb.Append("name: ").Append(SanitizeName(macroName)).Append('\n');
