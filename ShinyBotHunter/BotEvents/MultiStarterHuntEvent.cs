@@ -1,4 +1,3 @@
-﻿using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Macro;
@@ -8,16 +7,22 @@ using ShinyBotHunter.Service;
 namespace ShinyBotHunter.BotEvents
 {
     /// <summary>
-    /// Runs several emulators at a Ruby/Sapphire starter until one of them finds a shiny.
+    /// Hunts a queue of Ruby/Sapphire starters across several emulators.
     ///
-    /// Top level rather than per-bot, because a hunt owns its emulators: it needs its own ROM copy
-    /// per instance so each has a separate save, a throwaway session to create that save, and the
-    /// ability to close the rest once one wins. A per-bot action cannot do any of that -- it inherits
-    /// an emulator someone else launched, which meant launching a second one on the same ports.
+    /// Each starter gets a wave of emulators racing on freshly allocated ROM copies. When one finds a
+    /// keeper, that emulator is parked mid-battle for the player, the rest of its wave is torn down,
+    /// and the next starter's wave begins on new copies -- so a hunt can be several starters deep
+    /// with several shinies parked before the player has touched any of them.
     ///
-    /// The winning emulator is left open and parked so its battle can be played by hand; the others
-    /// are stopped as soon as it is found, since anything they turn up afterwards would be a second
-    /// shiny nobody asked for.
+    /// Resume settles one parked shiny per press, oldest first: the battle has been played out by
+    /// hand, so it saves, records, retires that copy and closes that emulator. The dashboard's
+    /// Waiting/Resume surface stays up whenever at least one shiny is parked.
+    ///
+    /// The rule underneath all of it: a copy whose save is a shiny -- parked or already saved -- is
+    /// never allocated to a hunt again. Retired copies are persisted; parked ones are excluded for as
+    /// long as they are parked. Reusing one would eventually overwrite the save that is the entire
+    /// point of the exercise. The HGSS hunt enforces this with its GameIds map; this is the same
+    /// intent carried over.
     /// </summary>
     public class MultiStarterHuntEvent : AbstractBotEvent<PokemonData?>
     {
@@ -25,144 +30,163 @@ namespace ShinyBotHunter.BotEvents
         private readonly StarterHuntStateStore stateStore;
         private readonly IServiceProvider provider;
         private readonly StarterHuntConfig config;
-        private readonly int emulatorCount;
+        private readonly int emulatorsPerWave;
         private readonly string romHandle;
-        private readonly string starter;
+        private readonly IReadOnlyList<string> starters;
         private readonly string milestone;
         private readonly string recordingName;
+        private readonly int emulatorBudget;
+
+        private sealed record ParkedShiny(
+            string Starter, IBot Bot, StarterHuntEvent Hunt, GameState HuntState, string CopyHandle, int Position, bool Forced);
+
+        private readonly object gate = new();
+        private readonly List<ParkedShiny> parked = new();
+        private readonly HashSet<int> positionsInUse = new();
+        private GameState? sharedState;
+        private TaskCompletionSource resumeHappened = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public override EventState EventState => EventState.Complete;
 
-        public int[] BotPositions => Enumerable.Range(0, emulatorCount).ToArray();
+        public int[] BotPositions
+        {
+            get { lock (gate) { return positionsInUse.Count == 0 ? new[] { 0 } : positionsInUse.ToArray(); } }
+        }
 
         public PokemonData? Result { get; private set; }
 
-        public MultiStarterHuntEvent(string romHandle, string starter, string milestone, string recordingName,
-            int emulatorCount, StarterHuntConfig config, IServiceProvider provider)
+        public MultiStarterHuntEvent(string romHandle, IReadOnlyList<string> starters, string milestone,
+            string recordingName, int emulatorsPerWave, int emulatorBudget, StarterHuntConfig config, IServiceProvider provider)
         {
             this.romHandle = romHandle;
-            this.starter = starter;
+            this.starters = starters;
             this.milestone = milestone;
             this.recordingName = recordingName;
-            this.emulatorCount = emulatorCount;
+            this.emulatorsPerWave = emulatorsPerWave;
+            this.emulatorBudget = emulatorBudget;
             this.config = config;
             this.provider = provider;
             this.botFactory = provider.GetRequiredService<BotFactory>();
             this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
 
             config.Validate();
-            config.MacroForStarter(starter);
+            foreach (string starter in starters)
+            {
+                config.MacroForStarter(starter);
+            }
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
-            // Cancelling this stops the losing emulators the moment one succeeds, rather than letting
-            // them finish a reset cycle and find a second shiny.
-            StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
-            if (StarterHuntStateStore.IsDone(progress, starter))
+            // Re-entered by the dashboard's Resume. The main run below is still going (or waiting on
+            // its parked shinies), so this call only settles one of them and returns.
+            if (state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                Console.WriteLine(
-                    $"[StarterHunt] {starter} is already recorded as caught for '{milestone}'. " +
-                    "Remove it from the hunt state to run it again.");
-                return null;
-            }
-            // Anything still pending belongs to a previous run, and its emulator went with the
-            // process. Reported rather than silently dropped, so a shiny that was found and never
-            // played out leaves a trace.
-            foreach (PendingShiny lost in progress.PendingShinies)
-            {
-                Console.WriteLine(
-                    $"[StarterHunt] Discarding a shiny {lost.Starter} (PID {lost.PID:X8}) left unsaved by an " +
-                    "earlier run; its emulator is gone.");
-            }
-            progress.PendingShinies.Clear();
-
-            progress.CurrentStarter = starter;
-            await stateStore.SaveAsync(progress);
-
-            using CancellationTokenSource hunt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            var runs = new List<Task<HuntOutcome>>();
-            for (int i = 0; i < emulatorCount; i++)
-            {
-                runs.Add(RunOneAsync(i, hunt.Token));
-            }
-
-            while (runs.Count > 0)
-            {
-                Task<HuntOutcome> finished = await Task.WhenAny(runs);
-                runs.Remove(finished);
-
-                HuntOutcome outcome;
-                try
-                {
-                    outcome = await finished;
-                }
-                catch (OperationCanceledException)
-                {
-                    continue;
-                }
-                catch (Exception ex)
-                {
-                    // One emulator failing is not the hunt failing; the rest keep going.
-                    Console.WriteLine($"[StarterHunt] An emulator stopped with an error: {ex.Message}");
-                    continue;
-                }
-
-                if (outcome.Shiny is null)
-                {
-                    continue;
-                }
-
-                Result = outcome.Shiny;
-                state.GameFlavor = GameFlavor.RS;
-                state.Milestone = milestone;
-                state.Bot = outcome.Bot;
-                state.TargetPokemon = outcome.Target;
-
-                // Recorded before the battle is played out: the pause waiting for a human can outlive
-                // the process, and a restart has to know a shiny is sitting there unsaved.
-                progress.PendingShinies.Add(new PendingShiny
-                {
-                    Starter = starter,
-                    RomHandle = romHandle,
-                    RecordingName = recordingName,
-                    PID = outcome.Shiny.PID,
-                    Species = outcome.Shiny.Species,
-                    FoundUtc = DateTime.UtcNow,
-                    PokemonData = outcome.Shiny,
-                });
-                await stateStore.SaveAsync(progress);
-
-                Console.WriteLine(
-                    $"[StarterHunt] Shiny {outcome.Shiny.Name} found on emulator {outcome.Position}. " +
-                    "Stopping the others; play out the battle then Resume to save.");
-                await hunt.CancelAsync();
-
-                // Held open deliberately: this is the emulator the player finishes the battle on.
-                state.State.Push(EventState.Waiting);
+                await ResumeOldestAsync();
                 return Result;
             }
 
-            return null;
+            sharedState = state;
+            StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
+            ReportAndClearStalePending(progress);
+            await stateStore.SaveAsync(progress);
+
+            foreach (string starter in starters)
+            {
+                if (StarterHuntStateStore.IsDone(progress, starter))
+                {
+                    Console.WriteLine($"[StarterHunt] {starter} is already caught for '{milestone}'; skipping.");
+                    continue;
+                }
+
+                await HuntOneStarterAsync(starter, cancellationToken);
+                if (cancellationToken.IsCancellationRequested) break;
+            }
+
+            // Every starter is found or skipped; what remains is the player playing out the parked
+            // battles. The event stays alive until the last Resume so those emulators stay owned.
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                Task waiter;
+                lock (gate)
+                {
+                    if (parked.Count == 0) break;
+                    waiter = resumeHappened.Task;
+                }
+                Console.WriteLine($"[StarterHunt] {CountParked()} shiny battle(s) waiting to be played out and resumed.");
+                await Task.WhenAny(waiter, Task.Delay(Timeout.Infinite, cancellationToken).ContinueWith(_ => { }));
+            }
+
+            SetDashboardState(EventState.Complete);
+            Console.WriteLine("[StarterHunt] Queue finished.");
+            return Result;
         }
 
-        private record HuntOutcome(int Position, IBot Bot, PokemonData? Shiny, PersistPokemonData? Target);
-
-        /// <summary>
-        /// One emulator's whole hunt: its own ROM copy, its own save, its own reset loop.
-        /// </summary>
-        private async Task<HuntOutcome> RunOneAsync(int position, CancellationToken cancellationToken)
+        /// <summary>Runs waves for one starter until an emulator parks with a keeper.</summary>
+        private async Task HuntOneStarterAsync(string starter, CancellationToken cancellationToken)
         {
-            // GameId gives this instance its own ROM copy, and therefore its own save file. Sharing
-            // one would mean every emulator resetting into the same game.
-            GameContext context = botFactory.BuildGameContext(romHandle, position + 1, position);
+            // Parked emulators keep holding slots from the budget, so a deep queue narrows the waves
+            // rather than exceeding what the machine was told it may run.
+            int waveSize;
+            while ((waveSize = Math.Min(emulatorsPerWave, emulatorBudget - CountParked())) < 1
+                   && !cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine("[StarterHunt] All emulator slots are held by parked shinies; resume one to continue.");
+                await WaitForAResumeAsync(cancellationToken);
+            }
+            if (cancellationToken.IsCancellationRequested) return;
+
+            // Never allocate a copy that is retired (its save is a caught shiny) or parked (its save
+            // will be). This is the property the whole registry exists for.
+            IReadOnlyList<string> retired = await stateStore.GetRetiredCopiesAsync(GameFlavor.RS);
+            List<string> unavailable;
+            lock (gate) { unavailable = retired.Concat(parked.Select(p => p.CopyHandle)).ToList(); }
+            List<int> copyIds = StarterHuntStateStore.AllocateCopyIds(romHandle, waveSize, unavailable);
+
+            Console.WriteLine(
+                $"[StarterHunt] Hunting {starter} on {waveSize} emulator(s), copies " +
+                $"[{string.Join(", ", copyIds.Select(id => romHandle + id))}].");
+
+            using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var runs = copyIds.Select(id => RunOneAsync(starter, id, wave.Token)).ToList();
+
+            bool found = false;
+            while (runs.Count > 0)
+            {
+                Task<ParkedShiny?> finished = await Task.WhenAny(runs);
+                runs.Remove(finished);
+
+                ParkedShiny? winner = null;
+                try { winner = await finished; }
+                catch (OperationCanceledException) { continue; }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[StarterHunt] An emulator stopped with an error: {ex.Message}");
+                    continue;
+                }
+                if (winner is null || found) continue;
+
+                found = true;
+                lock (gate) { parked.Add(winner); }
+                Result = winner.HuntState.TargetPokemon?.PokemonData;
+                SetDashboardState(EventState.Waiting);
+                Console.WriteLine(
+                    $"[StarterHunt] Shiny {starter} parked on {winner.CopyHandle} (position {winner.Position}). " +
+                    $"{CountParked()} waiting. Stopping this wave and moving on.");
+                await wave.CancelAsync();
+            }
+        }
+
+        /// <summary>One emulator's hunt on its own freshly allocated copy.</summary>
+        private async Task<ParkedShiny?> RunOneAsync(string starter, int copyId, CancellationToken cancellationToken)
+        {
+            int position = ClaimPosition();
+            GameContext context = botFactory.BuildGameContext(romHandle, copyId, position);
             IBot bot = botFactory.CreateBot(context);
 
             var entry = new StarterHuntEntry(romHandle, starter, recordingName);
             var hunt = new StarterHuntEvent(bot, context, entry, config, provider);
-
-            GameState state = new()
+            GameState huntState = new()
             {
                 GameFlavor = GameFlavor.RS,
                 Bot = bot,
@@ -172,17 +196,139 @@ namespace ShinyBotHunter.BotEvents
 
             try
             {
-                PokemonData? shiny = await hunt.ExecuteWithResultAsync(state, cancellationToken);
-                return new HuntOutcome(position, bot, shiny, state.TargetPokemon);
-            }
-            finally
-            {
-                // The winner stays open for the player; everything else is torn down.
-                if (cancellationToken.IsCancellationRequested)
+                PokemonData? shiny = await hunt.ExecuteWithResultAsync(huntState, cancellationToken);
+                if (shiny is null)
                 {
-                    try { await bot.DisposeAsync(); } catch { }
+                    await DisposeQuietly(bot);
+                    ReleasePosition(position);
+                    return null;
                 }
+
+                // Persisted before the player touches it: the wait can outlive the process, and the
+                // record is what reports the loss if it does.
+                StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
+                progress.PendingShinies.Add(new PendingShiny
+                {
+                    Starter = starter,
+                    RomHandle = context.GameName,
+                    RecordingName = recordingName,
+                    PID = shiny.PID,
+                    Species = shiny.Species,
+                    FoundUtc = DateTime.UtcNow,
+                    PokemonData = shiny,
+                });
+                await stateStore.SaveAsync(progress);
+
+                return new ParkedShiny(starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
             }
+            catch (OperationCanceledException)
+            {
+                await DisposeQuietly(bot);
+                ReleasePosition(position);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Settles the oldest parked shiny: the player has played the battle out, so save, record,
+        /// retire the copy and close that emulator. One per press; the Waiting surface stays up while
+        /// more are parked.
+        /// </summary>
+        private async Task ResumeOldestAsync()
+        {
+            ParkedShiny? oldest;
+            lock (gate) { oldest = parked.FirstOrDefault(); }
+            if (oldest is null)
+            {
+                Console.WriteLine("[StarterHunt] Nothing is parked; nothing to resume.");
+                return;
+            }
+
+            Console.WriteLine($"[StarterHunt] Resuming {oldest.Starter} on {oldest.CopyHandle}: saving.");
+            oldest.HuntState.State.Push(EventState.Resume);
+            await oldest.Hunt.ExecuteWithResultAsync(oldest.HuntState, CancellationToken.None);
+
+            if (oldest.Forced)
+            {
+                Console.WriteLine("[StarterHunt] [TEST] Forced find: not retiring the copy or marking the starter complete.");
+            }
+            else
+            {
+                // The copy's save file is now the shiny. From this moment it may never host a hunt.
+                await stateStore.RetireCopyAsync(GameFlavor.RS, oldest.CopyHandle);
+                await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, oldest.Starter);
+            }
+
+            StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
+            progress.PendingShinies.RemoveAll(p => string.Equals(p.RomHandle, oldest.CopyHandle, StringComparison.OrdinalIgnoreCase));
+            await stateStore.SaveAsync(progress);
+
+            await DisposeQuietly(oldest.Bot);
+            int remaining;
+            lock (gate)
+            {
+                parked.Remove(oldest);
+                positionsInUse.Remove(oldest.Position);
+                remaining = parked.Count;
+                resumeHappened.TrySetResult();
+                resumeHappened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            Console.WriteLine($"[StarterHunt] {oldest.Starter} saved on {oldest.CopyHandle}. {remaining} still parked.");
+            SetDashboardState(remaining > 0 ? EventState.Waiting : EventState.Running);
+        }
+
+        private void ReportAndClearStalePending(StarterHuntGameState progress)
+        {
+            foreach (PendingShiny lost in progress.PendingShinies)
+            {
+                Console.WriteLine(
+                    $"[StarterHunt] Discarding a shiny {lost.Starter} (PID {lost.PID:X8}) on {lost.RomHandle} " +
+                    "left unsaved by an earlier run; its emulator is gone.");
+            }
+            progress.PendingShinies.Clear();
+        }
+
+        private async Task WaitForAResumeAsync(CancellationToken cancellationToken)
+        {
+            Task waiter;
+            lock (gate) { waiter = resumeHappened.Task; }
+            await Task.WhenAny(waiter, Task.Delay(Timeout.Infinite, cancellationToken).ContinueWith(_ => { }));
+        }
+
+        private int CountParked() { lock (gate) { return parked.Count; } }
+
+        private int ClaimPosition()
+        {
+            lock (gate)
+            {
+                int position = 0;
+                while (positionsInUse.Contains(position)) position++;
+                positionsInUse.Add(position);
+                return position;
+            }
+        }
+
+        private void ReleasePosition(int position) { lock (gate) { positionsInUse.Remove(position); } }
+
+        /// <summary>
+        /// What the dashboard sees. Waiting is what surfaces the Resume button, so it is set exactly
+        /// while at least one shiny is parked.
+        /// </summary>
+        private void SetDashboardState(EventState newState)
+        {
+            GameState? shared = sharedState;
+            if (shared is null) return;
+            lock (gate)
+            {
+                if (shared.State.Count > 0) shared.State.Pop();
+                shared.State.Push(newState);
+            }
+        }
+
+        private static async Task DisposeQuietly(IBot bot)
+        {
+            try { await bot.DisposeAsync(); } catch { }
         }
     }
 }

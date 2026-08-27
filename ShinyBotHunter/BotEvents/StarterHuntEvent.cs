@@ -49,6 +49,11 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
 
+        /// <summary>True when the find was forced by the QA hook rather than being a real shiny.</summary>
+        public bool ResultWasForced { get; private set; }
+
+        private int encountersSeen;
+
         /// <summary>Verdict from the most recent attempt, so the keep decision does not re-analyse.</summary>
         private LegalityResult? lastVerdict;
 
@@ -95,8 +100,18 @@ namespace ShinyBotHunter.BotEvents
             {
                 // Throws rather than returning nothing, so reaching here means the pokemon is known.
                 PokemonData starter = await AttemptAsync(state.Milestone, cancellationToken);
+                encountersSeen++;
 
-                if (!starter.IsShiny)
+                bool forced = config.ForceShinyAfterEncounters > 0 && encountersSeen >= config.ForceShinyAfterEncounters;
+                if (forced && !starter.IsShiny)
+                {
+                    Console.WriteLine(
+                        $"[StarterHunt] [TEST] {entry.RecordingName}: treating encounter {encountersSeen} " +
+                        $"({starter.Name} PID {starter.PID:X8}) as shiny to exercise the machinery.");
+                    ResultWasForced = true;
+                }
+
+                if (!starter.IsShiny && !forced)
                 {
                     await SoftResetAsync(cancellationToken);
                     continue;
@@ -104,7 +119,7 @@ namespace ShinyBotHunter.BotEvents
 
                 // An illegal shiny is not recorded: a catch no real game could have produced corrupts
                 // exactly the data the hunt exists to collect, so it is logged above and hunted past.
-                if (lastVerdict is not null && !lastVerdict.IsLegal)
+                if (!ResultWasForced && lastVerdict is not null && !lastVerdict.IsLegal)
                 {
                     Console.WriteLine($"[StarterHunt] {entry.RecordingName}: skipping illegal shiny and continuing.");
                     await SoftResetAsync(cancellationToken);
@@ -420,7 +435,14 @@ namespace ShinyBotHunter.BotEvents
 
             if (state.TargetPokemon is not null)
             {
-                await persistence.AddCaughtPokemonAsync(state.TargetPokemon);
+                if (ResultWasForced)
+                {
+                    Console.WriteLine("[StarterHunt] [TEST] Not recording the forced find as caught.");
+                }
+                else
+                {
+                    await persistence.AddCaughtPokemonAsync(state.TargetPokemon);
+                }
                 Result = state.TargetPokemon.PokemonData;
             }
 

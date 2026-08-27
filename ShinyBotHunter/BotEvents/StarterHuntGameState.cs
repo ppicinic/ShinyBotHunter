@@ -36,6 +36,14 @@ namespace ShinyBotHunter.BotEvents
         public List<string> SavesCreated { get; set; } = new();
 
         /// <summary>
+        /// ROM copies holding a saved shiny, permanently. A retired copy is never allocated to a
+        /// hunt again: its save file IS the caught shiny, and pointing an emulator at it would
+        /// eventually overwrite the one thing this whole system exists to produce. Mirrors what the
+        /// HGSS hunt does with its GameIds map.
+        /// </summary>
+        public List<string> RetiredCopies { get; set; } = new();
+
+        /// <summary>
         /// Shinies found but not yet played out and saved, within the current run.
         ///
         /// Deliberately not carried across a restart. A parked shiny only exists as a live emulator

@@ -102,5 +102,52 @@ namespace ShinyBotHunter.Service
         /// <summary>Whether a starter has already been caught, so a resumed hunt can skip it.</summary>
         public static bool IsDone(StarterHuntGameState state, string starter)
             => state.CompletedStarters.Contains(starter, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Copies that may never be hunted on again because their save is a caught shiny.</summary>
+        public async Task<IReadOnlyList<string>> GetRetiredCopiesAsync(GameFlavor game)
+        {
+            StarterHuntGameState? doc = await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            return doc?.RetiredCopies ?? new List<string>();
+        }
+
+        /// <summary>
+        /// Permanently retires a copy. Called at the moment the shiny is saved onto it, because from
+        /// that moment the copy's save file is the shiny.
+        /// </summary>
+        public Task RetireCopyAsync(GameFlavor game, string copyHandle)
+            => collection.UpdateOneAsync(
+                KeyFor(game, CreatedSavesDocName),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.RetiredCopies, copyHandle)
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+
+        /// <summary>Records a starter as caught under its milestone, so a re-run refuses it.</summary>
+        public Task MarkStarterCompletedAsync(GameFlavor game, string milestone, string starter)
+            => collection.UpdateOneAsync(
+                KeyFor(game, milestone),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.CompletedStarters, starter)
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+
+        /// <summary>
+        /// Picks ROM copy ids for a wave of emulators. Pure so it can be tested: the rule it encodes
+        /// -- never hand out a retired copy or one a parked shiny is sitting on -- is the protection
+        /// this feature exists for.
+        /// </summary>
+        public static List<int> AllocateCopyIds(string sourceHandle, int count, IEnumerable<string> unavailableHandles)
+        {
+            var unavailable = new HashSet<string>(unavailableHandles, StringComparer.OrdinalIgnoreCase);
+            var ids = new List<int>();
+            for (int id = 1; ids.Count < count; id++)
+            {
+                if (!unavailable.Contains($"{sourceHandle}{id}"))
+                {
+                    ids.Add(id);
+                }
+            }
+            return ids;
+        }
     }
 }

@@ -118,7 +118,7 @@ namespace ShinyBotHunter.Service
                     throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
                 }
                 if (string.IsNullOrWhiteSpace(args.GameName)) throw new ArgumentException("A game must be chosen for the shiny starter hunt.");
-                if (string.IsNullOrWhiteSpace(args.Starter)) throw new ArgumentException("A starter must be chosen for the shiny starter hunt.");
+                if (string.IsNullOrWhiteSpace(args.Starter)) throw new ArgumentException("At least one starter must be chosen for the shiny starter hunt.");
                 if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
 
                 RomInfo rom = romInfoService.GetByHandle(args.GameName)
@@ -129,18 +129,28 @@ namespace ShinyBotHunter.Service
                         $"'{args.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
                 }
 
-                int requested = args.Emulators ?? 1;
+                // "Mudkip" hunts one; "Mudkip, Treecko, Torchic" hunts a queue in that order.
+                List<string> starters = args.Starter
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+
                 int budget = settings.MaxEmulatorsFor(rom.Console);
+                int requested = args.Emulators ?? 1;
                 if (requested < 1 || requested > budget)
                 {
                     throw new ArgumentException($"Emulators must be between 1 and {budget} for {rom.Console}.");
                 }
 
                 string recordingName = string.IsNullOrWhiteSpace(args.RecordingName) ? args.GameName : args.RecordingName;
-                var hunt = new MultiStarterHuntEvent(args.GameName, args.Starter, args.PhaseName, recordingName,
-                    requested, StarterHuntConfig.Load(), provider);
-                var huntEvent = new BotAndOrEvent();
-                huntEvent.StartSpecialEvent(hunt, $"Shiny {args.Starter}", botEvents);
+                var hunt = new MultiStarterHuntEvent(args.GameName, starters, args.PhaseName, recordingName,
+                    requested, budget, StarterHuntConfig.Load(), provider);
+
+                // The shared state is what the dashboard reads: the event holds it at Waiting while a
+                // shiny is parked, which is what surfaces Resume.
+                var huntState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
+                huntState.State.Push(EventState.Running);
+                var huntEvent = new BotAndOrEvent { GameState = huntState };
+                huntEvent.StartSpecialEvent(hunt, $"Shiny hunt: {string.Join(", ", starters)}", botEvents, huntState);
                 botEvents.Add(newPos, huntEvent);
                 return GetBotDashboardState();
             }
@@ -222,6 +232,19 @@ namespace ShinyBotHunter.Service
             }
             else if(args.EventName == "Resume")
             {
+                if (botEvents[pos].Event is MultiStarterHuntEvent multiHunt)
+                {
+                    // The hunt's main task is still running; Resume is a call into it, not a restart.
+                    var resumeState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Target = new ShinyTarget() };
+                    resumeState.State.Push(EventState.Resume);
+                    _ = multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None)
+                        .ContinueWith(t =>
+                        {
+                            if (t.IsFaulted) Console.WriteLine($"[StarterHunt] Resume failed: {t.Exception?.Flatten().InnerException?.Message}");
+                            _ = hubContext.Clients.All.ReceiveDashboardState(GetBotDashboardState());
+                        });
+                    return GetBotDashboardState();
+                }
                 botEvents[pos].GameState!.SwapState(EventState.Resume);
                 botEvents[pos].StartEvent(botEvents[pos].Event!, botEvents[pos].GameState!, botEvents[pos].GetName(pos), this);
                 return GetBotDashboardState();
@@ -664,12 +687,14 @@ namespace ShinyBotHunter.Service
                 });
         }
 
-        public void StartSpecialEvent(IBotEvent botEvent, string name, Dictionary<int, BotAndOrEvent> placements)
+        public void StartSpecialEvent(IBotEvent botEvent, string name, Dictionary<int, BotAndOrEvent> placements, GameState? gameState = null)
         {
             Event = botEvent;
             eventName = name;
             CancellationTokenSource = new CancellationTokenSource();
-            EventTask = Event.ExecuteAsync(new GameState(), CancellationTokenSource.Token)
+            // A caller that supplies the state can watch and steer the event while it runs, which is
+            // how the multi-starter hunt surfaces Waiting/Resume without ending its task.
+            EventTask = Event.ExecuteAsync(gameState ?? new GameState(), CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
                     if (!CancellationTokenSource.IsCancellationRequested)

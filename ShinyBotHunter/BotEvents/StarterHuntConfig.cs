@@ -62,6 +62,14 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Logs the candidate action-menu variables during the battle, to identify one.</summary>
         public bool LogBattleStateProbe { get; set; }
 
+        /// <summary>
+        /// QA only: treat the Nth encounter on each emulator as if it were shiny, to exercise the
+        /// park, next-starter and resume machinery without waiting out 1/8192. A forced find runs
+        /// the whole flow except the parts that would lie to the data: it is not recorded as caught,
+        /// its starter is not marked complete, and its copy is not retired. 0 disables.
+        /// </summary>
+        public int ForceShinyAfterEncounters { get; set; }
+
         public static StarterHuntConfig Load(string path = DefaultPath)
         {
             if (!File.Exists(path))
