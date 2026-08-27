@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿﻿using Microsoft.Extensions.DependencyInjection;
+using Discord;
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
@@ -100,7 +101,7 @@ namespace ShinyBotHunter.BotEvents
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
-        public BattleOrchestratorEvent(IPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
+        public BattleOrchestratorEvent([FromKeyedServices(GameFlavor.HGSS)] IPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
             this.parser = parser;
