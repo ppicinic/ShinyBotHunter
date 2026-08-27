@@ -697,6 +697,13 @@ namespace ShinyBotHunter.Service
             EventTask = Event.ExecuteAsync(gameState ?? new GameState(), CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
+                    // A special event dying without a word is how a whole hunt vanishes with no
+                    // emulators and no explanation. Whatever else happens, the fault gets printed.
+                    if (t.IsFaulted)
+                    {
+                        Console.WriteLine($"[BotService] Special event '{name}' crashed:");
+                        Console.WriteLine(t.Exception!.Flatten().ToString());
+                    }
                     if (!CancellationTokenSource.IsCancellationRequested)
                     { 
                         await CancellationTokenSource.CancelAsync();

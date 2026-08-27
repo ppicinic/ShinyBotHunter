@@ -71,7 +71,7 @@ namespace ShinyBotHunter.Service
         /// <summary>Whether this ROM copy already has a save that finished being written.</summary>
         public async Task<bool> IsSaveCreatedAsync(GameFlavor game, string romHandle)
         {
-            StarterHuntGameState? saves = await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            StarterHuntGameState? saves = await FindCreatedSavesDocAsync(game);
             if (saves is not null && saves.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase))
             {
                 return true;
@@ -96,6 +96,7 @@ namespace ShinyBotHunter.Service
                 KeyFor(game, CreatedSavesDocName),
                 Builders<StarterHuntGameState>.Update
                     .AddToSet(x => x.SavesCreated, romHandle)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
                 new UpdateOptions { IsUpsert = true });
 
@@ -106,8 +107,35 @@ namespace ShinyBotHunter.Service
         /// <summary>Copies that may never be hunted on again because their save is a caught shiny.</summary>
         public async Task<IReadOnlyList<string>> GetRetiredCopiesAsync(GameFlavor game)
         {
-            StarterHuntGameState? doc = await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            StarterHuntGameState? doc = await FindCreatedSavesDocAsync(game);
             return doc?.RetiredCopies ?? new List<string>();
+        }
+
+        /// <summary>
+        /// Reads the created-saves document, repairing the one malformed shape it can have: documents
+        /// this store once created through bare upserts got a server-generated ObjectId _id, which no
+        /// longer deserializes into the Guid the model declares. Such a document is dropped and
+        /// reported -- its contents were only the created-saves bookkeeping, which rebuilds itself,
+        /// and wiping is what lets every later read work instead of throwing forever.
+        /// </summary>
+        private async Task<StarterHuntGameState?> FindCreatedSavesDocAsync(GameFlavor game)
+        {
+            try
+            {
+                return await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            }
+            catch (FormatException)
+            {
+                var raw = collection.Database.GetCollection<MongoDB.Bson.BsonDocument>("PhaseStates");
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.And(
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("Name", CreatedSavesDocName),
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("Game", (int)game));
+                long dropped = (await raw.DeleteManyAsync(filter)).DeletedCount;
+                Console.WriteLine(
+                    $"[StarterHuntStateStore] Dropped {dropped} malformed created-saves record(s) for {game}: " +
+                    "their ObjectId _id predates the Guid fix. Save-creation bookkeeping rebuilds itself.");
+                return null;
+            }
         }
 
         /// <summary>
@@ -119,6 +147,7 @@ namespace ShinyBotHunter.Service
                 KeyFor(game, CreatedSavesDocName),
                 Builders<StarterHuntGameState>.Update
                     .AddToSet(x => x.RetiredCopies, copyHandle)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
                 new UpdateOptions { IsUpsert = true });
 
@@ -128,6 +157,7 @@ namespace ShinyBotHunter.Service
                 KeyFor(game, milestone),
                 Builders<StarterHuntGameState>.Update
                     .AddToSet(x => x.CompletedStarters, starter)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
                 new UpdateOptions { IsUpsert = true });
 
