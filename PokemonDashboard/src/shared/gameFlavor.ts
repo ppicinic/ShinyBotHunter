@@ -1,6 +1,7 @@
 // C# GameFlavor enum — must stay in sync with ShinyBotHunter/Macro/GameFlavor.cs
 export const GAME_FLAVOR_NAMES: Record<number, string> = {
-  0: 'HGSS'
+  0: 'HGSS',
+  1: 'RS'
 }
 
 /**

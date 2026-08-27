@@ -190,6 +190,35 @@ export interface AdminMetadata {
 }
 
 // ============================================================
+// Detected ROMs (GET /api/getAllGames, POST /api/refreshGames)
+// Matches C# GameRomInfo in AdminController.cs
+// ============================================================
+
+export interface GameRomInfo {
+  // The ROM's base filename. This is the value to post back as GameName — it says which
+  // file an emulator opens, and the bot copies a ROM per instance so each gets its own save.
+  handle: string
+  // Everything below is read from the ROM header, not the filename.
+  console: string
+  flavor: string | null
+  gameName: string
+  gameCode: string
+  language: string
+  revision: number
+  displayName: string
+  revisionSupport: string
+}
+
+/**
+ * Label for a ROM in a picker. Leads with the handle because that is what identifies the
+ * file, and per-instance copies share a display name — "Pokemon SoulSilver" and
+ * "Pokemon SoulSilver2" are the same game and would otherwise be indistinguishable.
+ */
+export function romLabel(rom: GameRomInfo): string {
+  return `${rom.handle} — ${rom.gameName} rev${rom.revision}`
+}
+
+// ============================================================
 // Macro recorder types (dev mode)
 // Matches C# MacroRecordResult / MacroRecordStatus in MacroRecordingService.cs
 // ============================================================
