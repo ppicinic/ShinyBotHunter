@@ -201,6 +201,29 @@ namespace ShinyBotHunter.Pokemon
             return national;
         }
 
+        /// <summary>
+        /// Inverse of <see cref="ToNationalDex"/>, for comparing against species the game stores as
+        /// internal indices -- the in-battle structures do, not just the stored ones.
+        /// </summary>
+        /// <returns>0 when no Gen 3 index maps to that dex number.</returns>
+        public static ushort ToInternalSpecies(ushort nationalDex)
+        {
+            const ushort LastJohto = 251;
+            const ushort ChimechoNational = 358;
+            const ushort ChimechoIndex = 411;
+
+            if (nationalDex == 0) return 0;
+            if (nationalDex <= LastJohto) return nationalDex;
+            if (nationalDex == ChimechoNational) return ChimechoIndex;
+            if (nationalDex > 386) return 0;
+
+            // Mirrors the forward direction: Chimecho sits at the end rather than in sequence, so
+            // everything past it is one slot earlier than a flat shift.
+            ushort index = (ushort)(nationalDex + 25);
+            if (nationalDex > ChimechoNational) index--;
+            return index;
+        }
+
         private static byte[] Decrypt(byte[] raw, uint pid, uint otId)
         {
             uint key = pid ^ otId;

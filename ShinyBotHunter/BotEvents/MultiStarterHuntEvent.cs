@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Macro;
@@ -22,6 +22,7 @@ namespace ShinyBotHunter.BotEvents
     public class MultiStarterHuntEvent : AbstractBotEvent<PokemonData?>
     {
         private readonly BotFactory botFactory;
+        private readonly StarterHuntStateStore stateStore;
         private readonly IServiceProvider provider;
         private readonly StarterHuntConfig config;
         private readonly int emulatorCount;
@@ -47,6 +48,7 @@ namespace ShinyBotHunter.BotEvents
             this.config = config;
             this.provider = provider;
             this.botFactory = provider.GetRequiredService<BotFactory>();
+            this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
 
             config.Validate();
             config.MacroForStarter(starter);
@@ -56,6 +58,17 @@ namespace ShinyBotHunter.BotEvents
         {
             // Cancelling this stops the losing emulators the moment one succeeds, rather than letting
             // them finish a reset cycle and find a second shiny.
+            StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
+            if (StarterHuntStateStore.IsDone(progress, starter))
+            {
+                Console.WriteLine(
+                    $"[StarterHunt] {starter} is already recorded as caught for '{milestone}'. " +
+                    "Remove it from the hunt state to run it again.");
+                return null;
+            }
+            progress.CurrentStarter = starter;
+            await stateStore.SaveAsync(progress);
+
             using CancellationTokenSource hunt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             var runs = new List<Task<HuntOutcome>>();
@@ -95,6 +108,20 @@ namespace ShinyBotHunter.BotEvents
                 state.Milestone = milestone;
                 state.Bot = outcome.Bot;
                 state.TargetPokemon = outcome.Target;
+
+                // Recorded before the battle is played out: the pause waiting for a human can outlive
+                // the process, and a restart has to know a shiny is sitting there unsaved.
+                progress.PendingShinies.Add(new PendingShiny
+                {
+                    Starter = starter,
+                    RomHandle = romHandle,
+                    RecordingName = recordingName,
+                    PID = outcome.Shiny.PID,
+                    Species = outcome.Shiny.Species,
+                    FoundUtc = DateTime.UtcNow,
+                    PokemonData = outcome.Shiny,
+                });
+                await stateStore.SaveAsync(progress);
 
                 Console.WriteLine(
                     $"[StarterHunt] Shiny {outcome.Shiny.Name} found on emulator {outcome.Position}. " +

@@ -429,6 +429,7 @@ namespace ShinyBotHunter
                 .AddSingleton<GameServices>()
                 .AddSingleton<LegalityService>()
                 .AddSingleton<RsStartMenuService>()
+                .AddSingleton<StarterHuntStateStore>()
                 // Per-game services, resolved by flavor at the point a bot's game is known rather
                 // than named literally at construction. A new flavor is added by registering its
                 // three implementations here.

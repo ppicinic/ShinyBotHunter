@@ -35,6 +35,8 @@ namespace ShinyBotHunter.BotEvents
         private readonly RsStartMenuService startMenu;
         private readonly string romDirectory;
         private readonly ushort expectedSpecies;
+        private readonly ushort expectedInternalSpecies;
+        private readonly Service.Pointers.IPointerService pointers;
 
         public override EventState EventState { get; }
 
@@ -63,6 +65,9 @@ namespace ShinyBotHunter.BotEvents
             // than after the first battle.
             expectedSpecies = (ushort)provider.GetRequiredService<PokemonMetadataService>()
                 .GetPokemonMetadata(entry.Starter).Id;
+            // The in-battle structures store internal indices rather than dex numbers.
+            expectedInternalSpecies = Gen3PokemonParser.ToInternalSpecies(expectedSpecies);
+            pointers = provider.GetRequiredService<GameServices>().Pointers(GameFlavor.RS);
             EventState = EventState.NotStarted;
         }
 
@@ -150,13 +155,7 @@ namespace ShinyBotHunter.BotEvents
                 return null;
             }
 
-            // The party is filled when the ball is chosen, before the throw animation, so a correct
-            // read still lands while the screen shows nothing. Hold so the pokemon is actually on
-            // screen before the run moves on.
-            if (config.StarterVisiblePauseMs > 0)
-            {
-                await Task.Delay(config.StarterVisiblePauseMs, cancellationToken);
-            }
+            await WaitUntilStarterIsOnFieldAsync(cancellationToken);
 
             await persistence.AddEncounterAsync(new PersistPokemonData
             {
@@ -188,6 +187,52 @@ namespace ShinyBotHunter.BotEvents
             }
 
             return starter;
+        }
+
+        /// <summary>
+        /// Waits until the starter is actually out on the battlefield.
+        ///
+        /// The party is filled the moment the ball is chosen, well before the throw animation, so a
+        /// correct read still lands while the screen shows nothing -- waiting a fixed time after it
+        /// was only ever a guess at how long the animation takes.
+        ///
+        /// gBattleMons holds the active battler, and it carries the starter's species once the mon is
+        /// on the field, which is the state worth waiting for. The precise "FIGHT/BAG/POKEMON/RUN is
+        /// up" signal lives in gBattleMainFunc and gBattlerControllerFuncs, but those are ROM
+        /// function pointers that move between revisions, and keying on them would pin the hunt to
+        /// rev2 and break the other revisions this deliberately still supports.
+        /// </summary>
+        private async Task WaitUntilStarterIsOnFieldAsync(CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.StarterOnFieldTimeoutMs);
+
+            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    ushort active = await bot.ReadUShortAsync(pointers.BattlePokemon);
+                    if (active == expectedInternalSpecies)
+                    {
+                        // Settles the last of the animation; the species appears a little before the
+                        // sprite has finished arriving.
+                        if (config.StarterOnFieldSettleMs > 0)
+                        {
+                            await Task.Delay(config.StarterOnFieldSettleMs, cancellationToken);
+                        }
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[StarterHunt] {entry.RecordingName}: field check failed ({ex.Message}).");
+                }
+
+                await Task.Delay(config.StarterReadPollIntervalMs, cancellationToken);
+            }
+
+            // Not fatal: the pokemon was already read and verified, so this only means the run moves
+            // on without having seen it settle.
+            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: starter never appeared on the field; continuing.");
         }
 
         /// <summary>
