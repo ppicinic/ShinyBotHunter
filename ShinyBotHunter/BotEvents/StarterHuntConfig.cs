@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -17,6 +17,9 @@ namespace ShinyBotHunter.BotEvents
         public string CreateSaveMacro { get; set; } = "CreateNewSave";
         public string SoftResetMacro { get; set; } = "SoftReset";
         public string BattleAdvanceMacro { get; set; } = "MashB";
+
+        /// <summary>Confirms the save, starting with the cursor already on SAVE.</summary>
+        public string SaveConfirmMacro { get; set; } = "SaveGame";
 
         /// <summary>Macro to run for each starter, keyed by species name.</summary>
         public Dictionary<string, string> StarterMacros { get; set; } = new();
@@ -65,6 +68,7 @@ namespace ShinyBotHunter.BotEvents
             Require(CreateSaveMacro, nameof(CreateSaveMacro));
             Require(SoftResetMacro, nameof(SoftResetMacro));
             Require(BattleAdvanceMacro, nameof(BattleAdvanceMacro));
+            Require(SaveConfirmMacro, nameof(SaveConfirmMacro));
 
             if (StarterMacros.Count == 0)
             {

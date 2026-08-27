@@ -33,7 +33,8 @@ namespace ShinyBotHunter.Tests
 
             var named = new List<string>
             {
-                config.ContinueMacro, config.CreateSaveMacro, config.SoftResetMacro, config.BattleAdvanceMacro,
+                config.ContinueMacro, config.CreateSaveMacro, config.SoftResetMacro,
+                config.BattleAdvanceMacro, config.SaveConfirmMacro,
             };
             named.AddRange(config.StarterMacros.Values);
 

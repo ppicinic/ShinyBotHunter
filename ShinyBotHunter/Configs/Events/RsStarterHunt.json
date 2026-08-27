@@ -5,6 +5,7 @@
   "CreateSaveMacro": "CreateNewSave",
   "SoftResetMacro": "SoftReset",
   "BattleAdvanceMacro": "MashB",
+  "SaveConfirmMacro": "SaveGame",
 
   "StarterMacros": {
     "Treecko": "SelectStarterTreecko",

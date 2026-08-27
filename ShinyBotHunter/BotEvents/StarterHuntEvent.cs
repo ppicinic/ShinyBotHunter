@@ -235,10 +235,10 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         private async Task SaveViaStartMenuAsync(CancellationToken cancellationToken)
         {
-            bot.RunMacroString("T.Start;W.45");
+            bot.RunMacroString("T.Start");
             await bot.WaitForMacroAsync(cancellationToken);
 
-            var menu = await startMenu.ReadAsync(bot);
+            RsStartMenuService.MenuState menu = await WaitForStartMenuAsync(cancellationToken);
             int steps = RsStartMenuService.StepsTo(menu, config.SaveMenuActionId);
             Console.WriteLine($"[StarterHunt] Start menu: {menu.Describe()}; SAVE is {steps} step(s) away.");
 
@@ -249,9 +249,33 @@ namespace ShinyBotHunter.BotEvents
                 await bot.WaitForMacroAsync(cancellationToken);
             }
 
-            // A: pick SAVE, then confirm through the "save over the previous file?" prompts.
-            bot.RunMacroString("T.A;W.90;T.A;W.90;T.A;W.240;T.A;W.60");
+            RunMacro(config.SaveConfirmMacro);
             await bot.WaitForMacroAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Polls until the start menu reports a sane state, rather than waiting a fixed time for it to
+        /// open. How long that takes is not worth guessing at: too short and the menu is read before it
+        /// is populated, which looks identical to a menu that does not contain SAVE.
+        /// </summary>
+        private async Task<RsStartMenuService.MenuState> WaitForStartMenuAsync(CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
+            RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot);
+
+            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+            {
+                if (menu.Count > 0 && menu.Count <= 10 && menu.CursorPos < menu.Count)
+                {
+                    return menu;
+                }
+                await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
+                menu = await startMenu.ReadAsync(bot);
+            }
+
+            // Returned rather than thrown so StepsTo produces the failure, with the menu contents in
+            // its message.
+            return menu;
         }
 
         private async Task SoftResetAsync(CancellationToken cancellationToken)

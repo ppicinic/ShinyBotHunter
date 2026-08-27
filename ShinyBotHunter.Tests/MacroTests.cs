@@ -35,6 +35,7 @@ namespace ShinyBotHunter.Tests
         [InlineData(GameFlavor.RS, "SelectStarterTorchic")]
         [InlineData(GameFlavor.RS, "SelectStarterMudkip")]
         [InlineData(GameFlavor.RS, "MashB")]
+        [InlineData(GameFlavor.RS, "SaveGame")]
         public void EveryExpectedMacroCompiles(GameFlavor flavor, string name)
         {
             string macro = MacroRegistry.Instance.GetMacro(flavor, name);
