@@ -823,7 +823,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     setFeedback(null)
     try {
       const params = paramValues[action.name] ?? {}
-      const body: Record<string, string | boolean> = { eventName: action.name }
+      const body: Record<string, unknown> = { eventName: action.name }
       if (params['GameName'] !== undefined) {
         body['gameName'] = params['GameName']
       }
@@ -831,6 +831,19 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
       if (soundOnKey !== undefined) {
         body['soundOn'] = params[soundOnKey] === 'true'
+      }
+      // Everything else goes under its own name, which server-side binding matches
+      // case-insensitively. Without this an action's parameters render, get filled in, and are
+      // then dropped on submit -- the form looks configurable while the server sees nothing.
+      for (const [key, value] of Object.entries(params)) {
+        if (key === 'GameName') continue
+        if (key.toLowerCase() === 'soundon') continue
+        if (value === '') continue
+        // Numeric parameters are sent as numbers rather than relying on the server coercing them.
+        const asNumber = Number(value)
+        body[key] = value.trim() !== '' && !Number.isNaN(asNumber) && /^\d+$/.test(value.trim())
+          ? asNumber
+          : value
       }
 
       const res = await fetch(`${apiUrl}/api/startTopLevelAction`, {
