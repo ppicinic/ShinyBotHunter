@@ -172,7 +172,7 @@ namespace ShinyBotHunter.Service
                     ?? throw new InvalidOperationException($"No game context recorded for the bot at position {pos}.");
                 // Encounters are filed under a name the operator chooses, so a hunt can be grouped
                 // however they like rather than by whichever ROM copy happened to run it.
-                string recordingName = string.IsNullOrWhiteSpace(args.GameName) ? bot.GameFileName : args.GameName;
+                string recordingName = string.IsNullOrWhiteSpace(args.RecordingName) ? bot.GameFileName : args.RecordingName;
                 var entry = new StarterHuntEntry(context.SourceGameName, args.Starter, recordingName);
                 var hunt = new StarterHuntEvent(bot, context, entry, StarterHuntConfig.Load(), provider);
 
@@ -427,7 +427,7 @@ namespace ShinyBotHunter.Service
             {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
             // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
             // only per-hunt choices are which starter to take and what to file the encounters under.
-            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter", "GameName"] } },
+            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter"], OptionalParameters = ["RecordingName"] } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -539,6 +539,11 @@ namespace ShinyBotHunter.Service
         public int? SwitchSlot { get; set; }
         /// <summary>Which starter to take, for the shiny starter hunt.</summary>
         public string? Starter { get; set; }
+        /// <summary>
+        /// What to file this hunt's encounters under. Deliberately not GameName, which already means
+        /// which ROM to launch and renders as a ROM picker.
+        /// </summary>
+        public string? RecordingName { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 

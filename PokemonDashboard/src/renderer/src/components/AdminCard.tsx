@@ -99,6 +99,15 @@ function requiredParamsFilled(schema: EventArgumentOptions, params: Record<strin
 }
 
 /** Maps one form's parameter values onto the JSON body of an encounter leg. */
+/**
+ * Parameter names buildLegBody knows how to place. Anything outside this set is passed through
+ * verbatim, so an action with a new parameter reaches the server without a dashboard change --
+ * previously such a parameter rendered an input and was then silently dropped on submit.
+ */
+const LEG_PARAM_KEYS = new Set([
+  'PhaseName', 'TargetType', 'EncounterType', 'xRange', 'yRange', 'TrainType', 'TargetLevel', 'SwitchSlot'
+])
+
 function buildLegBody(params: Record<string, string>): NewEventLegArguments {
   const leg: NewEventLegArguments = {}
   if (params['PhaseName'] !== undefined) {
@@ -762,6 +771,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
         const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
         if (soundOnKey !== undefined) {
           body['soundOn'] = params[soundOnKey] === 'true'
+        }
+        // Pass through parameters buildLegBody does not model. Server-side binding is
+        // case-insensitive, so the schema's own name is sent unchanged.
+        for (const [key, value] of Object.entries(params)) {
+          if (LEG_PARAM_KEYS.has(key)) continue
+          if (key.toLowerCase() === 'soundon') continue
+          if (value === '') continue
+          body[key] = value
         }
       }
 
