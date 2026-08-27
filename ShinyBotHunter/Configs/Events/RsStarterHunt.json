@@ -61,5 +61,9 @@
 
   // Logs the battle-state bytes during each battle. Only needed to re-derive the action-menu
   // signal the stop condition keys on (gBattleCommunication[1] == 4 once the menu is up).
-  "LogBattleStateProbe": false
+  "LogBattleStateProbe": false,
+
+  // QA only: treats the Nth encounter on each emulator as shiny to exercise park, queue and resume
+  // without waiting out 1/8192. Skips everything that would lie to the data. SET TO 0 FOR REAL HUNTS.
+  "ForceShinyAfterEncounters": 3
 }

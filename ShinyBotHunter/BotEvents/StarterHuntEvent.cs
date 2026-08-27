@@ -35,6 +35,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly RsStartMenuService startMenu;
         private readonly StarterHuntStateStore stateStore;
         private readonly string romDirectory;
+        private readonly string bizHawkDirectory;
         private readonly ushort expectedSpecies;
         private readonly ushort expectedInternalSpecies;
 
@@ -68,7 +69,9 @@ namespace ShinyBotHunter.BotEvents
             this.legality = provider.GetRequiredService<LegalityService>();
             this.startMenu = provider.GetRequiredService<RsStartMenuService>();
             this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
-            this.romDirectory = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value.ROMBaseDirectory;
+            var settings = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value;
+            this.romDirectory = settings.ROMBaseDirectory;
+            this.bizHawkDirectory = settings.BizHawkBaseDirectory;
 
             // Fails here rather than mid-hunt: both are name lookups that either resolve now or never.
             config.Validate();
@@ -532,6 +535,13 @@ namespace ShinyBotHunter.BotEvents
                 File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);
             }
 
+            // A fresh copy must start saveless, and the copy file is not where the save lives:
+            // BizHawk keeps it in the copy's save-slot directory, which survives the copy being
+            // deleted and recreated. Left in place, the new-game macro boots into a game that
+            // already has a save -- the title menu gains a Continue entry and every recorded press
+            // from there lands one row off.
+            WipeSaveSlot();
+
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save on {context.GameName}.");
 
             await bot.LaunchAsync();
@@ -546,6 +556,17 @@ namespace ShinyBotHunter.BotEvents
             // interrupted creation look complete.
             await stateStore.MarkSaveCreatedAsync(GameFlavor.RS, context.GameName);
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: save created on {context.GameName}.");
+        }
+
+        private void WipeSaveSlot()
+        {
+            string slotDirectory = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+            if (!Directory.Exists(slotDirectory))
+            {
+                return;
+            }
+            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: wiping stale saves in {slotDirectory}.");
+            Directory.Delete(slotDirectory, recursive: true);
         }
 
         private void RunMacro(string macroName)
