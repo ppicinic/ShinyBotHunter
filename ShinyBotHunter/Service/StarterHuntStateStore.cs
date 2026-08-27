@@ -1,4 +1,4 @@
-using MongoDB.Driver;
+﻿using MongoDB.Driver;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -58,6 +58,28 @@ namespace ShinyBotHunter.Service
                 state,
                 new ReplaceOptions { IsUpsert = true });
         }
+
+        /// <summary>Whether this ROM copy already has a save that finished being written.</summary>
+        public async Task<bool> IsSaveCreatedAsync(GameFlavor game, string milestone, string romHandle)
+        {
+            StarterHuntGameState? state = await collection.Find(KeyFor(game, milestone)).FirstOrDefaultAsync();
+            return state is not null && state.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Records that a ROM copy's save is written.
+        ///
+        /// Added to the stored list directly rather than by writing the whole document back: several
+        /// emulators create their saves at once, and replacing the document would let one overwrite
+        /// what another had just recorded.
+        /// </summary>
+        public Task MarkSaveCreatedAsync(GameFlavor game, string milestone, string romHandle)
+            => collection.UpdateOneAsync(
+                KeyFor(game, milestone),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.SavesCreated, romHandle)
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
 
         /// <summary>Whether a starter has already been caught, so a resumed hunt can skip it.</summary>
         public static bool IsDone(StarterHuntGameState state, string starter)

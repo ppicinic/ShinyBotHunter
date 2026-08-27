@@ -24,6 +24,18 @@ namespace ShinyBotHunter.BotEvents
         public string? CurrentStarter { get; set; }
 
         /// <summary>
+        /// ROM copies whose save has been created and flushed to disk.
+        ///
+        /// Recorded here rather than inferred from the copy existing on disk. Creating a save copies
+        /// the ROM first and writes the save minutes later, so a run interrupted in between leaves a
+        /// copy with no save behind it. Treating that copy as ready means continuing a game that was
+        /// never started, which desyncs every macro after it rather than failing.
+        ///
+        /// Only written once the save is flushed, so an interrupted creation is simply redone.
+        /// </summary>
+        public List<string> SavesCreated { get; set; } = new();
+
+        /// <summary>
         /// Shinies found but not yet played out and saved, within the current run.
         ///
         /// Deliberately not carried across a restart. A parked shiny only exists as a live emulator

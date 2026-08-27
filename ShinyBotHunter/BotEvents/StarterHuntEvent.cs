@@ -33,6 +33,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly PokemonPersistenceService persistence;
         private readonly LegalityService legality;
         private readonly RsStartMenuService startMenu;
+        private readonly StarterHuntStateStore stateStore;
         private readonly string romDirectory;
         private readonly ushort expectedSpecies;
         private readonly ushort expectedInternalSpecies;
@@ -56,6 +57,7 @@ namespace ShinyBotHunter.BotEvents
             this.persistence = provider.GetRequiredService<PokemonPersistenceService>();
             this.legality = provider.GetRequiredService<LegalityService>();
             this.startMenu = provider.GetRequiredService<RsStartMenuService>();
+            this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
             this.romDirectory = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value.ROMBaseDirectory;
 
             // Fails here rather than mid-hunt: both are name lookups that either resolve now or never.
@@ -80,7 +82,7 @@ namespace ShinyBotHunter.BotEvents
                 return Result;
             }
 
-            await EnsureSaveExistsAsync(cancellationToken);
+            await EnsureSaveExistsAsync(state.Milestone, cancellationToken);
             await bot.LaunchAsync();
             await WaitUntilEmulatorReadyAsync(cancellationToken);
 
@@ -432,17 +434,25 @@ namespace ShinyBotHunter.BotEvents
         /// Creates the save this hunt resets back to, if the per-instance ROM copy does not exist yet.
         /// Each emulator gets its own copy so each gets its own save file.
         /// </summary>
-        private async Task EnsureSaveExistsAsync(CancellationToken cancellationToken)
+        private async Task EnsureSaveExistsAsync(string milestone, CancellationToken cancellationToken)
         {
-            string extension = context.RomExtension;
-            string target = $"{romDirectory}{context.GameName}{extension}";
-            if (File.Exists(target))
+            // Whether the save exists is recorded, not inferred from the copy being on disk. The copy
+            // is made first and the save written minutes later, so a run interrupted in between leaves
+            // a copy with nothing behind it -- and treating that as ready means continuing a game that
+            // was never started, which desyncs every macro after it instead of failing.
+            if (await stateStore.IsSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName))
             {
                 return;
             }
 
-            File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);
-            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save.");
+            string extension = context.RomExtension;
+            string target = $"{romDirectory}{context.GameName}{extension}";
+            if (!File.Exists(target))
+            {
+                File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);
+            }
+
+            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save on {context.GameName}.");
 
             await bot.LaunchAsync();
             await WaitUntilEmulatorReadyAsync(cancellationToken);
@@ -451,6 +461,11 @@ namespace ShinyBotHunter.BotEvents
             await Task.Delay(config.SaveSettleMs, cancellationToken);
             await bot.FlushSave();
             await bot.DisposeAsync();
+
+            // Only now, once the save is actually on disk. Recording it earlier would make an
+            // interrupted creation look complete.
+            await stateStore.MarkSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName);
+            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: save created on {context.GameName}.");
         }
 
         private void RunMacro(string macroName)
