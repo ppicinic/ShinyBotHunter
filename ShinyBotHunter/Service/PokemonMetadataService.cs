@@ -47,6 +47,15 @@ namespace ShinyBotHunter.Service
             return _metadata[id];
         }
 
+        /// <summary>
+        /// Null rather than throwing when a species has no metadata. Useful where a missing entry is
+        /// a gap in the seeded data rather than a bug worth aborting a read for.
+        /// </summary>
+        public PokemonMetadata? TryGetPokemonMetadata(int id)
+        {
+            return _metadata.TryGetValue(id, out var metadata) ? metadata : null;
+        }
+
         internal byte GetGender(uint pid, ushort species)
         {
             byte threshold = GenderThresholds[species];

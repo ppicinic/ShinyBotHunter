@@ -433,6 +433,8 @@ namespace ShinyBotHunter
                 .AddKeyedSingleton<IPointerService>(GameFlavor.HGSS, new HgssPointerService())
                 .AddKeyedSingleton<IBattlePokemonParser>(GameFlavor.HGSS, new HgssBattlePokemonParser())
                 .AddKeyedSingleton<IPokemonParser>(GameFlavor.HGSS, (sp, _) => sp.GetRequiredService<HgssPokemonParser>())
+                .AddKeyedSingleton<IPointerService>(GameFlavor.RS, new RsPointerService())
+                .AddKeyedSingleton<IPokemonParser>(GameFlavor.RS, (sp, _) => new Gen3PokemonParser(sp.GetRequiredService<PokemonMetadataService>()))
                 .AddSingleton(new DiscordSocketConfig
                 {
                     // Safe default for initial bot setup; add privileged intents later if needed.

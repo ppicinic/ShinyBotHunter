@@ -24,7 +24,7 @@ namespace ShinyBotHunter.Bot
                 var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
                 ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort, localMemoryOnly: false);
-                IDataReader reader = new HgssDataReader(memoryClient);
+                IDataReader reader = CreateReader(context, memoryClient);
                 return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
             }
             else
@@ -32,7 +32,7 @@ namespace ShinyBotHunter.Bot
                 ILauncher launcher = new BizHawkLauncher(context, serviceProvider);
                 ICommandClient commandClient = new BizHawkCommandClient(context);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: context.MemoryPort);
-                IDataReader reader = new HgssDataReader(memoryClient);
+                IDataReader reader = CreateReader(context, memoryClient);
                 return new Bot(launcher, commandClient, memoryClient, reader, context);
             }
         }
@@ -65,6 +65,17 @@ namespace ShinyBotHunter.Bot
                 GameFlavor = rom?.Flavor ?? GameFlavor.HGSS,
             };
         }
+
+        /// <summary>
+        /// Game-state reads are per game, so the reader follows the ROM's flavor. An unrecognised
+        /// flavor gets the HGSS reader rather than nothing, because a bot still has to be launchable
+        /// for macro recording -- reads are what fail, and they fail loudly.
+        /// </summary>
+        private static IDataReader CreateReader(GameContext context, IMemoryClient memoryClient) => context.GameFlavor switch
+        {
+            GameFlavor.RS => new RsDataReader(memoryClient),
+            _ => new HgssDataReader(memoryClient),
+        };
 
         private static int Setting(Dictionary<string, int> settings, string consoleKey)
         {
