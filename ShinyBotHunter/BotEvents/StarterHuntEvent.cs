@@ -93,13 +93,8 @@ namespace ShinyBotHunter.BotEvents
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                PokemonData? starter = await AttemptAsync(state.Milestone, cancellationToken);
-
-                if (starter is null)
-                {
-                    await SoftResetAsync(cancellationToken);
-                    continue;
-                }
+                // Throws rather than returning nothing, so reaching here means the pokemon is known.
+                PokemonData starter = await AttemptAsync(state.Milestone, cancellationToken);
 
                 if (!starter.IsShiny)
                 {
@@ -140,9 +135,12 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>
         /// One reset cycle: continue, take the ball, advance into the battle, read what came out.
+        ///
+        /// Either returns the pokemon that was obtained or throws. There is deliberately no third
+        /// outcome: anything that resets without knowing what the pokemon was could be resetting over
+        /// a shiny, and no record of it would survive.
         /// </summary>
-        /// <returns>null when the attempt could not produce a readable starter, which is retried.</returns>
-        private async Task<PokemonData?> AttemptAsync(string milestone, CancellationToken cancellationToken)
+        private async Task<PokemonData> AttemptAsync(string milestone, CancellationToken cancellationToken)
         {
             RunMacro(config.ContinueMacro);
             await bot.WaitForMacroAsync(cancellationToken);
@@ -152,15 +150,15 @@ namespace ShinyBotHunter.BotEvents
 
             if (!await AdvanceUntilStarterIsOutAsync(cancellationToken))
             {
-                Console.WriteLine($"[StarterHunt] {entry.RecordingName}: the starter never came out; resetting.");
-                return null;
+                // Not a reason to reset on its own. The pokemon is created when the ball is chosen,
+                // so one exists whether or not it made it onto the screen -- and it could be the
+                // shiny. The read below decides; this only says the battle did not look right.
+                Console.WriteLine(
+                    $"[StarterHunt] {entry.RecordingName}: the starter never appeared on the field; " +
+                    "reading the party anyway before deciding.");
             }
 
-            PokemonData? starter = await ReadStarterAsync(cancellationToken);
-            if (starter is null)
-            {
-                return null;
-            }
+            PokemonData starter = await ReadStarterAsync(cancellationToken);
 
             await persistence.AddEncounterAsync(new PersistPokemonData
             {
@@ -313,8 +311,8 @@ namespace ShinyBotHunter.BotEvents
         /// selected means the read was too early rather than that the game handed over something
         /// else.
         /// </summary>
-        /// <returns>null when nothing readable arrived in time, which is retried by resetting.</returns>
-        private async Task<PokemonData?> ReadStarterAsync(CancellationToken cancellationToken)
+        /// <returns>The starter. Never returns without one; it throws instead.</returns>
+        private async Task<PokemonData> ReadStarterAsync(CancellationToken cancellationToken)
         {
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.StarterReadTimeoutMs);
             string lastProblem = "no attempt completed";
@@ -349,8 +347,33 @@ namespace ShinyBotHunter.BotEvents
                 await Task.Delay(config.StarterReadPollIntervalMs, cancellationToken);
             }
 
-            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: no readable starter ({lastProblem}); resetting.");
-            return null;
+            // Never reset on this. A reset says "that one was not a target", and an unreadable party
+            // does not say that -- the pokemon sitting there could be the shiny this hunt exists to
+            // find, and resetting would destroy it with no record that it ever existed. Unknown is
+            // not the same as uninteresting, so the hunt stops and says so instead.
+            string diagnostic = await DescribePartyMemoryAsync();
+            throw new InvalidOperationException(
+                $"Could not read the starter on {entry.RecordingName} within {config.StarterReadTimeoutMs}ms " +
+                $"({lastProblem}). Refusing to reset, because the pokemon on screen may be a shiny and " +
+                $"resetting would lose it. Party memory at the time: {diagnostic}");
+        }
+
+        /// <summary>
+        /// Dumps the party memory a failed read was looking at, so the cause is diagnosable from the
+        /// log rather than by reproducing it.
+        /// </summary>
+        private async Task<string> DescribePartyMemoryAsync()
+        {
+            try
+            {
+                byte count = await bot.ReadByteAsync((uint)(pointers.Anchor + pointers.PartySize));
+                byte[] head = await bot.ReadBytesAsync((uint)(pointers.Anchor + pointers.PartySlots), 32);
+                return $"count={count} slot0[0..31]={Convert.ToHexString(head)}";
+            }
+            catch (Exception ex)
+            {
+                return $"unavailable ({ex.Message})";
+            }
         }
 
         /// <summary>
