@@ -128,6 +128,7 @@ namespace ShinyBotHunter.Pokemon
 
             PokemonData data = new()
             {
+                RawBytes = raw,
                 PID = pid,
                 Checksum = storedChecksum,
                 Species = species,

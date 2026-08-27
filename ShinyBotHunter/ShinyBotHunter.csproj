@@ -29,6 +29,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Phases\RS\" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Data\smogon-calc.min.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

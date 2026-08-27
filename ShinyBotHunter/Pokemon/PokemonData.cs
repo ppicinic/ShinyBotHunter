@@ -11,6 +11,14 @@ namespace ShinyBotHunter.Pokemon
             FormCode = "missingono";
         }
         [BsonRepresentation(BsonType.Int64)]
+        /// <summary>
+        /// The block this was decoded from, kept so anything needing the original encoding -- legality
+        /// analysis reads bytes, not a parsed model -- does not have to re-encode and risk disagreeing
+        /// with the game. Not persisted.
+        /// </summary>
+        [BsonIgnore]
+        public byte[]? RawBytes { get; set; }
+
         public uint PID { get; set; }
         [BsonRepresentation(BsonType.Int32)]
         public ushort Checksum { get; set; }

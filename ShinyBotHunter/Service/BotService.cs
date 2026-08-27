@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Macro;
@@ -65,7 +66,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
+                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext });
                     return GetBotDashboardState();
                 }
                 else
@@ -80,7 +81,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
+                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext });
                     await Task.Delay(4000);
                     bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
                     await bot.WaitForMacroAsync();
@@ -152,6 +153,39 @@ namespace ShinyBotHunter.Service
                 string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
                 botEvents[pos].StartEvent(chainedEvent, botEvents[pos].GameState!, name, this);
 
+                return GetBotDashboardState();
+            }
+            else if(args.EventName == "Shiny Starter Hunt")
+            {
+                if (string.IsNullOrWhiteSpace(args.Starter))
+                {
+                    throw new ArgumentException("A starter must be chosen for the shiny starter hunt.");
+                }
+                IBot bot = botEvents[pos].Bot!;
+                if (bot.GameFlavor != GameFlavor.RS)
+                {
+                    throw new ArgumentException(
+                        $"The shiny starter hunt is implemented for Ruby/Sapphire; this emulator is running {bot.GameFlavor}.");
+                }
+
+                GameContext context = botEvents[pos].Context
+                    ?? throw new InvalidOperationException($"No game context recorded for the bot at position {pos}.");
+                // Encounters are filed under a name the operator chooses, so a hunt can be grouped
+                // however they like rather than by whichever ROM copy happened to run it.
+                string recordingName = string.IsNullOrWhiteSpace(args.GameName) ? bot.GameFileName : args.GameName;
+                var entry = new StarterHuntEntry(context.SourceGameName, args.Starter, recordingName);
+                var hunt = new StarterHuntEvent(bot, context, entry, StarterHuntConfig.Load(), provider);
+
+                botEvents[pos].GameState = new GameState()
+                {
+                    GameFlavor = bot.GameFlavor,
+                    BotService = this,
+                    Bot = bot,
+                    Milestone = "1-1 Starters",
+                    Target = new ShinyTarget(),
+                };
+                botEvents[pos].GameState!.State.Push(EventState.Init);
+                botEvents[pos].StartEvent(hunt, botEvents[pos].GameState!, $"Shiny {args.Starter}", this);
                 return GetBotDashboardState();
             }
             else if(args.EventName == "HGSS Togepi Egg")
@@ -351,7 +385,17 @@ namespace ShinyBotHunter.Service
             else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
             {
                 // TODO continue game.
-                return [actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"]];
+                var actions = new List<EventArgumentOptions>
+                {
+                    actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"],
+                };
+                // Offered per flavor rather than always, so the dashboard cannot start a hunt against
+                // a game that has no macros for it.
+                if (botEvent.Bot?.GameFlavor == GameFlavor.RS)
+                {
+                    actions = [actionMap["Shiny Starter Hunt"]];
+                }
+                return actions;
             }
             else
             {
@@ -381,6 +425,9 @@ namespace ShinyBotHunter.Service
             // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
             // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.
             {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
+            // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
+            // only per-hunt choices are which starter to take and what to file the encounters under.
+            {"Shiny Starter Hunt", new EventArgumentOptions() { Name = "Shiny Starter Hunt", RequiredParameters = ["Starter", "GameName"] } },
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -490,6 +537,8 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+        /// <summary>Which starter to take, for the shiny starter hunt.</summary>
+        public string? Starter { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 
@@ -518,6 +567,12 @@ namespace ShinyBotHunter.Service
         }
         public int? BotPosition { get; set; }
         public IBot? Bot { get; set; }
+
+        /// <summary>
+        /// How this bot's emulator was built: which ROM file, which console, which flavor. Kept so an
+        /// event started later can copy a ROM or resolve a macro without re-deriving any of it.
+        /// </summary>
+        public GameContext? Context { get; set; }
         public IBotEvent? Event { get; set; }
         public Task? EventTask { get; set; }
         public GameState? GameState { get; set; }
