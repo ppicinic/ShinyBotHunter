@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ShinyBotHunter.Tests/ShinyBotHunter.Tests.csproj" />
+  <Project Path="ShinyBotHunter/ShinyBotHunter.csproj" />
+</Solution>
