@@ -40,6 +40,9 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
 
+        /// <summary>Verdict from the most recent attempt, so the keep decision does not re-analyse.</summary>
+        private LegalityResult? lastVerdict;
+
         public StarterHuntEvent(IBot bot, GameContext context, StarterHuntEntry entry, StarterHuntConfig config, IServiceProvider provider)
         {
             this.bot = bot;
@@ -81,9 +84,17 @@ namespace ShinyBotHunter.BotEvents
                     continue;
                 }
 
-                bool keep = starter.IsShiny && await IsKeepableAsync(starter, cancellationToken);
-                if (!keep)
+                if (!starter.IsShiny)
                 {
+                    await SoftResetAsync(cancellationToken);
+                    continue;
+                }
+
+                // An illegal shiny is not recorded: a catch no real game could have produced corrupts
+                // exactly the data the hunt exists to collect, so it is logged above and hunted past.
+                if (lastVerdict is not null && !lastVerdict.IsLegal)
+                {
+                    Console.WriteLine($"[StarterHunt] {entry.RecordingName}: skipping illegal shiny and continuing.");
                     await SoftResetAsync(cancellationToken);
                     continue;
                 }
@@ -156,9 +167,24 @@ namespace ShinyBotHunter.BotEvents
                 DateTime = DateTime.UtcNow,
             });
 
-            if (config.LogLegalityForEveryEncounter)
+            // Analysed once and reused for the keep decision, so a shiny is never checked twice.
+            // A shiny is always checked; everything else only while QA logging is on.
+            if (config.LogLegalityForEveryEncounter || starter.IsShiny)
             {
-                legality.LogVerdict(RawOf(starter), GameFlavor.RS, $"{entry.RecordingName} {starter.Name} PID {starter.PID:X8}");
+                lastVerdict = legality.Analyze(RawOf(starter), GameFlavor.RS);
+                string label = $"{entry.RecordingName} {starter.Name} PID {starter.PID:X8}{(starter.IsShiny ? " SHINY" : "")}";
+                if (lastVerdict.IsLegal)
+                {
+                    Console.WriteLine($"[StarterHunt] legality OK   {label}");
+                }
+                else
+                {
+                    Console.WriteLine($"[StarterHunt] legality FAIL {label}{Environment.NewLine}{lastVerdict.Report}");
+                }
+            }
+            else
+            {
+                lastVerdict = null;
             }
 
             return starter;
@@ -189,24 +215,6 @@ namespace ShinyBotHunter.BotEvents
             {
                 bot.ClearMacro();
             }
-        }
-
-        /// <summary>
-        /// Whether a shiny is worth keeping. An illegal one is not: recorded as a catch it would
-        /// quietly corrupt the data the hunt exists to produce, so it is logged and hunted past.
-        /// </summary>
-        private Task<bool> IsKeepableAsync(PokemonData starter, CancellationToken cancellationToken)
-        {
-            LegalityResult verdict = legality.Analyze(RawOf(starter), GameFlavor.RS);
-            if (verdict.IsLegal)
-            {
-                return Task.FromResult(true);
-            }
-
-            Console.WriteLine(
-                $"[StarterHunt] {entry.RecordingName}: shiny {starter.Name} PID {starter.PID:X8} is not legal, " +
-                $"skipping it and continuing.{Environment.NewLine}{verdict.Report}");
-            return Task.FromResult(false);
         }
 
         /// <summary>

@@ -37,7 +37,9 @@
   // and fails naming what it found rather than pressing blindly if this id is not present.
   "SaveMenuActionId": 5,
 
-  // Every mon gets a legality verdict logged, not just shiny ones. Off by default; used to measure
-  // how common illegal pokemon actually are before relying on the check.
-  "LogLegalityForEveryEncounter": false
+  // Logs a legality verdict for every encounter, not just shiny ones, to measure how common illegal
+  // pokemon actually are on this setup. On by default during rollout; turn it off once the rate is
+  // known and the per-reset analysis is no longer worth paying for. Shiny encounters are always
+  // analysed and logged regardless of this setting, since the keep decision depends on it.
+  "LogLegalityForEveryEncounter": true
 }

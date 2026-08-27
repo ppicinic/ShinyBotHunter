@@ -33,7 +33,7 @@ namespace ShinyBotHunter.BotEvents
 
         public int SaveMenuActionId { get; set; } = 5;
 
-        public bool LogLegalityForEveryEncounter { get; set; }
+        public bool LogLegalityForEveryEncounter { get; set; } = true;
 
         public static StarterHuntConfig Load(string path = DefaultPath)
         {
