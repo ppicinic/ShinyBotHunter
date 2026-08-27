@@ -37,6 +37,11 @@ namespace ShinyBotHunter.BotEvents
         private readonly string romDirectory;
         private readonly ushort expectedSpecies;
         private readonly ushort expectedInternalSpecies;
+
+        // Candidate signals for "the action menu is up", probed rather than assumed. gBattleCommunication
+        // carries per-battler turn state; gActionSelectionCursor is the FIGHT/BAG/POKEMON/RUN cursor.
+        private const uint BattleCommunicationAddress = 0x02024D1E;
+        private const uint ActionSelectionCursorAddress = 0x02024E60;
         private readonly Service.Pointers.IPointerService pointers;
 
         public override EventState EventState { get; }
@@ -246,14 +251,30 @@ namespace ShinyBotHunter.BotEvents
             bot.RunRepeatMacro(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.BattleAdvanceMacro));
             try
             {
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
+                DateTime started = DateTime.UtcNow;
+                DateTime deadline = started.AddMilliseconds(config.BattleWaitTimeoutMs);
+                bool seenOnField = false;
+
                 while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
                 {
                     try
                     {
-                        if (await bot.ReadUShortAsync(pointers.BattlePokemon) == expectedInternalSpecies)
+                        if (!seenOnField && await bot.ReadUShortAsync(pointers.BattlePokemon) == expectedInternalSpecies)
                         {
-                            return true;
+                            seenOnField = true;
+                        }
+
+                        if (config.LogBattleStateProbe)
+                        {
+                            // Records what the candidate action-menu variables actually hold as the
+                            // battle progresses, so the stop condition can key on the menu being up
+                            // rather than on a duration. Both live in RAM, unlike gBattleMainFunc and
+                            // gBattlerControllerFuncs, which are ROM pointers that move per revision.
+                            byte[] comm = await bot.ReadBytesAsync(BattleCommunicationAddress, 4);
+                            byte cursor = await bot.ReadByteAsync(ActionSelectionCursorAddress);
+                            Console.WriteLine(
+                                $"[StarterHunt] probe t+{(int)(DateTime.UtcNow - started).TotalMilliseconds}ms " +
+                                $"onField={seenOnField} comm=[{string.Join(",", comm)}] cursor={cursor}");
                         }
                     }
                     catch (Exception ex)
@@ -261,19 +282,23 @@ namespace ShinyBotHunter.BotEvents
                         Console.WriteLine($"[StarterHunt] {entry.RecordingName}: field check failed ({ex.Message}).");
                     }
 
+                    // Keeps pressing past the pokemon appearing, which is the point: the mon is on the
+                    // field well before the intro text is done and the action menu is up, and stopping
+                    // at the first sighting meant B was never pressed at all.
+                    bool longEnough = (DateTime.UtcNow - started).TotalMilliseconds >= config.BattleAdvanceMinMs;
+                    if (seenOnField && longEnough)
+                    {
+                        return true;
+                    }
+
                     await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
                 }
-                return false;
+
+                return seenOnField;
             }
             finally
             {
-                // Only now: pressing stops once the pokemon is out, not when the battle began.
                 bot.ClearMacro();
-                if (config.StarterOnFieldSettleMs > 0)
-                {
-                    // The species lands slightly before the sprite has finished arriving.
-                    await Task.Delay(config.StarterOnFieldSettleMs, CancellationToken.None);
-                }
             }
         }
 
@@ -440,13 +465,18 @@ namespace ShinyBotHunter.BotEvents
             // is made first and the save written minutes later, so a run interrupted in between leaves
             // a copy with nothing behind it -- and treating that as ready means continuing a game that
             // was never started, which desyncs every macro after it instead of failing.
-            if (await stateStore.IsSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName))
+            string extension = context.RomExtension;
+            string target = $"{romDirectory}{context.GameName}{extension}";
+
+            // Both have to hold. The record alone is not enough -- a copy deleted by hand takes its
+            // save with it while the record survives -- and the copy alone is not enough either,
+            // since it exists for minutes before its save does.
+            bool recorded = await stateStore.IsSaveCreatedAsync(GameFlavor.RS, milestone, context.GameName);
+            if (recorded && File.Exists(target))
             {
                 return;
             }
 
-            string extension = context.RomExtension;
-            string target = $"{romDirectory}{context.GameName}{extension}";
             if (!File.Exists(target))
             {
                 File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);

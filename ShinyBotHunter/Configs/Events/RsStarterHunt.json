@@ -57,5 +57,14 @@
   // pokemon actually are on this setup. On by default during rollout; turn it off once the rate is
   // known and the per-reset analysis is no longer worth paying for. Shiny encounters are always
   // analysed and logged regardless of this setting, since the keep decision depends on it.
-  "LogLegalityForEveryEncounter": true
+  "LogLegalityForEveryEncounter": true,
+
+  // Minimum time to keep pressing B once the battle is under way. The pokemon reaches the field well
+  // before the intro text is done, so stopping at the first sighting meant B was never pressed at
+  // all. Replaced by a menu-state check once the probe below identifies one.
+  "BattleAdvanceMinMs": 5000,
+
+  // Logs the candidate action-menu variables during each battle, so the stop condition can key on
+  // the FIGHT/BAG/POKEMON/RUN menu being up rather than on a duration. Turn off once identified.
+  "LogBattleStateProbe": true
 }

@@ -59,6 +59,16 @@ namespace ShinyBotHunter.BotEvents
 
         public bool LogLegalityForEveryEncounter { get; set; } = true;
 
+        /// <summary>
+        /// Minimum time to keep pressing B once the battle is under way. The pokemon is on the field
+        /// well before the intro text finishes, so stopping at the first sighting meant B was never
+        /// actually pressed. Replaced by a menu-state check once the probe identifies one.
+        /// </summary>
+        public int BattleAdvanceMinMs { get; set; } = 5000;
+
+        /// <summary>Logs the candidate action-menu variables during the battle, to identify one.</summary>
+        public bool LogBattleStateProbe { get; set; }
+
         public static StarterHuntConfig Load(string path = DefaultPath)
         {
             if (!File.Exists(path))
@@ -113,6 +123,10 @@ namespace ShinyBotHunter.BotEvents
             Positive(PartyRetryFrames, nameof(PartyRetryFrames));
             Positive(BattleWaitTimeoutMs, nameof(BattleWaitTimeoutMs));
             Positive(BattlePollIntervalMs, nameof(BattlePollIntervalMs));
+            if (BattleAdvanceMinMs < 0)
+            {
+                throw new InvalidOperationException($"{path}: BattleAdvanceMinMs cannot be negative.");
+            }
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
             Positive(LaunchReadyTimeoutMs, nameof(LaunchReadyTimeoutMs));
             Positive(SoftResetSettleMs, nameof(SoftResetSettleMs));
