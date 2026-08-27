@@ -24,8 +24,13 @@
   // Polling interval while waiting for the battle to start.
   "BattlePollIntervalMs": 250,
 
-  // Settling time after launching an emulator before any macro is sent.
-  "LaunchSettleMs": 10000,
+  // The run waits for a launched emulator to actually respond before sending a macro, rather than
+  // waiting a fixed time and hoping. This is the budget for that; several emulators starting at once
+  // take longer than one.
+  "LaunchReadyTimeoutMs": 120000,
+
+  // Settle after it responds, covering the rest of the boot before the first press.
+  "LaunchSettleMs": 5000,
 
   // Settling time after a soft reset before the continue macro is sent.
   "SoftResetSettleMs": 4000,

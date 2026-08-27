@@ -82,7 +82,7 @@ namespace ShinyBotHunter.BotEvents
 
             await EnsureSaveExistsAsync(cancellationToken);
             await bot.LaunchAsync();
-            await Task.Delay(config.LaunchSettleMs, cancellationToken);
+            await WaitUntilEmulatorReadyAsync(cancellationToken);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -185,6 +185,45 @@ namespace ShinyBotHunter.BotEvents
             }
 
             return starter;
+        }
+
+        /// <summary>
+        /// Waits for the emulator to actually be running the game before any macro is sent.
+        ///
+        /// This used to be a fixed wall-clock delay, which is only ever a guess at how long BizHawk
+        /// takes to start and load a ROM -- and the guess gets worse the more emulators start at once.
+        /// A macro that begins early does not fail: every press lands somewhere unintended, the run
+        /// walks off its route, and it can end up in a battle it was never meant to be in.
+        ///
+        /// A memory read succeeding proves both that the tool is listening and that the core is
+        /// running, which is the thing actually being waited for.
+        /// </summary>
+        private async Task WaitUntilEmulatorReadyAsync(CancellationToken cancellationToken)
+        {
+            DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.LaunchReadyTimeoutMs);
+            string lastProblem = "no attempt completed";
+
+            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await bot.ReadUShortAsync(pointers.Anchor);
+                    // Running, but mid-boot. The settle covers the rest of the intro before the first
+                    // macro press, which is what the recorded timings assume.
+                    await Task.Delay(config.LaunchSettleMs, cancellationToken);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    lastProblem = ex.Message;
+                }
+
+                await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
+            }
+
+            throw new TimeoutException(
+                $"Emulator for {entry.RecordingName} was not responding {config.LaunchReadyTimeoutMs}ms after " +
+                $"launch, so no macro was sent ({lastProblem}).");
         }
 
         /// <summary>
@@ -406,7 +445,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save.");
 
             await bot.LaunchAsync();
-            await Task.Delay(config.LaunchSettleMs, cancellationToken);
+            await WaitUntilEmulatorReadyAsync(cancellationToken);
             RunMacro(config.CreateSaveMacro);
             await bot.WaitForMacroAsync(cancellationToken);
             await Task.Delay(config.SaveSettleMs, cancellationToken);

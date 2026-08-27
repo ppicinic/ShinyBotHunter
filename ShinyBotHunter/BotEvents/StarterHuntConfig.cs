@@ -27,7 +27,14 @@ namespace ShinyBotHunter.BotEvents
         public int PartyRetryFrames { get; set; } = 120;
         public int BattleWaitTimeoutMs { get; set; } = 30000;
         public int BattlePollIntervalMs { get; set; } = 250;
-        public int LaunchSettleMs { get; set; } = 10000;
+        /// <summary>
+        /// How long to wait for a launched emulator to start responding before giving up. A budget,
+        /// not an expected wait: several emulators starting together take longer than one.
+        /// </summary>
+        public int LaunchReadyTimeoutMs { get; set; } = 120000;
+
+        /// <summary>Settle after the emulator responds, covering the rest of the boot.</summary>
+        public int LaunchSettleMs { get; set; } = 5000;
         public int SoftResetSettleMs { get; set; } = 4000;
         public int SaveSettleMs { get; set; } = 10000;
 
@@ -107,6 +114,7 @@ namespace ShinyBotHunter.BotEvents
             Positive(BattleWaitTimeoutMs, nameof(BattleWaitTimeoutMs));
             Positive(BattlePollIntervalMs, nameof(BattlePollIntervalMs));
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
+            Positive(LaunchReadyTimeoutMs, nameof(LaunchReadyTimeoutMs));
             Positive(SoftResetSettleMs, nameof(SoftResetSettleMs));
             Positive(SaveSettleMs, nameof(SaveSettleMs));
             Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));
