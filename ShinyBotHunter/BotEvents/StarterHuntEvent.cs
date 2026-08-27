@@ -150,6 +150,14 @@ namespace ShinyBotHunter.BotEvents
                 return null;
             }
 
+            // The party is filled when the ball is chosen, before the throw animation, so a correct
+            // read still lands while the screen shows nothing. Hold so the pokemon is actually on
+            // screen before the run moves on.
+            if (config.StarterVisiblePauseMs > 0)
+            {
+                await Task.Delay(config.StarterVisiblePauseMs, cancellationToken);
+            }
+
             await persistence.AddEncounterAsync(new PersistPokemonData
             {
                 PokemonData = starter,

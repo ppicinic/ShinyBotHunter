@@ -38,6 +38,11 @@
   "StarterReadTimeoutMs": 20000,
   "StarterReadPollIntervalMs": 500,
 
+  // Pause after the starter is read, before resetting. The party is filled when the ball is chosen,
+  // before the throw animation, so without this the run resets before the pokemon is ever visible.
+  // Raise it if the throw is still not finishing; set to 0 once the hunt is trusted.
+  "StarterVisiblePauseMs": 4000,
+
   // Start-menu entry id for SAVE. Derived from the menu action order in the decompilation; kept
   // here because a wrong value must be correctable without a rebuild. The bot reads the live menu
   // and fails naming what it found rather than pressing blindly if this id is not present.

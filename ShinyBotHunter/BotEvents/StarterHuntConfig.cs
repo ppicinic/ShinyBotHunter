@@ -41,6 +41,16 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>How long to wait between read attempts while the game settles.</summary>
         public int StarterReadPollIntervalMs { get; set; } = 500;
 
+        /// <summary>
+        /// Pause after the starter has been read, before resetting.
+        ///
+        /// The party is filled the moment the ball is chosen -- before the throw animation -- so a
+        /// correct read still happens while the screen shows nothing. Without this pause the run
+        /// resets before the pokemon is ever visible, which makes it impossible to watch or to check
+        /// what the parser reports against what the game shows. Set to 0 once the hunt is trusted.
+        /// </summary>
+        public int StarterVisiblePauseMs { get; set; } = 4000;
+
         public int SaveMenuActionId { get; set; } = 5;
 
         public bool LogLegalityForEveryEncounter { get; set; } = true;
@@ -104,6 +114,10 @@ namespace ShinyBotHunter.BotEvents
             Positive(SaveSettleMs, nameof(SaveSettleMs));
             Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));
             Positive(StarterReadPollIntervalMs, nameof(StarterReadPollIntervalMs));
+            if (StarterVisiblePauseMs < 0)
+            {
+                throw new InvalidOperationException($"{path}: StarterVisiblePauseMs cannot be negative.");
+            }
             if (StarterReadPollIntervalMs > StarterReadTimeoutMs)
             {
                 throw new InvalidOperationException(
