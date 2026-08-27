@@ -1,0 +1,19 @@
+# Pick Torchic from Birch's bag: middle ball, where the cursor already sits, so no
+# direction press.
+#
+# Ends as the battle is starting; the starter is not visible until the Zigzagoon fight is
+# underway, so a separate macro advances through the text before the mon can be read.
+#
+# The leading wait is idle time in front of the bag and is the natural randomisation point
+# for PID variance -- the starter is generated from the RNG state at selection. Left as
+# recorded for now.
+name: SelectStarterTorchic
+flavor: RS
+steps:
+  - W.183
+  - H.A.6
+  - W.127
+  - H.A.10
+  - W.116
+  - H.A.8
+  - W.204

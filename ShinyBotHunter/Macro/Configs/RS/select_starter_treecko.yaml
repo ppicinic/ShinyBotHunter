@@ -1,0 +1,22 @@
+# Pick Treecko from Birch's bag: left ball.
+#
+# Ends as the battle is starting. The starter is not visible yet at that point -- R/S does
+# not reveal it until the Zigzagoon fight is underway -- so a separate macro has to advance
+# through the text before the mon can be read.
+#
+# The leading wait is idle time standing in front of the bag, and is the natural place to
+# randomise for PID variance: the starter is generated from the RNG state at the moment it
+# is selected, so frames spent waiting here change which mon you get. Left as recorded for
+# now; see the hunt config before running a real hunt.
+name: SelectStarterTreecko
+flavor: RS
+steps:
+  - W.137
+  - H.A.13
+  - W.55
+  - H.Left.8
+  - W.14
+  - H.A.9
+  - W.31
+  - H.A.9
+  - W.164
