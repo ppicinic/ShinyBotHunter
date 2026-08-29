@@ -53,8 +53,6 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>True when the find was forced by the QA hook rather than being a real shiny.</summary>
         public bool ResultWasForced { get; private set; }
 
-        private int encountersSeen;
-
         /// <summary>Verdict from the most recent attempt, so the keep decision does not re-analyse.</summary>
         private LegalityResult? lastVerdict;
 
@@ -103,14 +101,16 @@ namespace ShinyBotHunter.BotEvents
             {
                 // Throws rather than returning nothing, so reaching here means the pokemon is known.
                 PokemonData starter = await AttemptAsync(state.Milestone, cancellationToken);
-                encountersSeen++;
 
-                bool forced = config.ForceShinyAfterEncounters > 0 && encountersSeen >= config.ForceShinyAfterEncounters;
+                // A roll rather than a counter, so forced finds land at unpredictable points -- two
+                // emulators finding almost together, or one finding on its first cycle, are exactly
+                // the races worth exercising.
+                bool forced = config.ForceShinyPercent > 0 && Random.Shared.Next(100) < config.ForceShinyPercent;
                 if (forced && !starter.IsShiny)
                 {
                     Console.WriteLine(
-                        $"[StarterHunt] [TEST] {entry.RecordingName}: treating encounter {encountersSeen} " +
-                        $"({starter.Name} PID {starter.PID:X8}) as shiny to exercise the machinery.");
+                        $"[StarterHunt] [TEST] {entry.RecordingName}: treating {starter.Name} PID {starter.PID:X8} " +
+                        "as shiny to exercise the machinery.");
                     ResultWasForced = true;
                 }
 
