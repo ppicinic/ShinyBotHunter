@@ -18,7 +18,7 @@ namespace ShinyBotHunter.Emulators
     {
         private readonly CommandPreprocessor _preprocessor;
 
-        public BizHawkCommandClient(string host = "127.0.0.1", int port = 50100, ConsoleType console = ConsoleType.DS)
+        public BizHawkCommandClient(string host = "127.0.0.1", int port = 20000, ConsoleType console = ConsoleType.DS)
             : base("BizHawkCommandClient", host, port, TimeSpan.FromSeconds(60))
         {
             _preprocessor = new CommandPreprocessor(console);

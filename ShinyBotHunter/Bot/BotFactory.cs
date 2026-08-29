@@ -54,8 +54,14 @@ namespace ShinyBotHunter.Bot
                 SourceGameName = sourceGame,
                 GameId = gameId,
                 DisplayPosition = displayPosition,
-                MemoryPort = 50101 + (displayPosition * 2),
-                CommandPort = 50100 + (displayPosition * 2),
+                // Deliberately below Windows' ephemeral range, which starts at 49152. The old base of
+                // 50100 sat inside it, so any program that opened a network connection could be
+                // handed one of these ports first -- pgAdmin and Spotify both did -- and ApiHawk's
+                // HttpListener then failed to start with a sharing violation on a random emulator.
+                // Reserving the old range is not the answer: an administered exclusion blocks
+                // http.sys from registering a prefix at all, which locks out the emulators too.
+                MemoryPort = 20001 + (displayPosition * 2),
+                CommandPort = 20000 + (displayPosition * 2),
                 Width = Setting(applicationSettings.DisplayWidth, key),
                 Height = Setting(applicationSettings.DisplayHeight, key),
                 WidthOffset = Setting(applicationSettings.WidthOffset, key),

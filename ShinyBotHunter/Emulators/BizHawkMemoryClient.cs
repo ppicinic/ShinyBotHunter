@@ -17,7 +17,7 @@ namespace ShinyBotHunter.Emulators
 
         private bool localMemoryOnly;
 
-        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 50101, bool localMemoryOnly = true)
+        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 20001, bool localMemoryOnly = true)
             : base("BizHawkMemoryClient", host, port, TimeSpan.FromSeconds(15))
         {
             this.localMemoryOnly = localMemoryOnly;

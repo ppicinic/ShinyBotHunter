@@ -89,13 +89,18 @@ namespace ApiHawk
 
         private void StartServers()
         {
-            // Defaults intentionally avoid the 50000-50059 range: on many Windows machines
-            // that block is an administered http.sys port-exclusion (Hyper-V / WSL2 / Docker /
-            // WinNAT), which makes HttpListener.Start() fail with ERROR_SHARING_VIOLATION even
-            // though nothing is listening. The bot always sets these env vars explicitly
-            // (ports 50100+), so these fallbacks only matter when loading the tool manually.
-            int memPort = GetPort("BIZHAWK_MEMORY_PORT",  50101);
-            int cmdPort = GetPort("BIZHAWK_COMMAND_PORT", 50100);
+            // Ports must sit below 49152, where Windows' ephemeral range begins, and outside any
+            // administered http.sys exclusion. Both halves are load-bearing and pull against each
+            // other. Inside the ephemeral range, any program that opens a connection can be handed
+            // the port first -- pgAdmin and Spotify each took one -- and HttpListener.Start() then
+            // fails with ERROR_SHARING_VIOLATION on a random emulator. But excluding a range to
+            // protect it makes things worse, not better: an administered exclusion (also created by
+            // Hyper-V / WSL2 / Docker / WinNAT, which is why 50000-50059 was already unusable) stops
+            // http.sys registering a prefix there at all, so the emulators are locked out too.
+            // Below the ephemeral floor no reservation is needed. The bot always sets these env vars
+            // explicitly (ports 20000+), so these fallbacks only matter when loading the tool by hand.
+            int memPort = GetPort("BIZHAWK_MEMORY_PORT",  20001);
+            int cmdPort = GetPort("BIZHAWK_COMMAND_PORT", 20000);
 
             // Before anything that might log. EmuHawk gives this assembly no usable console, so the
             // file is the only place diagnostics survive.
