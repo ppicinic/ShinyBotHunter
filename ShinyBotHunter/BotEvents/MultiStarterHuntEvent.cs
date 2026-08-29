@@ -144,7 +144,17 @@ namespace ShinyBotHunter.BotEvents
                 $"[{string.Join(", ", copyIds.Select(id => entry.RomHandle + id))}].");
 
             using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var runs = copyIds.Select(id => RunOneAsync(entry, id, wave.Token)).ToList();
+            // Staggered like the HGSS hunt's launches: several EmuHawks booting in the same instant
+            // contend with each other and the shared install, so each start waits 5s on the last.
+            var runs = new List<Task<ParkedShiny?>>();
+            foreach (int id in copyIds)
+            {
+                if (runs.Count > 0)
+                {
+                    await Task.Delay(5000, wave.Token);
+                }
+                runs.Add(RunOneAsync(entry, id, wave.Token));
+            }
 
             // The first find ends the wave -- one starter, then the next. But a second emulator can
             // have found in the same instant, before the cancellation reached it, and in a real hunt
