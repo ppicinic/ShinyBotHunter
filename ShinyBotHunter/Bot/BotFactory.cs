@@ -59,6 +59,7 @@ namespace ShinyBotHunter.Bot
                 Width = Setting(applicationSettings.DisplayWidth, key),
                 Height = Setting(applicationSettings.DisplayHeight, key),
                 WidthOffset = Setting(applicationSettings.WidthOffset, key),
+                Rows = Setting(applicationSettings.DisplayRows, key),
                 SoundOn = soundOn is not null ? soundOn.Value : false,
                 Rom = rom,
                 ConsoleType = console,

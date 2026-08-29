@@ -29,6 +29,9 @@ namespace ShinyBotHunter.Context
         public int Width { get; set; } = 205;
         public int Height { get; set; } = 399;
         public int WidthOffset { get; set; } = 0;
+
+        /// <summary>How many rows deep the emulator windows tile for this console.</summary>
+        public int Rows { get; set; } = 2;
         public ConsoleType ConsoleType { get; set; } = ConsoleType.DS;
         public GameFlavor GameFlavor { get; set; } = GameFlavor.HGSS;
         public bool SoundOn { get; set; }

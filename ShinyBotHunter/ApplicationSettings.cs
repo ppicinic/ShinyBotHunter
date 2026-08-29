@@ -26,6 +26,12 @@ namespace ShinyBotHunter
         public Dictionary<string, int> DisplayWidth { get; set; } = null!;
         public Dictionary<string, int> DisplayHeight { get; set; } = null!;
         public Dictionary<string, int> WidthOffset { get; set; } = null!;
+
+        /// <summary>
+        /// How many rows deep the emulator windows tile, per console. A GBA window is roughly half
+        /// the height of a DS one, so the two fit very different grids on the same screen.
+        /// </summary>
+        public Dictionary<string, int> DisplayRows { get; set; } = null!;
         public string SpriteBaseDirectory { get; set; } = null!;
         public string MongoDbUrl { get; set; } = null!;
         public string MongoDbDatabase { get; set; } = null!;
