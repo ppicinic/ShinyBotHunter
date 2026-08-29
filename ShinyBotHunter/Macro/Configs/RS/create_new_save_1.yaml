@@ -6,6 +6,16 @@
 # Recorded frame trace. The first three waits are minimums the recording happened to land
 # on, so they carry slack -- the game sits and waits at each of these points, so arriving
 # late is harmless while arriving early desyncs the whole run.
+#
+# The third wait is wide on purpose, and it is what makes one save differ from the next.
+# R/S are boot-deterministic, so the trainer ID this save ends up with is a function of how
+# many frames elapse before the new game initialises. Measured 2026-08-29 with the three
+# waits below spanning 122 possible totals: 16 saves produced 15 distinct TID/SID pairs, a
+# collision rate implying a pool of about 120 trainers. That caps save rotation, which is
+# the hunt's other lever -- a fresh save re-rolls which PIDs read as shiny, and is worthless
+# once it can only re-draw trainers already seen. The width lives on the third wait rather
+# than the first because the first sits on the title screen, where a wait this long lets the
+# opening demo take over and desyncs every press after it.
 name: CreateNewSavePart1
 flavor: RS
 steps:
@@ -13,7 +23,7 @@ steps:
   - H.A.8
   - W.R[46,80]
   - H.A.9
-  - W.R[33,60]
+  - W.R[33,2033]
   - H.A.9
   - W.78
   - H.A.9
