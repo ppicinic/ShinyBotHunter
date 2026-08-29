@@ -61,11 +61,5 @@
 
   // Logs the battle-state bytes during each battle. Only needed to re-derive the action-menu
   // signal the stop condition keys on (gBattleCommunication[1] == 4 once the menu is up).
-  "LogBattleStateProbe": false,
-
-  // Keep only female shinies. Gender rides the same PID as shininess, so this multiplies the hunt
-  // by eight for a starter (12.5% female) -- the price of a line that can breed, since R/S have no
-  // Ditto and only a female passes its species on at the daycare. A male shiny is reset past,
-  // loudly, with its encounter row keeping the record.
-  "RequireFemale": true
+  "LogBattleStateProbe": false
 }

@@ -62,13 +62,6 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Logs the candidate action-menu variables during the battle, to identify one.</summary>
         public bool LogBattleStateProbe { get; set; }
 
-        /// <summary>
-        /// Keep only female shinies. Gender rides the same PID as shininess, so this multiplies the
-        /// hunt by eight for a starter (12.5% female) -- the price of a line that can breed, since
-        /// Ruby/Sapphire have no Ditto and only a female passes its species on at the daycare. A
-        /// male shiny is reset past, loudly, with its encounter row keeping the record.
-        /// </summary>
-        public bool RequireFemale { get; set; }
 
         public static StarterHuntConfig Load(string path = DefaultPath)
         {

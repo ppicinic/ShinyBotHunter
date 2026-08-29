@@ -136,10 +136,11 @@ function buildLegBody(params: Record<string, string>): NewEventLegArguments {
   }
   // Same rule as the flat forms: anything the allowlist does not model goes through under its own
   // name, so a schema with new leg parameters works without another silent-drop bug here.
+  // Checkbox values travel as booleans, since a server-side bool? cannot bind the string "true".
   for (const [key, value] of Object.entries(params)) {
     if (LEG_PARAM_KEYS.has(key)) continue
     if (value === '') continue
-    ;(leg as Record<string, unknown>)[key] = value
+    ;(leg as Record<string, unknown>)[key] = value === 'true' ? true : value === 'false' ? false : value
   }
   return leg
 }
@@ -238,7 +239,7 @@ function ActionParamFields({
           {schema.optionalParameters.map((param) => (
             <div key={param} className="flex items-center gap-2 mt-0.5">
               <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
-              {param.toLowerCase() === 'soundon' ? (
+              {param.toLowerCase() === 'soundon' || param === 'RequireFemale' ? (
                 <input
                   type="checkbox"
                   checked={params[param] === 'true'}

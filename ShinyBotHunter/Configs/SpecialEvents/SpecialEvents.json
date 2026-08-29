@@ -19,7 +19,7 @@
     "LegParameters": {
       "Name": "Starter",
       "RequiredParameters": [ "GameName", "Starter" ],
-      "OptionalParameters": [ "RecordingName" ]
+      "OptionalParameters": [ "RecordingName", "RequireFemale" ]
     }
   }
 ]

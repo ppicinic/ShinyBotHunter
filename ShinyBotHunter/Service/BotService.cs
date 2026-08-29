@@ -152,7 +152,7 @@ namespace ShinyBotHunter.Service
                     firstRom ??= rom;
 
                     string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
-                    entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording));
+                    entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording, raw.RequireFemale ?? false));
                 }
 
                 int budget = settings.MaxEmulatorsFor(firstRom!.Console);
@@ -567,6 +567,7 @@ namespace ShinyBotHunter.Service
         public string? GameName { get; set; }
         public string? Starter { get; set; }
         public string? RecordingName { get; set; }
+        public bool? RequireFemale { get; set; }
     }
 
     public class NewEventArguments

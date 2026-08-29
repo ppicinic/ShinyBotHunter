@@ -8,8 +8,11 @@ using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.BotEvents
 {
-    /// <summary>One hunt: which ROM to play, which starter to take, and what to file encounters under.</summary>
-    public record StarterHuntEntry(string RomHandle, string Starter, string RecordingName);
+    /// <summary>
+    /// One hunt: which ROM to play, which starter to take, what to file encounters under, and
+    /// whether only a female counts -- per entry, since breeding plans differ per starter.
+    /// </summary>
+    public record StarterHuntEntry(string RomHandle, string Starter, string RecordingName, bool RequireFemale = false);
 
     /// <summary>
     /// Soft-reset hunt for a shiny Ruby/Sapphire starter on one emulator.
@@ -108,7 +111,7 @@ namespace ShinyBotHunter.BotEvents
                 // Gender is decided by the same PID as shininess, so a hunt that needs a female
                 // (RS has no Ditto, and only a female passes the species on at the daycare) has to
                 // fold it into the keep condition rather than fix it afterwards.
-                if (config.RequireFemale && starter.Gender != 2)
+                if (entry.RequireFemale && starter.Gender != 2)
                 {
                     // A deliberate discard of a real shiny, so it is said as loudly as possible. The
                     // encounter row already recorded it, PID and all.
