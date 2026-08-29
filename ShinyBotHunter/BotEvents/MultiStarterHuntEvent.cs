@@ -41,6 +41,9 @@ namespace ShinyBotHunter.BotEvents
         private readonly object gate = new();
         private readonly List<ParkedShiny> parked = new();
         private readonly HashSet<int> positionsInUse = new();
+
+        // Owned by this hunt, so it gates this wave's emulators and nothing else on the machine.
+        private readonly SemaphoreSlim launchGate;
         private GameState? sharedState;
         private TaskCompletionSource resumeHappened = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -66,6 +69,7 @@ namespace ShinyBotHunter.BotEvents
             this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
 
             config.Validate();
+            launchGate = new SemaphoreSlim(config.ConcurrentLaunches, config.ConcurrentLaunches);
             foreach (StarterHuntEntry entry in queue)
             {
                 config.MacroForStarter(entry.Starter);
@@ -144,15 +148,13 @@ namespace ShinyBotHunter.BotEvents
                 $"[{string.Join(", ", copyIds.Select(id => entry.RomHandle + id))}].");
 
             using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            // Staggered like the HGSS hunt's launches: several EmuHawks booting in the same instant
-            // contend with each other and the shared install, so each start waits 5s on the last.
+            // Every run starts at once and queues on the launch gate, which lets only
+            // ConcurrentLaunches emulators boot at a time. This replaced a fixed 5s stagger: the
+            // stagger assumed a boot fits in five seconds, and at twenty emulators it did not, so
+            // the wave piled up faster than the machine could bring instances online.
             var runs = new List<Task<ParkedShiny?>>();
             foreach (int id in copyIds)
             {
-                if (runs.Count > 0)
-                {
-                    await Task.Delay(5000, wave.Token);
-                }
                 runs.Add(RunOneAsync(entry, id, wave.Token));
             }
 
@@ -200,7 +202,7 @@ namespace ShinyBotHunter.BotEvents
             GameContext context = botFactory.BuildGameContext(entry.RomHandle, copyId, position);
             IBot bot = botFactory.CreateBot(context);
 
-            var hunt = new StarterHuntEvent(bot, context, entry, config, provider);
+            var hunt = new StarterHuntEvent(bot, context, entry, config, launchGate, provider);
             GameState huntState = new()
             {
                 GameFlavor = GameFlavor.RS,

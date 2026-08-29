@@ -33,6 +33,20 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         public int LaunchReadyTimeoutMs { get; set; } = 240000;
 
+        /// <summary>
+        /// How many emulators may be booting at once. Booting is the expensive part -- a window, a
+        /// display surface, a ROM and an external tool per instance -- and starting a wave of them
+        /// together lagged the whole machine and left emulators that never finished appearing. One
+        /// at a time means the next only starts once the last has answered.
+        /// </summary>
+        public int ConcurrentLaunches { get; set; } = 1;
+
+        /// <summary>
+        /// How many times a freshly created save is thrown away and remade when its trainer ID
+        /// already belongs to another save.
+        /// </summary>
+        public int SaveTrainerIdRetries { get; set; } = 10;
+
         /// <summary>Settle after the emulator responds, covering the rest of the boot.</summary>
         public int LaunchSettleMs { get; set; } = 5000;
         public int SoftResetSettleMs { get; set; } = 4000;
@@ -119,6 +133,11 @@ namespace ShinyBotHunter.BotEvents
             Positive(BattlePollIntervalMs, nameof(BattlePollIntervalMs));
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
             Positive(LaunchReadyTimeoutMs, nameof(LaunchReadyTimeoutMs));
+            Positive(ConcurrentLaunches, nameof(ConcurrentLaunches));
+            if (SaveTrainerIdRetries < 0)
+            {
+                throw new InvalidOperationException($"{path}: SaveTrainerIdRetries cannot be negative.");
+            }
             Positive(SoftResetSettleMs, nameof(SoftResetSettleMs));
             Positive(SaveSettleMs, nameof(SaveSettleMs));
             Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));

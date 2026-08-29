@@ -32,6 +32,9 @@ namespace ShinyBotHunter.BotEvents
         private readonly GameContext context;
         private readonly StarterHuntEntry entry;
         private readonly StarterHuntConfig config;
+        // Shared with the other runs of this hunt and nothing else, so booting is serialised across
+        // the wave without gating any other event's emulators.
+        private readonly SemaphoreSlim launchGate;
         private readonly PokemonStateReader reader;
         private readonly PokemonPersistenceService persistence;
         private readonly LegalityService legality;
@@ -56,12 +59,13 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Verdict from the most recent attempt, so the keep decision does not re-analyse.</summary>
         private LegalityResult? lastVerdict;
 
-        public StarterHuntEvent(IBot bot, GameContext context, StarterHuntEntry entry, StarterHuntConfig config, IServiceProvider provider)
+        public StarterHuntEvent(IBot bot, GameContext context, StarterHuntEntry entry, StarterHuntConfig config, SemaphoreSlim launchGate, IServiceProvider provider)
         {
             this.bot = bot;
             this.context = context;
             this.entry = entry;
             this.config = config;
+            this.launchGate = launchGate;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.persistence = provider.GetRequiredService<PokemonPersistenceService>();
             this.legality = provider.GetRequiredService<LegalityService>();
@@ -94,8 +98,7 @@ namespace ShinyBotHunter.BotEvents
             }
 
             await EnsureSaveExistsAsync(state.Milestone, cancellationToken);
-            await bot.LaunchAsync();
-            await WaitUntilEmulatorReadyAsync(cancellationToken);
+            await LaunchAndWaitReadyAsync(cancellationToken);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -447,7 +450,7 @@ namespace ShinyBotHunter.BotEvents
 
             // The save either produced a file in this copy's slot or it did not; saying "saved" on
             // faith is how a failed save went unnoticed until the shiny was gone.
-            string slotDirectory = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+            string slotDirectory = SlotDirectory;
             bool saveOnDisk = Directory.Exists(slotDirectory)
                 && Directory.EnumerateFiles(slotDirectory, "*.SaveRAM").Any();
             if (!saveOnDisk)
@@ -577,22 +580,59 @@ namespace ShinyBotHunter.BotEvents
                 File.Copy($"{romDirectory}{context.SourceGameName}{extension}", target);
             }
 
-            // A fresh copy must start saveless, and the copy file is not where the save lives:
-            // BizHawk keeps it in the copy's save-slot directory, which survives the copy being
-            // deleted and recreated. Left in place, the new-game macro boots into a game that
-            // already has a save -- the title menu gains a Continue entry and every recorded press
-            // from there lands one row off.
-            WipeSaveSlot();
+            // A duplicated trainer is thrown away and made again. Two saves sharing one agree on
+            // exactly which PIDs are shiny, so the second explores nothing the first did not: it is
+            // a wasted copy rather than a broken one, which is why running out of attempts is
+            // reported and accepted instead of failing the hunt.
+            for (int attempt = 1; ; attempt++)
+            {
+                // A fresh copy must start saveless, and the copy file is not where the save lives:
+                // BizHawk keeps it in the copy's save-slot directory, which survives the copy being
+                // deleted and recreated. Left in place, the new-game macro boots into a game that
+                // already has a save -- the title menu gains a Continue entry and every recorded
+                // press from there lands one row off.
+                WipeSaveSlot();
 
-            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save on {context.GameName}.");
+                Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save on {context.GameName}.");
 
-            await bot.LaunchAsync();
-            await WaitUntilEmulatorReadyAsync(cancellationToken);
-            RunMacro(config.CreateSaveMacro);
-            await bot.WaitForMacroAsync(cancellationToken);
-            await Task.Delay(config.SaveSettleMs, cancellationToken);
-            await bot.FlushSave();
-            await bot.DisposeAsync();
+                await LaunchAndWaitReadyAsync(cancellationToken);
+                RunMacro(config.CreateSaveMacro);
+                await bot.WaitForMacroAsync(cancellationToken);
+                await Task.Delay(config.SaveSettleMs, cancellationToken);
+                await bot.FlushSave();
+                await bot.DisposeAsync();
+
+                ushort? trainerId = Gen3SaveFile.ReadTrainerIdFromSlot(SlotDirectory);
+                if (trainerId is null)
+                {
+                    // The save is verified separately by the hunt itself; an unreadable trainer id
+                    // is not grounds to sit here remaking it.
+                    Console.WriteLine(
+                        $"[StarterHunt] {entry.RecordingName}: could not read a trainer id from the new save " +
+                        $"on {context.GameName}; keeping it and continuing.");
+                    break;
+                }
+
+                string? clash = SlotSharingTrainerId(trainerId.Value);
+                if (clash is null)
+                {
+                    Console.WriteLine($"[StarterHunt] {entry.RecordingName}: trainer id {trainerId} on {context.GameName}.");
+                    break;
+                }
+
+                if (attempt >= config.SaveTrainerIdRetries)
+                {
+                    Console.WriteLine(
+                        $"[StarterHunt] {entry.RecordingName}: trainer id {trainerId} still clashes with {clash} after " +
+                        $"{attempt} attempts. Keeping it -- the save-creation macro may not reach enough RNG frames " +
+                        "to produce a distinct trainer.");
+                    break;
+                }
+
+                Console.WriteLine(
+                    $"[StarterHunt] {entry.RecordingName}: trainer id {trainerId} already belongs to {clash}. " +
+                    $"Wiping and creating the save again (attempt {attempt + 1} of {config.SaveTrainerIdRetries}).");
+            }
 
             // Only now, once the save is actually on disk. Recording it earlier would make an
             // interrupted creation look complete.
@@ -600,9 +640,58 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: save created on {context.GameName}.");
         }
 
+        private string SlotDirectory
+            => Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+
+        /// <summary>
+        /// The name of another save slot already using this trainer id, or null when it is new.
+        /// Every slot on this console is compared, not just this game's copies: two saves that agree
+        /// on a trainer agree on which pokemon are shiny regardless of which game they belong to.
+        /// </summary>
+        private string? SlotSharingTrainerId(ushort trainerId)
+        {
+            string root = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM");
+            if (!Directory.Exists(root))
+            {
+                return null;
+            }
+
+            foreach (string slot in Directory.EnumerateDirectories(root))
+            {
+                if (string.Equals(Path.GetFileName(slot), context.SaveSlotName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (Gen3SaveFile.ReadTrainerIdFromSlot(slot) == trainerId)
+                {
+                    return Path.GetFileName(slot);
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Boots the emulator and waits for it to answer, one wave member at a time. The gate is held
+        /// across both because an emulator that has been started but has not yet answered is exactly
+        /// the one still competing for the machine.
+        /// </summary>
+        private async Task LaunchAndWaitReadyAsync(CancellationToken cancellationToken)
+        {
+            await launchGate.WaitAsync(cancellationToken);
+            try
+            {
+                await bot.LaunchAsync();
+                await WaitUntilEmulatorReadyAsync(cancellationToken);
+            }
+            finally
+            {
+                launchGate.Release();
+            }
+        }
+
         private void WipeSaveSlot()
         {
-            string slotDirectory = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+            string slotDirectory = SlotDirectory;
             if (!Directory.Exists(slotDirectory))
             {
                 return;

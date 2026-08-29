@@ -29,6 +29,18 @@
   // take longer than one, and twenty of them take much longer than several.
   "LaunchReadyTimeoutMs": 240000,
 
+  // How many emulators may be booting at the same time. Booting is what costs -- a window, a display
+  // surface, a ROM and an external tool each -- and a whole wave starting together lagged the machine
+  // badly enough that emulators failed to finish appearing. 1 means the next waits for the last to
+  // answer. Raise it to launch a wave faster, at the cost of the contention that caused that.
+  "ConcurrentLaunches": 1,
+
+  // A new save whose trainer ID already belongs to another save is wiped and made again, up to this
+  // many times. Duplicates happen because the save-creation macro reaches a bounded set of RNG
+  // frames, and two saves sharing a trainer agree on exactly which pokemon are shiny -- so the
+  // second one adds no coverage the first did not already have.
+  "SaveTrainerIdRetries": 10,
+
   // Settle after it responds, covering the rest of the boot before the first press.
   "LaunchSettleMs": 5000,
 
