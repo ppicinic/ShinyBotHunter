@@ -146,7 +146,12 @@ namespace ShinyBotHunter.BotEvents
             using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var runs = copyIds.Select(id => RunOneAsync(entry, id, wave.Token)).ToList();
 
-            bool found = false;
+            // The first find ends the wave -- one starter, then the next. But a second emulator can
+            // have found in the same instant, before the cancellation reached it, and in a real hunt
+            // that is a genuine shiny: it parks too rather than being discarded or, worse, leaked as
+            // a paused emulator nothing tracks. One find per STARTER is enforced by cancelling the
+            // wave, not by throwing away concurrent winners.
+            bool waveCancelled = false;
             while (runs.Count > 0)
             {
                 Task<ParkedShiny?> finished = await Task.WhenAny(runs);
@@ -160,16 +165,21 @@ namespace ShinyBotHunter.BotEvents
                     Console.WriteLine($"[StarterHunt] An emulator stopped with an error: {ex.Message}");
                     continue;
                 }
-                if (winner is null || found) continue;
+                if (winner is null) continue;
 
-                found = true;
                 lock (gate) { parked.Add(winner); }
                 Result = winner.HuntState.TargetPokemon?.PokemonData;
                 SetDashboardState(EventState.Waiting);
                 Console.WriteLine(
                     $"[StarterHunt] Shiny {entry.Starter} parked on {winner.CopyHandle} (position {winner.Position}). " +
-                    $"{CountParked()} waiting. Stopping this wave and moving on.");
-                await wave.CancelAsync();
+                    $"{CountParked()} waiting.");
+
+                if (!waveCancelled)
+                {
+                    waveCancelled = true;
+                    Console.WriteLine($"[StarterHunt] Stopping the {entry.Starter} wave and moving on.");
+                    await wave.CancelAsync();
+                }
             }
         }
 
