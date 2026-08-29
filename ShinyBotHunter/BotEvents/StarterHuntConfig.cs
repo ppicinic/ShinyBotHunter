@@ -31,7 +31,7 @@ namespace ShinyBotHunter.BotEvents
         /// How long to wait for a launched emulator to start responding before giving up. A budget,
         /// not an expected wait: several emulators starting together take longer than one.
         /// </summary>
-        public int LaunchReadyTimeoutMs { get; set; } = 120000;
+        public int LaunchReadyTimeoutMs { get; set; } = 240000;
 
         /// <summary>Settle after the emulator responds, covering the rest of the boot.</summary>
         public int LaunchSettleMs { get; set; } = 5000;

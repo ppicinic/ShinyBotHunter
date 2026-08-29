@@ -126,7 +126,11 @@ namespace ShinyBotHunter.Emulators
 
         // ── Window helpers ────────────────────────────────────────────────────────
 
-        private static async Task<IntPtr> WaitForMainWindowAsync(Process process, int timeoutMs = 30_000)
+        // 60s, not 30: this is the first budget a large wave blows. Twenty EmuHawks starting inside
+        // a couple of minutes contend for the GUI and the disk, and an emulator that took longer than
+        // half a minute to paint its window failed here -- visibly, as the one that never moved to
+        // its position -- while the connection budget after it still had four times the headroom.
+        private static async Task<IntPtr> WaitForMainWindowAsync(Process process, int timeoutMs = 60_000)
         {
             var sw = Stopwatch.StartNew();
 
