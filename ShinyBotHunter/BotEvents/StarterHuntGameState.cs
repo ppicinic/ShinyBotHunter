@@ -21,6 +21,14 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Starter names already caught, so a resumed hunt skips them.</summary>
         public List<string> CompletedStarters { get; set; } = new();
 
+        /// <summary>
+        /// Where each caught shiny actually lives. The name list above answers "is this done"; this
+        /// answers "which ROM copy's save is the shiny on", which is what someone opening the
+        /// collection later needs. Kept alongside the names rather than replacing them so documents
+        /// written before this field existed still load.
+        /// </summary>
+        public List<CompletedFind> CompletedFinds { get; set; } = new();
+
         /// <summary>The starter this hunt is working on, or null between starters.</summary>
         public string? CurrentStarter { get; set; }
 
@@ -57,6 +65,24 @@ namespace ShinyBotHunter.BotEvents
         public DateTime StartedUtc { get; set; }
 
         public DateTime UpdatedUtc { get; set; }
+    }
+
+    /// <summary>A caught shiny and the ROM copy whose save file it lives on.</summary>
+    public class CompletedFind
+    {
+        public required string Starter { get; set; }
+
+        /// <summary>The ROM copy holding the save -- open this copy in BizHawk to see the shiny.</summary>
+        public required string CopyHandle { get; set; }
+
+        public string? RecordingName { get; set; }
+
+        [BsonRepresentation(BsonType.Int64)]
+        public uint PID { get; set; }
+
+        public ushort Species { get; set; }
+
+        public DateTime CaughtUtc { get; set; }
     }
 
     /// <summary>A shiny waiting to be played out by hand and saved.</summary>

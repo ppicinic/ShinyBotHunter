@@ -151,12 +151,17 @@ namespace ShinyBotHunter.Service
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
                 new UpdateOptions { IsUpsert = true });
 
-        /// <summary>Records a starter as caught under its milestone, so a re-run refuses it.</summary>
-        public Task MarkStarterCompletedAsync(GameFlavor game, string milestone, string starter)
+        /// <summary>
+        /// Records a starter as caught under its milestone, so a re-run refuses it -- and records
+        /// which copy's save the shiny lives on, so it can be found again without opening save
+        /// folders one by one.
+        /// </summary>
+        public Task MarkStarterCompletedAsync(GameFlavor game, string milestone, CompletedFind find)
             => collection.UpdateOneAsync(
                 KeyFor(game, milestone),
                 Builders<StarterHuntGameState>.Update
-                    .AddToSet(x => x.CompletedStarters, starter)
+                    .AddToSet(x => x.CompletedStarters, find.Starter)
+                    .Push(x => x.CompletedFinds, find)
                     .SetOnInsert(x => x.Id, Guid.NewGuid())
                     .Set(x => x.UpdatedUtc, DateTime.UtcNow),
                 new UpdateOptions { IsUpsert = true });

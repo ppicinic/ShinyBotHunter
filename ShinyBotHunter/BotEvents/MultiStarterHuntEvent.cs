@@ -275,7 +275,16 @@ namespace ShinyBotHunter.BotEvents
             // state lands in the same PhaseStates records as a real hunt's, so clear those (and the
             // test copies) before hunting for real.
             await stateStore.RetireCopyAsync(GameFlavor.RS, oldest.CopyHandle);
-            await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, oldest.Starter);
+            PokemonData? caught = oldest.HuntState.TargetPokemon?.PokemonData;
+            await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, new CompletedFind
+            {
+                Starter = oldest.Starter,
+                CopyHandle = oldest.CopyHandle,
+                RecordingName = oldest.HuntState.TargetPokemon?.GameFileName,
+                PID = caught?.PID ?? 0,
+                Species = caught?.Species ?? 0,
+                CaughtUtc = DateTime.UtcNow,
+            });
             if (oldest.Forced)
             {
                 Console.WriteLine(
