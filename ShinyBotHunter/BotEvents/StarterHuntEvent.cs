@@ -436,6 +436,18 @@ namespace ShinyBotHunter.BotEvents
             await Task.Delay(config.SaveSettleMs, cancellationToken);
             await bot.FlushSave();
 
+            // The save either produced a file in this copy's slot or it did not; saying "saved" on
+            // faith is how a failed save went unnoticed until the shiny was gone.
+            string slotDirectory = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+            bool saveOnDisk = Directory.Exists(slotDirectory)
+                && Directory.EnumerateFiles(slotDirectory, "*.SaveRAM").Any();
+            if (!saveOnDisk)
+            {
+                throw new InvalidOperationException(
+                    $"No SaveRAM file appeared in {slotDirectory} after saving. The shiny is still on the " +
+                    "paused emulator; save manually before closing anything.");
+            }
+
             if (state.TargetPokemon is not null)
             {
                 if (ResultWasForced)
@@ -463,18 +475,46 @@ namespace ShinyBotHunter.BotEvents
             await bot.WaitForMacroAsync(cancellationToken);
 
             RsStartMenuService.MenuState menu = await WaitForStartMenuAsync(cancellationToken);
-            int steps = RsStartMenuService.StepsTo(menu, config.SaveMenuActionId);
-            Console.WriteLine($"[StarterHunt] Start menu: {menu.Describe()}; SAVE is {steps} step(s) away.");
+            int target = menu.IndexOf(config.SaveMenuActionId);
+            // StepsTo carries the validation and its diagnostic message; the movement itself is done
+            // one verified step at a time below.
+            RsStartMenuService.StepsTo(menu, config.SaveMenuActionId);
+            Console.WriteLine($"[StarterHunt] Start menu: {menu.Describe()}; SAVE is at position {target}.");
 
-            string cursorMacro = RsStartMenuService.BuildCursorMacro(steps);
-            if (cursorMacro.Length > 0)
-            {
-                bot.RunMacroString(cursorMacro);
-                await bot.WaitForMacroAsync(cancellationToken);
-            }
+            await MoveCursorToAsync(target, cancellationToken);
 
             RunMacro(config.SaveConfirmMacro);
             await bot.WaitForMacroAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Walks the start-menu cursor to a position one verified press at a time.
+        ///
+        /// Firing the whole run of presses blind is how a save landed on the trainer card: the maths
+        /// said three downs, one press was swallowed by the menu, and A went to whatever was two rows
+        /// down. The cursor is readable, so each press is checked before the next -- a swallowed
+        /// input costs a retry instead of selecting the wrong entry.
+        /// </summary>
+        private async Task MoveCursorToAsync(int target, CancellationToken cancellationToken)
+        {
+            const int MaxPresses = 24;
+            for (int presses = 0; presses < MaxPresses; presses++)
+            {
+                RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot);
+                if (menu.CursorPos == target)
+                {
+                    return;
+                }
+
+                bot.RunMacroString(menu.CursorPos < target ? "T.Down;W.15" : "T.Up;W.15");
+                await bot.WaitForMacroAsync(cancellationToken);
+                await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
+            }
+
+            RsStartMenuService.MenuState final = await startMenu.ReadAsync(bot);
+            throw new InvalidOperationException(
+                $"Start-menu cursor would not settle on position {target} after {MaxPresses} presses " +
+                $"({final.Describe()}). Refusing to press A on whatever is highlighted.");
         }
 
         /// <summary>
