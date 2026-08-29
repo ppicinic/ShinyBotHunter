@@ -50,9 +50,6 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
 
-        /// <summary>True when the find was forced by the QA hook rather than being a real shiny.</summary>
-        public bool ResultWasForced { get; private set; }
-
         /// <summary>Verdict from the most recent attempt, so the keep decision does not re-analyse.</summary>
         private LegalityResult? lastVerdict;
 
@@ -102,27 +99,29 @@ namespace ShinyBotHunter.BotEvents
                 // Throws rather than returning nothing, so reaching here means the pokemon is known.
                 PokemonData starter = await AttemptAsync(state.Milestone, cancellationToken);
 
-                // A roll rather than a counter, so forced finds land at unpredictable points -- two
-                // emulators finding almost together, or one finding on its first cycle, are exactly
-                // the races worth exercising.
-                bool forced = config.ForceShinyPercent > 0 && Random.Shared.Next(100) < config.ForceShinyPercent;
-                if (forced && !starter.IsShiny)
+                if (!starter.IsShiny)
                 {
-                    Console.WriteLine(
-                        $"[StarterHunt] [TEST] {entry.RecordingName}: treating {starter.Name} PID {starter.PID:X8} " +
-                        "as shiny to exercise the machinery.");
-                    ResultWasForced = true;
+                    await SoftResetAsync(cancellationToken);
+                    continue;
                 }
 
-                if (!starter.IsShiny && !forced)
+                // Gender is decided by the same PID as shininess, so a hunt that needs a female
+                // (RS has no Ditto, and only a female passes the species on at the daycare) has to
+                // fold it into the keep condition rather than fix it afterwards.
+                if (config.RequireFemale && starter.Gender != 2)
                 {
+                    // A deliberate discard of a real shiny, so it is said as loudly as possible. The
+                    // encounter row already recorded it, PID and all.
+                    Console.WriteLine(
+                        $"[StarterHunt] !!! {entry.RecordingName}: SHINY {starter.Name} PID {starter.PID:X8} is " +
+                        "not female and RequireFemale is set. Resetting past it, as configured.");
                     await SoftResetAsync(cancellationToken);
                     continue;
                 }
 
                 // An illegal shiny is not recorded: a catch no real game could have produced corrupts
                 // exactly the data the hunt exists to collect, so it is logged above and hunted past.
-                if (!ResultWasForced && lastVerdict is not null && !lastVerdict.IsLegal)
+                if (lastVerdict is not null && !lastVerdict.IsLegal)
                 {
                     Console.WriteLine($"[StarterHunt] {entry.RecordingName}: skipping illegal shiny and continuing.");
                     await SoftResetAsync(cancellationToken);
@@ -192,7 +191,8 @@ namespace ShinyBotHunter.BotEvents
             if (config.LogLegalityForEveryEncounter || starter.IsShiny)
             {
                 lastVerdict = legality.Analyze(RawOf(starter), GameFlavor.RS);
-                string label = $"{entry.RecordingName} {starter.Name} PID {starter.PID:X8}{(starter.IsShiny ? " SHINY" : "")}";
+                string gender = starter.Gender switch { 1 => "M", 2 => "F", _ => "-" };
+                string label = $"{entry.RecordingName} {starter.Name} ({gender}) PID {starter.PID:X8}{(starter.IsShiny ? " SHINY" : "")}";
                 if (lastVerdict.IsLegal)
                 {
                     Console.WriteLine($"[StarterHunt] legality OK   {label}");
@@ -456,14 +456,7 @@ namespace ShinyBotHunter.BotEvents
 
             if (state.TargetPokemon is not null)
             {
-                if (ResultWasForced)
-                {
-                    Console.WriteLine("[StarterHunt] [TEST] Not recording the forced find as caught.");
-                }
-                else
-                {
-                    await persistence.AddCaughtPokemonAsync(state.TargetPokemon);
-                }
+                await persistence.AddCaughtPokemonAsync(state.TargetPokemon);
                 Result = state.TargetPokemon.PokemonData;
             }
 

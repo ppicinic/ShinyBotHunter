@@ -36,7 +36,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly int emulatorBudget;
 
         private sealed record ParkedShiny(
-            string Starter, IBot Bot, StarterHuntEvent Hunt, GameState HuntState, string CopyHandle, int Position, bool Forced);
+            string Starter, IBot Bot, StarterHuntEvent Hunt, GameState HuntState, string CopyHandle, int Position);
 
         private readonly object gate = new();
         private readonly List<ParkedShiny> parked = new();
@@ -246,7 +246,7 @@ namespace ShinyBotHunter.BotEvents
                         "The emulator stays parked; a restart before Resume will not know about this one.");
                 }
 
-                return new ParkedShiny(entry.Starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
+                return new ParkedShiny(entry.Starter, bot, hunt, huntState, context.GameName, position);
             }
             catch
             {
@@ -279,11 +279,7 @@ namespace ShinyBotHunter.BotEvents
             oldest.HuntState.State.Push(EventState.Resume);
             await oldest.Hunt.ExecuteWithResultAsync(oldest.HuntState, CancellationToken.None);
 
-            // Forced finds retire and complete like real ones. These are the paths the test exists
-            // to prove -- retirement is what keeps the next wave off this copy, completion is what
-            // makes a rerun skip this starter -- and a test that skips them tests nothing. The test
-            // state lands in the same PhaseStates records as a real hunt's, so clear those (and the
-            // test copies) before hunting for real.
+            // The copy's save file is now the shiny. From this moment it may never host a hunt.
             await stateStore.RetireCopyAsync(GameFlavor.RS, oldest.CopyHandle);
             PokemonData? caught = oldest.HuntState.TargetPokemon?.PokemonData;
             await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, new CompletedFind
@@ -295,13 +291,6 @@ namespace ShinyBotHunter.BotEvents
                 Species = caught?.Species ?? 0,
                 CaughtUtc = DateTime.UtcNow,
             });
-            if (oldest.Forced)
-            {
-                Console.WriteLine(
-                    $"[StarterHunt] [TEST] Retired {oldest.CopyHandle} and completed {oldest.Starter} as a real " +
-                    "find would; only the caught-pokemon record is skipped.");
-            }
-
             StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
             progress.PendingShinies.RemoveAll(p => string.Equals(p.RomHandle, oldest.CopyHandle, StringComparison.OrdinalIgnoreCase));
             await stateStore.SaveAsync(progress);

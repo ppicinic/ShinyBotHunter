@@ -63,17 +63,12 @@ namespace ShinyBotHunter.BotEvents
         public bool LogBattleStateProbe { get; set; }
 
         /// <summary>
-        /// QA only: percent chance (0-100) that an encounter is treated as shiny, to exercise the
-        /// park, next-starter and resume machinery without waiting out 1/8192. A probability rather
-        /// than a fixed Nth encounter, because the machinery being tested is timing-dependent -- a
-        /// deterministic trigger fires at the same point in every wave, so races between emulators
-        /// finding at once, or finding early versus late in a wave, never get exercised. A forced
-        /// find runs the real flow end to end -- its copy is retired and its starter marked
-        /// complete, since those are the paths worth proving -- and only the caught-pokemon record
-        /// is skipped. Clear the hunt's PhaseStates records and test copies before a real hunt.
-        /// 0 disables.
+        /// Keep only female shinies. Gender rides the same PID as shininess, so this multiplies the
+        /// hunt by eight for a starter (12.5% female) -- the price of a line that can breed, since
+        /// Ruby/Sapphire have no Ditto and only a female passes its species on at the daycare. A
+        /// male shiny is reset past, loudly, with its encounter row keeping the record.
         /// </summary>
-        public int ForceShinyPercent { get; set; }
+        public bool RequireFemale { get; set; }
 
         public static StarterHuntConfig Load(string path = DefaultPath)
         {
@@ -135,10 +130,6 @@ namespace ShinyBotHunter.BotEvents
             Positive(SaveSettleMs, nameof(SaveSettleMs));
             Positive(StarterReadTimeoutMs, nameof(StarterReadTimeoutMs));
             Positive(StarterReadPollIntervalMs, nameof(StarterReadPollIntervalMs));
-            if (ForceShinyPercent is < 0 or > 100)
-            {
-                throw new InvalidOperationException($"{path}: ForceShinyPercent must be 0-100 (was {ForceShinyPercent}).");
-            }
             if (StarterOnFieldSettleMs < 0)
             {
                 throw new InvalidOperationException($"{path}: StarterOnFieldSettleMs cannot be negative.");
