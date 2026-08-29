@@ -1,4 +1,5 @@
-﻿using MongoDB.Bson.Serialization.Attributes;
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 
@@ -68,6 +69,10 @@ namespace ShinyBotHunter.BotEvents
 
         public required string RecordingName { get; set; }
 
+        // Int64 like PokemonData's uint fields: the driver stores a bare uint as a checked Int32,
+        // so any PID with the high bit set -- half of them -- threw an overflow at the exact moment
+        // a shiny was being recorded.
+        [BsonRepresentation(BsonType.Int64)]
         public uint PID { get; set; }
 
         public ushort Species { get; set; }

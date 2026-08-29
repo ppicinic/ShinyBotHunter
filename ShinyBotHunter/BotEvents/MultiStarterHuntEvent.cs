@@ -210,19 +210,31 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 // Persisted before the player touches it: the wait can outlive the process, and the
-                // record is what reports the loss if it does.
-                StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
-                progress.PendingShinies.Add(new PendingShiny
+                // record is what reports the loss if it does. But the record is bookkeeping and the
+                // shiny is the point -- a failure here is logged and swallowed, because letting it
+                // throw handed the parked emulator to the cleanup path, which closed a live shiny
+                // over a serialization error.
+                try
                 {
-                    Starter = entry.Starter,
-                    RomHandle = context.GameName,
-                    RecordingName = entry.RecordingName,
-                    PID = shiny.PID,
-                    Species = shiny.Species,
-                    FoundUtc = DateTime.UtcNow,
-                    PokemonData = shiny,
-                });
-                await stateStore.SaveAsync(progress);
+                    StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
+                    progress.PendingShinies.Add(new PendingShiny
+                    {
+                        Starter = entry.Starter,
+                        RomHandle = context.GameName,
+                        RecordingName = entry.RecordingName,
+                        PID = shiny.PID,
+                        Species = shiny.Species,
+                        FoundUtc = DateTime.UtcNow,
+                        PokemonData = shiny,
+                    });
+                    await stateStore.SaveAsync(progress);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"[StarterHunt] Could not record the pending shiny on {context.GameName} ({ex.Message}). " +
+                        "The emulator stays parked; a restart before Resume will not know about this one.");
+                }
 
                 return new ParkedShiny(entry.Starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
             }
