@@ -26,22 +26,26 @@ Copy-Item $dll $target -Force
 # Same prefixed-hex format BizHawk's SHA512Checksum.ComputePrefixedHex produces.
 $hash = "SHA512:" + (Get-FileHash $target -Algorithm SHA512).Hash
 
-foreach ($configName in "config.ini", "config_sound_on.ini") {
-    $configPath = Join-Path $BizHawkDir $configName
-    if (-not (Test-Path $configPath)) { continue }
-    $config = Get-Content $configPath -Raw | ConvertFrom-Json
-    if (-not $config.TrustedExtTools) {
-        $config | Add-Member -MemberType NoteProperty -Name TrustedExtTools -Value ([pscustomobject]@{})
-    }
-    if ($config.TrustedExtTools.PSObject.Properties[$target]) {
-        $config.TrustedExtTools.$target = $hash
-    } else {
-        $config.TrustedExtTools | Add-Member -MemberType NoteProperty -Name $target -Value $hash
-    }
-    # Depth matters: the config nests well past the default of 2, and a shallow serialize would
-    # silently flatten it into a config BizHawk cannot read.
-    $config | ConvertTo-Json -Depth 32 | Set-Content $configPath -Encoding utf8
-    Write-Host "Trusted in $configName"
-}
+# The config edit runs through Python, deliberately. PowerShell's ConvertFrom-Json parses date-like
+# strings into DateTime objects and re-emits them in a different shape, and its round-trip is not
+# faithful for a structure this large -- a previous version of this script went through it and
+# controller bindings did not survive. Python's json round-trip changes only what it is told to.
+$py = @'
+import io, json, sys
+target, hash_value = sys.argv[1], sys.argv[2]
+for name in ("config.ini", "config_sound_on.ini"):
+    path = sys.argv[3] + "\\" + name
+    try:
+        cfg = json.load(io.open(path, encoding="utf-8-sig"))
+    except FileNotFoundError:
+        continue
+    cfg.setdefault("TrustedExtTools", {})[target] = hash_value
+    io.open(path, "w", encoding="utf-8", newline="").write(json.dumps(cfg, indent=2))
+    print(f"Trusted in {name}")
+'@
+$pyFile = Join-Path $env:TEMP "apihawk-trust.py"
+Set-Content -Path $pyFile -Value $py -Encoding utf8
+python $pyFile $target $hash $BizHawkDir
+if ($LASTEXITCODE -ne 0) { throw "Config trust update failed." }
 
 Write-Host "Deployed $([math]::Round((Get-Item $target).Length / 1kb))kb, $hash"

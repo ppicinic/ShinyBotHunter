@@ -357,6 +357,21 @@ namespace ShinyBotHunter.BotEvents
                 if (shared.State.Count > 0) shared.State.Pop();
                 shared.State.Push(newState);
             }
+
+            // Mutating the stack changes nothing on screen by itself. The dashboard refetches its
+            // actions when a state push arrives, so a park that does not broadcast leaves the Resume
+            // button invisible until the user happens to switch tabs -- pushing here is what makes
+            // it appear the moment a shiny parks.
+            try
+            {
+                var botService = provider.GetRequiredService<BotService>();
+                var hub = provider.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<ElectronHub, IElectronClient>>();
+                _ = hub.Clients.All.ReceiveDashboardState(botService.GetBotDashboardState());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[StarterHunt] Could not push a dashboard update: {ex.Message}");
+            }
         }
 
         private static async Task DisposeQuietly(IBot bot)
