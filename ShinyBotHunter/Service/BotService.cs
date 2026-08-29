@@ -8,6 +8,7 @@ using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Macro;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
 namespace ShinyBotHunter.Service
@@ -39,7 +40,15 @@ namespace ShinyBotHunter.Service
         public void Init()
         {
             string json = File.ReadAllText("./Configs/SpecialEvents/SpecialEvents.json");
-            specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json)!;
+            // String enum names so a condition reads "Eq" in the config rather than 0, and comments
+            // so the file can explain itself the way the event configs do.
+            var options = new JsonSerializerOptions
+            {
+                Converters = { new JsonStringEnumConverter() },
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            };
+            specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json, options)!;
         }
 
         private Dictionary<int, BotAndOrEvent> botEvents = new Dictionary<int, BotAndOrEvent>();
@@ -98,18 +107,15 @@ namespace ShinyBotHunter.Service
             }
             else if(args.EventName == "HGSS Shiny Starter Hunt")
             {
-                if(positions.Count() == 0)
-                {
-                    var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
-                    var botEvent = new BotAndOrEvent();
-                    botEvent.StartSpecialEvent(ev, "HGSS Shiny Starter Hunt", botEvents);
-                    botEvents.Add(newPos, botEvent);
-                    return GetBotDashboardState();
-                }
-                else
-                {
-                    throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
-                }
+                // Off the menu, which now reaches this through the unified action's HGSS mode, but
+                // still accepted so a direct API call or a saved script keeps working.
+                return StartHgssStarterHunt(positions, newPos);
+            }
+            else if(args.EventName == "Shiny Starter Hunt" && StarterHuntMode(args.Mode) == GameFlavor.HGSS)
+            {
+                // One menu entry, two hunts. HGSS keeps the event it has always had; only the way it
+                // is reached changed.
+                return StartHgssStarterHunt(positions, newPos);
             }
             else if(args.EventName == "Shiny Starter Hunt")
             {
@@ -177,6 +183,42 @@ namespace ShinyBotHunter.Service
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        /// <summary>
+        /// Which hunt the unified action means. Absent is RS, so a caller that posts starter entries
+        /// without a mode behaves exactly as it did before the two hunts shared one action.
+        /// </summary>
+        private static GameFlavor StarterHuntMode(string? mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode))
+            {
+                return GameFlavor.RS;
+            }
+            if (!Enum.TryParse(mode, ignoreCase: true, out GameFlavor flavor))
+            {
+                throw new ArgumentException(
+                    $"'{mode}' is not a starter hunt mode. Available: {string.Join(", ", Enum.GetNames<GameFlavor>())}.");
+            }
+            return flavor;
+        }
+
+        /// <summary>
+        /// The HGSS hunt, unchanged. It predates the generalized RS hunt and stays its own event; the
+        /// unified dashboard action is a grouping, not a merge.
+        /// </summary>
+        private Dictionary<int, EmulatorState> StartHgssStarterHunt(List<int> positions, int newPos)
+        {
+            if (positions.Count() != 0)
+            {
+                throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
+            }
+
+            var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
+            var botEvent = new BotAndOrEvent();
+            botEvent.StartSpecialEvent(ev, "HGSS Shiny Starter Hunt", botEvents);
+            botEvents.Add(newPos, botEvent);
+            return GetBotDashboardState();
         }
 
         public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
@@ -527,6 +569,9 @@ namespace ShinyBotHunter.Service
         // Set on actions that take a list of legs instead of a single set of parameters. The
         // dashboard renders one copy of this schema per leg.
         public EventArgumentOptions? LegParameters { get; set; }
+        // When set, the legs are only offered while this holds -- an action whose modes do not all
+        // take a list. Null means always, which is every action that existed before modes.
+        public Condition? LegCondition { get; set; }
     }
 
     public class ConditionalParameters
@@ -534,6 +579,8 @@ namespace ShinyBotHunter.Service
         public Condition Condition { get; set; } = null!;
         public string Name { get; set; } = null!;
         public bool HideIfConditionNotMet { get; set; } = true;
+        /// <summary>Must be filled before the action can start, while its condition holds.</summary>
+        public bool Required { get; set; }
     }
 
     public class Condition
@@ -573,6 +620,8 @@ namespace ShinyBotHunter.Service
     public class NewEventArguments
     {
         public string EventName { get; set; } = "";
+        /// <summary>Which hunt an action that covers several game flavors should run.</summary>
+        public string? Mode { get; set; }
         public string? GameName { get; set; }
         public string? PhaseName { get; set; }
         public string? TargetType { get; set; }

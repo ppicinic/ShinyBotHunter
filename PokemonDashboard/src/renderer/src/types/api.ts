@@ -270,6 +270,8 @@ export interface ConditionalParameter {
   condition: Condition
   name: string
   hideIfConditionNotMet: boolean
+  // Must be filled before the action can start, while its condition holds.
+  required?: boolean
 }
 
 export interface EventArgumentOptions {
@@ -279,6 +281,8 @@ export interface EventArgumentOptions {
   conditionalParameters?: ConditionalParameter[]
   // Present on actions that take a list of legs. Its fields are rendered once per leg.
   legParameters?: EventArgumentOptions
+  // When present, the legs are only offered while this holds.
+  legCondition?: Condition
 }
 
 // Matches C# NewEventLegArguments in BotService.cs -- one leg of a chained action.

@@ -32,8 +32,16 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   TrainType: 'Train Type',
   TargetLevel: 'Target Level',
   SwitchSlot: 'Battler',
+  Mode: 'Game',
 }
 const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
+
+// Which hunt a mode-carrying action runs. Values are C# GameFlavor names; the label is what the
+// games are actually called.
+const MODE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'HGSS', label: 'HeartGold / SoulSilver' },
+  { value: 'RS', label: 'Ruby / Sapphire' }
+]
 
 const ENCOUNTER_TYPE_OPTIONS = ['Spin', 'Run']
 // Maps EncounterType string names to C# enum integer values (Spin=0, Run=1)
@@ -96,6 +104,25 @@ function initialParamsFor(schema: EventArgumentOptions): Record<string, string> 
 function requiredParamsFilled(schema: EventArgumentOptions, params: Record<string, string>): boolean {
   const required = schema.requiredParameters ?? []
   return required.every((p) => params[p]?.trim())
+}
+
+/** The conditional parameters currently on screen. */
+function visibleConditionalsOf(schema: EventArgumentOptions, params: Record<string, string>): ConditionalParameter[] {
+  return (schema.conditionalParameters ?? []).filter((cp) => isConditionMet(cp.condition, params))
+}
+
+/** Whether this schema is offering its list of legs. An action without a leg condition always is. */
+function legsVisible(schema: EventArgumentOptions, params: Record<string, string>): boolean {
+  return !schema.legCondition || isConditionMet(schema.legCondition, params)
+}
+
+/** Every parameter the form is showing, which is the set the submission is built from. */
+function visibleParamNames(schema: EventArgumentOptions, params: Record<string, string>): Set<string> {
+  return new Set([
+    ...(schema.requiredParameters ?? []),
+    ...(schema.optionalParameters ?? []),
+    ...visibleConditionalsOf(schema, params).map((cp) => cp.name)
+  ])
 }
 
 /** Maps one form's parameter values onto the JSON body of an encounter leg. */
@@ -874,13 +901,16 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     try {
       const params = paramValues[action.name] ?? {}
       const body: Record<string, unknown> = { eventName: action.name }
-      if (action.legParameters) {
+      if (action.legParameters && legsVisible(action, params)) {
         const legs = topLegs[action.name] ?? [initialParamsFor(action.legParameters)]
         body['legs'] = legs.map(buildLegBody)
       }
       if (params['GameName'] !== undefined) {
         body['gameName'] = params['GameName']
       }
+      // A field the current mode hides is not part of this submission, even if an earlier mode left
+      // a value in it.
+      const visible = visibleParamNames(action, params)
       // Find soundOn key case-insensitively
       const soundOnKey = Object.keys(params).find((k) => k.toLowerCase() === 'soundon')
       if (soundOnKey !== undefined) {
@@ -893,6 +923,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
         if (key === 'GameName') continue
         if (key.toLowerCase() === 'soundon') continue
         if (value === '') continue
+        if (!visible.has(key)) continue
         // Numeric parameters are sent as numbers rather than relying on the server coercing them.
         const asNumber = Number(value)
         body[key] = value.trim() !== '' && !Number.isNaN(asNumber) && /^\d+$/.test(value.trim())
@@ -1160,13 +1191,71 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
             {actions.map((action) => {
               const params = paramValues[action.name] ?? {}
               const hasParams = (action.requiredParameters?.length ?? 0) > 0
-              const flatFilled = !hasParams || action.requiredParameters!.every((p) => params[p]?.trim())
+              // A conditional field can be required too, but only while it is on screen.
+              const shownConditionals = visibleConditionalsOf(action, params)
+              const flatFilled = (!hasParams || action.requiredParameters!.every((p) => params[p]?.trim()))
+                && shownConditionals.every((cp) => !cp.required || params[cp.name]?.trim())
               const actionLegs = topLegs[action.name] ?? (action.legParameters ? [initialParamsFor(action.legParameters)] : [])
-              const legsFilled = !action.legParameters
+              const showLegs = action.legParameters !== undefined && legsVisible(action, params)
+              const legsFilled = !showLegs
                 || (actionLegs.length > 0 && actionLegs.every((leg) => requiredParamsFilled(action.legParameters!, leg)))
               const allParamsFilled = flatFilled && legsFilled
               const isSubmitting = submitting === action.name
               const legLabel = action.legParameters?.name ?? 'Entry'
+
+              // One field, picked by name. Shared by the always-present parameters and the
+              // conditional ones, which are ordinary fields that happen to come and go with a mode.
+              const renderTopField = (param: string): JSX.Element => (
+                <div key={param} className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 w-24 flex-shrink-0">{getParamLabel(param)}</label>
+                  {param === 'Mode' ? (
+                    <select
+                      value={params[param] ?? ''}
+                      onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                      className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">Select a game...</option>
+                      {MODE_OPTIONS.map((mode) => (
+                        <option key={mode.value} value={mode.value}>{mode.label}</option>
+                      ))}
+                    </select>
+                  ) : param === 'GameName' ? (
+                    <select
+                      value={params[param] ?? ''}
+                      onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                      className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="">Select a game...</option>
+                      {allGames.map((game) => (
+                        <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
+                      ))}
+                    </select>
+                  ) : param === 'PhaseName' ? (
+                    <select
+                      value={params[param] ?? ''}
+                      onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                      disabled={!(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])}
+                      className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+                    >
+                      <option value="">
+                        {(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])
+                          ? 'Select a milestone...' : 'Pick a game first'}
+                      </option>
+                      {phasesForSelectedGame(params, actionLegs).map((phase) => (
+                        <option key={phase.name} value={phase.name}>{phase.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={params[param] ?? ''}
+                      onChange={(e) => handleParamChange(action.name, param, e.target.value)}
+                      placeholder={param}
+                      className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+                    />
+                  )}
+                </div>
+              )
 
               return (
                 <div
@@ -1176,7 +1265,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-white">{action.name}</span>
                     <div className="flex items-center gap-1.5">
-                      {action.legParameters && (
+                      {showLegs && (
                         <button
                           onClick={() => handleTopAddLeg(action, actionLegs)}
                           className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
@@ -1194,7 +1283,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                     </div>
                   </div>
 
-                  {action.legParameters && actionLegs.map((leg, legIndex) => (
+                  {showLegs && actionLegs.map((leg, legIndex) => (
                     <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1.5 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{legLabel} {legIndex + 1}</span>
@@ -1223,46 +1312,8 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                     </div>
                   ))}
 
-                  {action.requiredParameters?.map((param) => (
-                    <div key={param} className="flex items-center gap-2">
-                      <label className="text-xs text-slate-400 w-24 flex-shrink-0">{getParamLabel(param)}</label>
-                      {param === 'GameName' ? (
-                        <select
-                          value={params[param] ?? ''}
-                          onChange={(e) => handleParamChange(action.name, param, e.target.value)}
-                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                        >
-                          <option value="">Select a game...</option>
-                          {allGames.map((game) => (
-                            <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
-                          ))}
-                        </select>
-                      ) : param === 'PhaseName' ? (
-                        <select
-                          value={params[param] ?? ''}
-                          onChange={(e) => handleParamChange(action.name, param, e.target.value)}
-                          disabled={!(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])}
-                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-                        >
-                          <option value="">
-                            {(params['GameName'] ?? actionLegs.find((leg) => leg['GameName'])?.['GameName'])
-                              ? 'Select a milestone...' : 'Pick a game first'}
-                          </option>
-                          {phasesForSelectedGame(params, actionLegs).map((phase) => (
-                            <option key={phase.name} value={phase.name}>{phase.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={params[param] ?? ''}
-                          onChange={(e) => handleParamChange(action.name, param, e.target.value)}
-                          placeholder={param}
-                          className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                        />
-                      )}
-                    </div>
-                  ))}
+                  {action.requiredParameters?.map((param) => renderTopField(param))}
+                  {shownConditionals.map((cp) => renderTopField(cp.name))}
                   {action.optionalParameters && action.optionalParameters.length > 0 && (
                     <div className="pt-1 border-t border-slate-700/30">
                       <span className="text-xs text-slate-600">Optional</span>
