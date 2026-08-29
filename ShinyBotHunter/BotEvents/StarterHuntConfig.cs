@@ -42,6 +42,14 @@ namespace ShinyBotHunter.BotEvents
         public int ConcurrentLaunches { get; set; } = 1;
 
         /// <summary>
+        /// Gap between starting one run and the next. This exists for ORDER, not pacing -- pacing is
+        /// ConcurrentLaunches' job. Runs do async work before reaching the launch gate, so starting
+        /// them all at once let them arrive in whatever order those calls finished, and emulators
+        /// appeared at scattered screen positions. It only has to outlast a database round trip.
+        /// </summary>
+        public int LaunchOrderDelayMs { get; set; } = 2000;
+
+        /// <summary>
         /// How many times a freshly created save is thrown away and remade when its trainer ID
         /// already belongs to another save.
         /// </summary>
@@ -134,6 +142,7 @@ namespace ShinyBotHunter.BotEvents
             Positive(LaunchSettleMs, nameof(LaunchSettleMs));
             Positive(LaunchReadyTimeoutMs, nameof(LaunchReadyTimeoutMs));
             Positive(ConcurrentLaunches, nameof(ConcurrentLaunches));
+            Positive(LaunchOrderDelayMs, nameof(LaunchOrderDelayMs));
             if (SaveTrainerIdRetries < 0)
             {
                 throw new InvalidOperationException($"{path}: SaveTrainerIdRetries cannot be negative.");

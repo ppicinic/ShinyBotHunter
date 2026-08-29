@@ -210,12 +210,12 @@ export interface GameRomInfo {
 }
 
 /**
- * Label for a ROM in a picker. Leads with the handle because that is what identifies the
- * file, and per-instance copies share a display name — "Pokemon SoulSilver" and
- * "Pokemon SoulSilver2" are the same game and would otherwise be indistinguishable.
+ * Label for a ROM in a picker: the filename, which is what the user picked it by. The header's
+ * game name and revision used to be appended to disambiguate per-instance copies, but the handle
+ * already does that -- copies differ only by filename -- so the suffix was noise on every row.
  */
 export function romLabel(rom: GameRomInfo): string {
-  return `${rom.handle} — ${rom.gameName} rev${rom.revision}`
+  return rom.handle
 }
 
 // ============================================================

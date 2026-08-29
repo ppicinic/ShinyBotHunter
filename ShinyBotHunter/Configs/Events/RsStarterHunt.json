@@ -35,6 +35,12 @@
   // answer. Raise it to launch a wave faster, at the cost of the contention that caused that.
   "ConcurrentLaunches": 1,
 
+  // Gap between starting one run and the next, so they reach the launch gate in position order and
+  // the emulators fill the screen left to right. This is about ORDER, not pacing -- ConcurrentLaunches
+  // does the pacing -- so it only needs to outlast a database round trip, and it costs nothing overall
+  // because it overlaps with boots that take far longer.
+  "LaunchOrderDelayMs": 2000,
+
   // A new save whose trainer ID already belongs to another save is wiped and made again, up to this
   // many times. Duplicates happen because the save-creation macro reaches a bounded set of RNG
   // frames, and two saves sharing a trainer agree on exactly which pokemon are shiny -- so the

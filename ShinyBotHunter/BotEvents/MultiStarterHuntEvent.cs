@@ -148,13 +148,19 @@ namespace ShinyBotHunter.BotEvents
                 $"[{string.Join(", ", copyIds.Select(id => entry.RomHandle + id))}].");
 
             using var wave = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            // Every run starts at once and queues on the launch gate, which lets only
-            // ConcurrentLaunches emulators boot at a time. This replaced a fixed 5s stagger: the
-            // stagger assumed a boot fits in five seconds, and at twenty emulators it did not, so
-            // the wave piled up faster than the machine could bring instances online.
+            // Runs queue on the launch gate, which lets only ConcurrentLaunches emulators boot at a
+            // time. That replaced a fixed 5s stagger, which assumed a boot fits in five seconds and
+            // at twenty emulators did not. The small delay that remains is a different thing: a run
+            // does async work before it reaches the gate, so starting them all at once let them
+            // arrive in whatever order those calls finished and the emulators tiled the screen in
+            // no particular order.
             var runs = new List<Task<ParkedShiny?>>();
             foreach (int id in copyIds)
             {
+                if (runs.Count > 0)
+                {
+                    await Task.Delay(config.LaunchOrderDelayMs, wave.Token);
+                }
                 runs.Add(RunOneAsync(entry, id, wave.Token));
             }
 
