@@ -315,6 +315,10 @@ namespace ShinyBotHunter.BotEvents
                     await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
                 }
 
+                // A cancelled wave lands here through the loop condition rather than through an
+                // await, which used to fall through into the starter read and come out as a
+                // refuse-to-reset error nothing cleaned up after. Cancellation is cancellation.
+                cancellationToken.ThrowIfCancellationRequested();
                 return seenOnField;
             }
             finally
@@ -369,6 +373,8 @@ namespace ShinyBotHunter.BotEvents
 
                 await Task.Delay(config.StarterReadPollIntervalMs, cancellationToken);
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Never reset on this. A reset says "that one was not a target", and an unreadable party
             // does not say that -- the pokemon sitting there could be the shiny this hunt exists to

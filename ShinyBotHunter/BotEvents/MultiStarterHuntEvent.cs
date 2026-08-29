@@ -226,8 +226,12 @@ namespace ShinyBotHunter.BotEvents
 
                 return new ParkedShiny(entry.Starter, bot, hunt, huntState, context.GameName, position, hunt.ResultWasForced);
             }
-            catch (OperationCanceledException)
+            catch
             {
+                // Cancelled or crashed, the emulator goes with its run. Cleaning up only on
+                // cancellation is how every cancelled wave stranded its losers: a run that died on
+                // any other exception left EmuHawk open and frozen mid-battle, starter on screen,
+                // looking exactly like a find nothing ever collected.
                 await DisposeQuietly(bot);
                 ReleasePosition(position);
                 throw;
