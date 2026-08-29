@@ -86,7 +86,18 @@ namespace ShinyBotHunter.Pokemon
             // Enrichment, not decoding: everything above comes out of the bytes, while these need the
             // species tables. Kept separate so the structure decoding stays a pure function.
             data.Gender = metadataService.GetGender(data.PID, data.Species);
-            data.Name = metadataService.TryGetPokemonMetadata(data.Species)?.PokemonName ?? string.Empty;
+
+            var metadata = metadataService.TryGetPokemonMetadata(data.Species);
+            data.Name = metadata?.PokemonName ?? string.Empty;
+            if (metadata is not null)
+            {
+                // The sprite filename. Left unset, it keeps PokemonData's "missingono" default, and
+                // the dashboard renders no image at all rather than a broken one. Guarded on the
+                // metadata being seeded because GetFormCode indexes the same table Name tolerates a
+                // gap in. FormIndex stays 0: Gen 3 derives Unown's letter from the PID rather than
+                // storing it, so an Unown reads as Unown-A until that is decoded.
+                data.FormCode = metadataService.GetFormCode(data.Species, data.Gender, data.FormIndex);
+            }
             return data;
         }
 
