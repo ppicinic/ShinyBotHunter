@@ -25,7 +25,6 @@ namespace ShinyBotHunter.Emulators
         private int width;
         private int height;
         private int widthOffset;
-        private int rows;
         private string romDirectory;
         private string bizHawkDirectory;
 
@@ -41,7 +40,6 @@ namespace ShinyBotHunter.Emulators
             this.width = context.Width;
             this.height = context.Height;
             this.widthOffset = context.WidthOffset;
-            this.rows = context.Rows;
             this._maxEmulators = applicationSettings.MaxEmulatorsFor(context.ConsoleType);
             this.romDirectory = applicationSettings.ROMBaseDirectory;
             this.bizHawkDirectory = applicationSettings.BizHawkBaseDirectory;
@@ -134,8 +132,7 @@ namespace ShinyBotHunter.Emulators
 
         public Task RepositionAsync(int placeId)
         {
-            var (x, y) = EmulatorGrid.PositionFor(placeId, this._maxEmulators, this.rows, this.width, this.height, this.widthOffset);
-            return RepositionAsync(x, y);
+            return RepositionAsync(placeId % (this._maxEmulators / 2) * this.width - 6 + this.widthOffset, placeId / (this._maxEmulators / 2) * this.height);
         }
 
 
