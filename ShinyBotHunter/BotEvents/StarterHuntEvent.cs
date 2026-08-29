@@ -34,7 +34,6 @@ namespace ShinyBotHunter.BotEvents
         private readonly LegalityService legality;
         private readonly RsStartMenuService startMenu;
         private readonly StarterHuntStateStore stateStore;
-        private readonly EmulatorLaunchGate launchGate;
         private readonly string romDirectory;
         private readonly string bizHawkDirectory;
         private readonly ushort expectedSpecies;
@@ -68,7 +67,6 @@ namespace ShinyBotHunter.BotEvents
             this.legality = provider.GetRequiredService<LegalityService>();
             this.startMenu = provider.GetRequiredService<RsStartMenuService>();
             this.stateStore = provider.GetRequiredService<StarterHuntStateStore>();
-            this.launchGate = provider.GetRequiredService<EmulatorLaunchGate>();
             var settings = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value;
             this.romDirectory = settings.ROMBaseDirectory;
             this.bizHawkDirectory = settings.BizHawkBaseDirectory;
@@ -96,7 +94,8 @@ namespace ShinyBotHunter.BotEvents
             }
 
             await EnsureSaveExistsAsync(state.Milestone, cancellationToken);
-            await LaunchGatedAsync(cancellationToken);
+            await bot.LaunchAsync();
+            await WaitUntilEmulatorReadyAsync(cancellationToken);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -222,19 +221,6 @@ namespace ShinyBotHunter.BotEvents
         /// A memory read succeeding proves both that the tool is listening and that the core is
         /// running, which is the thing actually being waited for.
         /// </summary>
-        /// <summary>
-        /// Launches under the shared gate: the next emulator anywhere in the process starts only
-        /// after this one's ApiHawk has answered. Simultaneous BizHawk startups contend with each
-        /// other, and the gate turns that pile-up into a queue that moves at whatever pace the
-        /// machine actually boots emulators.
-        /// </summary>
-        private async Task LaunchGatedAsync(CancellationToken cancellationToken)
-        {
-            using IDisposable slot = await launchGate.EnterAsync(cancellationToken);
-            await bot.LaunchAsync();
-            await WaitUntilEmulatorReadyAsync(cancellationToken);
-        }
-
         private async Task WaitUntilEmulatorReadyAsync(CancellationToken cancellationToken)
         {
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.LaunchReadyTimeoutMs);
@@ -604,7 +590,8 @@ namespace ShinyBotHunter.BotEvents
 
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: creating a new save on {context.GameName}.");
 
-            await LaunchGatedAsync(cancellationToken);
+            await bot.LaunchAsync();
+            await WaitUntilEmulatorReadyAsync(cancellationToken);
             RunMacro(config.CreateSaveMacro);
             await bot.WaitForMacroAsync(cancellationToken);
             await Task.Delay(config.SaveSettleMs, cancellationToken);
