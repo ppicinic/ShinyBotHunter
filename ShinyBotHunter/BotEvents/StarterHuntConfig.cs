@@ -68,8 +68,10 @@ namespace ShinyBotHunter.BotEvents
         /// than a fixed Nth encounter, because the machinery being tested is timing-dependent -- a
         /// deterministic trigger fires at the same point in every wave, so races between emulators
         /// finding at once, or finding early versus late in a wave, never get exercised. A forced
-        /// find runs the whole flow except the parts that would lie to the data: it is not recorded
-        /// as caught, its starter is not marked complete, and its copy is not retired. 0 disables.
+        /// find runs the real flow end to end -- its copy is retired and its starter marked
+        /// complete, since those are the paths worth proving -- and only the caught-pokemon record
+        /// is skipped. Clear the hunt's PhaseStates records and test copies before a real hunt.
+        /// 0 disables.
         /// </summary>
         public int ForceShinyPercent { get; set; }
 

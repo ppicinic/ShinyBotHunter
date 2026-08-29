@@ -65,7 +65,8 @@
 
   // QA only: percent chance an encounter is treated as shiny, to exercise park, queue and resume
   // without waiting out 1/8192. A roll rather than a fixed Nth encounter so finds land at
-  // unpredictable points, which is what shakes out races between emulators. Skips everything that
-  // would lie to the data. SET TO 0 FOR REAL HUNTS.
+  // unpredictable points, which is what shakes out races between emulators. Forced finds retire
+  // their copies and complete their starters like real ones (only the caught-pokemon record is
+  // skipped), so clear the hunt state and test copies afterwards. SET TO 0 FOR REAL HUNTS.
   "ForceShinyPercent": 10
 }

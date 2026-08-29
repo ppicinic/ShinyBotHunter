@@ -253,15 +253,18 @@ namespace ShinyBotHunter.BotEvents
             oldest.HuntState.State.Push(EventState.Resume);
             await oldest.Hunt.ExecuteWithResultAsync(oldest.HuntState, CancellationToken.None);
 
+            // Forced finds retire and complete like real ones. These are the paths the test exists
+            // to prove -- retirement is what keeps the next wave off this copy, completion is what
+            // makes a rerun skip this starter -- and a test that skips them tests nothing. The test
+            // state lands in the same PhaseStates records as a real hunt's, so clear those (and the
+            // test copies) before hunting for real.
+            await stateStore.RetireCopyAsync(GameFlavor.RS, oldest.CopyHandle);
+            await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, oldest.Starter);
             if (oldest.Forced)
             {
-                Console.WriteLine("[StarterHunt] [TEST] Forced find: not retiring the copy or marking the starter complete.");
-            }
-            else
-            {
-                // The copy's save file is now the shiny. From this moment it may never host a hunt.
-                await stateStore.RetireCopyAsync(GameFlavor.RS, oldest.CopyHandle);
-                await stateStore.MarkStarterCompletedAsync(GameFlavor.RS, milestone, oldest.Starter);
+                Console.WriteLine(
+                    $"[StarterHunt] [TEST] Retired {oldest.CopyHandle} and completed {oldest.Starter} as a real " +
+                    "find would; only the caught-pokemon record is skipped.");
             }
 
             StarterHuntGameState progress = await stateStore.LoadOrCreateAsync(GameFlavor.RS, milestone);
