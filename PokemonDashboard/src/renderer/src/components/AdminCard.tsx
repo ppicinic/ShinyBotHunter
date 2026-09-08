@@ -1196,7 +1196,11 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
               const flatFilled = (!hasParams || action.requiredParameters!.every((p) => params[p]?.trim()))
                 && shownConditionals.every((cp) => !cp.required || params[cp.name]?.trim())
               const actionLegs = topLegs[action.name] ?? (action.legParameters ? [initialParamsFor(action.legParameters)] : [])
-              const showLegs = action.legParameters !== undefined && legsVisible(action, params)
+              // Truthiness, not a check against undefined: the server sends legParameters as null for
+              // an action that has no legs, and null is not undefined. Testing for undefined gave the
+              // launch actions a "+ Entry" button and then disabled their Start button, waiting on a
+              // leg that could never be added.
+              const showLegs = !!action.legParameters && legsVisible(action, params)
               const legsFilled = !showLegs
                 || (actionLegs.length > 0 && actionLegs.every((leg) => requiredParamsFilled(action.legParameters!, leg)))
               const allParamsFilled = flatFilled && legsFilled
