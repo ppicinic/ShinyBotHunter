@@ -70,33 +70,21 @@ namespace ShinyBotHunter.Service
         }
 
         /// <summary>
-        /// The trainer ID of the save in a slot directory, or null when the slot holds no readable
-        /// save. Unreadable is not an error here: a slot is inspected while saves are being created,
-        /// so a file that is missing or half-written is an ordinary outcome.
+        /// The trainer ID in a SaveRAM file, or null when it holds no readable save. Unreadable is not
+        /// an error here: files are inspected while saves are being created, so one that is missing or
+        /// half-written is an ordinary outcome rather than a fault.
         /// </summary>
-        public static ushort? ReadTrainerIdFromSlot(string slotDirectory)
+        public static ushort? ReadTrainerIdFromFile(string saveRamPath)
         {
-            if (!Directory.Exists(slotDirectory))
+            try
             {
+                return File.Exists(saveRamPath) ? ReadTrainerId(File.ReadAllBytes(saveRamPath)) : null;
+            }
+            catch (IOException)
+            {
+                // Being written right now. The caller re-reads on its next attempt.
                 return null;
             }
-
-            foreach (string file in Directory.EnumerateFiles(slotDirectory, "*.SaveRAM"))
-            {
-                try
-                {
-                    ushort? id = ReadTrainerId(File.ReadAllBytes(file));
-                    if (id is not null)
-                    {
-                        return id;
-                    }
-                }
-                catch (IOException)
-                {
-                    // Being written right now. The caller re-reads on its next attempt.
-                }
-            }
-            return null;
         }
     }
 }

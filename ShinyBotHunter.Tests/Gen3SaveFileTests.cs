@@ -80,9 +80,25 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void MissingSlotDirectoryIsNotAnError()
+        public void MissingSaveFileIsNotAnError()
         {
-            Assert.Null(Gen3SaveFile.ReadTrainerIdFromSlot(Path.Combine(Path.GetTempPath(), "no-such-slot-" + Guid.NewGuid())));
+            // Saves are inspected while they are being created, so absent is an ordinary answer.
+            Assert.Null(Gen3SaveFile.ReadTrainerIdFromFile(Path.Combine(Path.GetTempPath(), $"no-such-{Guid.NewGuid()}.SaveRAM")));
+        }
+
+        [Fact]
+        public void ReadsATrainerIdFromAFileOnDisk()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"gen3-save-{Guid.NewGuid()}.SaveRAM");
+            try
+            {
+                File.WriteAllBytes(path, Save((19231, 1), null));
+                Assert.Equal((ushort)19231, Gen3SaveFile.ReadTrainerIdFromFile(path));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
         }
     }
 }

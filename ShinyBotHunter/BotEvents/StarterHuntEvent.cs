@@ -448,15 +448,12 @@ namespace ShinyBotHunter.BotEvents
             await Task.Delay(config.SaveSettleMs, cancellationToken);
             await bot.FlushSave();
 
-            // The save either produced a file in this copy's slot or it did not; saying "saved" on
-            // faith is how a failed save went unnoticed until the shiny was gone.
-            string slotDirectory = SlotDirectory;
-            bool saveOnDisk = Directory.Exists(slotDirectory)
-                && Directory.EnumerateFiles(slotDirectory, "*.SaveRAM").Any();
-            if (!saveOnDisk)
+            // The save either produced this copy's file or it did not; saying "saved" on faith is how
+            // a failed save went unnoticed until the shiny was gone.
+            if (!File.Exists(SaveRamFile))
             {
                 throw new InvalidOperationException(
-                    $"No SaveRAM file appeared in {slotDirectory} after saving. The shiny is still on the " +
+                    $"No save appeared at {SaveRamFile} after saving. The shiny is still on the " +
                     "paused emulator; save manually before closing anything.");
             }
 
@@ -567,10 +564,11 @@ namespace ShinyBotHunter.BotEvents
             string extension = context.RomExtension;
             string target = $"{romDirectory}{context.GameName}{extension}";
 
-            // Both have to hold. The record alone is not enough -- a copy deleted by hand takes its
-            // save with it while the record survives -- and the copy alone is not enough either,
-            // since it exists for minutes before its save does.
-            if (recordedSaveExists && File.Exists(target))
+            // All three have to hold. The record alone is not enough -- a copy deleted by hand takes
+            // its save with it while the record survives -- the copy alone is not enough either, since
+            // it exists for minutes before its save does, and the save file is checked directly
+            // because the record cannot know it was moved or removed underneath it.
+            if (recordedSaveExists && File.Exists(target) && File.Exists(SaveRamFile))
             {
                 return;
             }
@@ -602,7 +600,7 @@ namespace ShinyBotHunter.BotEvents
                 await bot.FlushSave();
                 await bot.DisposeAsync();
 
-                ushort? trainerId = Gen3SaveFile.ReadTrainerIdFromSlot(SlotDirectory);
+                ushort? trainerId = Gen3SaveFile.ReadTrainerIdFromFile(SaveRamFile);
                 if (trainerId is null)
                 {
                     // The save is verified separately by the hunt itself; an unreadable trainer id
@@ -613,7 +611,7 @@ namespace ShinyBotHunter.BotEvents
                     break;
                 }
 
-                string? clash = SlotSharingTrainerId(trainerId.Value);
+                string? clash = SaveSharingTrainerId(trainerId.Value);
                 if (clash is null)
                 {
                     Console.WriteLine($"[StarterHunt] {entry.RecordingName}: trainer id {trainerId} on {context.GameName}.");
@@ -640,31 +638,37 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: save created on {context.GameName}.");
         }
 
-        private string SlotDirectory
-            => Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM", context.SaveSlotName);
+        private string SaveRamDirectory
+            => Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM");
 
         /// <summary>
-        /// The name of another save slot already using this trainer id, or null when it is new.
-        /// Every slot on this console is compared, not just this game's copies: two saves that agree
-        /// on a trainer agree on which pokemon are shiny regardless of which game they belong to.
+        /// Where this copy's save lives. The fork names SaveRAM after the ROM file, so the path is
+        /// derived rather than discovered -- one file per copy, in one directory.
         /// </summary>
-        private string? SlotSharingTrainerId(ushort trainerId)
+        private string SaveRamFile => Path.Combine(SaveRamDirectory, $"{context.GameName}.SaveRAM");
+
+        /// <summary>
+        /// The name of another save already using this trainer id, or null when it is new. Every save
+        /// on this console is compared, not just this game's copies: two saves that agree on a trainer
+        /// agree on which pokemon are shiny regardless of which game they belong to.
+        /// </summary>
+        private string? SaveSharingTrainerId(ushort trainerId)
         {
-            string root = Path.Combine(bizHawkDirectory, context.ConsoleType.ToString(), "SaveRAM");
-            if (!Directory.Exists(root))
+            if (!Directory.Exists(SaveRamDirectory))
             {
                 return null;
             }
 
-            foreach (string slot in Directory.EnumerateDirectories(root))
+            string mine = Path.GetFileName(SaveRamFile);
+            foreach (string save in Directory.EnumerateFiles(SaveRamDirectory, "*.SaveRAM"))
             {
-                if (string.Equals(Path.GetFileName(slot), context.SaveSlotName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(Path.GetFileName(save), mine, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
-                if (Gen3SaveFile.ReadTrainerIdFromSlot(slot) == trainerId)
+                if (Gen3SaveFile.ReadTrainerIdFromFile(save) == trainerId)
                 {
-                    return Path.GetFileName(slot);
+                    return Path.GetFileNameWithoutExtension(save);
                 }
             }
             return null;
@@ -689,15 +693,31 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        /// <summary>
+        /// Removes this copy's save and the backups BizHawk keeps beside it. The .bak files matter:
+        /// left behind, BizHawk restores one and the new-game macro boots into a game that already
+        /// has a save, where the title menu gains a Continue entry and every recorded press from
+        /// there lands one row off.
+        /// </summary>
         private void WipeSaveSlot()
         {
-            string slotDirectory = SlotDirectory;
-            if (!Directory.Exists(slotDirectory))
+            if (!Directory.Exists(SaveRamDirectory))
             {
                 return;
             }
-            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: wiping stale saves in {slotDirectory}.");
-            Directory.Delete(slotDirectory, recursive: true);
+
+            string prefix = Path.GetFileName(SaveRamFile);
+            string[] stale = Directory.EnumerateFiles(SaveRamDirectory, $"{prefix}*").ToArray();
+            if (stale.Length == 0)
+            {
+                return;
+            }
+
+            Console.WriteLine($"[StarterHunt] {entry.RecordingName}: wiping {stale.Length} stale save file(s) for {context.GameName}.");
+            foreach (string file in stale)
+            {
+                File.Delete(file);
+            }
         }
 
         private void RunMacro(string macroName)
