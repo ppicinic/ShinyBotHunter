@@ -2,11 +2,13 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Macro;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
 namespace ShinyBotHunter.Service
@@ -19,8 +21,12 @@ namespace ShinyBotHunter.Service
         private EventArgumentOptions[] specialEvents;
         private IHubContext<ElectronHub, IElectronClient> hubContext;
         private string bizHawkMode;
-        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext)
+        private ApplicationSettings settings;
+        private RomInfoService romInfoService;
+        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext, RomInfoService romInfoService)
         {
+            this.settings = appSettings.Value;
+            this.romInfoService = romInfoService;
             // Display slots and ports are one pool shared by every console, so the ceiling on
             // concurrently running emulators is the sum of the per-console budgets.
             this.maxEmulators = appSettings.Value.TotalMaxEmulators;
@@ -34,7 +40,15 @@ namespace ShinyBotHunter.Service
         public void Init()
         {
             string json = File.ReadAllText("./Configs/SpecialEvents/SpecialEvents.json");
-            specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json)!;
+            // String enum names so a condition reads "Eq" in the config rather than 0, and comments
+            // so the file can explain itself the way the event configs do.
+            var options = new JsonSerializerOptions
+            {
+                Converters = { new JsonStringEnumConverter() },
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true,
+            };
+            specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json, options)!;
         }
 
         private Dictionary<int, BotAndOrEvent> botEvents = new Dictionary<int, BotAndOrEvent>();
@@ -65,7 +79,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
+                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext });
                     return GetBotDashboardState();
                 }
                 else
@@ -80,7 +94,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos });
+                    botEvents.Add(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext });
                     await Task.Delay(4000);
                     bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
                     await bot.WaitForMacroAsync();
@@ -93,23 +107,118 @@ namespace ShinyBotHunter.Service
             }
             else if(args.EventName == "HGSS Shiny Starter Hunt")
             {
-                if(positions.Count() == 0)
+                // Off the menu, which now reaches this through the unified action's HGSS mode, but
+                // still accepted so a direct API call or a saved script keeps working.
+                return StartHgssStarterHunt(positions, newPos);
+            }
+            else if(args.EventName == "Shiny Starter Hunt" && StarterHuntMode(args.Mode) == GameFlavor.HGSS)
+            {
+                // One menu entry, two hunts. HGSS keeps the event it has always had; only the way it
+                // is reached changed.
+                return StartHgssStarterHunt(positions, newPos);
+            }
+            else if(args.EventName == "Shiny Starter Hunt")
+            {
+                if (positions.Count() != 0)
                 {
-                    var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
-                    var botEvent = new BotAndOrEvent();
-                    botEvent.StartSpecialEvent(ev, "HGSS Shiny Starter Hunt", botEvents);
-                    botEvents.Add(newPos, botEvent);
-                    return GetBotDashboardState();
+                    throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
+                }
+                if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
+
+                // Each queue entry picks its own ROM, starter and recording label, like chained
+                // encounter legs. The flat fields remain usable as a single-entry shorthand.
+                List<NewEventLegArguments> rawEntries;
+                if (args.Legs is { Count: > 0 })
+                {
+                    rawEntries = args.Legs;
+                }
+                else if (!string.IsNullOrWhiteSpace(args.GameName) && !string.IsNullOrWhiteSpace(args.Starter))
+                {
+                    rawEntries = [new NewEventLegArguments { GameName = args.GameName, Starter = args.Starter, RecordingName = args.RecordingName }];
                 }
                 else
                 {
-                    throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
+                    throw new ArgumentException("At least one starter entry (game + starter) is required for the shiny starter hunt.");
                 }
+
+                var entries = new List<StarterHuntEntry>();
+                RomInfo? firstRom = null;
+                foreach (NewEventLegArguments raw in rawEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(raw.GameName)) throw new ArgumentException("Every starter entry must pick a game.");
+                    if (string.IsNullOrWhiteSpace(raw.Starter)) throw new ArgumentException("Every starter entry must pick a starter.");
+
+                    RomInfo rom = romInfoService.GetByHandle(raw.GameName)
+                        ?? throw new ArgumentException($"No ROM named '{raw.GameName}' was found.");
+                    if (rom.Flavor != GameFlavor.RS)
+                    {
+                        throw new ArgumentException(
+                            $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                    }
+                    firstRom ??= rom;
+
+                    string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
+                    entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording, raw.RequireFemale ?? false));
+                }
+
+                int budget = settings.MaxEmulatorsFor(firstRom!.Console);
+                int requested = args.Emulators ?? 1;
+                if (requested < 1 || requested > budget)
+                {
+                    throw new ArgumentException($"Emulators must be between 1 and {budget} for {firstRom.Console}.");
+                }
+
+                var hunt = new MultiStarterHuntEvent(entries, args.PhaseName, requested, budget, StarterHuntConfig.Load(), provider);
+
+                // The shared state is what the dashboard reads: the event holds it at Waiting while a
+                // shiny is parked, which is what surfaces Resume.
+                var huntState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
+                huntState.State.Push(EventState.Running);
+                var huntEvent = new BotAndOrEvent { GameState = huntState };
+                huntEvent.StartSpecialEvent(hunt, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", botEvents, huntState);
+                botEvents.Add(newPos, huntEvent);
+                return GetBotDashboardState();
             }
             else
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        /// <summary>
+        /// Which hunt the unified action means. Absent is RS, so a caller that posts starter entries
+        /// without a mode behaves exactly as it did before the two hunts shared one action.
+        /// </summary>
+        private static GameFlavor StarterHuntMode(string? mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode))
+            {
+                return GameFlavor.RS;
+            }
+            if (!Enum.TryParse(mode, ignoreCase: true, out GameFlavor flavor))
+            {
+                throw new ArgumentException(
+                    $"'{mode}' is not a starter hunt mode. Available: {string.Join(", ", Enum.GetNames<GameFlavor>())}.");
+            }
+            return flavor;
+        }
+
+        /// <summary>
+        /// The HGSS hunt, unchanged. It predates the generalized RS hunt and stays its own event; the
+        /// unified dashboard action is a grouping, not a merge.
+        /// </summary>
+        private Dictionary<int, EmulatorState> StartHgssStarterHunt(List<int> positions, int newPos)
+        {
+            if (positions.Count() != 0)
+            {
+                throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
+            }
+
+            var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
+            var botEvent = new BotAndOrEvent();
+            botEvent.StartSpecialEvent(ev, "HGSS Shiny Starter Hunt", botEvents);
+            botEvents.Add(newPos, botEvent);
+            return GetBotDashboardState();
         }
 
         public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
@@ -125,7 +234,7 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Wild Encounter")
             {
-                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName);
+                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor);
 
                 var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
                 botEvents[pos].GameState = NewGameStateForLeg(pos, leg);
@@ -142,7 +251,7 @@ namespace ShinyBotHunter.Service
                 }
                 // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
                 // after leg 1 has already been running for an hour.
-                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName)).ToList();
+                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor)).ToList();
 
                 var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
                 // The chain shares one GameState across all legs so the start tile survives leg
@@ -167,10 +276,10 @@ namespace ShinyBotHunter.Service
                 // Constructing the event loads and validates its config, so a corridor or a touch
                 // coordinate that was never measured fails here with a message rather than after the
                 // dashboard has already reported the hunt as running.
-                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, GameFlavor.HGSS, args.PhaseName, provider, this);
+                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, botEvents[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
                 botEvents[pos].GameState = new GameState()
                 {
-                    GameFlavor = GameFlavor.HGSS,
+                    GameFlavor = botEvents[pos].Bot!.GameFlavor,
                     BotService = this,
                     Bot = botEvents[pos].Bot!,
                     Milestone = args.PhaseName,
@@ -184,6 +293,19 @@ namespace ShinyBotHunter.Service
             }
             else if(args.EventName == "Resume")
             {
+                if (botEvents[pos].Event is MultiStarterHuntEvent multiHunt)
+                {
+                    // The hunt's main task is still running; Resume is a call into it, not a restart.
+                    var resumeState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Target = new ShinyTarget() };
+                    resumeState.State.Push(EventState.Resume);
+                    _ = multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None)
+                        .ContinueWith(t =>
+                        {
+                            if (t.IsFaulted) Console.WriteLine($"[StarterHunt] Resume failed: {t.Exception?.Flatten().InnerException?.Message}");
+                            _ = hubContext.Clients.All.ReceiveDashboardState(GetBotDashboardState());
+                        });
+                    return GetBotDashboardState();
+                }
                 botEvents[pos].GameState!.SwapState(EventState.Resume);
                 botEvents[pos].StartEvent(botEvents[pos].Event!, botEvents[pos].GameState!, botEvents[pos].GetName(pos), this);
                 return GetBotDashboardState();
@@ -229,7 +351,7 @@ namespace ShinyBotHunter.Service
         /// "Wild Encounter" action and every leg of a "Chained Encounter", so both reject the same
         /// bad input.
         /// </summary>
-        private EventLeg ValidateAndBuildLeg(NewEventLegArguments args, string gameFileName)
+        private EventLeg ValidateAndBuildLeg(NewEventLegArguments args, string gameFileName, GameFlavor flavor)
         {
             if (args.PhaseName is null || args.TargetType is null)
             {
@@ -242,7 +364,7 @@ namespace ShinyBotHunter.Service
             var targetType = Enum.Parse<TargetType>(args.TargetType);
             ITarget target = targetType switch
             {
-                TargetType.PhaseTarget => new PhaseTarget(provider, GameFlavor.HGSS, args.PhaseName, gameFileName),
+                TargetType.PhaseTarget => new PhaseTarget(provider, flavor, args.PhaseName, gameFileName),
                 TargetType.NoTarget => new NoTarget(),
                 _ => new ShinyTarget(),
             };
@@ -300,7 +422,7 @@ namespace ShinyBotHunter.Service
             return new GameState()
             {
                 OriginalBattleMode = leg.TrainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
-                GameFlavor = GameFlavor.HGSS,
+                GameFlavor = botEvents[pos].Bot!.GameFlavor,
                 BotService = this,
                 Target = leg.Target,
                 Milestone = leg.PhaseName,
@@ -351,7 +473,11 @@ namespace ShinyBotHunter.Service
             else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
             {
                 // TODO continue game.
-                return [actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"]];
+                var actions = new List<EventArgumentOptions>
+                {
+                    actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"],
+                };
+                return actions;
             }
             else
             {
@@ -381,6 +507,8 @@ namespace ShinyBotHunter.Service
             // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
             // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.
             {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
+            // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
+            // only per-hunt choices are which starter to take and what to file the encounters under.
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
 
@@ -394,7 +522,7 @@ namespace ShinyBotHunter.Service
 
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
-            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, GameFlavor.HGSS))).ToDictionary();
+            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, x.Value.Bot?.GameFlavor ?? x.Value.GameState?.GameFlavor ?? GameFlavor.HGSS))).ToDictionary();
         }
 
         public async Task<Dictionary<int, EmulatorState>> CancelBotOrEventAsync(int pos)
@@ -441,6 +569,9 @@ namespace ShinyBotHunter.Service
         // Set on actions that take a list of legs instead of a single set of parameters. The
         // dashboard renders one copy of this schema per leg.
         public EventArgumentOptions? LegParameters { get; set; }
+        // When set, the legs are only offered while this holds -- an action whose modes do not all
+        // take a list. Null means always, which is every action that existed before modes.
+        public Condition? LegCondition { get; set; }
     }
 
     public class ConditionalParameters
@@ -448,6 +579,8 @@ namespace ShinyBotHunter.Service
         public Condition Condition { get; set; } = null!;
         public string Name { get; set; } = null!;
         public bool HideIfConditionNotMet { get; set; } = true;
+        /// <summary>Must be filled before the action can start, while its condition holds.</summary>
+        public bool Required { get; set; }
     }
 
     public class Condition
@@ -475,11 +608,20 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+
+        // Starter-hunt queue entries. Each entry picks its own ROM and label, the way chained
+        // encounter legs each pick their own phase.
+        public string? GameName { get; set; }
+        public string? Starter { get; set; }
+        public string? RecordingName { get; set; }
+        public bool? RequireFemale { get; set; }
     }
 
     public class NewEventArguments
     {
         public string EventName { get; set; } = "";
+        /// <summary>Which hunt an action that covers several game flavors should run.</summary>
+        public string? Mode { get; set; }
         public string? GameName { get; set; }
         public string? PhaseName { get; set; }
         public string? TargetType { get; set; }
@@ -490,6 +632,15 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+        /// <summary>Which starter to take, for the shiny starter hunt.</summary>
+        public string? Starter { get; set; }
+        /// <summary>How many emulators the shiny starter hunt should run at once.</summary>
+        public int? Emulators { get; set; }
+        /// <summary>
+        /// What to file this hunt's encounters under. Deliberately not GameName, which already means
+        /// which ROM to launch and renders as a ROM picker.
+        /// </summary>
+        public string? RecordingName { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 
@@ -518,6 +669,12 @@ namespace ShinyBotHunter.Service
         }
         public int? BotPosition { get; set; }
         public IBot? Bot { get; set; }
+
+        /// <summary>
+        /// How this bot's emulator was built: which ROM file, which console, which flavor. Kept so an
+        /// event started later can copy a ROM or resolve a macro without re-deriving any of it.
+        /// </summary>
+        public GameContext? Context { get; set; }
         public IBotEvent? Event { get; set; }
         public Task? EventTask { get; set; }
         public GameState? GameState { get; set; }
@@ -605,14 +762,23 @@ namespace ShinyBotHunter.Service
                 });
         }
 
-        public void StartSpecialEvent(IBotEvent botEvent, string name, Dictionary<int, BotAndOrEvent> placements)
+        public void StartSpecialEvent(IBotEvent botEvent, string name, Dictionary<int, BotAndOrEvent> placements, GameState? gameState = null)
         {
             Event = botEvent;
             eventName = name;
             CancellationTokenSource = new CancellationTokenSource();
-            EventTask = Event.ExecuteAsync(new GameState(), CancellationTokenSource.Token)
+            // A caller that supplies the state can watch and steer the event while it runs, which is
+            // how the multi-starter hunt surfaces Waiting/Resume without ending its task.
+            EventTask = Event.ExecuteAsync(gameState ?? new GameState(), CancellationTokenSource.Token)
                 .ContinueWith(async (t) =>
                 {
+                    // A special event dying without a word is how a whole hunt vanishes with no
+                    // emulators and no explanation. Whatever else happens, the fault gets printed.
+                    if (t.IsFaulted)
+                    {
+                        Console.WriteLine($"[BotService] Special event '{name}' crashed:");
+                        Console.WriteLine(t.Exception!.Flatten().ToString());
+                    }
                     if (!CancellationTokenSource.IsCancellationRequested)
                     { 
                         await CancellationTokenSource.CancelAsync();

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -66,6 +66,11 @@ namespace ApiHawk
             public int MaxRetryFrames;
             public int FramesTried;
 
+            // How to reach the party, and which generation's structure to validate. Both default to
+            // the Gen 4 behaviour so a client that does not send them behaves exactly as before.
+            public byte Addressing;
+            public byte Scheme;
+
             // Set when the frame thread gives up, so the handler can answer 502 rather than hand
             // back a short body the client would have to interpret.
             public bool Failed;
@@ -85,13 +90,32 @@ namespace ApiHawk
         // to stay well inside this -- at 60fps, 120 frames is 2s against this 5s ceiling.
         private const int FrameWaitTimeoutMs = 5000;
 
-        // DS main RAM, the only region any of these pointers can legitimately address.
-        private const uint MainRamStart = 0x02000000;
-        private const uint MainRamEnd = 0x02400000;
+        // Regions a pointer may legitimately address, per console. DS keeps everything in main RAM;
+        // GBA splits between EWRAM and the much smaller IWRAM, and Gen 3 puts the party in IWRAM --
+        // so validating against the DS window alone rejects every Gen 3 party read.
+        private static readonly (uint Start, uint End)[] DsRanges =
+        {
+            (0x02000000, 0x02400000),
+        };
+
+        private static readonly (uint Start, uint End)[] GbaRanges =
+        {
+            (0x02000000, 0x02040000), // EWRAM
+            (0x03000000, 0x03008000), // IWRAM
+        };
 
         // Sanity bounds on request fields, so a malformed body can't allocate wildly or loop long.
         private const int MaxHops = 4;
         private const int MaxSlotSize = 0x1000;
+
+        // cmd 0x04 addressing: Gen 4 reaches the party through an anchor pointer that moves, while
+        // Gen 3 keeps it at a fixed address and has nothing to dereference.
+        private const byte AddressingAnchor = 0x00;
+        private const byte AddressingAbsolute = 0x01;
+
+        // cmd 0x04 validation scheme, selecting which generation's structure the slots are checked as.
+        private const byte SchemeGen4 = 0x00;
+        private const byte SchemeGen3 = 0x01;
 
         // cmd 0x04 count byte meaning "could not be read within the frame budget". Safe as a sentinel
         // because a real count is bounded by the request's maxSlots.
@@ -99,6 +123,8 @@ namespace ApiHawk
 
         // ── BizHawk API ───────────────────────────────────────────────────────────
         public IMemoryApi? MemoryApi { get; set; }
+
+        private (uint Start, uint End)[]? _ranges;
 
         public MemoryServer(int port)
         {
@@ -215,6 +241,45 @@ namespace ApiHawk
         /// caught the pointer being written, and continuing would read an unrelated address and hand
         /// back believable garbage. Throwing here turns that into a 502 the client retries.
         /// </summary>
+        /// <summary>
+        /// Whether an address falls in a region this console can address.
+        ///
+        /// The console is inferred from the core's memory domains rather than configured: a GBA core
+        /// exposes EWRAM and IWRAM, which is exactly the distinction being validated. Cached because
+        /// this runs per pointer hop, on the frame thread.
+        /// </summary>
+        private bool IsAddressable(uint address)
+        {
+            if (_ranges == null)
+            {
+                bool isGba = false;
+                try
+                {
+                    foreach (string domain in MemoryApi!.GetMemoryDomainList())
+                    {
+                        if (domain == "IWRAM" || domain == "EWRAM")
+                        {
+                            isGba = true;
+                            break;
+                        }
+                    }
+                }
+                catch
+                {
+                    // A core that will not list its domains gets the DS window, which is what every
+                    // pre-existing caller assumed.
+                }
+                _ranges = isGba ? GbaRanges : DsRanges;
+                BotLog.Write($"[MemoryServer] Addressable RAM: {(isGba ? "GBA (EWRAM+IWRAM)" : "DS main RAM")}");
+            }
+
+            foreach ((uint start, uint end) in _ranges)
+            {
+                if (address >= start && address < end) return true;
+            }
+            return false;
+        }
+
         private uint FollowPointerChain(uint address, int[] hops)
         {
             uint addr = address;
@@ -224,8 +289,8 @@ namespace ApiHawk
                 if (raw.Length < 4)
                     throw new InvalidOperationException($"pointer read at 0x{addr:X8} returned {raw.Length} bytes");
                 uint pointer = ReadU32Le(raw, 0);
-                if (pointer < MainRamStart || pointer >= MainRamEnd)
-                    throw new InvalidOperationException($"pointer 0x{pointer:X8} at 0x{addr:X8} is outside main RAM");
+                if (!IsAddressable(pointer))
+                    throw new InvalidOperationException($"pointer 0x{pointer:X8} at 0x{addr:X8} is outside addressable RAM");
                 addr = (uint)(pointer + hops[i]);
             }
             return addr;
@@ -240,7 +305,11 @@ namespace ApiHawk
         {
             result = Array.Empty<byte>();
 
-            uint basePtr = FollowPointerChain(req.Addr, new[] { 0 });
+            // In absolute mode the address is the party structure itself, so there is nothing to
+            // dereference and the offsets are measured from it directly.
+            uint basePtr = req.Addressing == AddressingAbsolute
+                ? req.Addr
+                : FollowPointerChain(req.Addr, new[] { 0 });
 
             byte[] countRaw = ReadBytes((uint)(basePtr + req.CountOffset), 1);
             if (countRaw.Length < 1)
@@ -267,7 +336,10 @@ namespace ApiHawk
                     reason = $"slot {slot + 1} read returned {block.Length} bytes";
                     return false;
                 }
-                if (!PokemonValidator.IsUsable(block, out string slotReason))
+                bool usable = req.Scheme == SchemeGen3
+                    ? Gen3PokemonValidator.IsUsable(block, out string slotReason)
+                    : PokemonValidator.IsUsable(block, out slotReason);
+                if (!usable)
                 {
                     reason = $"slot {slot + 1}: {slotReason}";
                     return false;
@@ -416,6 +488,15 @@ namespace ApiHawk
                     return false;
                 if (req.MaxRetryFrames < 1)
                     req.MaxRetryFrames = 1;
+
+                // Optional tail. Absent means a client built before Gen 3 support, which can only
+                // have meant anchor addressing and Gen 4 validation.
+                byte[]? tail = ReadExact(stream, 2);
+                if (tail != null)
+                {
+                    req.Addressing = tail[0];
+                    req.Scheme = tail[1];
+                }
                 return true;
             }
 

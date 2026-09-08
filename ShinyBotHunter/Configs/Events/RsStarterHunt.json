@@ -1,0 +1,83 @@
+{
+  // Macro names are resolved against GameFlavor.RS at run time, so renaming a macro file is fine
+  // as long as its "name:" field still matches what is written here.
+  "ContinueMacro": "ContinueGameWithRandom",
+  "CreateSaveMacro": "CreateNewSave",
+  "SoftResetMacro": "SoftReset",
+  "BattleAdvanceMacro": "MashB",
+  "SaveConfirmMacro": "SaveGame",
+
+  "StarterMacros": {
+    "Treecko": "SelectStarterTreecko",
+    "Torchic": "SelectStarterTorchic",
+    "Mudkip": "SelectStarterMudkip"
+  },
+
+  // Frames the emulator keeps retrying a party read before giving up.
+  "PartyRetryFrames": 120,
+
+  // How long to keep pressing B for the starter to come out. B is held for this whole stretch, so it
+  // covers the ball, the intro text and the throw; the ceiling only exists so a desync resets
+  // instead of hanging.
+  "BattleWaitTimeoutMs": 30000,
+
+  // Polling interval while waiting for the battle to start.
+  "BattlePollIntervalMs": 250,
+
+  // The run waits for a launched emulator to actually respond before sending a macro, rather than
+  // waiting a fixed time and hoping. This is the budget for that; several emulators starting at once
+  // take longer than one, and twenty of them take much longer than several.
+  "LaunchReadyTimeoutMs": 240000,
+
+  // How many emulators may be booting at the same time. Booting is what costs -- a window, a display
+  // surface, a ROM and an external tool each -- and a whole wave starting together lagged the machine
+  // badly enough that emulators failed to finish appearing. 1 means the next waits for the last to
+  // answer. Raise it to launch a wave faster, at the cost of the contention that caused that.
+  "ConcurrentLaunches": 1,
+
+  // Gap between starting one run and the next, so they reach the launch gate in position order and
+  // the emulators fill the screen left to right. This is about ORDER, not pacing -- ConcurrentLaunches
+  // does the pacing -- so it only needs to outlast a database round trip, and it costs nothing overall
+  // because it overlaps with boots that take far longer.
+  "LaunchOrderDelayMs": 2000,
+
+  // A new save whose trainer ID already belongs to another save is wiped and made again, up to this
+  // many times. Duplicates happen because the save-creation macro reaches a bounded set of RNG
+  // frames, and two saves sharing a trainer agree on exactly which pokemon are shiny -- so the
+  // second one adds no coverage the first did not already have.
+  "SaveTrainerIdRetries": 10,
+
+  // Settle after it responds, covering the rest of the boot before the first press.
+  "LaunchSettleMs": 5000,
+
+  // Settling time after a soft reset before the continue macro is sent.
+  "SoftResetSettleMs": 4000,
+
+  // Safety pause after saving, so SaveRAM is flushed before anything closes the emulator.
+  "SaveSettleMs": 10000,
+
+  // How long to keep trying to read the starter after the battle begins. The battle flag turns on
+  // before the pokemon is out of its ball, so early reads legitimately fail and are retried; this is
+  // the budget for the game to settle, not an expected wait.
+  "StarterReadTimeoutMs": 20000,
+  "StarterReadPollIntervalMs": 500,
+
+  // Settle once it is on the field: the species appears slightly before the sprite finishes
+  // arriving. Set to 0 once the hunt is trusted.
+  "StarterOnFieldSettleMs": 1000,
+
+  // Start-menu entry id for SAVE. Derived from the menu action order in the decompilation; kept
+  // here because a wrong value must be correctable without a rebuild. The bot reads the live menu
+  // and fails naming what it found rather than pressing blindly if this id is not present.
+  "SaveMenuActionId": 5,
+
+  // Logs a legality verdict for every encounter, not just shiny ones, to measure how common illegal
+  // pokemon actually are on this setup. On by default during rollout; turn it off once the rate is
+  // known and the per-reset analysis is no longer worth paying for. Shiny encounters are always
+  // analysed and logged regardless of this setting, since the keep decision depends on it.
+  "LogLegalityForEveryEncounter": true,
+
+  // Logs the battle-state bytes during each battle. Only needed to re-derive the action-menu
+  // signal the stop condition keys on (gBattleCommunication[1] == 4 once the menu is up).
+  "LogBattleStateProbe": false
+}

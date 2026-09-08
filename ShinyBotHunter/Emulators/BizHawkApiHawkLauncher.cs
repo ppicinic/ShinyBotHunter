@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using ShinyBotHunter.Context;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -30,6 +30,7 @@ namespace ShinyBotHunter.Emulators
         private readonly int    _width;
         private readonly int    _height;
         private readonly int    _widthOffset;
+        private readonly int    _rows;
         private readonly int    _maxEmulators;
         private readonly string _romDirectory;
         private readonly string _bizHawkDirectory;
@@ -57,6 +58,7 @@ namespace ShinyBotHunter.Emulators
             _width            = context.Width;
             _height           = context.Height;
             _widthOffset      = context.WidthOffset;
+            _rows             = context.Rows;
             _maxEmulators     = appSettings.MaxEmulatorsFor(context.ConsoleType);
             _romDirectory     = appSettings.ROMBaseDirectory;
             _bizHawkDirectory = appSettings.BizHawkBaseDirectory;
@@ -87,6 +89,10 @@ namespace ShinyBotHunter.Emulators
             // Pass ports via the same env vars as the Lua launcher
             _process.StartInfo.EnvironmentVariables["BIZHAWK_COMMAND_PORT"] = CommandPort.ToString();
             _process.StartInfo.EnvironmentVariables["BIZHAWK_MEMORY_PORT"]  = MemoryPort.ToString();
+            // No save-slot variable: the fork now names SaveRAM after the ROM file rather than the
+            // gamedb title, so each copy writes "<copy>.SaveRAM" of its own accord. That replaced a
+            // per-instance directory driven by %BIZHAWK_SAVE_SLOT%, which existed only because every
+            // copy of one ROM resolved to a single save file and overwrote the others.
         }
 
         // ── ILauncher ─────────────────────────────────────────────────────────────
@@ -111,14 +117,17 @@ namespace ShinyBotHunter.Emulators
 
         public Task RepositionAsync(int placeId)
         {
-            return RepositionAsync(
-                placeId % (_maxEmulators / 2) * _width - 6 + _widthOffset,
-                placeId / (_maxEmulators / 2) * _height);
+            var (x, y) = EmulatorGrid.PositionFor(placeId, _maxEmulators, _rows, _width, _height, _widthOffset);
+            return RepositionAsync(x, y);
         }
 
         // ── Window helpers ────────────────────────────────────────────────────────
 
-        private static async Task<IntPtr> WaitForMainWindowAsync(Process process, int timeoutMs = 30_000)
+        // 60s, not 30: this is the first budget a large wave blows. Twenty EmuHawks starting inside
+        // a couple of minutes contend for the GUI and the disk, and an emulator that took longer than
+        // half a minute to paint its window failed here -- visibly, as the one that never moved to
+        // its position -- while the connection budget after it still had four times the headroom.
+        private static async Task<IntPtr> WaitForMainWindowAsync(Process process, int timeoutMs = 60_000)
         {
             var sw = Stopwatch.StartNew();
 

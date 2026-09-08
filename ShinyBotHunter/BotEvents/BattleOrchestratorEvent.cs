@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿﻿using Microsoft.Extensions.DependencyInjection;
+using Discord;
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
@@ -82,14 +83,13 @@ namespace ShinyBotHunter.BotEvents
         // The level-up equivalent is FreeSlotMacro.
         private const string EvolutionFreeSlotMacro = "W.160;T.A;W.15";
 
-        private HgssPokemonParser parser;
+        private IPokemonParser parser;
         private PokemonPersistenceService persistenceService;
         private PokemonMetadataService metadataService;
         private ApplicationSettings appSettings;
         private DiscordBotService discordBotService;
         private PokemonStateReader reader;
         private SmogonDamageService damageService;
-        private IPointerService pointerService;
         private ShinyAlertService shinyAlertService;
 
         // How long to wait for the battler to actually be out before calling the switch failed. Has to
@@ -101,7 +101,7 @@ namespace ShinyBotHunter.BotEvents
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
-        public BattleOrchestratorEvent(HgssPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
+        public BattleOrchestratorEvent([FromKeyedServices(GameFlavor.HGSS)] IPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
             this.parser = parser;
@@ -112,7 +112,6 @@ namespace ShinyBotHunter.BotEvents
             this.metadataService = metadataService;
             this.damageService = damageService;
             this.shinyAlertService = shinyAlertService;
-            this.pointerService = provider.GetRequiredKeyedService<IPointerService>(GameFlavor.HGSS);
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -206,7 +205,7 @@ namespace ShinyBotHunter.BotEvents
                 // fresh state here: if a move is about to be learned, the "trying to learn a
                 // move" menu may already be up, and reads during that menu crash.
                 var metadata = metadataService.GetPokemonMetadata(evo.EvolutionDetails.EvolveToId);
-                var newMoves = metadata.LevelUpMoves[GameFlavor.HGSS]
+                var newMoves = metadata.LevelUpMoves[state.GameFlavor]
                     .Where(x => x.Level == evo.Pokemon.Level || x.Level == 0).ToList();
                 newMoves.RemoveAll(m => evo.Pokemon.Moves.Any(k => k.Id == m.Id));
                 newMoves.Sort();
@@ -239,7 +238,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 Console.WriteLine($"[LevelUp] {levelUp.Name} reached level {levelUp.Level}");
                 var metadata = metadataService.GetPokemonMetadata(levelUp.Species);
-                var newMoves = metadata.LevelUpMoves[GameFlavor.HGSS].Where(x => x.Level == levelUp.Level).ToList();
+                var newMoves = metadata.LevelUpMoves[state.GameFlavor].Where(x => x.Level == levelUp.Level).ToList();
                 // A move the mon already knows produces no prompt at all in game, so it must never
                 // reach the learn flow -- the macros there would run against dialogue that isn't up.
                 newMoves.RemoveAll(m => levelUp.Moves.Any(k => k.Id == m.Id));
@@ -412,7 +411,7 @@ namespace ShinyBotHunter.BotEvents
         {
             // The parser only creates this key on pokemon that are somebody's pre-evolution, so a
             // fully-evolved mon legitimately has no entry at all. Absent means "no evolutions".
-            if (!metadata.EvolutionDetails.TryGetValue(GameFlavor.HGSS, out var evolutionDetails))
+            if (!metadata.EvolutionDetails.TryGetValue(state.GameFlavor, out var evolutionDetails))
             {
                 return;
             }

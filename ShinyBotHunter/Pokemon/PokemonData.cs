@@ -10,6 +10,17 @@ namespace ShinyBotHunter.Pokemon
             Name = "Missingno";
             FormCode = "missingono";
         }
+        /// <summary>
+        /// The block this was decoded from, kept so anything needing the original encoding -- legality
+        /// analysis reads bytes, not a parsed model -- does not have to re-encode and risk disagreeing
+        /// with the game. Not persisted.
+        /// </summary>
+        [BsonIgnore]
+        public byte[]? RawBytes { get; set; }
+
+        // Int64: the driver stores a bare uint as a checked Int32, which overflows for half of all
+        // PIDs. This attribute was accidentally orphaned onto RawBytes when that property was
+        // inserted above it, and every high-bit PID started throwing mid-persist again.
         [BsonRepresentation(BsonType.Int64)]
         public uint PID { get; set; }
         [BsonRepresentation(BsonType.Int32)]

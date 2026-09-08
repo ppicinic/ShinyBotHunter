@@ -1,4 +1,5 @@
-﻿using ShinyBotHunter.Bot;
+﻿﻿using Microsoft.Extensions.DependencyInjection;
+using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Pokemon;
@@ -8,10 +9,10 @@ namespace ShinyBotHunter.BotEvents.Factories
 {
     public class HgssShinyStarterEventFactory
     {
-        private HgssPokemonParser parser;
+        private IPokemonParser parser;
         private PokemonPersistenceService encounterDao;
 
-        public HgssShinyStarterEventFactory(HgssPokemonParser parser, PokemonPersistenceService encounterDao)
+        public HgssShinyStarterEventFactory([FromKeyedServices(GameFlavor.HGSS)] IPokemonParser parser, PokemonPersistenceService encounterDao)
         {
             this.parser = parser;
             this.encounterDao = encounterDao;

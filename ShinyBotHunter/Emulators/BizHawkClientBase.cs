@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 
 namespace ShinyBotHunter.Emulators
 {
@@ -9,7 +9,11 @@ namespace ShinyBotHunter.Emulators
     /// </summary>
     public abstract class BizHawkClientBase : IAsyncDisposable
     {
-        protected readonly HttpClient _http;
+        // Not readonly: a bot can be launched, disposed and launched again -- creating a save uses
+        // a throwaway emulator session before the real one -- and the client has to survive that.
+        protected HttpClient _http;
+        private bool _disposed;
+        private readonly TimeSpan _timeout;
         protected readonly string _baseUrl;
         private readonly string _name;
 
@@ -25,17 +29,27 @@ namespace ShinyBotHunter.Emulators
         {
             _name = name;
             _baseUrl = $"http://{host}:{port}/";
-            _http = new HttpClient
-            {
-                BaseAddress = new Uri(_baseUrl),
-                Timeout = timeout ?? TimeSpan.FromSeconds(30),
-            };
+            _timeout = timeout ?? TimeSpan.FromSeconds(30);
+            _http = NewClient();
         }
+
+        private HttpClient NewClient() => new()
+        {
+            BaseAddress = new Uri(_baseUrl),
+            Timeout = _timeout,
+        };
 
         public void Connect()
         {
-            // HTTP is connectionless — there is nothing to establish up front. Kept to
-            // satisfy the client interfaces and the existing call sites.
+            // HTTP is connectionless, so there is nothing to establish up front -- except after a
+            // dispose, which tears down the HttpClient for good. Reconnecting has to build a new one
+            // or every later request throws ObjectDisposedException, which reads as the emulator
+            // being unreachable rather than as the client having been thrown away.
+            if (_disposed)
+            {
+                _http = NewClient();
+                _disposed = false;
+            }
             Console.WriteLine($"[{_name}] Using {_baseUrl}");
         }
 
@@ -88,6 +102,7 @@ namespace ShinyBotHunter.Emulators
         {
             try { Disconnect(); } catch { }
             _http.Dispose();
+            _disposed = true;
             return ValueTask.CompletedTask;
         }
     }

@@ -29,6 +29,9 @@ namespace ShinyBotHunter.Context
         public int Width { get; set; } = 205;
         public int Height { get; set; } = 399;
         public int WidthOffset { get; set; } = 0;
+
+        /// <summary>How many rows deep the emulator windows tile for this console.</summary>
+        public int Rows { get; set; } = 2;
         public ConsoleType ConsoleType { get; set; } = ConsoleType.DS;
         public GameFlavor GameFlavor { get; set; } = GameFlavor.HGSS;
         public bool SoundOn { get; set; }
@@ -40,6 +43,24 @@ namespace ShinyBotHunter.Context
         public RomInfo? Rom { get; set; }
 
         public int Revision => Rom?.Revision ?? 0;
+
+        /// <summary>
+        /// Directory name this emulator's saves go under, so a save says which ROM copy produced it
+        /// rather than which slot happened to run it. Sanitised because it becomes a real directory,
+        /// though a handle is a filename already.
+        /// </summary>
+        public string SaveSlotName
+        {
+            get
+            {
+                string name = GameName;
+                foreach (char invalid in Path.GetInvalidFileNameChars())
+                {
+                    name = name.Replace(invalid, '_');
+                }
+                return name;
+            }
+        }
 
         /// <summary>
         /// File extension for this console's ROMs. BizHawk picks its core from the extension — no core

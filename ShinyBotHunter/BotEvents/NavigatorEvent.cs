@@ -148,7 +148,7 @@ namespace ShinyBotHunter.BotEvents
             bool anyFainted = await HasFaintedPartyMemberAsync(state.Bot, cancellationToken);
             string macroName = anyFainted ? "HealPokemonFainted" : "HealPokemon";
             Console.WriteLine($"[Navigator] Healing with {macroName}");
-            string macro = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, macroName);
+            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, macroName);
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(cancellationToken);
             state.SwapState(EventState.ReturnToStart);
