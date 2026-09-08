@@ -1,0 +1,188 @@
+﻿using MongoDB.Driver;
+using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
+
+namespace ShinyBotHunter.Service
+{
+    /// <summary>
+    /// Loads and saves a starter hunt's progress.
+    ///
+    /// Hunts run for hours, so their progress has to outlive the process: which starters are done,
+    /// which shinies are waiting to be played out, and how many encounters it took. Without it a
+    /// restart resumes a starter that was already caught.
+    ///
+    /// Uses the same PhaseStates collection and the same (name, game) key as the HGSS hunt, so both
+    /// hunts' states sit together and can be read the same way.
+    /// </summary>
+    public class StarterHuntStateStore
+    {
+        private readonly IMongoCollection<StarterHuntGameState> collection;
+
+        public StarterHuntStateStore(MongoDbConnection connection)
+        {
+            collection = connection.GetDatabase().GetCollection<StarterHuntGameState>("PhaseStates");
+        }
+
+        private static FilterDefinition<StarterHuntGameState> KeyFor(GameFlavor game, string milestone)
+            => Builders<StarterHuntGameState>.Filter.Where(x => x.Name == milestone && x.Game == game);
+
+        /// <summary>Existing progress for this hunt, or a fresh record if it has never run.</summary>
+        public async Task<StarterHuntGameState> LoadOrCreateAsync(GameFlavor game, string milestone)
+        {
+            StarterHuntGameState? existing = await collection.Find(KeyFor(game, milestone)).FirstOrDefaultAsync();
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            return new StarterHuntGameState
+            {
+                Id = Guid.NewGuid(),
+                Name = milestone,
+                Game = game,
+                StartedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow,
+            };
+        }
+
+        /// <summary>
+        /// Writes progress back. Upserted on the same key it was loaded by, so a hunt that started
+        /// before this existed still gets a single record rather than a new one each save.
+        /// </summary>
+        public async Task SaveAsync(StarterHuntGameState state)
+        {
+            state.UpdatedUtc = DateTime.UtcNow;
+            await collection.ReplaceOneAsync(
+                KeyFor(state.Game, state.Name),
+                state,
+                new ReplaceOptions { IsUpsert = true });
+        }
+
+        /// <summary>
+        /// A save belongs to a ROM copy, not to a milestone, so created saves live in one document
+        /// per flavor. Keying them by milestone -- as they briefly were -- meant a hunt started under
+        /// a different milestone missed the record and replayed the new-game macro against a copy
+        /// that already had a save, which desyncs at the main menu: a Continue entry appears once a
+        /// save exists and every recorded press lands one row off.
+        /// </summary>
+        private const string CreatedSavesDocName = "Created Saves";
+
+        /// <summary>Whether this ROM copy already has a save that finished being written.</summary>
+        public async Task<bool> IsSaveCreatedAsync(GameFlavor game, string romHandle)
+        {
+            StarterHuntGameState? saves = await FindCreatedSavesDocAsync(game);
+            if (saves is not null && saves.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Saves recorded before this moved to its own document sit inside per-milestone hunt
+            // documents. Read those too, or every copy from that era would be re-created -- which is
+            // exactly the desync this exists to prevent.
+            var legacy = await collection.Find(x => x.Game == game && x.Name != CreatedSavesDocName).ToListAsync();
+            return legacy.Any(x => x.SavesCreated.Contains(romHandle, StringComparer.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Records that a ROM copy's save is written.
+        ///
+        /// Added to the stored list directly rather than by writing the whole document back: several
+        /// emulators create their saves at once, and replacing the document would let one overwrite
+        /// what another had just recorded.
+        /// </summary>
+        public Task MarkSaveCreatedAsync(GameFlavor game, string romHandle)
+            => collection.UpdateOneAsync(
+                KeyFor(game, CreatedSavesDocName),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.SavesCreated, romHandle)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+
+        /// <summary>Whether a starter has already been caught, so a resumed hunt can skip it.</summary>
+        public static bool IsDone(StarterHuntGameState state, string starter)
+            => state.CompletedStarters.Contains(starter, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Copies that may never be hunted on again because their save is a caught shiny.</summary>
+        public async Task<IReadOnlyList<string>> GetRetiredCopiesAsync(GameFlavor game)
+        {
+            StarterHuntGameState? doc = await FindCreatedSavesDocAsync(game);
+            return doc?.RetiredCopies ?? new List<string>();
+        }
+
+        /// <summary>
+        /// Reads the created-saves document, repairing the one malformed shape it can have: documents
+        /// this store once created through bare upserts got a server-generated ObjectId _id, which no
+        /// longer deserializes into the Guid the model declares. Such a document is dropped and
+        /// reported -- its contents were only the created-saves bookkeeping, which rebuilds itself,
+        /// and wiping is what lets every later read work instead of throwing forever.
+        /// </summary>
+        private async Task<StarterHuntGameState?> FindCreatedSavesDocAsync(GameFlavor game)
+        {
+            try
+            {
+                return await collection.Find(KeyFor(game, CreatedSavesDocName)).FirstOrDefaultAsync();
+            }
+            catch (FormatException)
+            {
+                var raw = collection.Database.GetCollection<MongoDB.Bson.BsonDocument>("PhaseStates");
+                var filter = MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.And(
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("Name", CreatedSavesDocName),
+                    MongoDB.Driver.Builders<MongoDB.Bson.BsonDocument>.Filter.Eq("Game", (int)game));
+                long dropped = (await raw.DeleteManyAsync(filter)).DeletedCount;
+                Console.WriteLine(
+                    $"[StarterHuntStateStore] Dropped {dropped} malformed created-saves record(s) for {game}: " +
+                    "their ObjectId _id predates the Guid fix. Save-creation bookkeeping rebuilds itself.");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Permanently retires a copy. Called at the moment the shiny is saved onto it, because from
+        /// that moment the copy's save file is the shiny.
+        /// </summary>
+        public Task RetireCopyAsync(GameFlavor game, string copyHandle)
+            => collection.UpdateOneAsync(
+                KeyFor(game, CreatedSavesDocName),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.RetiredCopies, copyHandle)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+
+        /// <summary>
+        /// Records a starter as caught under its milestone, so a re-run refuses it -- and records
+        /// which copy's save the shiny lives on, so it can be found again without opening save
+        /// folders one by one.
+        /// </summary>
+        public Task MarkStarterCompletedAsync(GameFlavor game, string milestone, CompletedFind find)
+            => collection.UpdateOneAsync(
+                KeyFor(game, milestone),
+                Builders<StarterHuntGameState>.Update
+                    .AddToSet(x => x.CompletedStarters, find.Starter)
+                    .Push(x => x.CompletedFinds, find)
+                    .SetOnInsert(x => x.Id, Guid.NewGuid())
+                    .Set(x => x.UpdatedUtc, DateTime.UtcNow),
+                new UpdateOptions { IsUpsert = true });
+
+        /// <summary>
+        /// Picks ROM copy ids for a wave of emulators. Pure so it can be tested: the rule it encodes
+        /// -- never hand out a retired copy or one a parked shiny is sitting on -- is the protection
+        /// this feature exists for.
+        /// </summary>
+        public static List<int> AllocateCopyIds(string sourceHandle, int count, IEnumerable<string> unavailableHandles)
+        {
+            var unavailable = new HashSet<string>(unavailableHandles, StringComparer.OrdinalIgnoreCase);
+            var ids = new List<int>();
+            for (int id = 1; ids.Count < count; id++)
+            {
+                if (!unavailable.Contains($"{sourceHandle}{id}"))
+                {
+                    ids.Add(id);
+                }
+            }
+            return ids;
+        }
+    }
+}

@@ -1,0 +1,18 @@
+# Confirms a save, starting with the cursor already on SAVE in the start menu.
+#
+# Deliberately begins after cursor positioning: where SAVE sits depends on what the menu currently
+# contains and where the cursor was left, so that part is computed from the live menu rather than
+# recorded. See RsStartMenuService.
+#
+# The long trailing wait covers the write itself. Overshooting costs time; cutting it short risks
+# tearing down the emulator mid-write.
+name: SaveGame
+flavor: RS
+steps:
+  - W.15
+  - H.A.7
+  - W.60
+  - H.A.7
+  - W.80
+  - H.A.7
+  - W.695

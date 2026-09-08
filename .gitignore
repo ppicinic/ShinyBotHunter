@@ -235,3 +235,7 @@ $RECYCLE.BIN/
 .vscode/settings.json
 .vscode/launch.json
 .vscode/extensions.json
+
+# test build output
+ShinyBotHunter.Tests/bin/
+ShinyBotHunter.Tests/obj/

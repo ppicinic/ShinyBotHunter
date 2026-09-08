@@ -92,6 +92,28 @@ const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
   }
 )
 
+/**
+ * Pairs each encounter with a key that is unique within the list.
+ *
+ * A PID is not unique. Ruby/Sapphire reach a limited set of RNG outcomes, so the same PID -- and
+ * with it the same nature and IVs, a genuinely identical pokemon -- turns up repeatedly across
+ * emulators; a ten-row window has held four repeats. Keying rows by PID alone therefore handed
+ * FlipMove duplicate keys, which broke reconciliation and left stale rows pinned to the top of the
+ * list while newer encounters arrived beneath them.
+ *
+ * The first occurrence keeps the bare PID so a row's identity survives the list shifting down,
+ * which is what lets FlipMove animate it into its new position instead of remounting it.
+ */
+function encounterKeys(encounters: PokemonData[]): { pokemon: PokemonData; key: string }[] {
+  const seen = new Map<string, number>()
+  return encounters.map((pokemon) => {
+    const pid = String(pokemon.pid)
+    const occurrence = seen.get(pid) ?? 0
+    seen.set(pid, occurrence + 1)
+    return { pokemon, key: occurrence === 0 ? pid : `${pid}#${occurrence}` }
+  })
+}
+
 interface RecentPokemonCardProps {
   windowChrome?: boolean
 }
@@ -127,9 +149,9 @@ export function RecentPokemonCard({ windowChrome }: RecentPokemonCardProps = {})
             leaveAnimation="fade"
             typeName={null}
           >
-            {recentEncounters.map((pokemon) => (
+            {encounterKeys(recentEncounters).map(({ pokemon, key }) => (
               <PokemonEntryRow
-                key={String(pokemon.pid)}
+                key={key}
                 pokemon={pokemon}
                 spritesRootPath={config?.spritesRootPath ?? ''}
               />

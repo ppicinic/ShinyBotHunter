@@ -3,7 +3,7 @@ using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Pokemon
 {
-    public class HgssPokemonParser
+    public class HgssPokemonParser : IPokemonParser
     {
         private PokemonMetadataService _metadataService;
         public HgssPokemonParser(PokemonMetadataService service)

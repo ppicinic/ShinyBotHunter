@@ -10,6 +10,26 @@
     "OptionalParameters": [ "SoundOn"]
   },
   {
-    "Name": "HGSS Shiny Starter Hunt"
+    // One entry for both starter hunts. HGSS keeps its own long-standing event and takes no
+    // parameters; RS uses the generalized hunt, so everything below it appears only in RS mode.
+    "Name": "Shiny Starter Hunt",
+    "RequiredParameters": [ "Mode" ],
+    "ConditionalParameters": [
+      {
+        "Name": "PhaseName",
+        "Required": true,
+        "Condition": { "ConditionType": "Eq", "Name": "Mode", "Value": "RS" }
+      },
+      {
+        "Name": "Emulators",
+        "Condition": { "ConditionType": "Eq", "Name": "Mode", "Value": "RS" }
+      }
+    ],
+    "LegCondition": { "ConditionType": "Eq", "Name": "Mode", "Value": "RS" },
+    "LegParameters": {
+      "Name": "Starter",
+      "RequiredParameters": [ "GameName", "Starter" ],
+      "OptionalParameters": [ "RecordingName", "RequireFemale" ]
+    }
   }
 ]

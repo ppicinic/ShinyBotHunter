@@ -5,10 +5,10 @@
 # why this has no end condition and no fixed length -- a fixed-length mash would be a guess
 # at load timing, and would desync the moment that guess was wrong.
 #
-# The press interval is a tuning point: fast enough to advance text, slow enough that
-# presses are not swallowed.
+# The press interval is a tuning point: fast enough to advance text, slow enough that presses are
+# not swallowed and that what is on screen stays readable to someone watching.
 name: MashB
 flavor: RS
 steps:
   - T.B
-  - W.12
+  - W.30

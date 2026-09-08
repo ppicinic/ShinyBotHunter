@@ -1,9 +1,20 @@
-# ContinueGame with the first three waits randomised.
+# ContinueGame with the first three waits randomised, plus the wide wait that supplies the
+# hunt's variance.
 #
 # Those three are minimums the recording happened to land on, not requirements: the game
 # waits for input at each, so arriving late costs nothing while arriving early desyncs
 # everything after. Mirrors the HGSS ContinueGame / ContinueGameWithRandom pair, so callers
 # can pick per situation without editing either macro.
+#
+# The W.R[0,2000] before the final press is what decides the starter. Ruby/Sapphire are
+# boot-deterministic, so the starter's PID is a function of how many frames elapse before the
+# save loads -- the RNG is already advancing while the Continue menu sits on screen. The three
+# waits above spanned 129 possible totals between them, which measured as roughly 265 reachable
+# PIDs: 21% of encounters in the 2026-08-29 run repeated a PID already seen, and a save had only
+# a ~3% chance of ever reaching a shiny at all. It sits before the last press, not after, because
+# the frames only count while the RNG is running toward the load. It is not at the top of the
+# macro either: 2000 frames on the title screen is over half a minute, long enough for the
+# opening demo to take over and desync every press after it.
 name: ContinueGameWithRandom
 flavor: RS
 steps:
@@ -14,5 +25,6 @@ steps:
   - W.R[66,100]
   - H.A.8
   - W.69
+  - W.R[0,2000]
   - H.A.7
   - W.128
