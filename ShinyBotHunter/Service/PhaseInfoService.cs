@@ -121,9 +121,14 @@ namespace ShinyBotHunter.Service
             foreach (GameFlavor game in games)
             {
                 List<PhaseInfo> toReturn = new List<PhaseInfo>();
-                foreach(var phaseName in gamePhases[game])
+                // A flavor with no phase JSON yet is normal, not an error — a newly added flavor has
+                // none until its phases are authored, and this is called with every enum member.
+                if (gamePhases.TryGetValue(game, out var phaseNames))
                 {
-                    toReturn.Add(phaseInfos[new GamePhase(game, phaseName, null)]);
+                    foreach (var phaseName in phaseNames)
+                    {
+                        toReturn.Add(phaseInfos[new GamePhase(game, phaseName, null)]);
+                    }
                 }
                 result.Add(game, toReturn.ToArray());
             }

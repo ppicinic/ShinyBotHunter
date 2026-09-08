@@ -2,6 +2,7 @@
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Bot
 {
@@ -9,20 +10,22 @@ namespace ShinyBotHunter.Bot
     {
         private ApplicationSettings applicationSettings;
         private IServiceProvider serviceProvider;
-        public BotFactory(IOptions<ApplicationSettings> appSettings, IServiceProvider provider)
+        private RomInfoService romInfoService;
+        public BotFactory(IOptions<ApplicationSettings> appSettings, IServiceProvider provider, RomInfoService romInfoService)
         {
             applicationSettings = appSettings.Value;
             serviceProvider = provider;
+            this.romInfoService = romInfoService;
         }
         public IBot CreateBot(GameContext context)
         {
             if (applicationSettings.BizHawkMode == "ApiHawk")
             {
                 var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
-                ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort);
+                ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort, localMemoryOnly: false);
                 IDataReader reader = new HgssDataReader(memoryClient);
-                return new Bot(apiHawkLauncher, commandClient, memoryClient, reader);
+                return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
             }
             else
             {
@@ -30,12 +33,22 @@ namespace ShinyBotHunter.Bot
                 ICommandClient commandClient = new BizHawkCommandClient(context);
                 IMemoryClient memoryClient = new BizHawkMemoryClient(port: context.MemoryPort);
                 IDataReader reader = new HgssDataReader(memoryClient);
-                return new Bot(launcher, commandClient, memoryClient, reader);
+                return new Bot(launcher, commandClient, memoryClient, reader, context);
             }
         }
 
+        /// <summary>
+        /// Builds the per-emulator context. <paramref name="sourceGame"/> is a file handle, so the
+        /// game it refers to is resolved from that ROM's header rather than assumed — an unidentified
+        /// ROM still launches, but leaves <see cref="GameContext.Rom"/> null so flavor-dependent
+        /// callers can refuse it.
+        /// </summary>
         public GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
         {
+            RomInfo? rom = romInfoService.GetByHandle(sourceGame);
+            ConsoleType console = rom?.Console ?? ConsoleType.DS;
+            string key = console.ToString();
+
             return new GameContext()
             {
                 SourceGameName = sourceGame,
@@ -43,11 +56,22 @@ namespace ShinyBotHunter.Bot
                 DisplayPosition = displayPosition,
                 MemoryPort = 50101 + (displayPosition * 2),
                 CommandPort = 50100 + (displayPosition * 2),
-                Width = applicationSettings.DisplayWidth["DS"],
-                Height = applicationSettings.DisplayHeight["DS"],
-                WidthOffset = applicationSettings.WidthOffset["DS"],
+                Width = Setting(applicationSettings.DisplayWidth, key),
+                Height = Setting(applicationSettings.DisplayHeight, key),
+                WidthOffset = Setting(applicationSettings.WidthOffset, key),
                 SoundOn = soundOn is not null ? soundOn.Value : false,
+                Rom = rom,
+                ConsoleType = console,
+                GameFlavor = rom?.Flavor ?? GameFlavor.HGSS,
             };
+        }
+
+        private static int Setting(Dictionary<string, int> settings, string consoleKey)
+        {
+            if (!settings.TryGetValue(consoleKey, out int value))
+                throw new InvalidOperationException(
+                    $"appsettings is missing a '{consoleKey}' entry for a per-console display setting.");
+            return value;
         }
     }
 }

@@ -1,0 +1,18 @@
+# ContinueGame with the first three waits randomised.
+#
+# Those three are minimums the recording happened to land on, not requirements: the game
+# waits for input at each, so arriving late costs nothing while arriving early desyncs
+# everything after. Mirrors the HGSS ContinueGame / ContinueGameWithRandom pair, so callers
+# can pick per situation without editing either macro.
+name: ContinueGameWithRandom
+flavor: RS
+steps:
+  - W.R[200,260]
+  - H.A.9
+  - W.R[61,95]
+  - H.A.13
+  - W.R[66,100]
+  - H.A.8
+  - W.69
+  - H.A.7
+  - W.128

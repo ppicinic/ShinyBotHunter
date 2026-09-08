@@ -1,0 +1,14 @@
+# Advances the battle intro so the starter becomes readable.
+#
+# Meant for RunRepeatMacro, which re-pushes it indefinitely; the event stops it with
+# ClearMacro once memory shows the battle is far enough along to read the party. That is
+# why this has no end condition and no fixed length -- a fixed-length mash would be a guess
+# at load timing, and would desync the moment that guess was wrong.
+#
+# The press interval is a tuning point: fast enough to advance text, slow enough that
+# presses are not swallowed.
+name: MashB
+flavor: RS
+steps:
+  - T.B
+  - W.12

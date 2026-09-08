@@ -57,7 +57,7 @@ namespace ShinyBotHunter.Emulators
             _width            = context.Width;
             _height           = context.Height;
             _widthOffset      = context.WidthOffset;
-            _maxEmulators     = appSettings.MaxEmulators["DS"];
+            _maxEmulators     = appSettings.MaxEmulatorsFor(context.ConsoleType);
             _romDirectory     = appSettings.ROMBaseDirectory;
             _bizHawkDirectory = appSettings.BizHawkBaseDirectory;
             _locker           = provider.GetRequiredService<BizHawkReaderWriterLock>();
@@ -77,7 +77,8 @@ namespace ShinyBotHunter.Emulators
                     FileName         = $"{_bizHawkDirectory}EmuHawk.exe",
                     UseShellExecute  = false,
                     WorkingDirectory = _bizHawkDirectory,
-                    Arguments        = $"\"{_romDirectory}{_game}.nds\""
+                    // No core is named here: BizHawk selects melonDS vs mGBA from the file extension.
+                    Arguments        = $"\"{_romDirectory}{_game}{context.RomExtension}\""
                                      + $" --open-ext-tool-dll=BotServer"
                                      + soundConfig
                 }

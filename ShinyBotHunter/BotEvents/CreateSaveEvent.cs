@@ -23,9 +23,10 @@ namespace ShinyBotHunter.BotEvents
         public async Task ExecuteAsync(GameState state, CancellationToken cancellationToken = default)
         {
             EventState = EventState.Running;
-            if (!File.Exists($"{romDir}{context.GameName}.nds"))
+            string ext = context.RomExtension;
+            if (!File.Exists($"{romDir}{context.GameName}{ext}"))
             {
-                File.Copy($"{romDir}{context.SourceGameName}.nds", $"{romDir}{context.GameName}.nds");
+                File.Copy($"{romDir}{context.SourceGameName}{ext}", $"{romDir}{context.GameName}{ext}");
             }
             await bot.LaunchAsync();
             await Task.Delay(10000);

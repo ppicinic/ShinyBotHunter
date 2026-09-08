@@ -1,0 +1,20 @@
+# Pick Mudkip from Birch's bag: right ball.
+#
+# Ends as the battle is starting. The starter is not visible yet: R/S does not reveal it
+# until the Zigzagoon fight is underway, so the mon can only be read after the battle
+# intro has been advanced through.
+#
+# Literal frame trace. The leading wait is idle time in front of the bag and does not
+# affect the starter's PID, so there is nothing to gain by randomising it.
+name: SelectStarterMudkip
+flavor: RS
+steps:
+  - W.107
+  - H.A.7
+  - W.75
+  - H.Right.8
+  - W.31
+  - H.A.10
+  - W.49
+  - H.A.9
+  - W.228

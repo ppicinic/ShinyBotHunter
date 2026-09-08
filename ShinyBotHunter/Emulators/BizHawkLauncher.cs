@@ -40,7 +40,7 @@ namespace ShinyBotHunter.Emulators
             this.width = context.Width;
             this.height = context.Height;
             this.widthOffset = context.WidthOffset;
-            this._maxEmulators = applicationSettings.MaxEmulators["DS"];
+            this._maxEmulators = applicationSettings.MaxEmulatorsFor(context.ConsoleType);
             this.romDirectory = applicationSettings.ROMBaseDirectory;
             this.bizHawkDirectory = applicationSettings.BizHawkBaseDirectory;
             _locker = provider.GetRequiredService<BizHawkReaderWriterLock>();
@@ -53,7 +53,7 @@ namespace ShinyBotHunter.Emulators
                 {
                     FileName = $"{this.bizHawkDirectory}EmuHawk.exe",
                     UseShellExecute = false,
-                    Arguments = $"\"{this.romDirectory}{this.game}.nds\" \"--lua={path}\\Loader.lua\"{soundConfig}"
+                    Arguments = $"\"{this.romDirectory}{this.game}{context.RomExtension}\" \"--lua={path}\\Loader.lua\"{soundConfig}"
                 }
             };
             process.StartInfo.Environment["BIZHAWK_COMMAND_PORT"] = this.commandPort.ToString();

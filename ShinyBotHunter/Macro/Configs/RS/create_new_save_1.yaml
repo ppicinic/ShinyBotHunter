@@ -1,0 +1,64 @@
+# New game from boot up to the name-entry keyboard.
+#
+# Stops deliberately before the keyboard: the OT name is its own macro (SetOTName) so a
+# future custom-name feature can swap it without touching this flow.
+#
+# Recorded frame trace. The first three waits are minimums the recording happened to land
+# on, so they carry slack -- the game sits and waits at each of these points, so arriving
+# late is harmless while arriving early desyncs the whole run.
+name: CreateNewSavePart1
+flavor: RS
+steps:
+  - W.R[200,260]
+  - H.A.8
+  - W.R[46,80]
+  - H.A.9
+  - W.R[33,60]
+  - H.A.9
+  - W.78
+  - H.A.9
+  - W.516
+  - H.A.38
+  - W.6
+  - H.A.49
+  - W.9
+  - H.A.41
+  - W.8
+  - H.A.65
+  - W.5
+  - H.A.41
+  - W.5
+  - H.A.40
+  - W.13
+  - H.A.45
+  - W.45
+  - H.A.31
+  - W.6
+  - H.A.68
+  - W.7
+  - H.A.83
+  - W.7
+  - H.A.53
+  - W.12
+  - H.A.79
+  - W.5
+  - H.A.69
+  - W.16
+  - H.A.76
+  - W.7
+  - H.A.80
+  - W.5
+  - H.A.44
+  - W.12
+  - H.A.31
+  - W.7
+  - H.A.37
+  - W.277
+  - H.A.9
+  - W.68
+  - H.A.27
+  - W.75
+  - H.A.8
+  # Tuning point: trimmed from the raw recording. If the keyboard is not up yet when
+  # SetOTName starts, raise this first.
+  - W.60

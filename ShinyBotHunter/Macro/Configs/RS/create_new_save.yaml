@@ -1,0 +1,14 @@
+# Whole new-save flow: boot -> name entry -> intro -> saved in front of Birch's bag.
+#
+# Split into three parts so the name stays swappable (see SetOTName). The parts were
+# recorded back to back and each carries its own trailing wait to cover the handoff, so
+# no padding is inserted between them here.
+#
+# CreateSaveEvent is what runs this, and it flushes SaveRAM afterwards -- required, since
+# the save written in front of the bag is what every hunt cycle resets back to.
+name: CreateNewSave
+flavor: RS
+steps:
+  - macro: CreateNewSavePart1
+  - macro: SetOTName
+  - macro: CreateNewSavePart2

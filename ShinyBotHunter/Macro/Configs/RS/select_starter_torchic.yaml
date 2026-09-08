@@ -1,0 +1,19 @@
+# Pick Torchic from Birch's bag: middle ball, where the cursor already sits, so no
+# direction press.
+#
+# Ends as the battle is starting. The starter is not visible yet: R/S does not reveal it
+# until the Zigzagoon fight is underway, so the mon can only be read after the battle
+# intro has been advanced through.
+#
+# Literal frame trace. The leading wait is idle time in front of the bag and does not
+# affect the starter's PID, so there is nothing to gain by randomising it.
+name: SelectStarterTorchic
+flavor: RS
+steps:
+  - W.183
+  - H.A.6
+  - W.127
+  - H.A.10
+  - W.116
+  - H.A.8
+  - W.204

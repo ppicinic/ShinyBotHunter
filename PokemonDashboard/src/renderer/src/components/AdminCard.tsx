@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
-import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
+import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, GameRomInfo, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
+import { romLabel } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
 import { ConnectionStatus } from './ConnectionStatus'
 import { DevModeTab } from './DevModeTab'
@@ -300,7 +301,7 @@ function DashboardConfigTab(): JSX.Element {
   const [selectedGame, setSelectedGame] = useState<string>('')
   const [selectedPhase, setSelectedPhase] = useState<string>('')
   const [selectedGameName, setSelectedGameName] = useState<string>('')
-  const [allGames, setAllGames] = useState<string[]>([])
+  const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [recentCount, setRecentCount] = useState<number>(dashboardConfig.recentEncounterCount)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -326,7 +327,7 @@ function DashboardConfigTab(): JSX.Element {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: string[]) => setAllGames(data))
+      .then((data: GameRomInfo[]) => setAllGames(data))
       .catch((err) => console.error('Failed to load games:', err))
   }, [apiUrl])
 
@@ -476,7 +477,7 @@ function DashboardConfigTab(): JSX.Element {
           >
             <option value="">No game file</option>
             {allGames.map((g) => (
-              <option key={g} value={g}>{g}</option>
+              <option key={g.handle} value={g.handle}>{romLabel(g)}</option>
             ))}
           </select>
           <button
@@ -555,7 +556,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   const [cancelling, setCancelling] = useState<number | null>(null)
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
-  const [allGames, setAllGames] = useState<string[]>([])
+  const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   // Per-bot available actions: pos -> EventArgumentOptions[]
   const [botActions, setBotActions] = useState<Record<number, EventArgumentOptions[]>>({})
@@ -696,7 +697,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: string[]) => setAllGames(data))
+      .then((data: GameRomInfo[]) => setAllGames(data))
       .catch((err) => console.error('Failed to load games:', err))
 
     fetch(`${apiUrl}/api/metadata`)
@@ -1095,7 +1096,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                         >
                           <option value="">Select a game...</option>
                           {allGames.map((game) => (
-                            <option key={game} value={game}>{game}</option>
+                            <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
                           ))}
                         </select>
                       ) : (

@@ -1,9 +1,24 @@
 ﻿using System.Text.RegularExpressions;
+using ShinyBotHunter.Context;
 
 namespace ShinyBotHunter.Macro
 {
     public class CommandPreprocessor
     {
+        private readonly ConsoleType _console;
+
+        /// <summary>
+        /// Touch coordinates below are measured against the DS's 256x192 touch screen, so they are
+        /// meaningless on a console without one. Rather than silently tapping nothing, an <c>S.</c>
+        /// token in a GBA macro is rejected with a message naming the token.
+        /// </summary>
+        public CommandPreprocessor(ConsoleType console = ConsoleType.DS)
+        {
+            _console = console;
+        }
+
+        private bool SupportsTouch => _console == ConsoleType.DS;
+
 
         private static readonly Dictionary<string, (int X, int Y)> TouchShorthands = new()
         {
@@ -147,6 +162,10 @@ namespace ShinyBotHunter.Macro
             {
                 string name = m.Groups[1].Value;
                 string frames = m.Groups[2].Success ? m.Groups[2].Value : DefaultTapFrames.ToString();
+
+                if (!SupportsTouch)
+                    throw new ArgumentException(
+                        $"Touch command 'S.{name}' is not valid on {_console}, which has no touch screen.");
 
                 if (!TouchShorthands.TryGetValue(name, out var coords))
                     throw new ArgumentException($"Unknown touch shorthand: '{name}'");

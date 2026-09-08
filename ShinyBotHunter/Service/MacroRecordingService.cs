@@ -48,7 +48,9 @@ namespace ShinyBotHunter.Service
             List<RecordedInputRun> runs = RecordedMacroEncoder.ParseRuns(raw);
 
             RecordedMacroEncoder encoder = new(settings.MacroRecordTapMaxFrames, settings.MacroRecordTouchSnapRadius);
-            string yaml = encoder.Encode(runs, macroName, GameFlavor.HGSS);
+            // The flavor comes from the emulator being recorded, so recording on a GBA emulator emits
+            // `flavor: RS` rather than silently tagging every macro as HGSS.
+            string yaml = encoder.Encode(runs, macroName, bot.GameFlavor);
 
             int frameCount = runs.Sum(r => r.Frames);
             int stepCount = yaml.Split('\n').Count(l => l.StartsWith("  - "));

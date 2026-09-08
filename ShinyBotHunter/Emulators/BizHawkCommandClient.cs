@@ -18,16 +18,16 @@ namespace ShinyBotHunter.Emulators
     {
         private readonly CommandPreprocessor _preprocessor;
 
-        public BizHawkCommandClient(string host = "127.0.0.1", int port = 50100)
+        public BizHawkCommandClient(string host = "127.0.0.1", int port = 50100, ConsoleType console = ConsoleType.DS)
             : base("BizHawkCommandClient", host, port, TimeSpan.FromSeconds(60))
         {
-            _preprocessor = new CommandPreprocessor();
+            _preprocessor = new CommandPreprocessor(console);
         }
 
         public BizHawkCommandClient(GameContext context)
             : base("BizHawkCommandClient", "127.0.0.1", context.CommandPort, TimeSpan.FromSeconds(60))
         {
-            _preprocessor = new CommandPreprocessor();
+            _preprocessor = new CommandPreprocessor(context.ConsoleType);
         }
 
         protected override void Disconnect()

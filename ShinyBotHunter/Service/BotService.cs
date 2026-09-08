@@ -21,7 +21,9 @@ namespace ShinyBotHunter.Service
         private string bizHawkMode;
         public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext)
         {
-            this.maxEmulators = appSettings.Value.MaxEmulators["DS"];
+            // Display slots and ports are one pool shared by every console, so the ceiling on
+            // concurrently running emulators is the sum of the per-console budgets.
+            this.maxEmulators = appSettings.Value.TotalMaxEmulators;
             this.bizHawkMode = appSettings.Value.BizHawkMode;
             this.botFactory = botFactory;
             this.provider = provider;
