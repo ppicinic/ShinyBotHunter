@@ -95,14 +95,13 @@ Outcome: an agent can run the real app against real emulators, force a shiny, an
 
 | # | Task | Details | Depends on | Size |
 |---|---|---|---|---|
-| 4b.1 | `ShinyBotHunter.Qa` skeleton | Console project, scenario YAML loader, step vocabulary for launch/start/wait/cancel/assert over the REST API, run folder with log and `result.json`. | 2.2 | M |
-| 4b.2 | ApiHawk write-range opcode | Opcode `0x05`, write N bytes in one frame, for the injector. No capture endpoints (decided: capture is external). | — | S |
-| 4b.3 | Gen 3 shiny injector, seed write | Seed search for TID/SID, `gRngValue` address from the pointer spike, frame-window writer. First scenario: `rs-starter-wave-shiny-park`. | 4b.1, 6.1 | M |
-| 4b.4 | HGSS shiny injector, battle struct patch | Write the foe PID in the unencrypted battle struct. First scenario: `hgss-wild-shiny-park-resume`. | 4b.1, 4b.2 | M |
+| 4b.1 | `ShinyBotHunter.Qa` skeleton | Console project, scenario YAML loader, step vocabulary for launch/start/wait/cancel/assert over the REST API, run folder with log and `result.json`. Port the spike harness's steps (it proved launch, positioning, flee counting and park detection). | 2.2 | M |
+| 4b.3 | Cheat files and arming | Store cheats under `ShinyBotHunter.Qa/Cheats/<game>-<region>-<revision>/`, pick the folder from the ROM's game code and revision, copy the scenario's cheat into the QA install, loaded disabled, with `Equal` guards; arm with the Toggle All Cheats hotkey; `assert-cheat` by reading the patched bytes. HGSS rev 0 wild patch and RNG freeze from the spike. First scenario: `hgss-route33-shiny-park`. | 4b.1 | M |
+| 4b.4 | RS cheats | Map the RS RNG state and wild generator from `pret/pokeruby` (6.1), then an RNG-freeze starter cheat. First scenario: `rs-starter-wave-shiny-park`. | 4b.3, 6.1 | M |
 | 4b.5 | Scenario selection | `qa-map.yaml` areas, `select --changed` against `main`, `ci-local.ps1 -Qa`. | 4b.1 | S |
-| 4b.6 | QA environment | `appsettings.Qa.json`, separate databases, QA ROM/save directory, teardown that kills stray EmuHawk. | 4b.1 | S |
+| 4b.6 | QA environment | `Scripts/qa-load-save.ps1` (copies a save from `../shinybothunterqasaves/` into the configured BizHawk Save RAM folder) plus its allow rule in `.claude/settings.json`; QA BizHawk install config (hotkey, cheat auto-save off, Lua off), user-secrets QA config with a localhost guard, migrations applied by the harness, save hash check, teardown that kills stray EmuHawk and backend. Setup is written down in the QA spec. | 4b.1 | S |
 | 4b.7 | Remaining initial scenarios | navigation, egg, double-find race, concurrent launch, cold-load timing, dashboard smoke (Playwright Electron). | 4b.3, 4b.4 | L |
-| 4b.8 | External capture | Win32 window capture for emulator screenshots, Playwright for dashboard screenshots, `ffmpeg gdigrab` for `--record`. `qa-runs/` gitignored. | 4b.1 | S |
+| 4b.8 | External capture | `PrintWindow` with full-content rendering for screenshots and a 15 fps recording piped into ffmpeg (`gdigrab` records BizHawk blank); Playwright for dashboard screenshots. `qa-runs/` gitignored. | 4b.1 | S |
 
 ### Phase 6: Pointer discovery spike (research, no code)
 Outcome: every observed constant the bot reads has a name and a meaning, and the QA injector has its RNG addresses. Full brief in the [spike doc](../research/pointer-discovery.md).
@@ -134,7 +133,7 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
-- Once 4b.1 to 4b.4 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.
+- Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.
 - Phase 3: before/after numbers from 3.1 in the PR description.
 - Anything touching launch, encounter or resume: one manual run of a wild encounter on HGSS and one RS starter wave, noted in the PR.
 

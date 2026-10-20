@@ -174,3 +174,56 @@ Work had been merged into `sprint1`, a long-lived branch named after a sprint, w
 ### Consequences
 - Every doc that named `sprint1` as the base now names `main`.
 - Versions are tagged on `main` as `vMAJOR.MINOR.PATCH` when the owner decides a release point.
+
+---
+
+## QA forces shinies with BizHawk cheat files armed by hotkey
+
+Status: Accepted
+Date: 2026-10-20
+
+### Context
+QA scenarios need a shiny on demand, after some normal encounters. The October spec proposed an RNG seed write through ApiHawk and a battle-struct patch through a new ApiHawk write-range opcode. The owner does not want cheat or injection features in the built tooling. A spike found that HeartGold already has a shiny wild-generation branch, and that BizHawk's own cheat system can apply a guarded code patch and be toggled from a hotkey.
+
+### Options
+- **A. ApiHawk endpoints for cheats or memory injection.** Precise and scriptable; puts QA features into tooling that ships with the hunting setup.
+- **B. Cheat files plus BizHawk's Toggle All Cheats hotkey.** No code in any repo project; depends on window focus for the keypress; cheats cannot be cleanly turned off once applied.
+
+### Decision
+Option B. The QA harness writes the cheat file for the ROM under test, loaded disabled, and arms it with the hotkey. Wild shinies use a two-halfword code patch that redirects grass generation to the game's shiny branch; starters use an RNG freeze. Every code-patch line is guarded with an `Equal` compare. The QA install turns off cheat auto-save.
+
+### Consequences
+- `ShinyBotHunter/`, ApiHawk and the fork contain nothing for QA; plan task 4b.2 (write-range opcode) is dropped.
+- Arming needs the EmuHawk window focused, so QA runs need the dev PC's desktop and do not run in the background.
+- Cheat addresses are per game and ROM revision and live in the QA project, keyed like the game profile.
+
+---
+
+## QA recording uses PrintWindow, not ffmpeg gdigrab
+
+Status: Accepted; refines "QA captures from outside the emulator"
+Date: 2026-10-20
+
+### Context
+`ffmpeg -f gdigrab` on the EmuHawk window recorded blank white frames, because BizHawk draws the game with OpenGL. Win32 `PrintWindow` with the full-content flag captures it correctly, including when the window is partly covered.
+
+### Decision
+Screenshots and recordings both use `PrintWindow`; the recorder pipes 15 fps raw frames into ffmpeg for encoding. Capture stays outside the emulator, and run output stays uncommitted, as decided on 2026-10-17.
+
+---
+
+## QA cheats live in the QA project; QA saves live beside the repo
+
+Status: Accepted
+Date: 2026-10-20
+
+### Context
+Each game, generation and ROM revision needs its own cheat, so cheats are versioned assets that should be reviewed like code. Saves are personal game data tied to one owner's playthrough.
+
+### Decision
+- Cheats are stored per game and revision under `ShinyBotHunter.Qa/Cheats/<game>-<region>-<revision>/`. No deployable project (`ShinyBotHunter/`, `ApiHawk/`, `PokemonDashboard/`, the fork) contains QA code or cheats, and none references the QA project.
+- Saves live outside the repo in a sibling folder, `../shinybothunterqasaves/` relative to the repo root, with a README describing each one. `Scripts/qa-load-save.ps1` copies one into the configured BizHawk install's Save RAM folder; an allow rule in `.claude/settings.json` lets the QA agent run that script unprompted. Nothing writes back to the source.
+
+### Consequences
+- Adding a game or revision to QA means adding a cheat folder and a save; no deployable code changes.
+- A fresh machine needs the saves folder copied over by hand; the repo alone is not enough to run QA.
