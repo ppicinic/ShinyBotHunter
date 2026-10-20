@@ -3,7 +3,6 @@
 # =============================================================================
 
 .claude/settings.local.json
-CLAUDE.md
 
 **/ApiHawk/lib/*.dll
 **/ApiHawk/lib/*.exe
