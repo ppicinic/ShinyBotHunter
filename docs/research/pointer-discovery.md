@@ -45,6 +45,21 @@ What it is for:
 
 How it would be used, concretely: load the ROM in the disassembler with the decomp's symbol file imported, then from a Claude session ask for cross-references to `Random()` from the starter-selection script, decompile the generation routine, and record the write to `gRngValue` and the PID computation. The output is a note in this doc per question, with the function name, address, and the derived rule.
 
+## Found so far (2026-10-20, HGSS US rev 0)
+
+From the QA spike, by locating the RNG state at runtime and disassembling the ARM9 binary and overlay 2 in RAM against the decomp's source:
+
+| Symbol (decomp name) | Address | Notes |
+|---|---|---|
+| `sLCRNG_State` | `0x021D15A8` | 32-bit LCRNG state; the MT state sits just before it |
+| `LCRandom` | `0x0201FD44` | static ARM9; `GetLCRNGSeed`/`SetLCRNGSeed` are the two functions before it |
+| overlay 2 load address | `0x02245B80` | holds `encounter_check.c` |
+| `generateWildShinyAndAddToParty` | `0x02247910` | the scripted-shiny generator (Red Gyarados path) |
+| `generateWildNonShinyAndAddToParty` | `0x02247A18` | every grass, surf, Safari and Bug Contest encounter |
+| grass encounter call | `0x02247D96` | `bl` to the non-shiny generator; `r5` holds the generator state, player ID at offset 0 |
+
+Used by the QA wild-shiny cheat; see the [QA spec](../specs/qa-automation.md#shiny-injection). The ROM header reports revision 0, while the owner's hunting ROMs may be 1.1 or 1.2, so these need re-checking per revision.
+
 ## Deliverables of the spike
 1. A table per game flavor: every address or constant the bot uses today → its symbol name, type, and meaning, or "no symbol, here is the derivation".
 2. A list of the reads that are unsafe depending on overlay state (HGSS), with the condition that makes them safe.
