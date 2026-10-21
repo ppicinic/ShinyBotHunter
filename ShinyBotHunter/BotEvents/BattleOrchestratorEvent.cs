@@ -138,7 +138,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (topState == EventState.WaitForMovesEnd)
                 {
-                    await WaitForMoveEnd(state);
+                    await WaitForMoveEnd(state, cancellationToken);
                 }
                 else if (topState == EventState.OurPokemonFainted || topState == EventState.BothPokemonFainted)
                 {
@@ -551,9 +551,9 @@ namespace ShinyBotHunter.BotEvents
             return null;
         }
 
-        private async Task WaitForMoveEnd(GameState state)
+        private async Task WaitForMoveEnd(GameState state, CancellationToken cancellationToken)
         {
-            using var cts = new CancellationTokenSource();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             CancellationToken ct = cts.Token;
 
             // Poll each end-of-move condition concurrently and act on whichever trips first.
@@ -566,14 +566,21 @@ namespace ShinyBotHunter.BotEvents
             };
 
             (EventState next, PokemonBattleState? bs)? outcome = null;
-            while (outcome is null && tasks.Count > 0)
+            try
             {
-                var finished = await Task.WhenAny(tasks);
-                tasks.Remove(finished);
-                outcome = await finished; // non-null: this task detected its condition
+                while (outcome is null && tasks.Count > 0)
+                {
+                    var finished = await Task.WhenAny(tasks);
+                    tasks.Remove(finished);
+                    outcome = await finished; // non-null: this task detected its condition
+                }
             }
-
-            cts.Cancel(); // stop the losing polls
+            finally
+            {
+                // Stop the losing polls and let them finish before the using disposes the source.
+                cts.Cancel();
+                await Task.WhenAll(tasks);
+            }
 
             if (outcome is null)
                 return;
@@ -609,7 +616,7 @@ namespace ShinyBotHunter.BotEvents
                     {
                         if (await state.Bot.GetBattleMenuState() == 1)
                         {
-                            var battleState = await reader.GetPokemonBattleState(state.Bot);
+                            var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                             if (battleState is not null)
                                 return (EventState.DecideAction, battleState);
                         }
@@ -627,7 +634,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        var battleState = await reader.GetPokemonBattleState(state.Bot);
+                        var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                         if (battleState is not null)
                         {
                             if (battleState.ActivePokemon.HP == 0)
