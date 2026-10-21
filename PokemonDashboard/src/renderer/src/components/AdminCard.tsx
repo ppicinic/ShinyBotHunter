@@ -641,7 +641,7 @@ function BotControlTab(): JSX.Element {
   // Set by a position's Run or Cancel button while its request is pending; one request per position.
   const [posInFlight, setPosInFlight] = useState<Record<number, 'run' | 'cancel'>>({})
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
-  const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
+  const [feedback, setFeedback] = useState<{ msg: string; isError: boolean; at: number | string } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
 
@@ -879,10 +879,10 @@ function BotControlTab(): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Started "${action.name}" on bot #${pos}`, isError: false })
+      setFeedback({ msg: `Started "${action.name}" on bot #${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
     } finally {
       setPosInFlight((prev) => {
         const next = { ...prev }
@@ -948,10 +948,10 @@ function BotControlTab(): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Started "${action.name}"`, isError: false })
+      setFeedback({ msg: `Started "${action.name}"`, isError: false, at: action.name })
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: action.name })
     } finally {
       setSubmitting(null)
     }
@@ -975,10 +975,10 @@ function BotControlTab(): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Cancelled position ${pos}`, isError: false })
+      setFeedback({ msg: `Cancelled position ${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 3000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
     } finally {
       setPosInFlight((prev) => {
         const next = { ...prev }
@@ -1027,6 +1027,19 @@ function BotControlTab(): JSX.Element {
       return { ...prev, [pos]: { ...prev[pos], [actionName]: legs } }
     })
   }
+
+  // The last message shows next to the position or top-level action it came from.
+  const renderFeedback = (at: number | string): JSX.Element | null => feedback?.at === at ? (
+    <div
+      className={`text-xs rounded px-3 py-2 ${
+        feedback.isError
+          ? 'text-red-400 bg-red-900/20 border border-red-700/30'
+          : 'text-green-400 bg-green-900/20 border border-green-700/30'
+      }`}
+    >
+      {feedback.msg}
+    </div>
+  ) : null
 
   return (
     <div className="p-3 space-y-4">
@@ -1175,6 +1188,7 @@ function BotControlTab(): JSX.Element {
                       })}
                     </div>
                   )}
+                  {renderFeedback(pos)}
                 </li>
               )
             })}
@@ -1296,6 +1310,7 @@ function BotControlTab(): JSX.Element {
                       </button>
                     </div>
                   </div>
+                  {renderFeedback(action.name)}
 
                   {showLegs && actionLegs.map((leg, legIndex) => (
                     <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1.5 space-y-1">
@@ -1360,19 +1375,6 @@ function BotControlTab(): JSX.Element {
           </div>
         )}
       </div>
-
-      {/* Feedback */}
-      {feedback && (
-        <div
-          className={`text-xs rounded px-3 py-2 ${
-            feedback.isError
-              ? 'text-red-400 bg-red-900/20 border border-red-700/30'
-              : 'text-green-400 bg-green-900/20 border border-green-700/30'
-          }`}
-        >
-          {feedback.msg}
-        </div>
-      )}
     </div>
   )
 }
