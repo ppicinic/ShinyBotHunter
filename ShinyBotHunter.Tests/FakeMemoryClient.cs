@@ -17,6 +17,10 @@ namespace ShinyBotHunter.Tests
         private readonly int partySize;
         private readonly int slotSize;
 
+        // Bytes a test placed at an address; anything unplaced reads as 0. Only touched from the
+        // test's own thread, so no locking.
+        private readonly Dictionary<uint, byte> placed = new();
+
         public FakeMemoryClient(int partySize = 1, int slotSize = 0xEC)
         {
             this.partySize = partySize;
@@ -27,6 +31,19 @@ namespace ShinyBotHunter.Tests
             PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default)
         {
             LastPartyRead = new PartyRead(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme);
+            if (addressing == PartyAddressing.Absolute)
+            {
+                // The party really sits at the requested addresses, so serve it from placed bytes.
+                byte PlacedByte(uint address) => placed.TryGetValue(address, out byte value) ? value : (byte)0;
+                byte[][] read = new byte[PlacedByte((uint)(anchorAddress + countOffset))][];
+                for (int i = 0; i < read.Length; i++)
+                {
+                    uint slot = (uint)(anchorAddress + slotsOffset + i * slotStride);
+                    read[i] = new byte[slotSize];
+                    for (int b = 0; b < slotSize; b++) read[i][b] = PlacedByte((uint)(slot + b));
+                }
+                return Task.FromResult(read);
+            }
             byte[][] blocks = new byte[partySize][];
             for (int i = 0; i < partySize; i++) blocks[i] = new byte[slotSize];
             return Task.FromResult(blocks);
@@ -42,6 +59,11 @@ namespace ShinyBotHunter.Tests
         {
             UIntReads.Add(address);
             return Task.FromResult(0u);
+        }
+
+        public void Place(uint address, byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++) placed[(uint)(address + i)] = bytes[i];
         }
 
         public void Connect() { }
