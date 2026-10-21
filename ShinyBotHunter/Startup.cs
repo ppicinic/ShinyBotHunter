@@ -3,7 +3,6 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
@@ -14,12 +13,12 @@ using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Persistence.PostgreSQL;
 using ShinyBotHunter.Pokemon;
-using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
+using ShinyBotHunter.Tools;
 
 namespace ShinyBotHunter
 {
@@ -27,6 +26,10 @@ namespace ShinyBotHunter
     {
         public async Task MainAsync(string[] args)
         {
+            if (await SetupCommands.TryRunAsync(args))
+            {
+                return;
+            }
             var builder = WebApplication.CreateBuilder();
             builder.Services.AddControllers();
             builder.Services.AddSignalR();
@@ -36,40 +39,17 @@ namespace ShinyBotHunter
             app.MapControllers().AsRequiredPort(5000);
             app.MapHub<ElectronHub>("/socket-api").AsRequiredPort(5001);
 
-            bool isParseMode = args.Length > 0 && (args[0].ToLower() == "--parsepokeapi" || args[0].ToLower() == "--parsepokemoveapi");
-
             await services.GetRequiredService<DiscordBotService>().StartAsync();
             services.GetRequiredService<IEncounterDao>().Init();
-            // TODO this is jank we should make the modules lazy loaded.
-            if (!isParseMode)
-            {
-                await services.GetRequiredService<PokemonMetadataService>().InitAsync();
-                await services.GetRequiredService<PhaseInfoService>().InitAsync();
-                await services.GetRequiredService<RomInfoService>().InitAsync();
-            }
+            await services.GetRequiredService<PokemonMetadataService>().InitAsync();
+            await services.GetRequiredService<PhaseInfoService>().InitAsync();
+            await services.GetRequiredService<RomInfoService>().InitAsync();
             services.GetRequiredService<NotificationService>().Init();
             services.GetRequiredService<MongoCaughtPokemonDao>().Init();
             services.GetRequiredService<PokemonPersistenceService>().Init();
             services.GetRequiredService<BotService>().Init();
             Console.WriteLine(string.Join(", ", args));
-            if (args.Length > 0 && args[0].ToLower() == "--parsepokeapi")
-            {
-                await ParsePokeApi(services);
-            }
-            else if (args.Length > 0 && args[0].ToLower() == "--parsepokemoveapi")
-            {
-                await new PokeApiParser(services.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
-            }
-            else if(args.Length > 0 && args[0].ToLower() == "--generatemapdatahgss")
-            {
-                new MatrixProcessor().GenerateAllMaps();
-                new MapProcessor().GenerateMapFiles();
-                await new GraphProcessor(services).CreateBaseGraph();
-            }
-            else
-            {
-                await MainRunnerAsync(app, services);
-            }
+            await MainRunnerAsync(app, services);
 
             await services.GetRequiredService<SmogonDamageService>().DisposeAsync();
             await services.GetRequiredService<DiscordBotService>().StopAsync();
@@ -93,11 +73,6 @@ namespace ShinyBotHunter
                 s = Console.ReadLine();
             } while (s != "end");
             await Task.Delay(1000);
-        }
-
-        private async Task ParsePokeApi(IServiceProvider provider)
-        {
-            await new PokeApiParser(provider.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
         }
 
         public void CreateServices(IServiceCollection services)

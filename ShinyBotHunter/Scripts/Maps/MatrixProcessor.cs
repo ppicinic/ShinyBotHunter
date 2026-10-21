@@ -11,15 +11,27 @@ namespace ShinyBotHunter.Scripts.Maps
     }
     public class MatrixProcessor
     {
+        private readonly string headerCsv;
+        private readonly string romDataDir;
+        private readonly string outputDir;
+
+        public MatrixProcessor(string headerCsv, string romDataDir, string outputDir)
+        {
+            this.headerCsv = headerCsv;
+            this.romDataDir = romDataDir;
+            this.outputDir = outputDir;
+        }
+
         public void GenerateAllMaps()
         {
+            Directory.CreateDirectory(Path.Combine(outputDir, "matrixMaps"));
             Dictionary<ushort, MapLookup> reverseLookUp = new Dictionary<ushort, MapLookup>();
             var headers = ReadHeaderFile();
             ValidateOverworld(reverseLookUp, headers);
             GenerateReverseLookups(headers, reverseLookUp);
             var options = new JsonSerializerOptions { WriteIndented = true };
             string jsonString = System.Text.Json.JsonSerializer.Serialize(reverseLookUp, options);
-            File.WriteAllText("D:/mapreverselookup.json", jsonString);
+            File.WriteAllText(Path.Combine(outputDir, "mapreverselookup.json"), jsonString);
         }
 
         private void GenerateReverseLookups(List<MapHeader> headers, Dictionary<ushort, MapLookup> reverseLookUp)
@@ -31,7 +43,7 @@ namespace ShinyBotHunter.Scripts.Maps
                 {
                     reverseLookUp.Add(header.id, new MapLookup() { BotMapId = id, InternalName = header.internalName });
                     
-                    System.IO.BinaryReader readMatrix = new System.IO.BinaryReader(File.OpenRead($"D:\\ExtractedROMs\\Pokemon HeartGold_SDSME\\data\\a\\0\\4\\matrix\\{header.matrixId:D4}"));
+                    System.IO.BinaryReader readMatrix = new System.IO.BinaryReader(File.OpenRead(Path.Combine(romDataDir, "a", "0", "4", "matrix", $"{header.matrixId:D4}")));
                     byte width = readMatrix.ReadByte();
                     byte height = readMatrix.ReadByte();
                     bool hiddenLayer = readMatrix.ReadByte() == 1;
@@ -58,7 +70,7 @@ namespace ShinyBotHunter.Scripts.Maps
                         }
                     }
                     string json = CreateJson(map);
-                    File.WriteAllText($"D:/matrixMaps/{id:D4}.json", json);
+                    File.WriteAllText(Path.Combine(outputDir, "matrixMaps", $"{id:D4}.json"), json);
                     id++;
                 }
             }
@@ -68,7 +80,7 @@ namespace ShinyBotHunter.Scripts.Maps
         public List<MapHeader> ReadHeaderFile()
         {
             List<MapHeader> result = new List<MapHeader>();
-            var lines = File.ReadAllLines("D:/output.csv");
+            var lines = File.ReadAllLines(headerCsv);
             for(ushort i = 0; i < lines.Length; i++)
             {
                 var line = lines[i];
@@ -80,7 +92,7 @@ namespace ShinyBotHunter.Scripts.Maps
         public void ValidateOverworld(Dictionary<ushort, MapLookup> reverseLookUp, List<MapHeader> mapHeader)
         {
             var options = new JsonSerializerOptions { WriteIndented = true };
-            System.IO.BinaryReader readMatrix = new System.IO.BinaryReader(File.OpenRead($"D:\\ExtractedROMs\\Pokemon HeartGold_SDSME\\data\\a\\0\\4\\matrix\\0000"));
+            System.IO.BinaryReader readMatrix = new System.IO.BinaryReader(File.OpenRead(Path.Combine(romDataDir, "a", "0", "4", "matrix", "0000")));
             byte width = readMatrix.ReadByte();
             byte height = readMatrix.ReadByte();
             bool hiddenLayer = readMatrix.ReadByte() == 1;
@@ -205,7 +217,7 @@ namespace ShinyBotHunter.Scripts.Maps
                     }
                 }
                 string json = CreateJson(newMap);
-                File.WriteAllText($"D:/matrixMaps/{key:D4}.json", json);
+                File.WriteAllText(Path.Combine(outputDir, "matrixMaps", $"{key:D4}.json"), json);
             }
 
         }
