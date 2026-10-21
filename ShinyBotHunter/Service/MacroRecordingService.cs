@@ -73,12 +73,6 @@ namespace ShinyBotHunter.Service
 
         private IBot ResolveBot(int pos)
         {
-            // The legacy Lua command server has no /record/* routes; without this the HTTP client
-            // would burn its full retry budget on 404s before failing with a confusing message.
-            if (settings.BizHawkMode != "ApiHawk")
-                throw new InvalidOperationException(
-                    $"Macro recording requires BizHawkMode 'ApiHawk' (currently '{settings.BizHawkMode}').");
-
             return botService.GetBotAt(pos)
                 ?? throw new InvalidOperationException($"No emulator running at position {pos}.");
         }
