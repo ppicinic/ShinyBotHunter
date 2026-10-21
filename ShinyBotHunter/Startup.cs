@@ -62,7 +62,6 @@ namespace ShinyBotHunter
             }
             else if(args.Length > 0 && args[0].ToLower() == "--generatemapdatahgss")
             {
-                var processor = new MapHeaderProcessor();
                 new MatrixProcessor().GenerateAllMaps();
                 new MapProcessor().GenerateMapFiles();
                 await new GraphProcessor(services).CreateBaseGraph();

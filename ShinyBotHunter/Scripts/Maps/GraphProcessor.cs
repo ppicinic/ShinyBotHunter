@@ -324,8 +324,6 @@ namespace ShinyBotHunter.Scripts.Maps
             return capabilityMask;
         }
 
-        public record GraphData(List<NodeData> nodes, List<EdgeData> edges);
-
         private BaseWarp? FindMatchingWarp(int mapId, BaseWarp w, Dictionary<short, BaseWarp[]> warpSource)
         {
 

@@ -231,24 +231,7 @@ namespace ShinyBotHunter.Scripts.Maps
                                 byte value = 0x00;
                                 if (mapValue == 0x69 || mapValue == 0x6E)
                                 {
-                                    // We can remove warps on the map but this could be wrong, unsure.
-                                    //WarpData? warp = null;
-                                    //if(id == 0)
-                                    //{
-                                    //    Console.WriteLine($"{outX * 32 + x},{outY * 32 + y}");
-                                    //}
-                                    //if (warps.ContainsKey(id))
-                                    //{
-                                    //    warp = warps[id].Where(t => t.z == outY * 32 + y && t.x == outX * 32 + x).FirstOrDefault();
-                                    //}
-                                    //if (warp is not null)
-                                    //{
-                                        value = 0x01;
-                                    //}
-                                    //else
-                                    //{
-                                    //    value = 0x80;
-                                    //}
+                                    value = 0x01;
                                 }
                                 else if (mapValue == 0x11)
                                 {
@@ -448,30 +431,6 @@ namespace ShinyBotHunter.Scripts.Maps
                 }
             }
         }
-    }
-
-    public enum MapValues
-    {
-        Free = 0,
-        Portal1 = 1,
-        Portal2 = 2,
-        Grass = 3,
-        Surf = 4,
-        RightLedge = 5,
-        LeftLedge = 6,
-        DownLedge = 7,
-        RockClimb = 0x08,
-        Whirlpool = 0x09,
-        BridgeStart = 0x0A,
-        BridgeMiddle = 0x0B,
-        Bridge = 0x0C,
-        Waterfall = 0x0D,
-        Ice = 0x0E,
-        Cut = 0x0F,
-        RockSmash = 0x10,
-        WalkingTrainer = 0x11,
-        Blocked = 0x80,
-
     }
 
     /**
