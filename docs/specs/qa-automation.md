@@ -229,7 +229,7 @@ Run on the dev PC with the real backend and bot, the QA install above, and the o
 - A cancel on a position already removed returns 500 (`KeyNotFoundException`) instead of 404. Plan phase 2.
 - `--parsepokeapi` crashes if `SpriteBaseDirectory` does not exist. Plan 1.5.
 - The Discord placeholder in `appsettings.json` (`your-token-here`) does not match the skip check (`YOUR_BOT_TOKEN`), so a fresh machine tries to log in with it. Plan 1.6b.
-- `Microsoft.AspNetCore.OpenApi` pulls in `Microsoft.OpenApi` 2.0.0 with a high-severity advisory and is unused. Plan 1.6b.
+- `Microsoft.AspNetCore.OpenApi` was removed in the October 2026 cleanup (plan 1.6b); `Microsoft.OpenApi` 2.0.0 is still pulled in transitively and carries a high-severity advisory.
 - No design-time DbContext factory, so `dotnet ef` cannot be used without starting the app. Noted under QA databases; no change planned.
 
 ## Test cases for the harness itself
