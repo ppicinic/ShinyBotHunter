@@ -12,8 +12,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
-        public override EventState EventState => throw new NotImplementedException();
-
         private readonly PathfindingService pathfindingService;
         private readonly PokemonStateReader reader;
 

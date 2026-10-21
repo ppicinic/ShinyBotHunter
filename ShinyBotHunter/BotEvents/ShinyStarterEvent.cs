@@ -21,14 +21,6 @@ namespace ShinyBotHunter.BotEvents
             this.encounterService = encounterService;
         }
 
-        public override EventState EventState
-        {
-            get
-            {
-                return EventState.Complete;
-            }
-        }
-
         public int[] BotPositions { get { return []; } }
 
         public async override Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken = default)

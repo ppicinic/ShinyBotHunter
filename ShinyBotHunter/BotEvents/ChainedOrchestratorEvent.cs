@@ -30,8 +30,6 @@ namespace ShinyBotHunter.BotEvents
     /// </summary>
     public class ChainedOrchestratorEvent : AbstractBotEvent<EventState>
     {
-        public override EventState EventState => throw new NotImplementedException();
-
         private readonly IServiceProvider provider;
         private readonly List<EventLeg> legs;
         private readonly object legLock = new object();

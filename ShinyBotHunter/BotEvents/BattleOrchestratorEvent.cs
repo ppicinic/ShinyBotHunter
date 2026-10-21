@@ -19,9 +19,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class BattleOrchestratorEvent : AbstractBotEvent<GameState>
     {
-        public override EventState EventState {
-            get => EventState.NotStarted;
-        }
         private static readonly Dictionary<int, string> MoveShorthands = new Dictionary<int, string>()
         {
             { 0, "MoveOne" },

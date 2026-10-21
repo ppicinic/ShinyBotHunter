@@ -107,13 +107,6 @@ namespace ShinyBotHunter.BotEvents
             this.config = EggHuntConfig.Load(EggHuntConfig.DefaultPath);
         }
 
-        public override EventState EventState => state switch
-        {
-            EggHuntState.NotStarted => EventState.NotStarted,
-            EggHuntState.Complete => EventState.Complete,
-            _ => EventState.Running,
-        };
-
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)
         {
             PushRunningState(gameState);

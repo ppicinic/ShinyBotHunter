@@ -51,8 +51,6 @@ namespace ShinyBotHunter.BotEvents
         private const uint ActionSelectionCursorAddress = 0x02024E60;
         private readonly Service.Pointers.IPointerService pointers;
 
-        public override EventState EventState { get; }
-
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
 
@@ -85,7 +83,6 @@ namespace ShinyBotHunter.BotEvents
             // The in-battle structures store internal indices rather than dex numbers.
             expectedInternalSpecies = Gen3PokemonParser.ToInternalSpecies(expectedSpecies);
             pointers = provider.GetRequiredService<GameServices>().Pointers(GameFlavor.RS);
-            EventState = EventState.NotStarted;
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
