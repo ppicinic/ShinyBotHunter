@@ -133,9 +133,7 @@ function openCardWindow({ name, kind, title, query }: OpenCardWindowOptions): vo
     title,
     backgroundColor: '#0d0d1a',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-      webSecurity: false // Allow loading local file:// sprites
+      preload: join(__dirname, '../preload/index.js')
     }
   })
 
