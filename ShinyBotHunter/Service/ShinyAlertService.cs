@@ -1,7 +1,6 @@
 using Discord;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Pokemon;
-using ShinyBotHunter.Services;
 using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Service

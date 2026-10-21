@@ -9,7 +9,6 @@ using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
-using ShinyBotHunter.Services;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;

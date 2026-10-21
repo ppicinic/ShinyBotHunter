@@ -6,12 +6,11 @@ using Microsoft.Extensions.Options;
 using ShinyBotHunter.Discord.Interactions;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
-using ShinyBotHunter.Service;
 using System.Threading.Channels;
 using static System.Net.Mime.MediaTypeNames;
 using IResult = Discord.Interactions.IResult;
 
-namespace ShinyBotHunter.Services;
+namespace ShinyBotHunter.Service;
 
 public class DiscordMessage()
 {
