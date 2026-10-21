@@ -17,6 +17,7 @@ const isDev = process.env.NODE_ENV === 'development'
 
 export interface MainConfig {
   backendUrl: string
+  spritesRootPath: string
   cards: {
     phaseCard: { enabled: boolean }
     recentPokemonCard: { enabled: boolean }
