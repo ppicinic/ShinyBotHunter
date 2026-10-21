@@ -9,9 +9,10 @@ namespace ShinyBotHunter.Service
     {
         // Lock rule: writers take the gate, readers never do. A writer is any code that changes
         // Entries or a field of a BotAndOrEvent: BotService.ExecuteNewBotOrSpecialEvent,
-        // BotService.ExecuteEvent, BotService.CancelBotOrEventAsync and the teardown in
-        // BotService.RunEventAsync. Each holds the gate across its whole check-then-act sequence.
-        // Readers (BotService.GetBotDashboardState, GetAvailableActions, GetBotAt, HasRunningEvent,
+        // BotService.ExecuteEvent, BotEventRunner.CancelAsync (reached through
+        // BotService.CancelBotOrEventAsync) and the teardown in BotEventRunner.RunEventAsync. Each
+        // holds the gate across its whole check-then-act sequence. Readers
+        // (BotService.GetBotDashboardState, GetAvailableActions, GetBotAt, HasRunningEvent,
         // GetPartyAsync) stay lock-free because running events call them from inside their loops,
         // and an event waiting on the gate while a canceller holds it and awaits that event would
         // deadlock. The dictionary is concurrent so their enumeration is safe against a writer's add

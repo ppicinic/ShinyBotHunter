@@ -16,6 +16,7 @@ namespace ShinyBotHunter.Service
     public class BotService
     {
         private readonly EmulatorSlotRegistry slots;
+        private readonly BotEventRunner runner;
         private BotFactory botFactory;
         private IServiceProvider provider;
         private EventArgumentOptions[] specialEvents;
@@ -29,6 +30,7 @@ namespace ShinyBotHunter.Service
             // Display slots and ports are one pool shared by every console, so the ceiling on
             // concurrently running emulators is the sum of the per-console budgets.
             slots = new EmulatorSlotRegistry(appSettings.Value.TotalMaxEmulators);
+            runner = new BotEventRunner(slots, RefreshDashboardState);
             this.botFactory = botFactory;
             this.provider = provider;
             specialEvents = Array.Empty<EventArgumentOptions>();
@@ -175,7 +177,7 @@ namespace ShinyBotHunter.Service
                 huntState.State.Push(EventState.Running);
                 var huntEvent = new BotAndOrEvent { GameState = huntState };
                 slots.Entries[newPos] = huntEvent;
-                StartEvent(newPos, huntEvent, hunt, huntState, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", removeWhenDone: true);
+                runner.StartEvent(newPos, huntEvent, hunt, huntState, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", removeWhenDone: true);
                 return GetBotDashboardState();
             }
             else
@@ -216,7 +218,7 @@ namespace ShinyBotHunter.Service
             var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
             var botEvent = new BotAndOrEvent();
             slots.Entries[newPos] = botEvent;
-            StartEvent(newPos, botEvent, ev, new GameState(), "HGSS Shiny Starter Hunt", removeWhenDone: true);
+            runner.StartEvent(newPos, botEvent, ev, new GameState(), "HGSS Shiny Starter Hunt", removeWhenDone: true);
             return GetBotDashboardState();
         }
 
@@ -251,7 +253,7 @@ namespace ShinyBotHunter.Service
                 var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
                 slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
                 slots.Entries[pos].GameState!.State.Push(EventState.Init);
-                StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
+                runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
@@ -271,7 +273,7 @@ namespace ShinyBotHunter.Service
                 slots.Entries[pos].GameState = NewGameStateForLeg(pos, legs[0]);
                 slots.Entries[pos].GameState!.State.Push(EventState.Init);
                 string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
-                StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
+                runner.StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
@@ -299,7 +301,7 @@ namespace ShinyBotHunter.Service
                     // looks at -- but GameState requires one and shiny is what the hunt is for.
                     Target = new ShinyTarget(),
                 };
-                StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
+                runner.StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
@@ -317,7 +319,7 @@ namespace ShinyBotHunter.Service
                     return GetBotDashboardState();
                 }
                 slots.Entries[pos].GameState!.SwapState(EventState.Resume);
-                StartEvent(pos, slots.Entries[pos], slots.Entries[pos].Event!, slots.Entries[pos].GameState!, slots.Entries[pos].GetName(pos), removeWhenDone: false);
+                runner.StartEvent(pos, slots.Entries[pos], slots.Entries[pos].Event!, slots.Entries[pos].GameState!, slots.Entries[pos].GetName(pos), removeWhenDone: false);
                 return GetBotDashboardState();
             }
             else
@@ -545,122 +547,10 @@ namespace ShinyBotHunter.Service
             }).ToDictionary();
         }
 
-        /// <summary>
-        /// Cancels the running event at <paramref name="pos"/>, drops a parked one, or closes an idle
-        /// bot. A running event is only signalled under the gate and awaited outside it, because its
-        /// own teardown in <see cref="RunEventAsync"/> takes the gate; this returns once that teardown
-        /// and its dashboard refresh have run.
-        /// </summary>
         public async Task<Dictionary<int, EmulatorState>> CancelBotOrEventAsync(int pos)
         {
-            Task? running = null;
-            await slots.Gate.WaitAsync();
-            try
-            {
-                var entry = slots.Entries[pos];
-                if (entry.EventTask is not null)
-                {
-                    entry.CancellationTokenSource!.Cancel();
-                    running = entry.EventTask;
-                }
-                else if (entry.Event is not null)
-                {
-                    entry.Event = null;
-                    entry.GameState = null;
-                }
-                else
-                {
-                    // Dispose never calls back into BotService, so awaiting it under the gate is safe.
-                    await entry.Bot!.DisposeAsync();
-                    slots.Entries.TryRemove(pos, out _);
-                }
-            }
-            finally
-            {
-                slots.Gate.Release();
-            }
-            if (running is not null)
-            {
-                await running;
-            }
+            await runner.CancelAsync(pos);
             return GetBotDashboardState();
-        }
-
-        /// <summary>
-        /// Starts <paramref name="ev"/> on <paramref name="entry"/>. Only called under the gate, so
-        /// <see cref="RunEventAsync"/> always reaches its gate wait asynchronously and cannot clear
-        /// EventTask before this assigns it.
-        /// </summary>
-        private void StartEvent(int key, BotAndOrEvent entry, IBotEvent ev, GameState state, string name, bool removeWhenDone)
-        {
-            var cts = new CancellationTokenSource();
-            entry.Event = ev;
-            entry.EventName = name;
-            entry.CancellationTokenSource = cts;
-            entry.EventTask = RunEventAsync(key, entry, ev.ExecuteAsync(state, cts.Token), cts, state, name, removeWhenDone);
-        }
-
-        /// <summary>
-        /// Owns the whole teardown of an event, whether it was cancelled or finished on its own, so
-        /// the order is decided in one place. Never faults: an event crash is logged here, and the
-        /// dashboard refresh is caught because nothing is guaranteed to await a natural finish.
-        /// </summary>
-        private async Task RunEventAsync(int key, BotAndOrEvent entry, Task eventTask, CancellationTokenSource cts, GameState state, string name, bool removeWhenDone)
-        {
-            try
-            {
-                await eventTask;
-            }
-            catch (OperationCanceledException) when (cts.IsCancellationRequested)
-            {
-            }
-            catch (Exception ex)
-            {
-                // Without this, an unhandled exception in the event loop is indistinguishable from a
-                // clean finish: the bot silently goes idle, or a hunt vanishes, with no trace of why.
-                Console.WriteLine($"[BotService] Event '{name}' crashed. State: {(state.State.TryPeek(out var crashedAt) ? crashedAt : EventState.None)}");
-                Console.WriteLine(ex.ToString());
-            }
-
-            bool cancelled = cts.IsCancellationRequested;
-            if (!cancelled)
-            {
-                await cts.CancelAsync();
-            }
-
-            await slots.Gate.WaitAsync();
-            try
-            {
-                if (cancelled)
-                {
-                    entry.Event = null;
-                    entry.GameState = null;
-                }
-                else if (!(state.State.TryPeek(out var top) && top == EventState.Waiting))
-                {
-                    entry.Event = null;
-                }
-                entry.EventTask = null;
-                entry.CancellationTokenSource = null;
-                if (removeWhenDone)
-                {
-                    // The key captured at start, not a position read back from the event.
-                    slots.Entries.TryRemove(key, out _);
-                }
-            }
-            finally
-            {
-                slots.Gate.Release();
-            }
-
-            try
-            {
-                await RefreshDashboardState();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[BotService] Dashboard refresh after event '{name}' failed: {ex}");
-            }
         }
 
         public EventArgumentOptions[] GetTopLevelOptions()
