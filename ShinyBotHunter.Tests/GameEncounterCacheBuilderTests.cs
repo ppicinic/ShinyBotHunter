@@ -64,6 +64,32 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void BuildGameCache_CaughtWithoutGameFileName_CountsForGameAndPhaseOnly()
+        {
+            // Documents written before 2026-05-01 have no GameFileName and load with it null.
+            var legacy = new CaughtPokemon() { Pokemon = new PokemonData() { FormCode = "a", Species = 1 }, Game = GameFlavor.HGSS, Phase = "P1", GameFileName = null! };
+            var empty = new CaughtPokemon() { Pokemon = new PokemonData() { FormCode = "a", Species = 1 }, Game = GameFlavor.HGSS, Phase = "P1", GameFileName = "" };
+            var withFile = new CaughtPokemon() { Pokemon = new PokemonData() { FormCode = "a", Species = 1 }, Game = GameFlavor.HGSS, Phase = "P1", GameFileName = "F1" };
+
+            var cache = PokemonPersistenceService.BuildGameCache(
+                new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
+                new List<ProgressRow>(),
+                new List<CaughtPokemon> { legacy, empty, withFile },
+                new List<PokemonData>());
+
+            // game and phase: all three catches; file F1: only its own
+            AssertCounts(cache.AllPokemonCounts, 10, 0, 3);
+            AssertCounts(cache.PokemonEncounterCache["a"], 10, 0, 3);
+            AssertCounts(cache.PokemonEncounterCache["#1"], 10, 0, 3);
+            AssertCounts(cache.PhaseEncounterCache["P1"].AllPokemonCounts, 10, 0, 3);
+            AssertCounts(cache.PhaseEncounterCache["P1"].PokemonEncounterCache["a"], 10, 0, 3);
+            Assert.Equal(3, cache.CaughtPokemon.Count);
+            Assert.Equal(new[] { "F1" }, cache.GameLevelCache.Keys);
+            AssertCounts(cache.GameLevelCache["F1"].AllPokemonCounts, 10, 0, 1);
+            Assert.Equal(withFile, Assert.Single(cache.GameLevelCache["F1"].CaughtPokemon));
+        }
+
+        [Fact]
         public void EnsureKeys_MissingKey_CreatesZeroNodeThatTakesAnIncrement()
         {
             var cache = PokemonPersistenceService.BuildGameCache(

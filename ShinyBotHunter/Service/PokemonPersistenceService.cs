@@ -238,8 +238,13 @@ namespace ShinyBotHunter.Service
             }
             foreach (var caughtPokemon in caught)
             {
-                var fileNode = cache.GameLevelCache.GetOrAdd(caughtPokemon.GameFileName, _ => new GameEncounterCacheBase());
                 AddCounts(cache, caughtPokemon.Phase, caughtPokemon.Pokemon.FormCode, caughtPokemon.Pokemon.Species, 0, 0, 1);
+                // Documents written before GameFileName existed (2026-05-01) load with it null: they count for the game only.
+                if (string.IsNullOrEmpty(caughtPokemon.GameFileName))
+                {
+                    continue;
+                }
+                var fileNode = cache.GameLevelCache.GetOrAdd(caughtPokemon.GameFileName, _ => new GameEncounterCacheBase());
                 AddCounts(fileNode, caughtPokemon.Phase, caughtPokemon.Pokemon.FormCode, caughtPokemon.Pokemon.Species, 0, 0, 1);
                 fileNode.CaughtPokemon.Add(caughtPokemon);
             }
