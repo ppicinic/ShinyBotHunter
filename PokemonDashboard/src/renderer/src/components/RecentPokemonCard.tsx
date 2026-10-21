@@ -21,13 +21,12 @@ const GENDER_SYMBOLS: Record<number, string> = {
 
 interface PokemonEntryRowProps {
   pokemon: PokemonData
-  spritesRootPath: string
 }
 
 // FlipMove requires forwardRef on child components
 const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
-  function PokemonEntryRow({ pokemon, spritesRootPath }, ref) {
-    const spriteUrl = getSpriteUrl(spritesRootPath, pokemon.formCode, pokemon.isShiny)
+  function PokemonEntryRow({ pokemon }, ref) {
+    const spriteUrl = getSpriteUrl(pokemon.formCode, pokemon.isShiny)
 
     const ivValues = [
       { label: 'HP', value: pokemon.ivHp },
@@ -119,7 +118,7 @@ interface RecentPokemonCardProps {
 }
 
 export function RecentPokemonCard({ windowChrome }: RecentPokemonCardProps = {}): JSX.Element {
-  const { recentEncounters, config, connectionState } = useAppContext()
+  const { recentEncounters, connectionState } = useAppContext()
 
   return (
     <div className="dashboard-card h-full">
@@ -150,11 +149,7 @@ export function RecentPokemonCard({ windowChrome }: RecentPokemonCardProps = {})
             typeName={null}
           >
             {encounterKeys(recentEncounters).map(({ pokemon, key }) => (
-              <PokemonEntryRow
-                key={key}
-                pokemon={pokemon}
-                spritesRootPath={config?.spritesRootPath ?? ''}
-              />
+              <PokemonEntryRow key={key} pokemon={pokemon} />
             ))}
           </FlipMove>
         )}
