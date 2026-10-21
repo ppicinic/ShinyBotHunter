@@ -91,7 +91,6 @@ namespace ShinyBotHunter.Tests
             Assert.Same(b, result.CameFrom!.Node);
         }
 
-        // Capability 0 only: the AddEdge mask check is wrong for nonzero capabilities, see #91.
         [Fact]
         public void Djitriska_SkipsEdgeWithCapabilityMask()
         {
@@ -103,6 +102,40 @@ namespace ShinyBotHunter.Tests
             Link(c, b, 5);
 
             var result = ServiceFor(new Map(1, 1)).Djitriska(a, new Capability(), p => p.Node.Id == b.Id);
+
+            Assert.NotNull(result);
+            Assert.Equal(10, result.Cost);
+            Assert.Same(c, result.CameFrom!.Node);
+        }
+
+        [Fact]
+        public void Djitriska_TakesSurfEdgeWithCanSurf()
+        {
+            var a = new Node { Id = 1 };
+            var b = new Node { Id = 2 };
+            var c = new Node { Id = 3 };
+            Link(a, b, 1, (int)CapabilityType.Surf);
+            Link(a, c, 5);
+            Link(c, b, 5);
+
+            var result = ServiceFor(new Map(1, 1)).Djitriska(a, new Capability { CanSurf = true }, p => p.Node.Id == b.Id);
+
+            Assert.NotNull(result);
+            Assert.Equal(1, result.Cost);
+            Assert.Same(a, result.CameFrom!.Node);
+        }
+
+        [Fact]
+        public void Djitriska_SkipsEdgeNeedingCapabilityNotHeld()
+        {
+            var a = new Node { Id = 1 };
+            var b = new Node { Id = 2 };
+            var c = new Node { Id = 3 };
+            Link(a, b, 1, (int)(CapabilityType.Surf | CapabilityType.Strength));
+            Link(a, c, 5);
+            Link(c, b, 5);
+
+            var result = ServiceFor(new Map(1, 1)).Djitriska(a, new Capability { CanSurf = true }, p => p.Node.Id == b.Id);
 
             Assert.NotNull(result);
             Assert.Equal(10, result.Cost);
