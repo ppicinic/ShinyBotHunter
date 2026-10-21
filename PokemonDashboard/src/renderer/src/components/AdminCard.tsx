@@ -900,6 +900,7 @@ function BotControlTab(): JSX.Element {
   }
 
   const handleStartAction = async (action: EventArgumentOptions): Promise<void> => {
+    if (submitting !== null) return
     setSubmitting(action.name)
     setFeedback(null)
     try {
@@ -1288,7 +1289,7 @@ function BotControlTab(): JSX.Element {
                       )}
                       <button
                         onClick={() => handleStartAction(action)}
-                        disabled={isSubmitting || !allParamsFilled}
+                        disabled={submitting !== null || !allParamsFilled}
                         className="px-3 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                       >
                         {isSubmitting ? 'Starting...' : 'Start'}
