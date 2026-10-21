@@ -175,7 +175,7 @@ the questions, in four lines.
 
 ## Coder: `task-coder`
 
-Frontmatter: `tools: *` (full), `model: opus`. Launched with `isolation: worktree`.
+Frontmatter: no `tools:` line, which inherits every tool (a bare `tools: *` is a YAML alias and the definition fails to load), `model: opus`. Launched with `isolation: worktree`.
 
 ```
 Role: implement the approved plan for task #{task} in this worktree, and open a PR against
