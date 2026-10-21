@@ -11,7 +11,6 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence;
-using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Persistence.PostgreSQL;
 using ShinyBotHunter.Pokemon;
@@ -61,14 +60,6 @@ namespace ShinyBotHunter
             {
                 await new PokeApiParser(services.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
             }
-            else if (args.Length > 0 && args[0].ToLower() == "--migrateinfluxv1tov2")
-            {
-                await MigrateInfluxDbv1ToV2(services, args);
-            }
-            else if (args.Length > 0 && args[0].ToLower() == "--migrateinfluxtopostgresql")
-            {
-                await MigrateInfluxToPostgres(services, args);
-            }
             else if(args.Length > 0 && args[0].ToLower() == "--generatemapdatahgss")
             {
                 var processor = new MapHeaderProcessor();
@@ -108,32 +99,6 @@ namespace ShinyBotHunter
         private async Task ParsePokeApi(IServiceProvider provider)
         {
             await new PokeApiParser(provider.GetRequiredService<IOptions<ApplicationSettings>>()).ScrapePokeApi();
-        }
-
-        private async Task MigrateInfluxDbv1ToV2(IServiceProvider provider, string[] args)
-        {
-            bool delete = false;
-            bool dryRun = false;
-            string? dryRunTableName = null;
-            for (int i = 1; i < args.Length; i++)
-            {
-                if (args[i].ToLower() == "--delete")
-                {
-                    delete = true;
-                }
-                else if (args[i].ToLower() == "--dryrun")
-                {
-                    dryRun = true;
-                    i++;
-                    dryRunTableName = args[i];
-                }
-            }
-            await new MigrateInfluxSchemav1Tov2(provider, delete, dryRun, dryRunTableName).MigrateAsync();
-        }
-
-        private async Task MigrateInfluxToPostgres(IServiceProvider provider, string[] args)
-        {
-            await new MigrateInfluxToPostgres(provider).MigrateAsync();
         }
 
         public void CreateServices(IServiceCollection services)

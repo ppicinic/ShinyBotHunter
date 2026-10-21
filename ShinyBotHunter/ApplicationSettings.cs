@@ -35,8 +35,6 @@ namespace ShinyBotHunter
         public string SpriteBaseDirectory { get; set; } = null!;
         public string MongoDbUrl { get; set; } = null!;
         public string MongoDbDatabase { get; set; } = null!;
-        public string InfluxDbUrl { get; set; } = null!;
-        public string InfluxDbDatabase { get; set; } = null!;
         public string DiscordToken { get; set; } = null!;
         public ulong? DiscordGuildId { get; set; } = null!;
         public ulong? ShinyLogChannel { get; set; } = null!;

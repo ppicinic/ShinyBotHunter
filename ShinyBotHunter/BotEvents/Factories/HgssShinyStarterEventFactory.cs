@@ -1,7 +1,6 @@
 ﻿﻿using Microsoft.Extensions.DependencyInjection;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 

@@ -2,7 +2,6 @@
 using Microsoft.AspNetCore.Authorization;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence;
-using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using System.Collections.Concurrent;
