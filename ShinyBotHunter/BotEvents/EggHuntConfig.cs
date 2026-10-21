@@ -3,19 +3,12 @@ using System.Text.Json;
 
 namespace ShinyBotHunter.BotEvents
 {
-    /// <summary>A point on the touch screen, in the same 256x192 space the S. macro command uses.</summary>
-    public class TouchPoint
-    {
-        public int X { get; set; }
-        public int Y { get; set; }
-    }
-
     /// <summary>
     /// Everything about an egg hunt that is a property of the save file rather than of the code:
-    /// which macros to play, where the hatching corridor is, and where the party menu buttons sit.
+    /// which macros to play and where the hatching corridor is.
     ///
-    /// Loaded from disk on every event start rather than at boot, so the corridor and the touch
-    /// coordinates can be corrected against a running game without restarting the server.
+    /// Loaded from disk on every event start rather than at boot, so the corridor can be corrected
+    /// against a running game without restarting the server.
     /// </summary>
     public class EggHuntConfig
     {
@@ -78,34 +71,6 @@ namespace ShinyBotHunter.BotEvents
         public int HatchLow { get; set; }
         public int HatchHigh { get; set; }
 
-        // -- Summary-screen touch coordinates and timings. Not used by the active hunt any more -- the
-        // shiny sparkle is visible during the hatch animation itself (HatchAnimationMacro), so IsShiny
-        // is read straight off party memory right after it plays and opening the summary screen is a
-        // redundant confirmation step. Left measured and in place rather than deleted, in case a future
-        // change wants that confirmation back (touching the pokedex entry, a different reveal check,
-        // etc.) -- see the (currently unused) TouchPoint/PartySlotTouch/SummaryTouch fields below.
-
-        /// <summary>
-        /// "Pokemon" on the touch-screen main menu. Matches CommandPreprocessor's shorthand -- which
-        /// was declared but never exercised by any macro until a recording of the summary-open sequence
-        /// (see OpenPartyMenuWaitFrames etc. below) landed a raw tap a couple pixels from this, so it is
-        /// corroborated rather than just declared.
-        /// </summary>
-        public TouchPoint PokemonMenuTouch { get; set; } = new TouchPoint() { X = 45, Y = 75 };
-
-        /// <summary>Party screen slots 1-6, in order. Measured against a real party of six.</summary>
-        public List<TouchPoint> PartySlotTouch { get; set; } = new List<TouchPoint>() {
-            new TouchPoint() { X = 60, Y = 25 },
-            new TouchPoint() { X = 192, Y = 35 },
-            new TouchPoint() { X = 60, Y = 75 },
-            new TouchPoint() { X = 192, Y = 85 },
-            new TouchPoint() { X = 60, Y = 125 },
-            new TouchPoint() { X = 192, Y = 135 },
-        };
-
-        /// <summary>"Summary" on the party member's submenu.</summary>
-        public TouchPoint SummaryTouch { get; set; } = new TouchPoint() { X = 176, Y = 42 };
-
         // -- Timings (milliseconds unless the name says frames) -----------------------------------
 
         /// <summary>
@@ -122,29 +87,6 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>How long to pace before giving up on the egg ever hatching.</summary>
         public int HatchTimeoutMs { get; set; } = 30 * 60 * 1000;
 
-        // -- Summary-opening sequence, from a real recording of tapping through Pokemon -> slot ->
-        // Summary. The three gaps are not interchangeable -- the menu takes longer to open than a
-        // party slot takes to react -- so each is its own measured value rather than one shared guess.
-        // Unused by the active hunt; see the note above PokemonMenuTouch.
-
-        /// <summary>How long the touch on "Pokemon" is held to open the party menu.</summary>
-        public int OpenPartyMenuHoldFrames { get; set; } = 6;
-
-        /// <summary>Wait after opening the party menu, before tapping the hatched pokemon's slot.</summary>
-        public int OpenPartyMenuWaitFrames { get; set; } = 107;
-
-        /// <summary>Wait after tapping the party slot, before tapping Summary.</summary>
-        public int SlotTapWaitFrames { get; set; } = 44;
-
-        /// <summary>How long the touch on Summary is held.</summary>
-        public int SummaryTapHoldFrames { get; set; } = 5;
-
-        /// <summary>Wait after tapping Summary before the shiny star (or its absence) is actually rendered.</summary>
-        public int SummaryTapWaitFrames { get; set; } = 156;
-
-        /// <summary>How long the summary stays on screen once it is open, for a human to see it too.</summary>
-        public int SummaryHoldMs { get; set; } = 5000;
-
         /// <summary>Time for the console to come back up after a soft reset, before the continue macro.</summary>
         public int SoftResetDelayMs { get; set; } = 15000;
 
@@ -153,10 +95,6 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>Safety margin after a save so the flush lands before anything else happens.</summary>
         public int PostSaveDelayMs { get; set; } = 10000;
-
-        // Remembered so ValidateTouchCoordinates(), called later than Load(), can still name this
-        // file in its error message.
-        private string sourcePath = DefaultPath;
 
         public static EggHuntConfig Load(string path)
         {
@@ -175,15 +113,12 @@ namespace ShinyBotHunter.BotEvents
             {
                 throw new InvalidOperationException($"Egg hunt config at '{path}' is empty.");
             }
-            config.sourcePath = path;
             config.Validate(path);
             return config;
         }
 
         /// <summary>
-        /// Fails at event start rather than mid-hunt. Only checks values the active flow actually
-        /// touches -- the summary-screen coordinates above are unused right now, so they are not
-        /// checked here; see the note on PokemonMenuTouch.
+        /// Fails at event start rather than mid-hunt. Only checks values the active flow actually touches.
         /// </summary>
         public void Validate(string path)
         {
@@ -205,33 +140,6 @@ namespace ShinyBotHunter.BotEvents
                 throw new InvalidOperationException($"{path}: hatchLow ({HatchLow}) must be less than hatchHigh ({HatchHigh}).");
             }
         }
-
-        /// <summary>
-        /// Checks the summary-screen coordinates. Not called by Load()/Validate() -- the active hunt
-        /// never opens the summary screen, so these are unused; kept callable for whatever eventually
-        /// brings that step back rather than deleted alongside the fields it checks.
-        /// </summary>
-        public void ValidateTouchCoordinates()
-        {
-            if (PartySlotTouch.Count != 6)
-            {
-                throw new InvalidOperationException($"{sourcePath}: partySlotTouch needs six entries, one per party slot; found {PartySlotTouch.Count}.");
-            }
-            for (int i = 0; i < PartySlotTouch.Count; i++)
-            {
-                if (PartySlotTouch[i].X == 0 && PartySlotTouch[i].Y == 0)
-                {
-                    throw new InvalidOperationException($"{sourcePath}: partySlotTouch[{i}] is still (0,0). Measure it against the running game.");
-                }
-            }
-            if (SummaryTouch.X == 0 && SummaryTouch.Y == 0)
-            {
-                throw new InvalidOperationException($"{sourcePath}: summaryTouch is still (0,0). Measure it against the running game.");
-            }
-        }
-
-        /// <summary>Touch point for a 1-based party slot. Unused by the active hunt; see the note above PokemonMenuTouch.</summary>
-        public TouchPoint SlotTouch(int slot) => PartySlotTouch[slot - 1];
 
         /// <summary>The parsed form of <see cref="StartFacing"/>. Validated at load.</summary>
         public Direction StartFacingDirection =>
