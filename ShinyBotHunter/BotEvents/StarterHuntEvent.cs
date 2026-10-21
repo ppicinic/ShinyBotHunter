@@ -409,33 +409,6 @@ namespace ShinyBotHunter.BotEvents
         }
 
         /// <summary>
-        /// Mashes B until the battle is running. The macro repeats indefinitely and is stopped here,
-        /// rather than being a fixed-length press sequence -- a fixed length would be a guess at load
-        /// timing, and would silently desync the moment that guess was wrong.
-        /// </summary>
-        private async Task<bool> AdvanceIntoBattleAsync(CancellationToken cancellationToken)
-        {
-            bot.RunRepeatMacro(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.BattleAdvanceMacro));
-            try
-            {
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
-                while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
-                {
-                    if (await bot.GetBattleState() != 0)
-                    {
-                        return true;
-                    }
-                    await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
-                }
-                return false;
-            }
-            finally
-            {
-                bot.ClearMacro();
-            }
-        }
-
-        /// <summary>
         /// Saves the game after the player has finished the battle, then flushes so the save reaches
         /// disk rather than sitting in the emulator.
         /// </summary>
