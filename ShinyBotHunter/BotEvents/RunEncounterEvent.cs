@@ -6,14 +6,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class RunEncounterEvent : AbstractBotEvent<GameState>
     {
-        public override EventState EventState
-        {
-            get
-            {
-                return EventState.Complete;
-            }
-        }
-
         private EncounterParams param;
         private IBot bot;
         private uint yAddr = 0x21DA6FC;

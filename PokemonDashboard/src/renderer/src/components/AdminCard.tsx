@@ -602,7 +602,7 @@ function DashboardConfigTab(): JSX.Element {
 // EventState enum values matching C# EventState in IBotEvent.cs
 const ACTIONABLE_STATES = new Set([0, 3, 4]) // NotCreated=0, Waiting=3, Complete=4
 
-function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
+function BotControlTab(): JSX.Element {
   const { config, signalR } = useAppContext()
   const [actions, setActions] = useState<EventArgumentOptions[]>([])
   const [loadingActions, setLoadingActions] = useState(true)
@@ -638,9 +638,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     }))
   }
   const [submitting, setSubmitting] = useState<string | null>(null)
-  const [cancelling, setCancelling] = useState<number | null>(null)
+  // Set by a position's Run or Cancel button while its request is pending; one request per position.
+  const [posInFlight, setPosInFlight] = useState<Record<number, 'run' | 'cancel'>>({})
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
-  const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
+  const [feedback, setFeedback] = useState<{ msg: string; isError: boolean; at: number | string } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
 
@@ -840,12 +841,9 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     loadedSwitchPositions.current = current
   }, [switchPositionsKey, apiUrl, loadParty])
 
-  // Expose refresh to parent
-  useEffect(() => {
-    onRefresh // just reference it so the parent can call loadDashboardState
-  }, [onRefresh])
-
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
+    if (posInFlight[pos]) return
+    setPosInFlight((prev) => ({ ...prev, [pos]: 'run' }))
     setFeedback(null)
     try {
       const params = botActionParams[pos]?.[action.name] ?? {}
@@ -881,10 +879,16 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Started "${action.name}" on bot #${pos}`, isError: false })
+      setFeedback({ msg: `Started "${action.name}" on bot #${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
+    } finally {
+      setPosInFlight((prev) => {
+        const next = { ...prev }
+        delete next[pos]
+        return next
+      })
     }
   }
 
@@ -896,6 +900,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
   }
 
   const handleStartAction = async (action: EventArgumentOptions): Promise<void> => {
+    if (submitting !== null) return
     setSubmitting(action.name)
     setFeedback(null)
     try {
@@ -943,18 +948,19 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Started "${action.name}"`, isError: false })
+      setFeedback({ msg: `Started "${action.name}"`, isError: false, at: action.name })
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: action.name })
     } finally {
       setSubmitting(null)
     }
   }
 
   const handleCancelAction = async (pos: number): Promise<void> => {
+    if (posInFlight[pos]) return
+    setPosInFlight((prev) => ({ ...prev, [pos]: 'cancel' }))
     setConfirmCancelPos(null)
-    setCancelling(pos)
     setFeedback(null)
     try {
       const res = await fetch(`${apiUrl}/api/bot/cancelAction`, {
@@ -969,12 +975,16 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
       const newState = await res.json() as BotDashboardState
       setBotState(newState)
       await fetchBotActionsForState(newState)
-      setFeedback({ msg: `Cancelled position ${pos}`, isError: false })
+      setFeedback({ msg: `Cancelled position ${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 3000)
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+      setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
     } finally {
-      setCancelling(null)
+      setPosInFlight((prev) => {
+        const next = { ...prev }
+        delete next[pos]
+        return next
+      })
     }
   }
 
@@ -1018,6 +1028,19 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     })
   }
 
+  // The last message shows next to the position or top-level action it came from.
+  const renderFeedback = (at: number | string): JSX.Element | null => feedback?.at === at ? (
+    <div
+      className={`text-xs rounded px-3 py-2 ${
+        feedback.isError
+          ? 'text-red-400 bg-red-900/20 border border-red-700/30'
+          : 'text-green-400 bg-green-900/20 border border-green-700/30'
+      }`}
+    >
+      {feedback.msg}
+    </div>
+  ) : null
+
   return (
     <div className="p-3 space-y-4">
       {/* Active Emulators */}
@@ -1054,7 +1077,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                         <span className="text-xs text-slate-300">Confirm?</span>
                         <button
                           onClick={() => handleCancelAction(pos)}
-                          disabled={cancelling === pos}
+                          disabled={!!posInFlight[pos]}
                           className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors font-semibold"
                         >
                           Yes
@@ -1069,10 +1092,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                     ) : (
                       <button
                         onClick={() => setConfirmCancelPos(pos)}
-                        disabled={cancelling === pos}
+                        disabled={!!posInFlight[pos]}
                         className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
                       >
-                        {cancelling === pos ? 'Cancelling...' : 'Cancel'}
+                        {posInFlight[pos] === 'cancel' ? 'Cancelling...' : 'Cancel'}
                       </button>
                     )}
                   </div>
@@ -1117,10 +1140,10 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                                 )}
                                 <button
                                   onClick={() => handleRunBotAction(pos, action)}
-                                  disabled={!allFilled}
+                                  disabled={!allFilled || !!posInFlight[pos]}
                                   className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
-                                  Run
+                                  {posInFlight[pos] === 'run' ? 'Running...' : 'Run'}
                                 </button>
                               </div>
                             </div>
@@ -1165,6 +1188,7 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                       })}
                     </div>
                   )}
+                  {renderFeedback(pos)}
                 </li>
               )
             })}
@@ -1279,13 +1303,14 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
                       )}
                       <button
                         onClick={() => handleStartAction(action)}
-                        disabled={isSubmitting || !allParamsFilled}
+                        disabled={submitting !== null || !allParamsFilled}
                         className="px-3 py-1 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                       >
                         {isSubmitting ? 'Starting...' : 'Start'}
                       </button>
                     </div>
                   </div>
+                  {renderFeedback(action.name)}
 
                   {showLegs && actionLegs.map((leg, legIndex) => (
                     <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1.5 space-y-1">
@@ -1350,19 +1375,6 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
           </div>
         )}
       </div>
-
-      {/* Feedback */}
-      {feedback && (
-        <div
-          className={`text-xs rounded px-3 py-2 ${
-            feedback.isError
-              ? 'text-red-400 bg-red-900/20 border border-red-700/30'
-              : 'text-green-400 bg-green-900/20 border border-green-700/30'
-          }`}
-        >
-          {feedback.msg}
-        </div>
-      )}
     </div>
   )
 }
@@ -1791,7 +1803,7 @@ export function AdminCard(): JSX.Element {
       <div className="flex-1 overflow-auto">
         {activeTab === 'config' && <DashboardConfigTab />}
         {activeTab === 'botControl' && (
-          <BotControlTab key={refreshKey} onRefresh={handleRefresh} />
+          <BotControlTab key={refreshKey} />
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
         {activeTab === 'windows' && <WindowLayoutTab />}

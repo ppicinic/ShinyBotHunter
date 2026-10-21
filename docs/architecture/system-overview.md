@@ -64,16 +64,15 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 | `ApiHawk/` | net48 | BizHawk external tool loaded into EmuHawk. Exposes memory reads and input commands over local HTTP. Builds against the custom BizHawk fork below, so it is outside the solution and CI; deployed by `Scripts/deploy-apihawk.ps1`. |
 | BizHawk fork (external) | C# | `ppicinic/BizHawk`, branch `fix/4535-sticky-analog`, built as 2.11.2 with `Dist/BuildRelease.sh`. Not in this repo; see section 8. |
 | `PokemonDashboard/` | Electron + React + TS | Operator UI. Multi-window (admin, phase cards, recent encounters). |
-| `Lua Scripts/` | Lua | Legacy BizHawk integration, replaced by ApiHawk. Scheduled for deletion (plan 1.3). |
 
 ## 4. Backend startup and composition
 
-`Startup.MainAsync` (`Startup.cs:38`) builds the host, registers everything in `CreateServices` (`:360`), then:
+`Startup.MainAsync` builds the host, registers everything in `CreateServices`, then:
 
-1. Starts Discord, the Lua loader (legacy), and the encounter DAO's background writer.
+1. Starts Discord and the encounter DAO's background writer.
 2. Loads metadata caches: Pokemon metadata (Mongo), phase definitions (`Phases/**/*.json` merged into Mongo), ROM inventory (hashes every file under `ROMBaseDirectory`).
 3. Starts the persistence service's two channel consumers and the bot service.
-4. Branches on CLI args: `--parsepokeapi`, `--parsepokemoveapi`, `--migrateinfluxv1tov2`, `--migrateinfluxtopostgresql`, `--generatemapdatahgss`, else runs the web host and blocks on `Console.ReadLine` until `end`.
+4. Setup commands (`--parsepokeapi`, `--generatemapdatahgss <romDataDir> <decompDir> <headerCsv> <outputDir>`) run from `Tools/SetupCommands.cs` before the host is built; otherwise runs the web host and blocks on `Console.ReadLine` until `end`.
 
 Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is **keyed DI by `GameFlavor`** for `IPointerService`, `IPokemonParser` and `IBattlePokemonParser` (`Startup.cs:414-421`), resolved through `GameServices`. Adding a game flavor means adding those registrations plus macros and phase JSON.
 
@@ -89,9 +88,8 @@ All under `/api` (`ApiControllerBase`). Consumers: the dashboard only.
 | `BotController` | `getTopLevelActions` (from `Configs/SpecialEvents/SpecialEvents.json`), `startTopLevelAction` (launch a bot or a multi-emulator hunt), `bot/getDashboardState`, `bot/getBotActions/{pos}`, `bot/getParty/{pos}`, `bot/startAction/{pos}`, `bot/cancelAction` | `BotService` |
 | `PhaseMetadataController` | `phaseinfo/{game}/{phase}[/{gameFileName}]` (phase definition + all counts), `updatePhaseInfo`, `phaseinfo/encounterRate/...` | `PhaseInfoService`, `PokemonPersistenceService`, `IEncounterDao` |
 | `DevController` | location readout and macro recording; every route 404s unless `EnableMacroRecording` | `LocationService`, `MacroRecordingService` |
-| `WeatherForecastController` | template leftover, dead | |
 
-The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it (`BotService.cs:490-513`). This is a good pattern and worth keeping: new bot actions are a new entry in `actionMap` plus a branch in `ExecuteEvent`, with no dashboard code change.
+The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it (`BotService.cs`, `EncounterParameters` and `actionMap`). This is a good pattern and worth keeping: new bot actions are a new entry in `actionMap` plus a branch in `ExecuteEvent`, with no dashboard code change.
 
 **SignalR** (`ElectronHub`, `IElectronClient`): server pushes `ReceiveDashboardConfig`, `ReceiveDashboardState` (bot positions and states) and `RecieveEncounters` (counts for a subscribed `{game}_{phase}` group). Clients call `SubscribeToGamePhase`.
 
@@ -103,7 +101,6 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Two EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
 | MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI) | Three DAOs/services with the raw driver |
-| InfluxDB 3 | legacy encounter store, migration source only | `InfluxDbEncounterDao` (unregistered) |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/`; starter-hunt state JSON via `StarterHuntStateStore` | |
 
 ### Write path
@@ -118,7 +115,7 @@ Dashboard reads never hit the database directly; they read the counts cache. The
 
 ```mermaid
 flowchart TD
-  BC[BotController] --> BS["BotService<br/>Dictionary&lt;int, BotAndOrEvent&gt;"]
+  BC[BotController] --> BS["BotService<br/>ConcurrentDictionary&lt;int, BotAndOrEvent&gt; + SemaphoreSlim gate"]
   BS --> BF[BotFactory]
   BF --> GC["GameContext<br/>ConsoleType / GameFlavor / RomInfo / ports / window slot"]
   BF --> Bot
@@ -139,7 +136,7 @@ flowchart TD
 ```
 
 ### Bot
-`IBot` is `ILauncher + ICommandClient + IMemoryClient + IDataReader + GameFlavor`; `Bot` is pure delegation to those four parts. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry, and `CreateBot` picks the launcher by `BizHawkMode` and the data reader by flavor.
+`IBot` is `ILauncher + ICommandClient + IMemoryClient + IDataReader + GameFlavor`; `Bot` is pure delegation to those four parts. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry, and `CreateBot` builds the ApiHawk launcher and clients and picks the data reader by flavor.
 
 `Bot.LaunchAsync`: start EmuHawk under a reader slot of `BizHawkReaderWriterLock`, wait for its window, fixed 5 s delay, connect both clients, verify the running game code. `DisposeAsync` takes the writer lock so a shutdown never overlaps a launch.
 
@@ -163,11 +160,11 @@ Inputs are macro strings authored as YAML under `Macro/Configs/{flavor}/`, expan
 - `EmulatorGrid` extracted as pure, tested arithmetic.
 
 ### Known weaknesses
-Detailed in the [review](../reviews/2026-10-code-review.md): no synchronisation around `BotService.botEvents`; three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; dead duplicate events; an `IBotEvent.EventState` member that most implementations throw on and nothing reads; a `IDataReader` that RS cannot implement.
+Detailed in the [review](../reviews/2026-10-code-review.md): three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
 
 ## 8. ApiHawk and the emulator boundary
 
-ApiHawk is a BizHawk "external tool" DLL (`BotServer`) loaded into each EmuHawk with `--open-ext-tool-dll=BotServer` (`BizHawkApiHawkLauncher.cs:84`). It replaces the older Lua scripts and gives the backend two loopback HTTP listeners per emulator, ports passed by environment variable (`BotServerTool.cs:102-103`):
+ApiHawk is a BizHawk "external tool" DLL (`BotServer`) loaded into each EmuHawk with `--open-ext-tool-dll=BotServer` (`BizHawkApiHawkLauncher.cs`). It gives the backend two loopback HTTP listeners per emulator, ports passed by environment variable (`BotServerTool.cs:102-103`):
 
 | Server | Transport | Operations |
 |---|---|---|
@@ -194,7 +191,7 @@ Risks found are in the [review](../reviews/2026-10-code-review.md#5-architecture
 
 ## 9. Dashboard
 
-Electron, one `BrowserWindow` per card (admin, recent encounters, one per subscribed game+phase), as laid out in `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md` (whose "no implementation yet" header is stale; it is implemented). Bounds persist to `window-layout.json` so windows can be placed for OBS capture.
+Electron, one `BrowserWindow` per card (admin, recent encounters, one per subscribed game+phase), as laid out in `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md`. Bounds persist to `window-layout.json` so windows can be placed for OBS capture.
 
 - **SignalR** lives only in the main process (`src/main/signalRClient.ts`) and is fanned out to every window over IPC. Reconnect and resubscribe are handled with backoff.
 - **REST** is called directly from each renderer with `fetch` against port 5000. That works only because windows run with `webSecurity: false` and `sandbox: false` (`windowManager.ts:135-136`), originally to load `file://` sprites; the backend has no CORS configuration.
@@ -205,9 +202,9 @@ There is no backend-for-frontend layer and, per [principle 2.3](../engineering-p
 
 ## 10. Cross-cutting
 
-- **Logging:** `Console.WriteLine` throughout; no `ILogger`. Fine for a console-hosted tool, but faults in background loops are easy to miss.
+- **Logging:** `Console.WriteLine` for most output, `ILogger` for the three supervised background loops (`BackgroundLoop.RunSupervisedAsync`), which log a fault with the full exception and restart. Fine for a console-hosted tool.
 - **Error handling:** controllers mostly let exceptions become 500s; `PhaseMetadataController` turns any exception into 404.
-- **Config:** one `ApplicationSettings` class; several keys are legacy (Influx, Lua).
+- **Config:** one `ApplicationSettings` class.
 - **Testing:** hermetic unit tests, no emulator in the loop; see review section 3.
 
 ## 11. Extension axes

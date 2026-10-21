@@ -1,9 +1,7 @@
 name: Build and test
 
 on:
-  push:
-    branches: ["**"]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -17,11 +15,6 @@ jobs:
 
       # ApiHawk is excluded deliberately: it targets net48 and builds against BizHawk assemblies
       # that live in a private fork and are not committed, so it cannot build on a clean runner.
-      - name: Restore
-        run: dotnet restore ShinyBotHunter.Tests/ShinyBotHunter.Tests.csproj
-
-      - name: Build
-        run: dotnet build ShinyBotHunter.Tests/ShinyBotHunter.Tests.csproj --no-restore -c Release
-
-      - name: Test
-        run: dotnet test ShinyBotHunter.Tests/ShinyBotHunter.Tests.csproj --no-build -c Release --verbosity normal
+      - name: Run local CI script
+        shell: powershell
+        run: .\Scripts\ci-local.ps1

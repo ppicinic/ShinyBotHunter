@@ -47,8 +47,6 @@ namespace ShinyBotHunter.BotEvents
         private GameState? sharedState;
         private TaskCompletionSource resumeHappened = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public override EventState EventState => EventState.Complete;
-
         public int[] BotPositions
         {
             get { lock (gate) { return positionsInUse.Count == 0 ? new[] { 0 } : positionsInUse.ToArray(); } }

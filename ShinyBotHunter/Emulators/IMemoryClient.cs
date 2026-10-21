@@ -45,6 +45,7 @@ namespace ShinyBotHunter.Emulators
             int maxSlots,
             int maxRetryFrames,
             PartyAddressing addressing = PartyAddressing.Anchor,
-            PokemonScheme scheme = PokemonScheme.Gen4);
+            PokemonScheme scheme = PokemonScheme.Gen4,
+            CancellationToken ct = default);
     }
 }

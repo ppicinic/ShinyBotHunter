@@ -20,19 +20,6 @@
   "hatchLow": 458,
   "hatchHigh": 500,
 
-  // Touch screen coordinates, 256x192. Measured against the running game.
-  "pokemonMenuTouch": { "x": 45, "y": 75 },
-  "partySlotTouch": [
-    { "x": 60, "y": 25 },
-    { "x": 192, "y": 35 },
-    { "x": 60, "y": 75 },
-    { "x": 192, "y": 85 },
-    { "x": 60, "y": 125 },
-    { "x": 192, "y": 135 }
-  ],
-  "summaryTouch": { "x": 176, "y": 42 },
-
-  "summaryHoldMs": 5000,
   "softResetDelayMs": 15000,
   "postContinueDelayMs": 4000
 }

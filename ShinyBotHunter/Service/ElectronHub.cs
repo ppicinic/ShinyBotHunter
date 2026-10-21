@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.SignalR;
-using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 
 namespace ShinyBotHunter.Service
@@ -20,11 +19,6 @@ namespace ShinyBotHunter.Service
             Console.WriteLine("Updated Dashboards Completed.");
         }
 
-        public async Task SendPokemonEncounterMessageAsync(GameEncounterResponse pokemon, GameFlavor game, string phase)
-        {
-            await Clients.Group(BuildGroupName(game, phase)).RecieveEncounters(pokemon);
-        }
-
         public async Task SubscribeToGamePhase(string game, string phase)
         {
             try
@@ -40,7 +34,6 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        private string BuildGroupName(GameFlavor game, string phase) => BuildGroupName(game.ToString(), phase);
         private string BuildGroupName(string game, string phase) => $"{game}_{phase}";
     }
 }

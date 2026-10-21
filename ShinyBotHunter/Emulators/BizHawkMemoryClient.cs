@@ -1,5 +1,4 @@
-﻿using ShinyBotHunter.Context;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net.Http;
 
 namespace ShinyBotHunter.Emulators
@@ -15,18 +14,9 @@ namespace ShinyBotHunter.Emulators
         // Sentinel count the server sends when a validated party read exhausted its frame budget.
         private const byte PartyUnavailable = 0xFF;
 
-        private bool localMemoryOnly;
-
-        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 20001, bool localMemoryOnly = true)
+        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 20001)
             : base("BizHawkMemoryClient", host, port, TimeSpan.FromSeconds(15))
         {
-            this.localMemoryOnly = localMemoryOnly;
-        }
-
-        public BizHawkMemoryClient(GameContext context, bool localMemoryOnly = true)
-            : base("BizHawkMemoryClient", "127.0.0.1", context.MemoryPort, TimeSpan.FromSeconds(15))
-        {
-            this.localMemoryOnly = localMemoryOnly;
         }
 
         protected override void Disconnect()
@@ -101,7 +91,8 @@ namespace ShinyBotHunter.Emulators
             int maxSlots,
             int maxRetryFrames,
             PartyAddressing addressing = PartyAddressing.Anchor,
-            PokemonScheme scheme = PokemonScheme.Gen4)
+            PokemonScheme scheme = PokemonScheme.Gen4,
+            CancellationToken ct = default)
         {
             // [cmd][anchor:4][unused:4][countOffset:4][slotsOffset:4][slotSize:4][slotStride:4][maxSlots:1][maxRetryFrames:2][addressing:1][scheme:1]
             // The last two bytes are a later addition; an emulator-side tool built before them treats
@@ -117,7 +108,7 @@ namespace ShinyBotHunter.Emulators
             body[28] = (byte)addressing;
             body[29] = (byte)scheme;
 
-            byte[] result = await PostAsync(body);
+            byte[] result = await PostAsync(body, ct);
             EnsureOpcodeSupported(result, 0x04);
 
             int count = result[0];
@@ -145,15 +136,15 @@ namespace ShinyBotHunter.Emulators
             return slots;
         }
 
-        private async Task<byte[]> PostAsync(byte[] body)
+        private async Task<byte[]> PostAsync(byte[] body, CancellationToken ct = default)
         {
             return await ExecuteWithRetryAsync(async () =>
             {
                 using var content = new ByteArrayContent(body);
-                using var resp = await _http.PostAsync("", content).ConfigureAwait(false);
+                using var resp = await _http.PostAsync("", content, ct).ConfigureAwait(false);
                 resp.EnsureSuccessStatusCode();
-                return await resp.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-            });
+                return await resp.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+            }, ct);
         }
 
         /// <summary>
@@ -166,8 +157,7 @@ namespace ShinyBotHunter.Emulators
             {
                 throw new InvalidOperationException(
                     $"Memory server returned an empty body for opcode 0x{cmd:X2}. The running BotServer.dll " +
-                    "predates this opcode -- rebuild ApiHawk and copy BotServer.dll into BizHawk's ExternalTools folder. " +
-                    "(BizHawkMode 'LuaNet' does not implement it at all.)");
+                    "predates this opcode -- rebuild ApiHawk and copy BotServer.dll into BizHawk's ExternalTools folder.");
             }
         }
 

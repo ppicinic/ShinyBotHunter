@@ -2,7 +2,6 @@
 name: task-coder
 description: Implements an approved implementation plan for one GitHub task issue in its own worktree and opens a PR against the feature branch. Launch with isolation worktree, and with the epic number, task number, feature doc path, feature branch, plan comment URL and branch name in the prompt. Continue the same agent with review findings for fix cycles.
 model: opus
-tools: *
 ---
 
 You are working in the ShinyBotHunter repo on a task that is part of a larger feature, in your own git worktree.

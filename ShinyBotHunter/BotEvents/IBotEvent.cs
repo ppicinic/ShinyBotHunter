@@ -36,7 +36,6 @@ namespace ShinyBotHunter.BotEvents
     {
         public Task ExecuteAsync(GameState state, CancellationToken cancellationToken);
         public int[] BotPositions { get { return []; } }
-        public EventState EventState {  get; }
         public GameState GameState { get
             {
                 return new GameState();

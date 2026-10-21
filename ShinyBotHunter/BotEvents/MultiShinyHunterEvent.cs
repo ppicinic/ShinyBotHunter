@@ -30,13 +30,6 @@ namespace ShinyBotHunter.BotEvents
         Finished = 4,
     }
 
-    public enum ShinyBotState
-    {
-        CreateSave,
-        ShinyHunt,
-        Finish
-    }
-
     public class ShinyStarterGameState : BaseGameState
     {
         // Persist to MongoDB
@@ -52,7 +45,6 @@ namespace ShinyBotHunter.BotEvents
     {
         private ShinyStarterGameState gameState = new ShinyStarterGameState() { Name = "Blank"};
         private int maxEmulators;
-        private static readonly object _locker=new object();
         private IServiceProvider serviceProvider;
         private BotFactory botFactory;
         private RomInfoService romInfoService;
@@ -60,13 +52,6 @@ namespace ShinyBotHunter.BotEvents
         private IMongoCollection<BaseGameState> _collection;
 
 
-        public override EventState EventState 
-        { 
-            get 
-            { 
-                return EventState.Complete;  
-            } 
-        }
         public int[] BotPositions 
         { 
             get 
@@ -190,14 +175,6 @@ namespace ShinyBotHunter.BotEvents
                     await SaveStateAsync(gameState);
                     await cancellationTokenSource.CancelAsync();
                     await Task.WhenAll(tasks); // might throw exception, might need to this in a try/catch
-                                               //foreach(var bot in bots) 
-                                               //{
-                                               //    try
-                                               //    {
-                                               //        await bot.DisposeAsync();
-                                               //    }
-                                               //    catch { }
-                                               //}
                     await Task.Delay(20000);
                 }
             }

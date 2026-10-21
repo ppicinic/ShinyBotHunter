@@ -513,15 +513,6 @@ namespace ShinyBotHunter.Pathfinding
             return CreateMacro(path, destGameMapIds, overshootFinalStep);
         }
 
-        // Returns the first graph node on fromMapRawId that has a cross-map edge leading
-        // to destMapRawId. Used as a fallback when the navigation path has a direct
-        // cross-map edge with no intermediate portal node recorded.
-        public Node? FindPortalToMap(int fromMapRawId, int destMapRawId)
-        {
-            var nodes = graphService.GetNodesFromMap(fromMapRawId);
-            return nodes.FirstOrDefault(n => n.Edges.Any(e => e.ToNode.MapId == destMapRawId));
-        }
-
         // Scans the 4 tiles adjacent to (nodeX, nodeY) for a portal tile, preferring the
         // one in the direction of travel from the player's current position (x, y).
         public (int X, int Y)? GetAdjacentPortalTarget(int mapId, int nodeX, int nodeY, int x, int y)
@@ -557,15 +548,6 @@ namespace ShinyBotHunter.Pathfinding
             return best;
         }
 
-        //public List<MapPoint> GetAllWarpWeights(int mapId, int startX, int startY, Capability capability, byte facing)
-        //{
-        //    List<MapPoint> mapPoints = new List<MapPoint>();
-        //    List<Task<MapPoint?>> tasks = new List<Task<MapPoint?>>();
-        //    Map map = mapService.GetMap(mapId);
-        //    map
-        //    return mapPoints;
-        //}
-        
         public MapPoint? ASearch(int mapId, int startX, int startY, int destX, int destY, Capability capability, byte facing, bool internalId = false, IReadOnlyDictionary<(int X, int Y), int>? tilePenalties = null)
         {
             Map map = mapService.GetMap(mapId, internalId);

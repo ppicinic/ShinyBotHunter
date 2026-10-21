@@ -5,7 +5,6 @@ using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
-using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -23,7 +22,6 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
         } = new GameState();
-        public override EventState EventState => throw new NotImplementedException();
 
         // The catch check is the one read worth waiting a long time for -- see
         // ReadStateForCatchCheckAsync.
@@ -100,9 +98,7 @@ namespace ShinyBotHunter.BotEvents
                 else if(topState == EventState.Encountering)
                 {
                     // Dispatch on the configured type. This used to always build a RunEncounterEvent,
-                    // so picking Spin quietly paced an axis instead. EncounterEventTypeFactory looks
-                    // like the obvious fix but its Run branch returns RunEncounterEventDeprecated,
-                    // which would swap the current implementation out from under Run.
+                    // so picking Spin quietly paced an axis instead.
                     // The two report different result types, so they only meet at the non-generic
                     // IBotEvent -- which is fine, the result was always discarded here.
                     IBotEvent encounter = encounterParams.type == EncounterType.Spin

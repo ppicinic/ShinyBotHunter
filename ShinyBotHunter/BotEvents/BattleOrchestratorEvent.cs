@@ -9,20 +9,15 @@ using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
-using ShinyBotHunter.Services;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using YamlDotNet.Core;
-using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
 
 namespace ShinyBotHunter.BotEvents
 {
     public class BattleOrchestratorEvent : AbstractBotEvent<GameState>
     {
-        public override EventState EventState {
-            get => EventState.NotStarted;
-        }
         private static readonly Dictionary<int, string> MoveShorthands = new Dictionary<int, string>()
         {
             { 0, "MoveOne" },
@@ -126,7 +121,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (topState == EventState.PokemonDataPending)
                 {
-                    await PokemonDataPending(state);
+                    await PokemonDataPending(state, cancellationToken);
                 }
                 else if (topState == EventState.DecideAction)
                 {
@@ -134,15 +129,15 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (topState == EventState.Fight)
                 {
-                    await SelectMove(state);
+                    await SelectMove(state, cancellationToken);
                 }
                 else if (topState == EventState.SwitchPokemon)
                 {
-                    await SwitchPokemon(state);
+                    await SwitchPokemon(state, cancellationToken);
                 }
                 else if (topState == EventState.WaitForMovesEnd)
                 {
-                    await WaitForMoveEnd(state);
+                    await WaitForMoveEnd(state, cancellationToken);
                 }
                 else if (topState == EventState.OurPokemonFainted || topState == EventState.BothPokemonFainted)
                 {
@@ -156,29 +151,29 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (topState == EventState.LevelUp)
                 {
-                    await ProcessLevelUp(state);
+                    await ProcessLevelUp(state, cancellationToken);
                 }
                 else if (topState == EventState.EvolutionInit)
                 {
-                    await EvolutionInit(state);
+                    await EvolutionInit(state, cancellationToken);
                 }
                 else if(topState == EventState.Flee)
                 {
-                    await Flee(state);
+                    await Flee(state, cancellationToken);
                 }
             }
             state.BattleState = null;
             return state;
         }
 
-        private async Task Flee(GameState state)
+        private async Task Flee(GameState state, CancellationToken ct)
         {
             state.Bot.RunMacroString("W.10;S.Run.3;W.5;");
-            await state.Bot.WaitForMacroAsync();
+            await state.Bot.WaitForMacroAsync(ct);
             state.SwapState(EventState.WaitForMovesEnd);
         }
 
-        private async Task EvolutionInit(GameState state)
+        private async Task EvolutionInit(GameState state, CancellationToken ct)
         {
             Console.WriteLine("start evolution");
             List<WrappedEvolutionMetadata> evolutions = new List<WrappedEvolutionMetadata>();
@@ -197,7 +192,7 @@ namespace ShinyBotHunter.BotEvents
             foreach(var evo in evolutions)
             {
                 state.Bot.RunMacroString(EvolutionMacro);
-                await state.Bot.WaitForMacroAsync();
+                await state.Bot.WaitForMacroAsync(ct);
 
                 // Evolution changes species/stats but not level or known moves, so evo.Pokemon
                 // (captured before the evolution animation ran) still accurately reflects the
@@ -210,7 +205,7 @@ namespace ShinyBotHunter.BotEvents
                 newMoves.RemoveAll(m => evo.Pokemon.Moves.Any(k => k.Id == m.Id));
                 newMoves.Sort();
 
-                await ProcessEvolutionMoveLearning(state, evo.Pokemon, newMoves);
+                await ProcessEvolutionMoveLearning(state, evo.Pokemon, newMoves, ct);
 
                 // Refresh via the real party read, not the battle-state one -- the enemy is
                 // long gone by this point in the flow, so there's nothing for the battle
@@ -226,14 +221,14 @@ namespace ShinyBotHunter.BotEvents
             state.SwapState(EventState.EnemyFainted);
         }
 
-        private async Task ProcessLevelUp(GameState state)
+        private async Task ProcessLevelUp(GameState state, CancellationToken ct)
         {
             var newState = await reader.GetPokemonBattleState(state.Bot);
             Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
             state.Bot.RunMacroString(LevelUpAdvanceMacro);
-            await state.Bot.WaitForMacroAsync();
+            await state.Bot.WaitForMacroAsync(ct);
             if (levelUp is not null)
             {
                 Console.WriteLine($"[LevelUp] {levelUp.Name} reached level {levelUp.Level}");
@@ -244,14 +239,14 @@ namespace ShinyBotHunter.BotEvents
                 newMoves.RemoveAll(m => levelUp.Moves.Any(k => k.Id == m.Id));
                 newMoves.Sort();
                 Console.WriteLine($"[LevelUp] moves to learn: {(newMoves.Count == 0 ? "none" : string.Join(", ", newMoves.Select(m => m.Name)))}");
-                levelUp = await ProcessMoveLearning(state, levelUp, newMoves);
+                levelUp = await ProcessMoveLearning(state, levelUp, newMoves, ct);
                 Console.WriteLine("[LevelUp] move learning done, checking evolutions");
                 ProcessEvolutions(levelUp, metadata, state, state.BattleState!);
             }
             state.SwapState(EventState.EnemyFainted);
         }
 
-        private async Task<PokemonData> ProcessMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves)
+        private async Task<PokemonData> ProcessMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves, CancellationToken ct)
         {
             // Reads are safe in the in-battle learn-move flow (unlike the evolution flow), so
             // every iteration starts from a fresh read. ApplyLearnedMove additionally records
@@ -290,18 +285,18 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // replace move.
                     state.Bot.RunMacroString(LevelUpPrePromptMacro);
-                    await state.Bot.WaitForMacroAsync();
+                    await state.Bot.WaitForMacroAsync(ct);
                     int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                     if(moveId == -1)
                     {
                         state.Bot.RunMacroString($"W.5;{DoNotLearnMacro}");
-                        await state.Bot.WaitForMacroAsync();
+                        await state.Bot.WaitForMacroAsync(ct);
                     }
                     else
                     {
                         string moveStr = MoveShorthands[moveId];
                         state.Bot.RunMacroString($"W.5;{string.Format(LearnMoveMacroTemplate, moveStr)}");
-                        await state.Bot.WaitForMacroAsync();
+                        await state.Bot.WaitForMacroAsync(ct);
                         ApplyLearnedMove(pokemon, moveId, newMove);
                     }
                 }
@@ -311,14 +306,14 @@ namespace ShinyBotHunter.BotEvents
                     // needs the "Pokemon learned Move!" text advanced.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
                     state.Bot.RunMacroString($"{LevelUpPrePromptMacro};{FreeSlotMacro}");
-                    await state.Bot.WaitForMacroAsync();
+                    await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                 }
             }
             return pokemon;
         }
 
-        private async Task<PokemonData> ProcessEvolutionMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves)
+        private async Task<PokemonData> ProcessEvolutionMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves, CancellationToken ct)
         {
             // No memory reads in here: we're inside the evolution menus, where party state is
             // not readable. ApplyLearnedMove keeps pokemon.Moves accurate across multiple moves
@@ -350,7 +345,7 @@ namespace ShinyBotHunter.BotEvents
                     // slot has no move metadata to name it.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
                     state.Bot.RunMacroString(EvolutionFreeSlotMacro);
-                    await state.Bot.WaitForMacroAsync();
+                    await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                     continue;
                 }
@@ -358,13 +353,13 @@ namespace ShinyBotHunter.BotEvents
                 if(moveId == -1)
                 {
                     state.Bot.RunMacroString($"W.5;{EvolutionDoNotLearnMacro}");
-                    await state.Bot.WaitForMacroAsync();
+                    await state.Bot.WaitForMacroAsync(ct);
                 }
                 else
                 {
                     string moveStr = MoveShorthands[moveId];
                     state.Bot.RunMacroString($"W.5;{string.Format(EvolutionLearnMoveMacroTemplate, moveStr)}");
-                    await state.Bot.WaitForMacroAsync();
+                    await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, moveId, newMove);
                 }
             }
@@ -431,7 +426,7 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        private bool WillEvolve(PokemonData levelUp, EvolutionMetadata evolutionMetadata, PokemonBattleState battleState)
+        internal static bool WillEvolve(PokemonData levelUp, EvolutionMetadata evolutionMetadata, PokemonBattleState battleState)
         {
             if(evolutionMetadata.MinLevel is not null && levelUp.Level < evolutionMetadata.MinLevel)
             {
@@ -483,8 +478,6 @@ namespace ShinyBotHunter.BotEvents
                 return false;
             }
             if(evolutionMetadata.MinBeauty is not null && levelUp.Beauty < evolutionMetadata.MinBeauty)
-            // TODO remove - block auto making a level up for the conditions we haven't checked yet.
-            if(evolutionMetadata.MinLevel is null)
             {
                 return false;
             }
@@ -539,13 +532,13 @@ namespace ShinyBotHunter.BotEvents
             return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
         }
 
-        private PokemonData? GetLevelUp(PokemonBattleState oldState, PokemonBattleState? newState)
+        internal static PokemonData? GetLevelUp(PokemonBattleState oldState, PokemonBattleState? newState)
         {
             if(newState is null)
             {
                 return null;
             }
-            for(int i = 0; i < oldState.PartyPokemon.Count(); i++)
+            for(int i = 0; i < Math.Min(oldState.PartyPokemon.Count, newState.PartyPokemon.Count); i++)
             {
                 if (newState.PartyPokemon[i].Level > oldState.PartyPokemon[i].Level)
                 {
@@ -555,9 +548,9 @@ namespace ShinyBotHunter.BotEvents
             return null;
         }
 
-        private async Task WaitForMoveEnd(GameState state)
+        private async Task WaitForMoveEnd(GameState state, CancellationToken cancellationToken)
         {
-            using var cts = new CancellationTokenSource();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             CancellationToken ct = cts.Token;
 
             // Poll each end-of-move condition concurrently and act on whichever trips first.
@@ -570,14 +563,21 @@ namespace ShinyBotHunter.BotEvents
             };
 
             (EventState next, PokemonBattleState? bs)? outcome = null;
-            while (outcome is null && tasks.Count > 0)
+            try
             {
-                var finished = await Task.WhenAny(tasks);
-                tasks.Remove(finished);
-                outcome = await finished; // non-null: this task detected its condition
+                while (outcome is null && tasks.Count > 0)
+                {
+                    var finished = await Task.WhenAny(tasks);
+                    tasks.Remove(finished);
+                    outcome = await finished; // non-null: this task detected its condition
+                }
             }
-
-            cts.Cancel(); // stop the losing polls
+            finally
+            {
+                // Stop the losing polls and let them finish before the using disposes the source.
+                cts.Cancel();
+                await Task.WhenAll(tasks);
+            }
 
             if (outcome is null)
                 return;
@@ -613,7 +613,7 @@ namespace ShinyBotHunter.BotEvents
                     {
                         if (await state.Bot.GetBattleMenuState() == 1)
                         {
-                            var battleState = await reader.GetPokemonBattleState(state.Bot);
+                            var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                             if (battleState is not null)
                                 return (EventState.DecideAction, battleState);
                         }
@@ -631,7 +631,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        var battleState = await reader.GetPokemonBattleState(state.Bot);
+                        var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                         if (battleState is not null)
                         {
                             if (battleState.ActivePokemon.HP == 0)
@@ -694,7 +694,7 @@ namespace ShinyBotHunter.BotEvents
             return total;
         }
 
-        private async Task SelectMove(GameState state)
+        private async Task SelectMove(GameState state, CancellationToken ct)
         {
             int move = damageService.PickBestMove(state.BattleState!);
             if(move == -1)
@@ -706,7 +706,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 string moveStr = MoveShorthands[move];
                 state.Bot.RunMacroString($"W.5;S.{moveStr};W.10;S.{moveStr}");
-                await state.Bot.WaitForMacroAsync();
+                await state.Bot.WaitForMacroAsync(ct);
                 state.State.Pop();
                 state.State.Push(EventState.WaitForMovesEnd);
             }
@@ -723,7 +723,7 @@ namespace ShinyBotHunter.BotEvents
         /// battler and nothing in the log to say so. A mistimed macro now retries and, if it keeps
         /// failing, flees loudly instead of quietly training the wrong pokemon.
         /// </summary>
-        private async Task SwitchPokemon(GameState state)
+        private async Task SwitchPokemon(GameState state, CancellationToken ct)
         {
             int battlerIndex = state.SwitchSlot!.Value - 1;
             uint expectedPid = state.BattleState!.PartyPokemon[battlerIndex].PID;
@@ -731,7 +731,7 @@ namespace ShinyBotHunter.BotEvents
 
             string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, SwitchSlotMacros[state.SwitchSlot!.Value]);
             state.Bot.RunMacroString(macro);
-            await state.Bot.WaitForMacroAsync();
+            await state.Bot.WaitForMacroAsync(ct);
 
             SwitchOutcome outcome = await WaitForSwitchAsync(state, expectedPid);
             if (outcome == SwitchOutcome.Landed)
@@ -800,7 +800,7 @@ namespace ShinyBotHunter.BotEvents
             return SwitchOutcome.NotLanded;
         }
 
-        private async Task PokemonDataPending(GameState state)
+        private async Task PokemonDataPending(GameState state, CancellationToken ct)
         {
             IBot bot = state.Bot;
             uint anchor = await bot.ReadUIntAsync(0x21D4158);
@@ -845,9 +845,9 @@ namespace ShinyBotHunter.BotEvents
             bot.ClearMacro();
             try
             {
-                await bot.WaitForMacroAsync();
+                await bot.WaitForMacroAsync(ct);
                 bot.RunMacroString("W.5"); // TODO tune this. the menu flag is available before we can actually press so we want to wait by frame not real time.
-                await bot.WaitForMacroAsync();
+                await bot.WaitForMacroAsync(ct);
                 state.BattleState = await reader.GetPokemonBattleState(bot);
                 state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
                 // New battle -- the trainee is back out front, so we owe another switch.

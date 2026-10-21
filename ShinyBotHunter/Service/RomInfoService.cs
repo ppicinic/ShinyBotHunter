@@ -152,9 +152,6 @@ namespace ShinyBotHunter.Service
         public IReadOnlyList<RomInfo> FindByGame(string gameName)
             => GetAll().Where(r => string.Equals(r.GameName, gameName, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        public IReadOnlyList<RomInfo> FindByFlavor(GameFlavor flavor)
-            => GetAll().Where(r => r.Flavor == flavor).ToList();
-
         private RomInfo? TryRead(string path)
         {
             FileInfo fi = new(path);

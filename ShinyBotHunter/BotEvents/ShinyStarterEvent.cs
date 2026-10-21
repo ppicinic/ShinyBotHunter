@@ -1,6 +1,5 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -19,14 +18,6 @@ namespace ShinyBotHunter.BotEvents
             this.flavor = flavor;
             this.parser = parser;
             this.encounterService = encounterService;
-        }
-
-        public override EventState EventState
-        {
-            get
-            {
-                return EventState.Complete;
-            }
         }
 
         public int[] BotPositions { get { return []; } }

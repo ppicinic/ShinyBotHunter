@@ -1,7 +1,7 @@
 # Cleanup and Hardening Plan
 
-Status: Draft
-Last updated: 2026-10-17
+Status: Phases 0 to 2 implemented (2026-10-21, epic #30); phases 3 to 6 open
+Last updated: 2026-10-21
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
 ## Goal
@@ -36,9 +36,9 @@ Outcome: the repo only contains code that runs. Net negative lines. Each bullet 
 | 1.2 | Duplicate events | Delete `WildPokemonEncounterEvent`, `RunEncounterEventDeprecated`, `EncounterEventTypeFactory` (and its registration); point anything using the factory at `RunEncounterEvent`. | 1.1 | S | Builds; a wild encounter still runs (manual check). |
 | 1.3 | Lua path | Delete `Lua Scripts/`, `BizHawkLuaLoader`, `BizHawkLauncher` (the Lua one), `Emulators/BizHawkClient.cs`, `BizHawkMode` and `LuaBaseDirectory` settings and the branch in `BotFactory`. `BizHawkApiHawkLauncher` becomes the only launcher. | 1.1 | M | Builds; launch works; `ApplicationSettings` has no Lua keys. |
 | 1.4 | InfluxDB | Delete `Persistence/InfluxDb/`, `Scripts/MigrateInfluxToPostgres.cs`, the `MigrateInfluxSchemav1Tov2` class, both `--migrateinflux*` CLI modes, the `InfluxDB3.Client` package, `InfluxDbUrl`/`InfluxDbDatabase`/`InfluxToken` settings. | 1.1 | S | Builds; `IEncounterDao` has one implementation. |
-| 1.5 | Setup scripts out of `Startup` | `PokeApiParser` and `Scripts/Maps/*` stay (they set up metadata and map data on a new PC). Move the CLI branching into a `Tools/SetupCommands.cs` entry that runs before the host and without starting Discord or the bot service; make the `D:\\...` input paths arguments; collapse the duplicate `--parsepokemoveapi` flag; delete `MapHeaderProcessor` and `ExtractMovePermissionsFile`. | 1.1 | M | `dotnet run -- --parsepokeapi` works on a machine with only Mongo running; `Startup.MainAsync` is the host plus one `if (SetupCommands.TryRun(args))`. |
+| 1.5 | Setup scripts out of `Startup` | `PokeApiParser` and `Scripts/Maps/*` stay (they set up metadata and map data on a new PC). Move the CLI branching into a `Tools/SetupCommands.cs` entry that runs before the host and without starting Discord or the bot service; make the `D:\\...` input paths arguments; collapse the duplicate `--parsepokemoveapi` flag; delete `MapHeaderProcessor`; keep `ExtractMovePermissionsFile` and call it as the map command's first step (it produces the MovePermissions input). | 1.1 | M | `dotnet run -- --parsepokeapi` works on a machine with only Mongo running; `Startup.MainAsync` is the host plus one `SetupCommands.TryRunAsync(args)` early exit. |
 | 1.6 | Dead members | `IBotEvent.EventState` and every throwing override; `Bot.Reader`; `ChainedOrchestratorEvent.legLock`; `MultiShinyHunterEvent._locker`; `HgssPokemonParser.cache`; `EggHuntConfig` summary fields and `ShowSummaryAsync`; `BizHawkLauncher.ArrangeWindowsAsync` (if not already gone with 1.3); unused TS types in `types/api.ts`; the no-op "expose refresh" effect in `AdminCard.tsx`. | 1.2, 1.3 | S | Builds; tests pass. |
-| 1.6b | Smaller finds from the sweep | `WeatherForecast.cs`, `ShinyBotHunter.http`; `Scripts/Maps/MapHeaderProcessor.cs` and `MapProcessor.ExtractMovePermissionsFile`; uncalled methods (`RsDataReader.GetPartyCount`, `RomInfoService.FindByFlavor`, `LegalityService.LogVerdict`, `PathfindingService.FindPortalToMap`, `StarterHuntEvent.AdvanceIntoBattleAsync`, both `WriteToQueue`); unused fields (`BotService.bizHawkMode`, `BizHawkMemoryClient.localMemoryOnly`); nested `ShinyBotState`, `GraphData`, `MapValues`; `TogepiEgg.json` summary-touch keys; commented blocks listed in the review; `Microsoft.AspNetCore.OpenApi` and direct `Npgsql` package refs; add an explicit `Newtonsoft.Json` reference; remove the duplicate `SmogonDamageService.DisposeAsync` call; move `ShinyAlertService` to namespace `ShinyBotHunter.Service`. | 1.1 | S | Builds; tests pass. |
+| 1.6b | Smaller finds from the sweep | `WeatherForecast.cs`, `ShinyBotHunter.http`; `Scripts/Maps/MapHeaderProcessor.cs`; uncalled methods (`RsDataReader.GetPartyCount`, `RomInfoService.FindByFlavor`, `LegalityService.LogVerdict`, `PathfindingService.FindPortalToMap`, `StarterHuntEvent.AdvanceIntoBattleAsync`, both `WriteToQueue`); unused fields (`BotService.bizHawkMode`, `BizHawkMemoryClient.localMemoryOnly`); nested `ShinyBotState`, `GraphData`, `MapValues`; `TogepiEgg.json` summary-touch keys; commented blocks listed in the review; `Microsoft.AspNetCore.OpenApi` and direct `Npgsql` package refs; add an explicit `Newtonsoft.Json` reference; remove the duplicate `SmogonDamageService.DisposeAsync` call; move `DiscordBotService` to namespace `ShinyBotHunter.Service`. | 1.1 | S | Builds; tests pass. |
 | 1.6c | Duplicate metadata classes | Delete the `PokemonMetadata`/`EvolutionMetadata`/`PokemonFormMetadata` copies in `Scripts/PokeApiParser.cs` and have the scraper use the runtime classes from `Persistence/MongoDb/`. Keeps the scraper and the app writing the same shape. | 1.5 | S | One definition of each class. |
 | 1.7 | Stale docs and files | `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md` header to "Implemented"; `README.md` grid section; stray `electron.vite.config.*.mjs`; the `ApiHawk.csproj` "manually copy" comment. | — | S | |
 
@@ -153,3 +153,13 @@ All on feature branches off `main`, merged after the local script passes. Databa
 ## Open questions
 Collected from above:
 All answered on 2026-10-17 and recorded in [decisions](../decisions/global.md). None remain.
+
+## Implementation notes, phases 0 to 2 (2026-10-21)
+Done on `feature/cleanup-hardening` under epic #30, one task issue per row or row group (#31 to #47). Where the work diverged from the rows above:
+- 1.5: `ExtractMovePermissionsFile` was kept, not deleted; it is the only producer of the MovePermissions files the map generator reads, so the map command now runs it first.
+- 1.6: `IBotEvent.EventState` had overrides in five more files than the review table listed; all were removed.
+- 1.6b: the file in the plural `Services` namespace was `DiscordBotService`, not `ShinyAlertService`.
+- 2.2: readers of the bot registry stay lock-free on a `ConcurrentDictionary`; only writers take the `SemaphoreSlim`, because events call the readers from inside their own loops. Position allocation still ignores registry keys (a launch onto a taken key now throws instead of overwriting); fixing the allocation is a follow-up.
+- 2.7: the token reaches `ReadValidatedPartyAsync`, `FlushSave` and the battle-state read; `GetBattleValue`, `GetBattleMenuState` and `ReadBytesViaPointerAsync` still take none, so a cancel on a dead emulator can still take several seconds. Follow-up.
+- 4.8 was folded in; 1.6c was folded into 1.5.
+- The manual checks named in the testing strategy (one HGSS wild encounter, one RS starter wave, the map command on a real extraction) were not run by the agents and are for the owner before the merge to `main`.

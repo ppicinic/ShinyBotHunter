@@ -19,13 +19,6 @@ namespace ShinyBotHunter.BotEvents
             directions.Enqueue(1);
             directions.Enqueue(3);
         }
-        public override EventState EventState
-        {
-            get
-            {
-                return EventState.Complete;
-            }
-        }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
@@ -59,8 +52,6 @@ namespace ShinyBotHunter.BotEvents
                 // The orchestrator expects the encounter event to advance the state itself, the same
                 // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
                 // the stack, so the next loop spun again on top of the battle instead of fighting it.
-                // The bool is still returned for WildPokemonEncounterEvent, which drives its own
-                // state machine from it.
                 state.State.Pop();
                 // TODO we should go into Waiting if its a non wild battle
                 state.State.Push(EventState.BattleStart);

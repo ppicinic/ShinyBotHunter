@@ -63,8 +63,6 @@ namespace ShinyBotHunter.Bot
 
         public GameFlavor GameFlavor => this.context?.GameFlavor ?? GameFlavor.HGSS;
 
-        public IDataReader Reader => throw new NotImplementedException();
-
         public void HoldFrames(string button, int frames)
         {
             this.commandClient.HoldFrames(button, frames);
@@ -162,9 +160,9 @@ namespace ShinyBotHunter.Bot
         }
 
         public async Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
-            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4)
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default)
         {
-            return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme);
+            return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme, ct);
         }
 
         public void Release()
@@ -187,24 +185,6 @@ namespace ShinyBotHunter.Bot
             await this.launcher.RepositionAsync(placement);
         }
 
-        //public async Task<IBot> Run()
-        //{
-        //    if (!File.Exists($"C:\\ROMs\\{this.game}{this.gameId}.nds"))
-        //    {
-        //        File.Copy($"C:\\ROMs\\{this.game}.nds", $"C:\\ROMs\\{this.game}{this.gameId}.nds");
-        //    }
-        //    await launcher.Launch();
-        //    Console.WriteLine($"Waiting on emu: {this.gameId}");
-        //    await Task.Delay(16000);
-        //    Console.WriteLine($"Connecting to emu on: {this.gameId} via port: {this.commandPort}");
-        //    commandClient.Connect();
-        //    memoryClient.Connect();
-        //    Console.WriteLine($"Executing Create Save Macro on emu: {this.gameId}");
-        //    commandClient.RunMacroString(MacroRegistry.Instance.GetMacro(MacroFlavor.HGSS, "CreateNewSave"));
-        //    await commandClient.WaitForMacroAsync();
-        //    return this;
-        //}
-
         public void RunMacroString(string macro)
         {
             this.commandClient.RunMacroString(macro);
@@ -222,7 +202,7 @@ namespace ShinyBotHunter.Bot
 
         public async Task FlushSave(CancellationToken ct = default)
         {
-            await this.commandClient.FlushSave();
+            await this.commandClient.FlushSave(ct);
         }
 
         public async Task WaitForMacroAsync(CancellationToken ct = default)
