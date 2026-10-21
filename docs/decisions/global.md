@@ -153,7 +153,7 @@ Status: Accepted
 Date: 2026-10-17
 
 ### Context
-The pointer services hold one address set per game. The ROMs hunted today are revision 1.1 or 1.2. Gen 3 RAM layouts differ between revisions, and a future hunt (Jirachi, for example) may need a different one. `RomInfoService` already reports the revision at launch.
+The pointer services hold one address set per game. The ROMs hunted today are RS revision 1.1 or 1.2 and HGSS revision 1.0 (header revision 0). Gen 3 RAM layouts differ between revisions, and a future hunt (Jirachi, for example) may need a different one. `RomInfoService` already reports the revision at launch.
 
 ### Decision
 The game profile (plan 5.3) keys address tables by `(flavor, revision)` where a revision differs. Only the revision in use today is mapped; adding another is a separate decision when a hunt needs it. A profile with no table for the launched revision refuses the launch with a clear message rather than running with the wrong addresses.

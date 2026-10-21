@@ -1,82 +1,223 @@
 # Research Spike: Better Pointers From the ROMs
 
-Status: Draft
-Last updated: 2026-10-17
-Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [QA automation](../specs/qa-automation.md), [System architecture](../architecture/system-overview.md)
+Status: HGSS battle and field state mapped and verified; RS not started
+Last updated: 2026-10-20
+Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [QA automation](../specs/qa-automation.md), [System architecture](../architecture/system-overview.md), [Improvement plan](../plans/2026-10-cleanup-and-hardening.md)
+
+## Summary
+
+The bot's battle and training logic decides where the game is from a handful of observed bytes, padded with fixed waits and unbounded retry loops. This spike traced each of them through the `pret/pokeheartgold` decompilation and checked the results against a running game. The conclusion:
+
+- **Every one of the bot's battle bytes has a real meaning, but the bot reaches most of them through coincidences** of overlay loading or heap layout rather than the game's own pointers. They work today and can break silently.
+- **The game exposes a clean, stable pointer chain** from one static global to the exact battle state: which application is running, the battle phase, the server command, the player's menu state, which battle script is playing, the experience and move-learn prompts, and the outcome. All of it was verified in live RAM on HeartGold US revision 0.
+- **The same chain tells "free to move on the field" apart from "a field task is running"** (encounter starting, warp, script, menu), which is the missing signal for self-recovery.
+
+Everything here is for HGSS US revision 1.0 (header revision 0), the revision hunted on every machine. RS, hunted on revisions 1.1 and 1.2, is not started.
 
 ## Problem
 
-Several places in the bot read memory and compare against values that were observed rather than derived. They work, but nobody can say what the value means or when it would change:
+Observed constants the bot depends on, with what they turned out to be (full inventory of 60+ read sites in the [appendix](#appendix-every-read-the-bot-makes)):
 
-| Where | What it assumes |
-|---|---|
-| `BattleOrchestratorEvent.cs:539` | a byte equal to `0x41`, `0x97` or `0xC0` means "in battle" (copied into four other files) |
-| `BattleOrchestratorEvent.cs:505` | `GetBattleState() == 14` means "evolution prompt" |
-| `HgssDataReader`, `HgssPointerService`, `PathfindingService:256-261`, `RunEncounterEvent:370`, `HgssTogepiEggEvent:53` | fixed HGSS RAM addresses and pointer offsets found by memory search |
-| `RsDataReader` | fixed Gen 3 addresses for party and battle |
-| `NavigatorEvent` plausibility checks | retries because a torn or wrong read is possible |
-
-The QA spec needs two more that do not exist yet: the RNG state address per game and the exact frame window in which a starter's PID is generated.
-
-## Approach
-
-Two sources, used together.
-
-### 1. Decompilation projects (free, exact, do first)
-The `pret` decompilations are complete for every game in scope and produce symbol maps with every RAM variable and function address:
-
-| Game | Project | What it gives |
+| Bot code | What it assumes | What it actually is |
 |---|---|---|
-| Ruby/Sapphire | `pret/pokeruby` | `gRngValue`, `gPlayerParty`, `gEnemyParty`, `gBattleMons`, `gBattleTypeFlags`, `gMain.inBattle`, `gSaveBlock1/2` layouts, `sav` checksums |
-| Emerald, FireRed/LeafGreen | `pret/pokeemerald`, `pret/pokefirered` | same names, different addresses; one pointer service per game, one parser per generation |
-| HeartGold/SoulSilver | `pret/pokeheartgold` | overlay layouts and the structs behind the pointer chains in `HgssPointerService` (the "anchor" at `0x21D4158` is the save-data pointer; the offsets are struct fields with names) |
-| Platinum | `pret/pokeplatinum` | the Gen 4 sibling, for later |
+| `0x021E76D2` in `{0x41, 0x97, 0xC0}` (six files) | "in battle" | An instruction byte inside whatever overlay is loaded at `0x021E5900`. In a wild battle that is overlay 18, the **Pokédex** application code, whose byte there is `0x41`. 24 overlays load at that address. During the swap back to the field the byte read `0xBD` with nothing loaded. |
+| `[0x021D4158]` | "save-data anchor" | `sFieldSysPtr`, the game's `FieldSystem *` (`src/field_system.c:42`). |
+| anchor `+ 0x692C` `== 14` | "evolution screen" | The battle application's state (`OverlayManager.proc_state`), reached through a fixed heap offset: in battle the app happens to sit at `FieldSystem + 0x6918`. 9 is battle main, 14 is evolution main, so the meaning is right and the address is a coincidence. |
+| anchor `+ 0x230EC` `== 1` | "battle menu ready" | The battle context's player menu state (`BattleContext.unk_0[0]`), again through a heap coincidence (the context happens to sit at `FieldSystem + 0x230EC`). After the battle it keeps reading 14 because the memory has been freed: a dangling read. |
+| anchor `+ 0x6930` `+ 0xC14` / `+ 0xC18` | "enemy anchor", enemy count and data | The `BattleSetup` (the battle app's `args`), reached through the same heap coincidence. |
+| X/Y at `0x021DA6F4`/`0x021DA6FC`, facing at anchor `+ 0x1DC4`, map at anchor `- 0x22DA4` | player position | Not traced in this spike; they work and are covered by plan 5.3. |
 
-Building the project (or just reading its `.sym`/`.map` output and headers) replaces every observed constant with a named field, and documents what the battle-state bytes actually are (very likely `gBattleTypeFlags` bits or a battle controller state enum in Gen 3; a battle system state in the HGSS battle overlay). This is the highest-value, lowest-risk half of the spike.
+## The pointer chain (HGSS US rev 0, verified)
 
-### 2. Reverse Engineer Anything MCP on the ROM (for what the decomp does not settle)
-The tool is the "Reverse Engineer Anything" MCP server: it disassembles and decompiles a binary and lets a Claude session query it (functions, cross-references, decompiled routines, constant searches). Used here on the GBA ROM and the DS ARM9 and overlay binaries, with the decomp's symbols loaded so the output is named rather than raw addresses. It runs outside both repos; its project files and output are not committed, only the conclusions recorded in this doc.
+```
+FS       = u32 [0x021D4158]            FieldSystem (sFieldSysPtr), stable for the whole session
+sub0     = u32 [FS + 0x00]             app slots
+mapApp   = u32 [sub0 + 0x00]           field map app; NULL while a sub-app runs
+app      = u32 [sub0 + 0x04]           launched sub-app (battle, bag, party ...); NULL on the field
+paused   = u32 [sub0 + 0x08]
+taskman  = u32 [FS + 0x10]             top field task; NULL when no task runs
+mapReady = u32 [FS + 0x6C]             field map up and running
 
-What it is for:
-- Confirming the semantics of a value the decomp names but the bot uses differently (e.g. which exact state the "evolution prompt" is, so `== 14` becomes a named enum).
-- The HGSS overlays: the DS loads code overlays dynamically, so a RAM address is only valid while that overlay is loaded. The disassembler shows which overlay owns a routine and so when a pointer chain is safe to follow. This is probably the real reason `NavigatorEvent` needs plausibility checks.
-- Finding where the game writes the PID of a generated Pokemon (cross-references to the RNG routine from the wild/starter generation code), which gives the frame window for RNG seed injection.
-- Any game not yet decompiled.
+app.ovyId    = u32 [app + 0x0C]        12 = battle
+app.state    = u32 [app + 0x14]        battle application state, table below
+app.setup    = u32 [app + 0x18]        BattleSetup: winFlag +0x14, evolution task +0x198
+BS           = u32 [app + 0x1C]        BattleSystem; valid only while app.state is 4..9
+ctx          = u32 [BS + 0x30]         BattleContext
+ctx.sel      = u8  [ctx + 0x00]        player menu state, table below
+ctx.command  = u32 [ctx + 0x08]        server command, table below
+ctx.script   = u32 [ctx + 0xAC], [ctx + 0xB0]   battle script narc and file while command is 22
+ctx.getter   = u32 [ctx + 0x178]       experience / level-up / move-learn work; NULL when idle
+getter.state = u32 [getter + 0x28]
+ctx.endFlag  = u8  [ctx + 0x311F]
+BS.outcome   = u8  [BS + 0x2420]       1 win, 2 lose, 3 draw, 4 caught, 5 fled
+```
 
-How it would be used, concretely: load the ROM in the disassembler with the decomp's symbol file imported, then from a Claude session ask for cross-references to `Random()` from the starter-selection script, decompile the generation routine, and record the write to `gRngValue` and the PID computation. The output is a note in this doc per question, with the function name, address, and the derived rule.
+Every hop was checked in four RAM snapshots (field, battle start, battle menu, back on field), then traced live every 80 ms through five wild battles: one fought, two fled, and two fought on PKHeX-edited save copies (one with a lead about to level up and be offered a move, one about to evolve). Every save was byte-identical before and after. In the tables below, **observed** means the value was seen live in those traces; **decomp only** means it comes from the source and has not been seen yet.
 
-## Found so far (2026-10-20, HGSS US rev 0)
+All observations are from one HeartGold 1.0 save on the dev PC, in single wild battles. Trainer battles, double battles, losing, our Pokémon fainting, and catching were not exercised.
 
-From the QA spike, by locating the RNG state at runtime and disassembling the ARM9 binary and overlay 2 in RAM against the decomp's source:
+### Where the game is
+
+| Situation | Signal | Status |
+|---|---|---|
+| **Free to move on the field** | `app == NULL`, `taskman == NULL`, `mapReady == 1`, `paused == 0` (the game's own `FieldSystem_IsPlayerMovementAllowed`, `field_system.c:199`) | observed around battles only; not yet tested against scripts, menus or warps |
+| A field task is running | `taskman != NULL`; `[taskman + 4]` is the task function, `[taskman + 8]` its state | observed: `020551B9` encounter starting, `02055245` leaving the field, `02050661` wild encounter (state 1 during the battle), `0205528D` and `020552D5` returning. Script, warp and start-menu tasks not yet seen |
+| In a battle | `app != NULL` and `app.ovyId == 12` | observed |
+| Some other sub-app (bag, party, summary) | `app != NULL`, another overlay id | decomp only |
+| Battle running | `app.state == 9` | observed |
+| Evolution after battle | `app.state == 14`; the battle structures are freed by then | observed (13 is too brief to catch at 80 ms) |
+
+Battle application states (`battle_022378C0.c:25-42`): 0 init, 3 allocate, 8 battle init, **9 battle main**, 10-12 end, **13-14 evolution**, 15 exit. Observed: 3, 8, 9, 14, and 0 as the app is torn down.
+
+### Inside a battle
+
+**Server command** (`ctx.command`, `constants/battle.h:594-642`), the turn engine. Stable waiting states are the useful ones; transient commands can be skipped between two reads because the engine can run twice per frame.
+
+| Value | Meaning | Status |
+|---|---|---|
+| 0, 1 | setup, encounter starting | observed |
+| **5** | **waiting for the player's choice** | observed |
+| 6-12 | turn order, before-turn, conditions, turn end | 8 observed |
+| 13-16 | fight, bag, Pokémon, run input being processed | decomp only (skipped between reads) |
+| **22** | **a battle script is running** (see below) | observed |
+| 23-41 | move execution | 23, 28, 34, 39 observed |
+| 40, 42 | battle-end evaluation | 40 observed |
+| **45** | **battle done** | observed |
+
+**Player menu state** (`ctx.sel`, `battle_controller_player.c:243-262`), meaningful while `command == 5`:
+
+| Value | Meaning | Status |
+|---|---|---|
+| **1** | **Fight / Bag / Pokémon / Run menu** | observed |
+| **4** | **move list** | observed |
+| 6 | target select | decomp only |
+| 8 | bag open | decomp only |
+| 10 | party open | decomp only |
+| 14 | choice made, waiting | observed |
+| **15** | **message shown ("Can't escape!"), waiting to be dismissed** | decomp only |
+
+**Battle script** (`ctx.script` while `command == 22`, narc 1, `constants/battle_subscript.h`): 0 encounter start, 1 use move, 3 escape, **4 battle won**, 5 battle lost, **6 a Pokémon fainted**, 8 escape failed, 10 party list, 11 throw ball, **231 "use next Pokémon?"**, **276 grant experience**, 284 escape success. Narc 30 and narc 0 appear at command 23 for the move being used.
+- Observed with a matching event: 0, 1, 3, 4, 6, 276.
+- Observed but not named in the tables used: 2, 7, 12, 21, 33, 57, 62, 76, 104, 271, 278, 293 (move animation, damage and turn-end scripts; meanings to look up).
+- Decomp only: 5, 8, 10, 11, 231, 284.
+
+**Experience, level-up and move learning** (`ctx.getter.state`, `battle_command.c:5871-5911`): 5 checking level-up, **11 and 13 stat boxes waiting for A/B**, 15 checking learn, **21 "forget a move?" waiting for yes/no**, **23 choosing the move to forget**, **34 "give up learning?" waiting for yes/no**, 38 done.
+- Observed on the move-learn save copy, pressing A on the stat boxes, B on "forget a move?" and A on "give up learning?": 1 → 4 → 6 → 7 → **11** → **13** → 17 → 19 → **21** → (B) → 32 → **34** → (A) → 35 → 4 → cleared. Exactly the decomp's order.
+- Observed on the evolution save copy (level-up, no new move): 1 → 4 → 6 → 7 → 11 → 13 → 4 → cleared.
+- Decomp only: 23 (choosing the move to forget) and the "learned" path 24-30, because the trace answered no.
+
+**Outcome** (`BS.outcome`): 1 won, 2 lost, 3 draw, 4 caught, 5 fled; bits `0x40`/`0x80` mark a flee attempt in progress. Observed: 1 after each win, 5 after each flee.
+
+**Evolution after battle** (`app.state == 14`): the evolution task is at `[app.setup + 0x198]`; its state byte at `+0x64` is inferred from undecompiled assembly. Observed on the evolution save copy, pressing only A: 2 → 3 → 5 → 6 → 7 → **8** (about 7 s, the evolving animation) → 9 → 10 → 11 → 12 → 40, then the app closed. The inferred "done" byte at `+0x67` never changed, so that inference is wrong or the byte is set in the last frame. The species after evolution was not read back.
+
+### Observed traces (abridged)
+
+Fought battle (move 1, the wild Pokémon fainted):
+```
+field free → task 020551B9 (encounter starting, 2 s before the battle app) → task 02055245, mapReady 0
+→ app ovy 12, state 3 → 8 → 9
+→ cmd 22 script 0 (intro) → cmd 22 script 271 → cmd 5 sel 1   (menu)
+→ cmd 5 sel 4 (move list) → cmd 23 → cmd 22 scripts 76, 2, 21, 293 (move and damage)
+→ cmd 22 script 6 (faint) → cmd 22 script 276 with getter.state 1, 4 (experience)
+→ cmd 40, outcome 1, endFlag 1 → cmd 22 script 4 (battle won) → cmd 45 → app NULL
+→ tasks 0205528D, 020552D5 (returning) → field free
+```
+
+Fled battle:
+```
+... → cmd 5 sel 1 → (Run) → sel 14, script 3 (escape) → cmd 22 → cmd 45, outcome 5 → app NULL → ... → field free
+```
+
+## What this changes for the bot
+
+| Today | Replace with | Why |
+|---|---|---|
+| `0x021E76D2 ∈ {0x41,0x97,0xC0}` for "in battle" and "battle over" | `app != NULL && app.ovyId == 12`; battle over when `ctx.command == 45` or `app == NULL` | The current byte depends on which overlay the battle happens to load and reads garbage during the swap. |
+| anchor `+0x230EC == 1` for "menu ready" | `ctx.command == 5 && ctx.sel == 1` | Same value, reached through the game's pointers instead of a heap offset; does not read freed memory after the battle. |
+| anchor `+0x692C == 14` for "evolution" | `app.state` 13 or 14 | Same value through the real pointer. |
+| anchor `+0x6930` enemy chain | `app.setup` | Same structure through the real pointer. |
+| Three racing polls in `WaitForMoveEnd` | `ctx.command`: back to 5/1 = next turn; script 6 = a faint; script 231 = "use next Pokémon?"; 45 = over, with `BS.outcome` saying how | One state machine instead of three guesses. |
+| Level-up and move-learn blind macros (`W.325`, `W.1245`, padded 120 frames) | `ctx.getter.state` prompts 11/13, 21, 23, 34 | Press exactly when the game waits for input. |
+| Flee loop with no outcome check | `BS.outcome` 5 = fled; `ctx.sel == 15` = "Can't escape!" shown | The TODO "it's possible we won't run" becomes a branch. |
+| `Overworld.WaitForReadyAsync` (coordinates non-zero) | the "free to move" signal above | Distinguishes a running script, warp or encounter start from a free field. |
+| Navigator stall detection (position unchanged 2.5 s) | `taskman != NULL` means a script or message is up, not a wall | Tells "blocked" from "talking". |
+
+### Self-recovery
+
+With these signals the bot can classify where it is at any moment instead of inferring it from timing: field free, field task running, encounter starting, battle at the menu, in the move list, a message waiting, a script playing, an experience or move-learn prompt, battle over, evolution, another app open. A recovery routine can then press the one input that state needs (B on a message, back out of a submenu, Run from the menu) and check that the state moved, instead of tapping B until something changes. Every unbounded wait loop listed in the appendix can be bounded by "this state has not changed for N seconds".
+
+## Remaining gap: input-ready
+
+`ctx.sel` turns 1 a little before the touch screen accepts input. In the trace, a Run tap sent the moment the menu state read 1 was ignored; the same tap 40 s later fled at once. This is the gap the bot covers with `W.5` and the comment "the menu flag is available before we can actually press". The battle UI keeps its own state in `BattleInput` (pointer at `BS + 0x19C`, field `curMenuId`), but the decomp warns its offsets are unreliable. Finding the UI's "input enabled" flag is the next step; until then, a press should be confirmed by `ctx.sel` changing, and retried if it does not.
+
+## Suspected issues, not confirmed
+
+Spotted while reading the code for this spike. None has been reproduced, and none is planned work; each needs a demonstration before it is treated as a bug.
+
+| Where | Suspected issue |
+|---|---|
+| `NavigatorEvent.cs:347-354` with `:118-124` and `:224-228` | A route abandoned after three blocked attempts returns `false`, which the callers read as "no battle happened" and treat as arrival: the bot heals or finishes the return without having arrived. |
+| `PokemonStateReader.cs:238-245` | Box re-read of a corrupt slot is a `do/while` with no limit; one permanently bad slot hangs the read. |
+| `BattleOrchestratorEvent.cs:806-845` and `WaitForMoveEnd` | Battle-start and turn waits have no timeout. |
+| `HgssDataReader.cs:15` | `PartySize = +0x23F44` contradicts the pointer service's `-0x23F44`; unused today. |
+| anchor `+0x230EC` after a battle | Reads freed memory (stays 14 on the field). |
+
+## Found so far, addresses (HGSS US rev 0)
 
 | Symbol (decomp name) | Address | Notes |
 |---|---|---|
-| `sLCRNG_State` | `0x021D15A8` | 32-bit LCRNG state; the MT state sits just before it |
-| `LCRandom` | `0x0201FD44` | static ARM9; `GetLCRNGSeed`/`SetLCRNGSeed` are the two functions before it |
-| overlay 2 load address | `0x02245B80` | holds `encounter_check.c` |
-| `generateWildShinyAndAddToParty` | `0x02247910` | the scripted-shiny generator (Red Gyarados path) |
-| `generateWildNonShinyAndAddToParty` | `0x02247A18` | every grass, surf, Safari and Bug Contest encounter |
-| grass encounter call | `0x02247D96` | `bl` to the non-shiny generator; `r5` holds the generator state, player ID at offset 0 |
+| `sFieldSysPtr` | `0x021D4158` | `FieldSystem *`; the bot's "anchor" |
+| `sLCRNG_State` | `0x021D15A8` | 32-bit LCRNG state; restored to its pre-battle value when a battle closes |
+| `LCRandom` | `0x0201FD44` | static ARM9 |
+| field app overlay 1 | `0x021E5900` | shares the address with 23 other overlays, including Pokédex (18) |
+| battle overlay 12 | `0x022378C0` | `battle_system.c`, `battle_command.c`, controllers |
+| overlay 2 | `0x02245B80` | `encounter_check.c` |
+| `generateWildShinyAndAddToParty` | `0x02247910` | used by the QA wild-shiny cheat |
+| `generateWildNonShinyAndAddToParty` | `0x02247A18` | |
+| grass encounter call | `0x02247D96` | |
 
-Used by the QA wild-shiny cheat; see the [QA spec](../specs/qa-automation.md#shiny-injection). The ROM header reports revision 0, while the owner's hunting ROMs may be 1.1 or 1.2, so these need re-checking per revision.
+Struct offsets are in [the chain](#the-pointer-chain-hgss-us-rev-0-verified) and do not depend on the revision as long as the structs are the same; static addresses (`0x021D4158`, overlay functions) do.
 
-## Deliverables of the spike
-1. A table per game flavor: every address or constant the bot uses today → its symbol name, type, and meaning, or "no symbol, here is the derivation".
-2. A list of the reads that are unsafe depending on overlay state (HGSS), with the condition that makes them safe.
-3. `gRngValue` (and Gen 4 equivalent) address and the PID-generation frame window per game, for the QA injector.
-4. Recommendation per constant: replace with named symbol in the game profile (plan 5.3), or keep with a comment that explains it.
+## Approach used
 
-No code changes in the spike itself. Its output feeds plan task 5.3 (game profile) and the QA spec.
+1. **Decomp reading**: the structs, enums and state machines in `pret/pokeheartgold`, with offsets computed from the struct definitions and cross-checked against fields named by offset and against the assembly.
+2. **ROM inspection**: the overlay table from the ROM header, and overlays decompressed with the DS bottom-up LZ format to see which code sits at a given address.
+3. **Live RAM**: snapshots and an 80 ms trace through ApiHawk's existing read opcode, on the QA install with no cheats loaded and no in-game saving.
+4. **PKHeX save copies** for states a normal save cannot reach on demand: a scratch console app using `PKHeX.Core` (the same package the backend uses) replaced the lead in copies of the Route 33 save with a Pokémon one experience point short of a level that offers a move, or of an evolution level. The copies were loaded under spare ROM copies (`Pokemon HeartGold2`, `Pokemon HeartGold3`) in the QA install; the original save was not touched. This is a good pattern for QA saves generally: make a base save by hand once, then derive scenario saves from it with PKHeX.
+
+The Reverse Engineer Anything MCP was not needed for HGSS: the decomp plus RAM was enough. It stays the fallback for code the decomp leaves undecompiled (the post-battle evolution module, `asm/unk_020755E8.s`, whose state byte is inferred at `+0x64`) and for games without a decomp. Tools and their output stay outside the repos; only conclusions are recorded here.
+
+## Next steps
+
+1. **Find the battle UI's input-ready flag** (the remaining gap above), then confirm-and-retry presses against `ctx.sel`.
+2. **Exercise the decomp-only values** with more PKHeX save copies: a weak lead that faints (script 6 on our side, 231 "use next Pokémon?"), a lead that accepts the new move (getter 23, 24-30), a Poké Ball in the bag to catch (script 11, outcome 4), a trainer battle, and the field signals against scripts, warps and the start menu.
+3. **Map RS** from `pret/pokeruby`: `gMain.inBattle`, `gBattleTypeFlags`, the battle controller state, `gRngValue`, for the RS profile and QA cheats.
+4. **RS addresses per revision.** RS is hunted on 1.1 and 1.2, so the RS mapping needs both revisions' static addresses; HGSS has only 1.0.
+5. **Feed into plan 5.3**: the game profile holds this chain; a small HGSS state reader classifies "where the game is" and the battle and navigation events use it.
 
 ## Risks
 | Risk | Mitigation |
 |---|---|
-| Decomp symbol addresses differ by ROM revision | `RomInfoService` already identifies revision; the profile keys addresses by revision where they differ. Current hunts on 1.1/1.2; other revisions only when needed. |
-| HGSS overlay behaviour makes some reads inherently racy | Document the safe window; prefer frame-coherent reads through ApiHawk (already the pattern). |
-| Time sink | Scope to the constants in the table above plus the two QA addresses. Anything else is a new spike. |
+| Static addresses differ by revision | Struct offsets are stable; only `sFieldSysPtr` and overlay addresses need a per-revision table. A profile with no table for the launched revision refuses the launch (decided 2026-10-17). |
+| Transient server commands are skipped between reads | Key decisions on stable waiting states (5/1, 22 + script, getter prompts, 45), not on transient commands. |
+| Reading battle structures after they are freed | Read `BS` and `ctx` only while `app.state` is 4..9; past that, use `app.state` and `app.setup` only. |
+| Torn multi-hop reads | Read the chain in one frame through ApiHawk's pointer-chain opcode (`0x03`), as the party read already does. |
 
-## Open questions
-Answered 2026-10-17: the ROMs in use today are revision 1.1 or 1.2 (the app reports the exact one through `RomInfo.Revision`). The spike covers that revision only. The profile keys addresses by revision so another revision (a Jirachi hunt would likely need 1.0) can be added later without restructuring, but adding one is a separate decision when a hunt calls for it.
+## Appendix: every read the bot makes
+
+Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunter/`).
+
+- **Encounter detection**: `0x021E76D2` byte, `RunEncounterEvent.cs:46`, `SpinEncounterEvent.cs:45`, `NavigatorEvent.cs:697`, `BattleOrchestratorEvent.cs:539`, `HgssDataReader.cs:42`, plus two deprecated copies. No timeout.
+- **Battle start**: enemy count `[A+0x6930]+0xC14` and data `+0xC18` (`BattleOrchestratorEvent.cs:806-828`), split reads, no timeout; menu `A+0x230EC == 1` with "tap B until" (`:834-845`), no timeout, then `W.5` (TODO).
+- **Battle state**: active and enemy battlers at `A+0x25E2C`/`A+0x25EEC`, battle party at `A+0x2AAB0` (`HgssPointerService`), matched to the field party by species and PID.
+- **Turn end**: three racing polls in `WaitForMoveEnd` (`:558-648`), no timeout.
+- **Faint and switch**: our HP 0 goes to Waiting ("TODO implement losing"); switch confirmed by PID within 4 s, 3 attempts.
+- **Level-up, move learn, evolution**: `A+0x692C == 14`; party level comparison by index; blind macros with large fixed waits because "reads during that menu crash".
+- **Flee**: Run spammed with `W.3` while the battle byte is set (`WildPokemonEncounterEvent.cs:177-188`), no limit.
+- **Navigation**: map, X, Y, facing; warp wait with no timeout and a target map read just before the wait (`NavigatorEvent.cs:363-372`); stall = position unchanged 2.5 s; poison/faint detection by party diffs.
+- **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
 - 2026-10-17: first draft.
+- 2026-10-20: level-up, move-learn and evolution states observed on PKHeX save copies; every value now marked observed or decomp only.
+- 2026-10-20: HGSS battle and field state mapped from the decomp and verified live: the `FieldSystem` chain, battle app states, server commands, menu states, scripts, experience and move-learn prompts, outcome; what each bot constant really is; replacement table; bugs found; input-ready gap.

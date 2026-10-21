@@ -108,9 +108,9 @@ Outcome: every observed constant the bot reads has a name and a meaning, and the
 
 | # | Task | Details | Depends on | Size |
 |---|---|---|---|---|
-| 6.1 | Gen 3 symbols from `pret/pokeruby` | Table of every RS address the bot uses → symbol, for the revision in use (1.1 or 1.2; 1.0 only when a hunt needs it); `gRngValue` and the starter PID frame window. | — | M |
-| 6.2 | HGSS symbols from `pret/pokeheartgold` | Same for HGSS, plus which reads depend on overlay state. | — | L |
-| 6.3 | Reverse Engineer Anything MCP pass | Outside both repos, nothing committed but the conclusions: the `0x41/0x97/0xC0` battle bytes, `== 14`, the evolution prompt, overlay-dependent reads. | 6.1, 6.2 | M |
+| 6.1 | Gen 3 symbols from `pret/pokeruby` | Table of every RS address the bot uses → symbol, for the RS revisions in use (1.1 and 1.2; 1.0 only when a hunt needs it); `gRngValue` and the starter PID frame window. | — | M |
+| 6.2 | HGSS symbols from `pret/pokeheartgold` | Done 2026-10-20 for battle and field state: the `FieldSystem` chain, battle app states, server commands, menu states, scripts, experience and move-learn prompts, outcome, verified live. See the spike doc. Remaining: the battle UI input-ready flag. | — | L |
+| 6.3 | Reverse Engineer Anything MCP pass | Only where the decomp is incomplete: the post-battle evolution module (`asm/unk_020755E8.s`, state inferred at `+0x64`) and games without a decomp. HGSS battle bytes are already explained by 6.2. | 6.2 | S |
 | 6.4 | Feed into the game profile | Replace constants with named symbols as part of 5.3. | 5.3 | — |
 
 ### Phase 5: Structural splits (after 1-3, one file per PR)
@@ -124,6 +124,7 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 | 5.3b | Capabilities instead of `NotSupported` | Replace the throwing members of `RsDataReader` with capability flags on the profile (`HasOverworldNavigation`, `HasEggs`, `CanReadBoxes`, ...); `BotService` refuses an unsupported action with a 400 before the event starts. | S |
 | 5.3c | Map and graph services per flavor | `MapService` and `GraphService` stop being singletons; the HGSS profile owns its instances loaded from `Data/HGSS`. A flavor without map data reports `HasOverworldNavigation = false`. | M |
 | 5.3d | Event registry | Each event type (`WildEncounter`, `ChainedEncounter`, `TogepiEgg`, `StarterHunt`, `HgssStarterHunt`, `LaunchBot`) becomes a registry entry: name, `EventArgumentOptions`, required capabilities, owns-emulators flag, factory. `BotService.ExecuteEvent`/`ExecuteNewBotOrSpecialEvent` become a lookup; `GetAvailableActions` filters the registry by the bot's profile; `SpecialEvents.json` either feeds the registry or is deleted. Do this after 5.1 so the registry lands in a small `BotService`. | L |
+| 5.3e | HGSS game-state reader | One small class on the game profile that reads the verified chain in one frame (ApiHawk pointer-chain opcode) and returns where the game is: field free, field task, battle at menu, move list, message waiting, script playing (which), experience or move-learn prompt, battle over (outcome), evolution, other app. Replace `0x021E76D2`, anchor `+0x230EC`, `+0x692C`, `+0x6930` reads with it; bound every wait loop by "state unchanged for N seconds"; confirm each button press by the state moving. Needs 6.2's input-ready flag for menu presses, or confirm-and-retry until then. | 5.3, 6.2 | M |
 | 5.4 | `BattleOrchestratorEvent` split | Extract move-learn/evolution flow and the Discord prompt into their own classes. | M |
 | 5.5 | `StarterHuntEvent` split | Extract save-file management (`EnsureSaveExists`, `WipeSaveSlot`, trainer-ID scan) into `SaveFileManager`. | M |
 | 5.6 | Narrow `IBot` | Events receive `ICommandClient + IMemoryClient + GameFlavor`; launch/dispose stay with `BotService`. Drop `IDataReader` from `IBot` and resolve it by flavor where needed. | M |
