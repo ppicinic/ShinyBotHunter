@@ -235,14 +235,14 @@ namespace ShinyBotHunter.Bot
             this.commandClient.RunMacros(macro);
         }
 
-        public async Task<byte> GetBattleMenuState()
+        public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleMenuState();
+            return await dataReader.GetBattleMenuState(ct);
         }
 
-        public async Task<byte> GetBattleValue()
+        public async Task<byte> GetBattleValue(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleValue();
+            return await dataReader.GetBattleValue(ct);
         }
         public async Task<byte> GetBattleState()
         {

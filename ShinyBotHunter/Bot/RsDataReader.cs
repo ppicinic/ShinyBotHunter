@@ -35,9 +35,9 @@ namespace ShinyBotHunter.Bot
             return (byte)(flags != 0 ? 1 : 0);
         }
 
-        public Task<byte> GetBattleMenuState() => throw new NotSupportedException(Unmapped(nameof(GetBattleMenuState)));
+        public Task<byte> GetBattleMenuState(CancellationToken ct = default) => throw new NotSupportedException(Unmapped(nameof(GetBattleMenuState)));
 
-        public Task<byte> GetBattleValue() => throw new NotSupportedException(Unmapped(nameof(GetBattleValue)));
+        public Task<byte> GetBattleValue(CancellationToken ct = default) => throw new NotSupportedException(Unmapped(nameof(GetBattleValue)));
 
         public Task<ushort> GetMapId() => throw new NotSupportedException(Unmapped(nameof(GetMapId)));
 
