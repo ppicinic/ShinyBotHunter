@@ -86,7 +86,7 @@ Outcome: the parts that are testable without an emulator have tests, in value or
 | 4.3 | `RsPointerService` memory map | Mirror `PokemonStateReaderTests` for RS using `FakeMemoryClient`. | S |
 | 4.4 | Counts cache from rows | Table-driven test for 3.3's tree builder. | S |
 | 4.5 | `BizHawkReaderWriterLock` | Reader/writer exclusion and no self-deadlock. | S |
-| 4.6 | `StarterHuntStateStore` round-trip | Temp directory load/save of parked and retired copies. | S |
+| 4.6 | `StarterHuntStateStore` round-trip | BSON round trip of `StarterHuntGameState` (high-bit PID, Guid Id, retired and created copies, document without `CompletedFinds`); the store is Mongo-backed, so a real load/save is a QA concern. | S |
 | 4.7 | Pathfinding | Small hand-built graphs; shortest path, blocked tiles, capability gating. | M |
 | 4.8 | Fix the two found bugs with tests | `WillEvolve` braces; `GetLevelUp` bounds. | S |
 | 4.9 | Dashboard | Add vitest; test `actionSchema.ts` helpers once split out (5.2). Add eslint with the default TS config. | M |
