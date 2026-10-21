@@ -1,7 +1,7 @@
 # The single definition of "CI passes". Run it from any cwd before asking for a merge:
 #   powershell -File Scripts\ci-local.ps1
-# It restores, builds and tests ShinyBotHunter.Tests, then runs npm ci, the TypeScript typecheck
-# and the production build in PokemonDashboard. It stops at the first failure, exits 1, and ends
+# It restores, builds and tests ShinyBotHunter.Tests, then runs npm ci, the TypeScript typecheck,
+# eslint, the vitest tests and the production build in PokemonDashboard. It stops at the first failure, exits 1, and ends
 # with one summary line. .github/workflows/build-and-test.yml calls this same script.
 #
 # ApiHawk is excluded deliberately: it targets net48 and builds against BizHawk assemblies that
@@ -14,7 +14,7 @@ $repoDir = Split-Path $PSScriptRoot -Parent
 $testsProject = Join-Path $repoDir "ShinyBotHunter.Tests\ShinyBotHunter.Tests.csproj"
 $dashboardDir = Join-Path $repoDir "PokemonDashboard"
 
-$totalSteps = 6
+$totalSteps = 8
 $stepsDone = 0
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -44,6 +44,8 @@ Push-Location $dashboardDir
 try {
     Invoke-Step "npm ci"            { npm ci }
     Invoke-Step "npm run typecheck" { npm run typecheck }
+    Invoke-Step "npm run lint"      { npm run lint }
+    Invoke-Step "npm run test"      { npm run test }
     Invoke-Step "npm run build"     { npm run build }
 }
 finally {

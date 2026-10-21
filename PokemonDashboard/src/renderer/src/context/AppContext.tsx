@@ -147,10 +147,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
         ({ game, phase }) => !currentSubs.some((s) => s.game === game && s.phase === phase)
       )
 
-      // Subscribe to SignalR groups and fetch phase info for new subs
+      // Fetch phase info for new subs
       toAdd.forEach(async ({ game, phase, gameName }) => {
-        service.subscribeToGamePhase(game, phase).catch(console.error)
-
         // Fetch phase info + initial encounter data from REST API
         const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase, gameName)
         if (result) {
