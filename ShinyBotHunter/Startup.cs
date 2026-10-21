@@ -2,16 +2,11 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Google.Protobuf.WellKnownTypes;
-using Grpc.Net.Client.Balancer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using MongoDB.Driver;
-using MongoDB.Driver.Core.Configuration;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
-using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
@@ -26,10 +21,6 @@ using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Services;
-using System.Diagnostics;
-using System.Text;
-using YamlDotNet.Core;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace ShinyBotHunter
 {
@@ -97,7 +88,6 @@ namespace ShinyBotHunter
             await services.GetRequiredService<IEncounterDao>().DisposeAsync();
             await services.GetRequiredService<MongoCaughtPokemonDao>().DisposeAsync();
             services.GetRequiredService<MongoDbConnection>().Dispose();
-            await services.GetRequiredService<SmogonDamageService>().DisposeAsync();
         }
 
         private async Task MainRunnerAsync(WebApplication app, IServiceProvider services)
