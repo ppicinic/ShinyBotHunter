@@ -160,9 +160,9 @@ namespace ShinyBotHunter.Bot
         }
 
         public async Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
-            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4)
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default)
         {
-            return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme);
+            return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme, ct);
         }
 
         public void Release()
@@ -202,7 +202,7 @@ namespace ShinyBotHunter.Bot
 
         public async Task FlushSave(CancellationToken ct = default)
         {
-            await this.commandClient.FlushSave();
+            await this.commandClient.FlushSave(ct);
         }
 
         public async Task WaitForMacroAsync(CancellationToken ct = default)

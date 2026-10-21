@@ -59,7 +59,7 @@ namespace ShinyBotHunter.Tests
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
-            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4) => Task.FromResult(Array.Empty<byte[]>());
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte[]>());
 
         public Task<byte> GetBattleMenuState() => Task.FromResult((byte)0);
         public Task<byte> GetBattleValue() => Task.FromResult((byte)0);

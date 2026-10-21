@@ -252,11 +252,11 @@ namespace ShinyBotHunter.Service
             return state;
         }
 
-        public Task<PokemonBattleState?> GetPokemonBattleState(IBot bot, int timeoutMs = 1000)
-            => GetPokemonBattleState(bot, bot.GameFlavor, timeoutMs);
+        public Task<PokemonBattleState?> GetPokemonBattleState(IBot bot, int timeoutMs = 1000, CancellationToken ct = default)
+            => GetPokemonBattleState(bot, bot.GameFlavor, timeoutMs, ct);
 
-        /// <inheritdoc cref="GetPokemonBattleState(IBot, int)"/>
-        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot, GameFlavor flavor, int timeoutMs = 1000)
+        /// <inheritdoc cref="GetPokemonBattleState(IBot, int, CancellationToken)"/>
+        public async Task<PokemonBattleState?> GetPokemonBattleState(IMemoryClient bot, GameFlavor flavor, int timeoutMs = 1000, CancellationToken ct = default)
         {
             IPointerService pointerService = games.Pointers(flavor);
             IPokemonParser parser = games.Parser(flavor);
@@ -275,7 +275,8 @@ namespace ShinyBotHunter.Service
                     maxSlots: MaxPartySize,
                     // Keeps this method's timeout contract: the emulator gives up after roughly the
                     // same wall clock the old polling loop allowed.
-                    maxRetryFrames: MillisecondsToFrames(timeoutMs));
+                    maxRetryFrames: MillisecondsToFrames(timeoutMs),
+                    ct: ct);
             }
             catch (PartyReadUnavailableException ex)
             {
@@ -306,8 +307,8 @@ namespace ShinyBotHunter.Service
                     sw.Stop();
                     return null;
                 }
-                await Task.Delay(100);
-                enemyData = await bot.ReadBytesViaPointerAsync(
+                await Task.Delay(100, ct);
+                enemyData =await bot.ReadBytesViaPointerAsync(
                     pointerService.Anchor,
                     PokemonBlockSize,
                     (int)pointerService.EnemyAnchor,
