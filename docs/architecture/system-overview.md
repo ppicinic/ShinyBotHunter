@@ -115,7 +115,10 @@ Dashboard reads never hit the database directly; they read the counts cache. The
 
 ```mermaid
 flowchart TD
-  BC[BotController] --> BS["BotService<br/>ConcurrentDictionary&lt;int, BotAndOrEvent&gt; + SemaphoreSlim gate"]
+  BC[BotController] --> BS[BotService]
+  BS --> REG["EmulatorSlotRegistry<br/>ConcurrentDictionary&lt;int, BotAndOrEvent&gt; + SemaphoreSlim gate + AllocatePosition"]
+  BS --> RUN["BotEventRunner<br/>StartEvent / RunEventAsync / two-phase cancel"]
+  RUN --> REG
   BS --> BF[BotFactory]
   BF --> GC["GameContext<br/>ConsoleType / GameFlavor / RomInfo / ports / window slot"]
   BF --> Bot
@@ -124,7 +127,7 @@ flowchart TD
   Bot --> MC["IMemoryClient<br/>BizHawkMemoryClient"]
   Bot --> DR["IDataReader<br/>HgssDataReader / RsDataReader"]
   L --> RWL[BizHawkReaderWriterLock]
-  BS --> BAE["BotAndOrEvent<br/>Event / Task / CTS / GameState"]
+  REG --> BAE["BotAndOrEvent<br/>Event / Task / CTS / GameState"]
   BAE --> OE["OrchestratorEvent<br/>ChainedOrchestratorEvent"]
   OE --> ENC["SpinEncounterEvent / RunEncounterEvent"]
   OE --> BOE[BattleOrchestratorEvent]
@@ -160,7 +163,7 @@ Inputs are macro strings authored as YAML under `Macro/Configs/{flavor}/`, expan
 - `EmulatorGrid` extracted as pure, tested arithmetic.
 
 ### Known weaknesses
-Detailed in the [review](../reviews/2026-10-code-review.md): three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
+Detailed in the [review](../reviews/2026-10-code-review.md): two god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`), with `BotService` split into `EmulatorSlotRegistry`, `BotEventRunner` and `BotDtos.cs` in row 5.1 and its event dispatch shrinking further in row 5.3d; HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
 
 ## 8. ApiHawk and the emulator boundary
 
@@ -234,3 +237,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 
 ## Changelog
 - 2026-10-17: first draft; extension axes added after review discussion.
+- 2026-10-21: section 7 updated for the BotService split (row 5.1).
