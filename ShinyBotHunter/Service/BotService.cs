@@ -101,7 +101,10 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents[newPos] = new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext };
+                    if (!botEvents.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                    {
+                        throw new InvalidOperationException($"Position {newPos} is already taken.");
+                    }
                     return GetBotDashboardState();
                 }
                 else
@@ -116,7 +119,10 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    botEvents[newPos] = new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext };
+                    if (!botEvents.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                    {
+                        throw new InvalidOperationException($"Position {newPos} is already taken.");
+                    }
                     await Task.Delay(4000);
                     bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
                     await bot.WaitForMacroAsync();
