@@ -89,7 +89,6 @@ All under `/api` (`ApiControllerBase`). Consumers: the dashboard only.
 | `BotController` | `getTopLevelActions` (from `Configs/SpecialEvents/SpecialEvents.json`), `startTopLevelAction` (launch a bot or a multi-emulator hunt), `bot/getDashboardState`, `bot/getBotActions/{pos}`, `bot/getParty/{pos}`, `bot/startAction/{pos}`, `bot/cancelAction` | `BotService` |
 | `PhaseMetadataController` | `phaseinfo/{game}/{phase}[/{gameFileName}]` (phase definition + all counts), `updatePhaseInfo`, `phaseinfo/encounterRate/...` | `PhaseInfoService`, `PokemonPersistenceService`, `IEncounterDao` |
 | `DevController` | location readout and macro recording; every route 404s unless `EnableMacroRecording` | `LocationService`, `MacroRecordingService` |
-| `WeatherForecastController` | template leftover, dead | |
 
 The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it (`BotService.cs:490-513`). This is a good pattern and worth keeping: new bot actions are a new entry in `actionMap` plus a branch in `ExecuteEvent`, with no dashboard code change.
 
