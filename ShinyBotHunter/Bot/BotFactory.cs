@@ -19,22 +19,11 @@ namespace ShinyBotHunter.Bot
         }
         public IBot CreateBot(GameContext context)
         {
-            if (applicationSettings.BizHawkMode == "ApiHawk")
-            {
-                var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
-                ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
-                IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort, localMemoryOnly: false);
-                IDataReader reader = CreateReader(context, memoryClient);
-                return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
-            }
-            else
-            {
-                ILauncher launcher = new BizHawkLauncher(context, serviceProvider);
-                ICommandClient commandClient = new BizHawkCommandClient(context);
-                IMemoryClient memoryClient = new BizHawkMemoryClient(port: context.MemoryPort);
-                IDataReader reader = CreateReader(context, memoryClient);
-                return new Bot(launcher, commandClient, memoryClient, reader, context);
-            }
+            var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
+            ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
+            IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);
+            IDataReader reader = CreateReader(context, memoryClient);
+            return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
         }
 
         /// <summary>

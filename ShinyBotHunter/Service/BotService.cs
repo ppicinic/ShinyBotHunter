@@ -20,7 +20,6 @@ namespace ShinyBotHunter.Service
         private IServiceProvider provider;
         private EventArgumentOptions[] specialEvents;
         private IHubContext<ElectronHub, IElectronClient> hubContext;
-        private string bizHawkMode;
         private ApplicationSettings settings;
         private RomInfoService romInfoService;
         public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext, RomInfoService romInfoService)
@@ -30,7 +29,6 @@ namespace ShinyBotHunter.Service
             // Display slots and ports are one pool shared by every console, so the ceiling on
             // concurrently running emulators is the sum of the per-console budgets.
             this.maxEmulators = appSettings.Value.TotalMaxEmulators;
-            this.bizHawkMode = appSettings.Value.BizHawkMode;
             this.botFactory = botFactory;
             this.provider = provider;
             specialEvents = Array.Empty<EventArgumentOptions>();

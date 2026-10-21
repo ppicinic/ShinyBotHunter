@@ -40,7 +40,6 @@ namespace ShinyBotHunter
             bool isParseMode = args.Length > 0 && (args[0].ToLower() == "--parsepokeapi" || args[0].ToLower() == "--parsepokemoveapi");
 
             await services.GetRequiredService<DiscordBotService>().StartAsync();
-            await services.GetRequiredService<BizHawkLuaLoader>().InitAsync();
             services.GetRequiredService<IEncounterDao>().Init();
             // TODO this is jank we should make the modules lazy loaded.
             if (!isParseMode)
@@ -170,7 +169,6 @@ namespace ShinyBotHunter
                 .AddSingleton<BotService>()
                 .AddSingleton<MacroRecordingService>()
                 .AddSingleton<LocationService>()
-                .AddSingleton<BizHawkLuaLoader>()
                 .AddSingleton<PokemonStateReader>()
                 .AddSingleton<GraphService>(x => GraphService.Instance)
                 .AddSingleton<PathfindingService>()
