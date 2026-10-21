@@ -12,8 +12,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
     public class MongoCaughtPokemonDao : IAsyncDisposable
     {
         private IMongoCollection<CaughtPokemon> _caughtPokemon;
+        private readonly ILogger<MongoCaughtPokemonDao> _logger;
         private Channel<CaughtPokemon> ProducerQueue { get; set; }
-        public MongoCaughtPokemonDao(MongoDbConnection dbConnection) {
+        public MongoCaughtPokemonDao(MongoDbConnection dbConnection, ILogger<MongoCaughtPokemonDao> logger) {
+            _logger = logger;
             _caughtPokemon = dbConnection.GetDatabase().GetCollection<CaughtPokemon>("CaughtPokemon");
             ProducerQueue = Channel.CreateUnbounded<CaughtPokemon>();
         }
@@ -37,24 +39,14 @@ namespace ShinyBotHunter.Persistence.MongoDb
 
         public void Init()
         {
-            var _ = Task.Run(async () =>
-            {
-                await ProcessAsync();
-            });
+            _ = Task.Run(() => BackgroundLoop.RunSupervisedAsync(ProcessAsync, _logger, nameof(MongoCaughtPokemonDao)));
         }
 
         private async Task ProcessAsync()
         {
             await foreach(var pokemon in ProducerQueue.Reader.ReadAllAsync())
             {
-                try
-                {
-                    await _caughtPokemon.InsertOneAsync(pokemon);
-                }catch(Exception e)
-                {
-                    Console.WriteLine(e.ToString());
-                    throw;
-                }
+                await _caughtPokemon.InsertOneAsync(pokemon);
             }
         }
 
