@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import type { AdminMetadata, BotDashboardState, ConditionalParameter, EmulatorState, EventArgumentOptions, GameRomInfo, NewEventLegArguments, PartySlotInfo, PhaseInfo, PhasePokemonInfo } from '../types/api'
 import { romLabel } from '../types/api'
 import { normalizeGameFlavor } from '../utils/gameFlavor'
@@ -371,7 +372,7 @@ function DashboardConfigTab(): JSX.Element {
   // Load metadata (available games + phases) on mount
   useEffect(() => {
     if (!apiUrl) return
-    fetch(`${apiUrl}/api/metadata`)
+    api.getMetadata(apiUrl)
       .then((r) => r.json())
       .then((data: AdminMetadata) => {
         setMetadata(data)
@@ -381,7 +382,7 @@ function DashboardConfigTab(): JSX.Element {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load metadata'))
 
-    fetch(`${apiUrl}/api/getAllGames`)
+    api.getAllGames(apiUrl)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
@@ -416,11 +417,7 @@ function DashboardConfigTab(): JSX.Element {
     if (!selectedGame || !selectedPhase) return
     setLoading(true)
     try {
-      const res = await fetch(`${apiUrl}/api/subcribeGamePhase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game: selectedGame, phase: selectedPhase, gameName: selectedGameName || null })
-      })
+      const res = await api.subscribeGamePhase(apiUrl, { game: selectedGame, phase: selectedPhase, gameName: selectedGameName || null })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       showFeedback(`Subscribed to ${selectedGame} / ${selectedPhase}${selectedGameName ? ` (${selectedGameName})` : ''}`)
     } catch (err) {
@@ -433,11 +430,7 @@ function DashboardConfigTab(): JSX.Element {
   const handleRemoveSubscription = async (game: string, phase: string, gameName?: string | null): Promise<void> => {
     setLoading(true)
     try {
-      const res = await fetch(`${apiUrl}/api/unsubcribeGamePhase`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ game, phase, gameName: gameName ?? null })
-      })
+      const res = await api.unsubscribeGamePhase(apiUrl, { game, phase, gameName: gameName ?? null })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       showFeedback(`Unsubscribed from ${game} / ${phase}`)
     } catch (err) {
@@ -450,11 +443,7 @@ function DashboardConfigTab(): JSX.Element {
   const handleUpdateRecentCount = async (): Promise<void> => {
     setLoading(true)
     try {
-      const res = await fetch(`${apiUrl}/api/updateRecentEncounterConfig`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recentCount)
-      })
+      const res = await api.updateRecentEncounterCount(apiUrl, recentCount)
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       showFeedback(`Recent encounter count updated to ${recentCount}`)
     } catch (err) {
@@ -673,7 +662,7 @@ function BotControlTab(): JSX.Element {
     if (!apiUrl) return
     setLoadingParty(pos)
     try {
-      const r = await fetch(`${apiUrl}/api/bot/getParty/${pos}`)
+      const r = await api.getParty(apiUrl, pos)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       const party = await r.json() as PartySlotInfo[]
       setPartyByPos((prev) => ({ ...prev, [pos]: party }))
@@ -695,7 +684,7 @@ function BotControlTab(): JSX.Element {
         const es = emulatorState as EmulatorState
         if (ACTIONABLE_STATES.has(es.eventState)) {
           try {
-            const r = await fetch(`${apiUrl}/api/bot/getBotActions/${pos}`)
+            const r = await api.getBotActions(apiUrl, pos)
             if (r.ok) {
               updates[pos] = await r.json() as EventArgumentOptions[]
             }
@@ -756,7 +745,7 @@ function BotControlTab(): JSX.Element {
     if (!apiUrl) return
     setLoadingState(true)
     try {
-      const r = await fetch(`${apiUrl}/api/bot/getDashboardState`)
+      const r = await api.getDashboardState(apiUrl)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       const state = await r.json() as BotDashboardState
       setBotState(state)
@@ -773,7 +762,7 @@ function BotControlTab(): JSX.Element {
     if (!apiUrl) return
 
     setLoadingActions(true)
-    fetch(`${apiUrl}/api/getTopLevelActions`)
+    api.getTopLevelActions(apiUrl)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
@@ -789,7 +778,7 @@ function BotControlTab(): JSX.Element {
       .catch((err) => setActionsError(err instanceof Error ? err.message : 'Failed to load actions'))
       .finally(() => setLoadingActions(false))
 
-    fetch(`${apiUrl}/api/getAllGames`)
+    api.getAllGames(apiUrl)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
@@ -797,7 +786,7 @@ function BotControlTab(): JSX.Element {
       .then((data: GameRomInfo[]) => setAllGames(data))
       .catch((err) => console.error('Failed to load games:', err))
 
-    fetch(`${apiUrl}/api/metadata`)
+    api.getMetadata(apiUrl)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
@@ -867,11 +856,7 @@ function BotControlTab(): JSX.Element {
         }
       }
 
-      const res = await fetch(`${apiUrl}/api/bot/startAction/${pos}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+      const res = await api.startBotAction(apiUrl, pos, body)
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || `Server returned ${res.status}`)
@@ -936,11 +921,7 @@ function BotControlTab(): JSX.Element {
           : value
       }
 
-      const res = await fetch(`${apiUrl}/api/startTopLevelAction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
+      const res = await api.startTopLevelAction(apiUrl, body)
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || `Server returned ${res.status}`)
@@ -963,11 +944,7 @@ function BotControlTab(): JSX.Element {
     setConfirmCancelPos(null)
     setFeedback(null)
     try {
-      const res = await fetch(`${apiUrl}/api/bot/cancelAction`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(pos)
-      })
+      const res = await api.cancelBotAction(apiUrl, pos)
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || `Server returned ${res.status}`)
@@ -1424,7 +1401,7 @@ function PhaseEditorTab(): JSX.Element {
   // Load metadata on mount
   useEffect(() => {
     if (!apiUrl) return
-    fetch(`${apiUrl}/api/metadata`)
+    api.getMetadata(apiUrl)
       .then((r) => r.json())
       .then((data: AdminMetadata) => {
         setMetadata(data)
@@ -1442,8 +1419,7 @@ function PhaseEditorTab(): JSX.Element {
     const controller = new AbortController()
     setForm(null)
     setLoadingPhase(true)
-    const encodedPhase = encodeURIComponent(selectedPhase)
-    fetch(`${apiUrl}/api/phaseinfo/${selectedGame}/${encodedPhase}`, { signal: controller.signal })
+    api.getPhaseInfo(apiUrl, selectedGame, selectedPhase, controller.signal)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
@@ -1518,12 +1494,7 @@ function PhaseEditorTab(): JSX.Element {
     setFeedback(null)
     try {
       const payload: PhaseInfo = { ...form, gameName: selectedGame, name: phaseName }
-      const encodedPhase = encodeURIComponent(phaseName)
-      const res = await fetch(`${apiUrl}/api/updatePhaseInfo/${selectedGame}/${encodedPhase}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
+      const res = await api.updatePhaseInfo(apiUrl, selectedGame, phaseName, payload)
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || `Server returned ${res.status}`)
@@ -1533,7 +1504,7 @@ function PhaseEditorTab(): JSX.Element {
       showFeedback(`Saved "${phaseName}" successfully`)
       // Refresh metadata so new phase appears in dropdown
       if (isNewPhase) {
-        const metaRes = await fetch(`${apiUrl}/api/metadata`)
+        const metaRes = await api.getMetadata(apiUrl)
         if (metaRes.ok) {
           const data = await metaRes.json() as AdminMetadata
           setMetadata(data)
@@ -1753,7 +1724,7 @@ export function AdminCard(): JSX.Element {
 
   useEffect(() => {
     if (!apiUrl) return
-    fetch(`${apiUrl}/api/metadata`)
+    api.getMetadata(apiUrl)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: AdminMetadata | null) => setMacroRecordingEnabled(data?.macroRecordingEnabled ?? false))
       .catch(() => setMacroRecordingEnabled(false))
