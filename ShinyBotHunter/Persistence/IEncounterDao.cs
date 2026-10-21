@@ -7,8 +7,7 @@ namespace ShinyBotHunter.Persistence
     {
         Task<List<CountRow>> GetCountsAsync(GameFlavor game);
         Task<List<ProgressRow>> GetPhaseProgressAsync(GameFlavor game);
-        Task<double> GetEncountersPerHour(GameFlavor gameFlavor, string phase);
-        Task<double> GetEncountersPerHour(GameFlavor gameFlavor, string phase, string gameFileName);
+        Task<double> GetEncountersPerHour(GameFlavor game, string phase, string? gameFileName);
         Task<List<PokemonData>> GetLatestEncounters(GameFlavor game);
         void Init();
         Task WriteToQueueAsync(List<PersistPokemonData> encounters);

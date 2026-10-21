@@ -80,15 +80,8 @@ namespace ShinyBotHunter.Controllers
             return Ok(await phaseInfoService.AddOrUpdatePhaseInfoAsync(phaseInfo));
         }
 
-        [HttpGet("phaseinfo/encounterRate/{game}/{phase}")]
-        public async Task<ActionResult<double>> GetEncounterRate(string game, string phase)
-        {
-            double result = await encounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase);
-            return Ok(result);
-        }
-
-        [HttpGet("phaseinfo/encounterRate/{game}/{phase}/{gameFileName}")]
-        public async Task<ActionResult<double>> GetEncounterRate(string game, string phase, string gameFileName)
+        [HttpGet("phaseinfo/encounterRate/{game}/{phase}/{gameFileName?}")]
+        public async Task<ActionResult<double>> GetEncounterRate(string game, string phase, string? gameFileName)
         {
             double result = await encounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase, gameFileName);
             return Ok(result);
