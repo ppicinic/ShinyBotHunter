@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.Options;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Bson.Serialization.Options;
 using MongoDB.Driver;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -38,70 +36,6 @@ namespace ShinyBotHunter.Scripts
     internal record EvoChainList(EvoUrl[] results);
     internal record PokemonFieldName(string name, string url);
     internal record EvoUrl(string url);
-    public class PokemonMetadata
-    {
-        public int Id { get; set; }
-        public string PokemonName { get; set; } = null!;
-        public string PokeApiName { get; set; } = null!;
-        public string PokeApiSpeciesName { get; set; } = null!;
-        public List<PokemonFormMetadata> Forms { get; set; } = new List<PokemonFormMetadata>();
-        public bool HasFemaleForm { get; set; } = false; 
-        [BsonDictionaryOptions(DictionaryRepresentation.ArrayOfDocuments)]
-        public Dictionary<GameFlavor, List<PokemonLevelUpMoveData>> LevelUpMoves = new Dictionary<GameFlavor, List<PokemonLevelUpMoveData>>();
-        [BsonDictionaryOptions(DictionaryRepresentation.ArrayOfDocuments)]
-        public Dictionary<GameFlavor, List<EvolutionMetadata>> EvolutionDetails = new Dictionary<GameFlavor, List<EvolutionMetadata>>();
-    }
-
-    public class EvolutionMetadata
-    {
-        public int? MinLevel { get; set; } = null;
-        public int EvolveToId { get; set; }
-        public int? HeldItemId { get; set; } = null;
-        public int? Gender { get; set; } = null;
-        public bool? IsNight { get; set; } = null;
-        public bool? IsDay { get; set; } = null;
-        public int? MinHappiness { get; set; } = null;
-        public int? TyrogueValue { get; set; } = null; // -1 - hitmonchan, 0 - hitmontop, 1 - hitmonlee
-        public int? KnownMoveId { get; set; } = null;
-        public int? PartySpeciesId { get; set; } = null;
-        public int? MinBeauty { get; set; } = null;
-    }
-
-    public class PokemonLevelUpMoveData : IComparable<PokemonLevelUpMoveData>
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = null!;
-        public int Level { get; set; }
-        public int? Order { get; set; } = null;
-
-        public int CompareTo(PokemonLevelUpMoveData? other)
-        {
-            // 1. Standard C# contract: any instance is greater than null
-            if (other is null)
-            {
-                return 1;
-            }
-
-            // 2. Compare Levels first
-            int levelComparison = Level.CompareTo(other.Level);
-            if (levelComparison != 0)
-            {
-                return levelComparison;
-            }
-
-            // 3. If Levels are equal, safely compare Orders.
-            // Nullable.Compare automatically handles cases where either or both are null.
-            return Nullable.Compare(Order, other.Order);
-        }
-    }
-
-    public class PokemonFormMetadata
-    {
-        public string Name { get; set; } = null!;
-        public string Version { get; set; } = null!;
-        public bool HasFemaleForm { get; set; }
-    }
-
     public class PokeApiParser
     {
         private string rootSpriteDirectory;
@@ -399,7 +333,7 @@ namespace ShinyBotHunter.Scripts
                     {
                         meta.HasFemaleForm = true;
                     }
-                    meta.LevelUpMoves.Add(GameFlavor.HGSS, new List<PokemonLevelUpMoveData>());
+                    meta.LevelUpMoves.Add(GameFlavor.HGSS, new List<PokemonLevelUpMoveMetadata>());
                     // Move data
                     foreach (var move in pokemon.moves)
                     {
@@ -408,7 +342,7 @@ namespace ShinyBotHunter.Scripts
                             if (vg.version_group.name == "heartgold-soulsilver" && vg.move_learn_method.name == "level-up")
                             {
                                 int id = Int32.Parse(move.move.url.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]);
-                                meta.LevelUpMoves[GameFlavor.HGSS].Add(new PokemonLevelUpMoveData()
+                                meta.LevelUpMoves[GameFlavor.HGSS].Add(new PokemonLevelUpMoveMetadata()
                                 {
                                     Id = id,
                                     Level = vg.level_learned_at,
