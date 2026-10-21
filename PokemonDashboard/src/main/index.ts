@@ -93,6 +93,18 @@ app.whenReady().then(() => {
 
   ipcMain.handle(IPC.getSignalRState, () => getSnapshot())
 
+  // Every renderer request to the backend goes through here; any other origin is refused.
+  const apiOrigin = new URL(config.apiUrl).origin
+  ipcMain.handle(IPC.apiRequest, async (_event, method: string, url: string, body?: string) => {
+    if (new URL(url).origin !== apiOrigin) throw new Error(`Refusing request to ${url}`)
+    const res = await net.fetch(url, {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body
+    })
+    return { status: res.status, body: await res.text() }
+  })
+
   startSignalR(config.backendUrl)
   bootstrapWindows(config)
 

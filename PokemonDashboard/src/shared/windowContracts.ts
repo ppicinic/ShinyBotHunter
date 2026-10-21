@@ -51,7 +51,8 @@ export const IPC = {
   signalRConnectionState: 'signalr-connection-state',
   signalRDashboardConfig: 'signalr-dashboard-config',
   signalREncounters: 'signalr-encounters',
-  signalRDashboardState: 'signalr-dashboard-state'
+  signalRDashboardState: 'signalr-dashboard-state',
+  apiRequest: 'api-request'
 } as const
 
 export function phaseWindowName(r: PhaseWindowRequest): string {
