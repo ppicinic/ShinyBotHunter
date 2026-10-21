@@ -6,7 +6,6 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Macro;
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -16,7 +15,7 @@ namespace ShinyBotHunter.Service
 {
     public class BotService
     {
-        private int maxEmulators;
+        private readonly EmulatorSlotRegistry slots;
         private BotFactory botFactory;
         private IServiceProvider provider;
         private EventArgumentOptions[] specialEvents;
@@ -29,7 +28,7 @@ namespace ShinyBotHunter.Service
             this.romInfoService = romInfoService;
             // Display slots and ports are one pool shared by every console, so the ceiling on
             // concurrently running emulators is the sum of the per-console budgets.
-            this.maxEmulators = appSettings.Value.TotalMaxEmulators;
+            slots = new EmulatorSlotRegistry(appSettings.Value.TotalMaxEmulators);
             this.botFactory = botFactory;
             this.provider = provider;
             specialEvents = Array.Empty<EventArgumentOptions>();
@@ -50,50 +49,22 @@ namespace ShinyBotHunter.Service
             specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json, options)!;
         }
 
-        // Lock rule: writers take the gate, readers never do. A writer is any code that changes
-        // botEvents or a field of a BotAndOrEvent: ExecuteNewBotOrSpecialEvent, ExecuteEvent,
-        // CancelBotOrEventAsync and the teardown in RunEventAsync. Each holds the gate across its
-        // whole check-then-act sequence. Readers (GetBotDashboardState, GetAvailableActions, GetBotAt,
-        // HasRunningEvent, GetPartyAsync) stay lock-free because running events call them from inside
-        // their loops, and an event waiting on the gate while a canceller holds it and awaits that
-        // event would deadlock. The dictionary is concurrent so their enumeration is safe against a
-        // writer's add or remove, and they read each entry field once into a local. A writer must
-        // never call another writer: the gate is not re-entrant.
-        private readonly SemaphoreSlim gate = new(1, 1);
-        private readonly ConcurrentDictionary<int, BotAndOrEvent> botEvents = new ConcurrentDictionary<int, BotAndOrEvent>();
         public async Task<Dictionary<int, EmulatorState>> ExecuteNewBotOrSpecialEvent(NewEventArguments args)
         {
-            await gate.WaitAsync();
+            await slots.Gate.WaitAsync();
             try
             {
                 return await ExecuteNewBotOrSpecialEventUnderGate(args);
             }
             finally
             {
-                gate.Release();
+                slots.Gate.Release();
             }
         }
 
         private async Task<Dictionary<int, EmulatorState>> ExecuteNewBotOrSpecialEventUnderGate(NewEventArguments args)
         {
-            var positions = botEvents.Values.Aggregate(new List<int>(), (acc, x) => { acc.AddRange(x.GetBotPositions()); return acc; });
-            positions.Sort();
-            if (positions.Count() >= maxEmulators)
-            {
-                throw new Exception("No open space to start any new emulators");
-            }
-            int newPos = positions.Count() == 0 ? 0 : -1;
-            for (int i = 0; i < positions.Count() && newPos == -1; i++)
-            {
-                if (positions[i] != i)
-                {
-                    newPos = i;
-                }
-            }
-            if(newPos == -1)
-            {
-                newPos = positions.Count();
-            }
+            var (positions, newPos) = slots.AllocatePosition();
             if (args.EventName == "Launch Bot")
             {
                 if(args is not null && args.GameName is not null)
@@ -101,7 +72,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    if (!botEvents.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                    if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
                     {
                         throw new InvalidOperationException($"Position {newPos} is already taken.");
                     }
@@ -119,7 +90,7 @@ namespace ShinyBotHunter.Service
                     var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                     var bot = botFactory.CreateBot(gameContext);
                     await bot.LaunchAsync();
-                    if (!botEvents.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                    if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
                     {
                         throw new InvalidOperationException($"Position {newPos} is already taken.");
                     }
@@ -203,7 +174,7 @@ namespace ShinyBotHunter.Service
                 var huntState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
                 huntState.State.Push(EventState.Running);
                 var huntEvent = new BotAndOrEvent { GameState = huntState };
-                botEvents[newPos] = huntEvent;
+                slots.Entries[newPos] = huntEvent;
                 StartEvent(newPos, huntEvent, hunt, huntState, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", removeWhenDone: true);
                 return GetBotDashboardState();
             }
@@ -244,27 +215,27 @@ namespace ShinyBotHunter.Service
 
             var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
             var botEvent = new BotAndOrEvent();
-            botEvents[newPos] = botEvent;
+            slots.Entries[newPos] = botEvent;
             StartEvent(newPos, botEvent, ev, new GameState(), "HGSS Shiny Starter Hunt", removeWhenDone: true);
             return GetBotDashboardState();
         }
 
         public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
         {
-            await gate.WaitAsync();
+            await slots.Gate.WaitAsync();
             try
             {
                 return await ExecuteEventUnderGate(pos, args);
             }
             finally
             {
-                gate.Release();
+                slots.Gate.Release();
             }
         }
 
         private async Task<Dictionary<int, EmulatorState>> ExecuteEventUnderGate(int pos, NewEventArguments args)
         {
-            if (!botEvents.ContainsKey(pos))
+            if (!slots.Entries.ContainsKey(pos))
             {
                 throw new ArgumentException($"There is not bot at position: {pos}");
             }
@@ -275,12 +246,12 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Wild Encounter")
             {
-                var leg = ValidateAndBuildLeg(args.ToLeg(), botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor);
+                var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
                 var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
-                botEvents[pos].GameState = NewGameStateForLeg(pos, leg);
-                botEvents[pos].GameState!.State.Push(EventState.Init);
-                StartEvent(pos, botEvents[pos], wildPokemonEvent, botEvents[pos].GameState!, leg.PhaseName, removeWhenDone: false);
+                slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+                slots.Entries[pos].GameState!.State.Push(EventState.Init);
+                StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
@@ -292,15 +263,15 @@ namespace ShinyBotHunter.Service
                 }
                 // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
                 // after leg 1 has already been running for an hour.
-                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, botEvents[pos].Bot!.GameFileName, botEvents[pos].Bot!.GameFlavor)).ToList();
+                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor)).ToList();
 
                 var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
                 // The chain shares one GameState across all legs so the start tile survives leg
                 // boundaries; ChainedOrchestratorEvent re-applies each leg's own fields as it goes.
-                botEvents[pos].GameState = NewGameStateForLeg(pos, legs[0]);
-                botEvents[pos].GameState!.State.Push(EventState.Init);
+                slots.Entries[pos].GameState = NewGameStateForLeg(pos, legs[0]);
+                slots.Entries[pos].GameState!.State.Push(EventState.Init);
                 string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
-                StartEvent(pos, botEvents[pos], chainedEvent, botEvents[pos].GameState!, name, removeWhenDone: false);
+                StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
@@ -317,24 +288,24 @@ namespace ShinyBotHunter.Service
                 // Constructing the event loads and validates its config, so a corridor or a touch
                 // coordinate that was never measured fails here with a message rather than after the
                 // dashboard has already reported the hunt as running.
-                var eggEvent = new HgssTogepiEggEvent(botEvents[pos].Bot!, botEvents[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
-                botEvents[pos].GameState = new GameState()
+                var eggEvent = new HgssTogepiEggEvent(slots.Entries[pos].Bot!, slots.Entries[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
+                slots.Entries[pos].GameState = new GameState()
                 {
-                    GameFlavor = botEvents[pos].Bot!.GameFlavor,
+                    GameFlavor = slots.Entries[pos].Bot!.GameFlavor,
                     BotService = this,
-                    Bot = botEvents[pos].Bot!,
+                    Bot = slots.Entries[pos].Bot!,
                     Milestone = args.PhaseName,
                     // Nothing in this event consults the target -- the egg is the only thing it ever
                     // looks at -- but GameState requires one and shiny is what the hunt is for.
                     Target = new ShinyTarget(),
                 };
-                StartEvent(pos, botEvents[pos], eggEvent, botEvents[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
+                StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
 
                 return GetBotDashboardState();
             }
             else if(args.EventName == "Resume")
             {
-                if (botEvents[pos].Event is MultiStarterHuntEvent multiHunt)
+                if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)
                 {
                     // The hunt's main task is still running; Resume is a call into it, not a restart.
                     // Awaited under the gate, so a second Resume click settles the next parked shiny
@@ -345,8 +316,8 @@ namespace ShinyBotHunter.Service
                     await RefreshDashboardState();
                     return GetBotDashboardState();
                 }
-                botEvents[pos].GameState!.SwapState(EventState.Resume);
-                StartEvent(pos, botEvents[pos], botEvents[pos].Event!, botEvents[pos].GameState!, botEvents[pos].GetName(pos), removeWhenDone: false);
+                slots.Entries[pos].GameState!.SwapState(EventState.Resume);
+                StartEvent(pos, slots.Entries[pos], slots.Entries[pos].Event!, slots.Entries[pos].GameState!, slots.Entries[pos].GetName(pos), removeWhenDone: false);
                 return GetBotDashboardState();
             }
             else
@@ -461,11 +432,11 @@ namespace ShinyBotHunter.Service
             return new GameState()
             {
                 OriginalBattleMode = leg.TrainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
-                GameFlavor = botEvents[pos].Bot!.GameFlavor,
+                GameFlavor = slots.Entries[pos].Bot!.GameFlavor,
                 BotService = this,
                 Target = leg.Target,
                 Milestone = leg.PhaseName,
-                Bot = botEvents[pos].Bot!,
+                Bot = slots.Entries[pos].Bot!,
                 TrainType = leg.TrainType,
                 TargetLevel = leg.TargetLevel,
                 SwitchSlot = leg.SwitchSlot,
@@ -479,12 +450,12 @@ namespace ShinyBotHunter.Service
         /// </summary>
         public async Task<List<PartySlotInfo>> GetPartyAsync(int pos)
         {
-            if (!botEvents.ContainsKey(pos) || botEvents[pos].Bot is null)
+            if (!slots.Entries.ContainsKey(pos) || slots.Entries[pos].Bot is null)
             {
                 throw new ArgumentException($"There is not bot at position: {pos}");
             }
             var reader = provider.GetRequiredService<PokemonStateReader>();
-            var partyState = await reader.GetPartyState(botEvents[pos].Bot!);
+            var partyState = await reader.GetPartyState(slots.Entries[pos].Bot!);
             var result = new List<PartySlotInfo>();
             for (int i = 0; i < partyState.PartySize; i++)
             {
@@ -500,7 +471,7 @@ namespace ShinyBotHunter.Service
 
         public List<EventArgumentOptions> GetAvailableActions(int pos)
         {
-            if (!botEvents.TryGetValue(pos, out var botEvent))
+            if (!slots.Entries.TryGetValue(pos, out var botEvent))
             {
                 return [];
             }
@@ -558,15 +529,15 @@ namespace ShinyBotHunter.Service
 
         /// <summary>The bot at a display position, or null when nothing is running there.</summary>
         public IBot? GetBotAt(int pos)
-            => botEvents.TryGetValue(pos, out var entry) ? entry.Bot : null;
+            => slots.Entries.TryGetValue(pos, out var entry) ? entry.Bot : null;
 
         /// <summary>True when an event currently owns the bot at this position.</summary>
         public bool HasRunningEvent(int pos)
-            => botEvents.TryGetValue(pos, out var entry) && entry.Event is not null;
+            => slots.Entries.TryGetValue(pos, out var entry) && entry.Event is not null;
 
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
-            return botEvents.Select(x =>
+            return slots.Entries.Select(x =>
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
@@ -583,10 +554,10 @@ namespace ShinyBotHunter.Service
         public async Task<Dictionary<int, EmulatorState>> CancelBotOrEventAsync(int pos)
         {
             Task? running = null;
-            await gate.WaitAsync();
+            await slots.Gate.WaitAsync();
             try
             {
-                var entry = botEvents[pos];
+                var entry = slots.Entries[pos];
                 if (entry.EventTask is not null)
                 {
                     entry.CancellationTokenSource!.Cancel();
@@ -601,12 +572,12 @@ namespace ShinyBotHunter.Service
                 {
                     // Dispose never calls back into BotService, so awaiting it under the gate is safe.
                     await entry.Bot!.DisposeAsync();
-                    botEvents.TryRemove(pos, out _);
+                    slots.Entries.TryRemove(pos, out _);
                 }
             }
             finally
             {
-                gate.Release();
+                slots.Gate.Release();
             }
             if (running is not null)
             {
@@ -657,7 +628,7 @@ namespace ShinyBotHunter.Service
                 await cts.CancelAsync();
             }
 
-            await gate.WaitAsync();
+            await slots.Gate.WaitAsync();
             try
             {
                 if (cancelled)
@@ -674,12 +645,12 @@ namespace ShinyBotHunter.Service
                 if (removeWhenDone)
                 {
                     // The key captured at start, not a position read back from the event.
-                    botEvents.TryRemove(key, out _);
+                    slots.Entries.TryRemove(key, out _);
                 }
             }
             finally
             {
-                gate.Release();
+                slots.Gate.Release();
             }
 
             try
@@ -700,48 +671,6 @@ namespace ShinyBotHunter.Service
         public async Task RefreshDashboardState()
         {
             await this.hubContext.Clients.All.ReceiveDashboardState(GetBotDashboardState());
-        }
-    }
-
-    public class BotAndOrEvent
-    {
-        public BotAndOrEvent() { }
-        public BotAndOrEvent(IBot bot) 
-        {
-            Bot = bot;
-        }
-        public int? BotPosition { get; set; }
-        public IBot? Bot { get; set; }
-
-        /// <summary>
-        /// How this bot's emulator was built: which ROM file, which console, which flavor. Kept so an
-        /// event started later can copy a ROM or resolve a macro without re-deriving any of it.
-        /// </summary>
-        public GameContext? Context { get; set; }
-        public IBotEvent? Event { get; set; }
-        public Task? EventTask { get; set; }
-        public GameState? GameState { get; set; }
-        public CancellationTokenSource? CancellationTokenSource { get; set; }
-        public string? EventName { get; set; }
-        public string GetName(int pos)
-        {
-            return EventName is not null ? EventName : $"Bot {pos}";
-        }
-
-        public int[] GetBotPositions()
-        {
-            if (Event is not null)
-            {
-                if(Event.BotPositions is not null && Event.BotPositions.Length > 0)
-                {
-                    return Event.BotPositions;
-                }
-            }
-            if(BotPosition is not null)
-            {
-                return [BotPosition.Value];
-            }
-            return [];
         }
     }
 }
