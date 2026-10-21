@@ -477,6 +477,87 @@ namespace ShinyBotHunter.Service
             });
         }
 
+        // Builds a game's whole tree from the grouped rows. Every row counts under its form code and its "#species"
+        // key, at game and phase level, on the game node and on its ROM copy's node. Single writer on an unpublished tree.
+        internal static GameEncounterCache BuildGameCache(List<CountRow> counts, List<ProgressRow> progress, List<CaughtPokemon> caught, List<PokemonData> latest)
+        {
+            var cache = new GameEncounterCache()
+            {
+                CaughtPokemon = new ConcurrentBag<CaughtPokemon>(caught)
+            };
+            for (int i = latest.Count - 1; i >= 0; i--)
+            {
+                cache.LatestEncounters.Enqueue(latest[i]);
+            }
+            foreach (var row in counts)
+            {
+                AddCounts(cache, row.Milestone, row.FormCode, row.Species, row.Encounters, row.ShinyEncounters, 0);
+                AddCounts(cache.GameLevelCache.GetOrAdd(row.GameFileName, _ => new GameEncounterCacheBase()), row.Milestone, row.FormCode, row.Species, row.Encounters, row.ShinyEncounters, 0);
+            }
+            foreach (var caughtPokemon in caught)
+            {
+                var fileNode = cache.GameLevelCache.GetOrAdd(caughtPokemon.GameFileName, _ => new GameEncounterCacheBase());
+                AddCounts(cache, caughtPokemon.Phase, caughtPokemon.Pokemon.FormCode, caughtPokemon.Pokemon.Species, 0, 0, 1);
+                AddCounts(fileNode, caughtPokemon.Phase, caughtPokemon.Pokemon.FormCode, caughtPokemon.Pokemon.Species, 0, 0, 1);
+                fileNode.CaughtPokemon.Add(caughtPokemon);
+            }
+            foreach (var row in progress)
+            {
+                GameEncounterCacheBase node = row.GameFileName == null
+                    ? cache
+                    : cache.GameLevelCache.GetOrAdd(row.GameFileName, _ => new GameEncounterCacheBase());
+                node.PhaseEncounterCache.GetOrAdd(row.Milestone, _ => new PhaseEncounterCache()).PhaseCount = row.SinceLastShiny;
+            }
+            return cache;
+        }
+
+        private static void AddCounts(GameEncounterCacheBase node, string phase, string formCode, int species, long encounters, long shinyEncounters, long caught)
+        {
+            string speciesKey = CacheLoadRequest.SpeciesKey(species);
+            var phaseNode = node.PhaseEncounterCache.GetOrAdd(phase, _ => new PhaseEncounterCache());
+            PokemonCounts[] targets =
+            [
+                node.AllPokemonCounts,
+                node.PokemonEncounterCache.GetOrAdd(formCode, _ => new PokemonCounts()),
+                node.PokemonEncounterCache.GetOrAdd(speciesKey, _ => new PokemonCounts()),
+                phaseNode.AllPokemonCounts,
+                phaseNode.PokemonEncounterCache.GetOrAdd(formCode, _ => new PokemonCounts()),
+                phaseNode.PokemonEncounterCache.GetOrAdd(speciesKey, _ => new PokemonCounts()),
+            ];
+            foreach (var target in targets)
+            {
+                target.Encounters += encounters;
+                target.ShinyEncounters += shinyEncounters;
+                target.ShiniesCaught += caught;
+            }
+        }
+
+        // A key the request names but no row produced gets a zero node, so increments have somewhere to land.
+        internal static void EnsureKeys(GameEncounterCache cache, CacheLoadRequest request)
+        {
+            void Ensure(GameEncounterCacheBase node)
+            {
+                foreach (var formCode in request.FormCodes)
+                {
+                    node.PokemonEncounterCache.GetOrAdd(formCode, _ => new PokemonCounts());
+                }
+                foreach (var phase in request.Phases)
+                {
+                    var phaseNode = node.PhaseEncounterCache.GetOrAdd(phase, _ => new PhaseEncounterCache());
+                    foreach (var formCode in request.FormCodes)
+                    {
+                        phaseNode.PokemonEncounterCache.GetOrAdd(formCode, _ => new PokemonCounts());
+                    }
+                }
+            }
+
+            Ensure(cache);
+            foreach (var gameFileName in request.GameFileNames)
+            {
+                Ensure(cache.GameLevelCache.GetOrAdd(gameFileName, _ => new GameEncounterCacheBase()));
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             EncounterChannel.Writer.TryComplete();
