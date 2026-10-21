@@ -161,7 +161,7 @@ Inputs are macro strings authored as YAML under `Macro/Configs/{flavor}/`, expan
 - `EmulatorGrid` extracted as pure, tested arithmetic.
 
 ### Known weaknesses
-Detailed in the [review](../reviews/2026-10-code-review.md): no synchronisation around `BotService.botEvents`; three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; dead duplicate events; a `IDataReader` that RS cannot implement.
+Detailed in the [review](../reviews/2026-10-code-review.md): three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; dead duplicate events; a `IDataReader` that RS cannot implement.
 
 ## 8. ApiHawk and the emulator boundary
 
