@@ -15,6 +15,7 @@ namespace ShinyBotHunter.Service
     {
         private IEncounterDao _encounterDao;
         private MongoCaughtPokemonDao _caughtPokemonDao;
+        private readonly ILogger<PokemonPersistenceService> _logger;
         private static readonly SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
         private List<INotify<EncounterNotification, CacheLoadRequest, GameEncounterResponse>> notifies;
         private Channel<List<PersistPokemonData>> EncounterChannel { get; set; }
@@ -34,10 +35,11 @@ namespace ShinyBotHunter.Service
         **/
         private ConcurrentDictionary<GameFlavor, GameEncounterCache> gameCache = new();
 
-        public PokemonPersistenceService(IEncounterDao encounterDao, MongoCaughtPokemonDao mongoCaughtPokemonDao)
+        public PokemonPersistenceService(IEncounterDao encounterDao, MongoCaughtPokemonDao mongoCaughtPokemonDao, ILogger<PokemonPersistenceService> logger)
         {
             this._encounterDao = encounterDao;
             this._caughtPokemonDao = mongoCaughtPokemonDao;
+            _logger = logger;
             EncounterChannel = Channel.CreateUnbounded<List<PersistPokemonData>>();
             CaughtChannel = Channel.CreateUnbounded<PersistPokemonData>();
             notifies = new List<INotify<EncounterNotification, CacheLoadRequest, GameEncounterResponse>>();
@@ -61,14 +63,8 @@ namespace ShinyBotHunter.Service
 
         public void Init()
         {
-            var _ = Task.Run(async () =>
-            {
-                await ProcessEncounterAsync();
-            });
-            var _1 = Task.Run(async () =>
-            {
-                await ProcessCatchesAsync();
-            });
+            _ = Task.Run(() => BackgroundLoop.RunSupervisedAsync(ProcessEncounterAsync, _logger, nameof(ProcessEncounterAsync)));
+            _ = Task.Run(() => BackgroundLoop.RunSupervisedAsync(ProcessCatchesAsync, _logger, nameof(ProcessCatchesAsync)));
         }
 
         public async Task ProcessEncounterAsync()
