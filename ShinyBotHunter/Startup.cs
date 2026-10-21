@@ -17,7 +17,6 @@ using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
-using ShinyBotHunter.Services;
 using ShinyBotHunter.Tools;
 
 namespace ShinyBotHunter
