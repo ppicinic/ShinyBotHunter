@@ -32,7 +32,6 @@ namespace ShinyBotHunter.BotEvents
     {
         private readonly IServiceProvider provider;
         private readonly List<EventLeg> legs;
-        private readonly object legLock = new object();
         private int currentLegIndex = 0;
         private OrchestratorEvent? currentLegEvent = null;
 
@@ -48,7 +47,7 @@ namespace ShinyBotHunter.BotEvents
 
         public int LegCount
         {
-            get { lock (legLock) { return legs.Count; } }
+            get { return legs.Count; }
         }
 
         public int CurrentLegNumber => currentLegIndex + 1;
@@ -98,10 +97,7 @@ namespace ShinyBotHunter.BotEvents
 
         private EventLeg? TryGetLeg(int index)
         {
-            lock (legLock)
-            {
-                return index < legs.Count ? legs[index] : null;
-            }
+            return index < legs.Count ? legs[index] : null;
         }
 
         /// <summary>
