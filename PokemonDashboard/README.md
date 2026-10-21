@@ -97,12 +97,12 @@ Produces a Windows NSIS installer in `release/`. The `config.json` is bundled al
 | Card | Description |
 |---|---|
 | **Phase Card** | Shows encounter counts, shiny counts, and caught/required progress for each Pokemon in the active phase. One card per active subscription. |
-| **Recent Pokemon Card** | Shows the most recently encountered Pokemon with full stats (IVs, ShinyValue, nature, etc.). Requires backend SignalR extension (pending). |
-| **Admin Card** | Tabbed admin panel. Dashboard Config tab manages active game+phase subscriptions via REST API. Bot Control and Logs tabs are placeholders. |
+| **Recent Pokemon Card** | Shows the most recently encountered Pokemon with full stats (IVs, ShinyValue, nature, etc.). |
+| **Admin Card** | Tabbed admin panel. Dashboard Config tab manages active game+phase subscriptions via REST API. Bot Control, Milestone Editor and Window Layout tabs, plus Dev Mode when the backend enables macro recording. |
 
-### Cards are draggable and resizable
+### One window per card
 
-Drag cards by their header bar. Resize from the bottom-right corner handle. Cards snap to a 24-column grid.
+Each card opens as its own OS window: Admin and Recent Encounters at startup when enabled in `config.json`, and one Phase window per active subscription. Move and resize them like any window; positions and sizes are saved to `window-layout.json` in the Electron userData folder and restored on next launch.
 
 ### SignalR API
 
@@ -110,15 +110,7 @@ Drag cards by their header bar. Resize from the bottom-right corner handle. Card
 |---|---|---|
 | Client → Server | `SubscribeToGamePhase(game, phase)` | Subscribe to encounter updates for a game+phase |
 | Server → Client | `RecieveEncounters` | Fired after each encounter batch |
-| Server → Client | `RefreshDashboardConfig` | Fired when admin updates active subscriptions (pending backend implementation) |
-
-### Current hardcoded subscription
-
-Until the backend implements the `RefreshDashboardConfig` API, the dashboard is hardcoded to subscribe to:
-- Game: `HGSS`
-- Phase: `1-1 Starters`
-
-This is set in [`AppContext.tsx`](src/renderer/src/context/AppContext.tsx) in `defaultDashboardConfig`.
+| Server → Client | `ReceiveDashboardConfig` | Fired on connect and when admin updates active subscriptions |
 
 ---
 
@@ -126,5 +118,4 @@ This is set in [`AppContext.tsx`](src/renderer/src/context/AppContext.tsx) in `d
 
 - Set `backendUrl` to the LAN IP of the machine running ShinyBotHunter
 - Multiple dashboards can connect simultaneously
-- For OBS: use a Window Capture source targeting the Pokemon Dashboard window
-- Position cards to fill the desired capture region
+- For OBS: use a Window Capture source per card window you want to show

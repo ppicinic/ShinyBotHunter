@@ -1,6 +1,6 @@
 # Execution Plan: One OS Window Per Card (Multi-Window Dashboard)
 
-**Status:** Draft for approval — no implementation yet
+**Status:** Implemented
 **Date:** 2026-07-15
 **Scope:** `PokemonDashboard/` only. Zero C# backend changes.
 
