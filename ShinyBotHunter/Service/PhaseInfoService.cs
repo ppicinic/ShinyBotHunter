@@ -10,9 +10,15 @@ namespace ShinyBotHunter.Service
     public class PhaseInfoService
     {
         public record GamePhase(GameFlavor game, string phase, string? gameFileName);
+        // Set once in the constructor; thread-safe for concurrent use.
         private PokemonMetadataService metadataService;
-        private Dictionary<GamePhase, PhaseInfo> phaseInfos = new Dictionary<GamePhase, PhaseInfo>();
-        private Dictionary<GameFlavor, List<string>> gamePhases = new Dictionary<GameFlavor, List<string>>();
+        // Guards phaseInfos and gamePhases after startup. Held only around dictionary reads, writes and the GetAllPhases copy, never across an await.
+        private readonly object phasesLock = new();
+        // Filled by InitAsync before the host serves requests or starts bots (single-threaded by construction); after that, written by AddOrUpdatePhaseInfoAsync (dashboard requests) and read by requests, bot loops and the notification pipeline, only under phasesLock.
+        private readonly Dictionary<GamePhase, PhaseInfo> phaseInfos = new Dictionary<GamePhase, PhaseInfo>();
+        // Same as phaseInfos: filled by InitAsync before the host starts, then read and written only under phasesLock. A name is added here only in the same critical section that adds its phaseInfos entry.
+        private readonly Dictionary<GameFlavor, List<string>> gamePhases = new Dictionary<GameFlavor, List<string>>();
+        // Set once in the constructor; thread-safe for concurrent use.
         private IMongoCollection<PhaseInfo> phaseInfoCollection;
 
         public PhaseInfoService(PokemonMetadataService metadataService, MongoDbConnection mongoDbConnection)
@@ -92,45 +98,55 @@ namespace ShinyBotHunter.Service
                     pokemon.FormCode = metadata.PokeApiName;
                 }
             }
-            var key = new GamePhase(phaseInfo.Game, phaseInfo.Name, null);
-            if (phaseInfos.ContainsKey(key))
+            lock (phasesLock)
             {
-                phaseInfos[key] = phaseInfo;
-            }
-            else 
-            {
-                phaseInfos.Add(key, phaseInfo);
-                if (!gamePhases.ContainsKey(phaseInfo.Game))
+                var key = new GamePhase(phaseInfo.Game, phaseInfo.Name, null);
+                if (phaseInfos.ContainsKey(key))
                 {
-                    gamePhases.Add(phaseInfo.Game, new List<string>());
+                    phaseInfos[key] = phaseInfo;
                 }
-                gamePhases[phaseInfo.Game].Add(phaseInfo.Name);
+                else 
+                {
+                    phaseInfos.Add(key, phaseInfo);
+                    if (!gamePhases.ContainsKey(phaseInfo.Game))
+                    {
+                        gamePhases.Add(phaseInfo.Game, new List<string>());
+                    }
+                    gamePhases[phaseInfo.Game].Add(phaseInfo.Name);
+                }
             }
             return phaseInfo;
         }
 
         public PhaseInfo? GetPhaseInfo(GameFlavor game, string phase)
         {
-            phaseInfos.TryGetValue(new GamePhase(game, phase, null), out var info);
+            PhaseInfo? info;
+            lock (phasesLock)
+            {
+                phaseInfos.TryGetValue(new GamePhase(game, phase, null), out info);
+            }
             return info;
         }
 
         public Dictionary<GameFlavor, PhaseInfo[]> GetAllPhases(IEnumerable<GameFlavor> games)
         {
             Dictionary<GameFlavor, PhaseInfo[]> result = new Dictionary<GameFlavor, PhaseInfo[]>();
-            foreach (GameFlavor game in games)
+            lock (phasesLock)
             {
-                List<PhaseInfo> toReturn = new List<PhaseInfo>();
-                // A flavor with no phase JSON yet is normal, not an error — a newly added flavor has
-                // none until its phases are authored, and this is called with every enum member.
-                if (gamePhases.TryGetValue(game, out var phaseNames))
+                foreach (GameFlavor game in games)
                 {
-                    foreach (var phaseName in phaseNames)
+                    List<PhaseInfo> toReturn = new List<PhaseInfo>();
+                    // A flavor with no phase JSON yet is normal, not an error — a newly added flavor has
+                    // none until its phases are authored, and this is called with every enum member.
+                    if (gamePhases.TryGetValue(game, out var phaseNames))
                     {
-                        toReturn.Add(phaseInfos[new GamePhase(game, phaseName, null)]);
+                        foreach (var phaseName in phaseNames)
+                        {
+                            toReturn.Add(phaseInfos[new GamePhase(game, phaseName, null)]);
+                        }
                     }
+                    result.Add(game, toReturn.ToArray());
                 }
-                result.Add(game, toReturn.ToArray());
             }
             return result;
         }
