@@ -427,7 +427,7 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        private bool WillEvolve(PokemonData levelUp, EvolutionMetadata evolutionMetadata, PokemonBattleState battleState)
+        internal static bool WillEvolve(PokemonData levelUp, EvolutionMetadata evolutionMetadata, PokemonBattleState battleState)
         {
             if(evolutionMetadata.MinLevel is not null && levelUp.Level < evolutionMetadata.MinLevel)
             {
@@ -535,7 +535,7 @@ namespace ShinyBotHunter.BotEvents
             return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
         }
 
-        private PokemonData? GetLevelUp(PokemonBattleState oldState, PokemonBattleState? newState)
+        internal static PokemonData? GetLevelUp(PokemonBattleState oldState, PokemonBattleState? newState)
         {
             if(newState is null)
             {
