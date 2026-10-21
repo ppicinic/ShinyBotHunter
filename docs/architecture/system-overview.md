@@ -100,8 +100,8 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 | Store | Data | Access |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Three EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
-| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI) | Three DAOs/services with the raw driver |
-| Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/`; starter-hunt state JSON via `StarterHuntStateStore` | |
+| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`) | Three DAOs/services with the raw driver, plus `StarterHuntStateStore` |
+| Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/` | |
 
 ### Write path
 Bot event detects an encounter and calls `PokemonPersistenceService.AddEncounterAsync`. That posts to an unbounded `Channel`; a single consumer loop updates the in-memory counts cache, forwards to the DAO's own channel (which batches into EF `SaveChanges`), then notifies SignalR groups and Discord. Catches follow the same shape through `MongoCaughtPokemonDao`.
@@ -115,7 +115,10 @@ Dashboard reads never hit the database directly; they read the counts cache. The
 
 ```mermaid
 flowchart TD
-  BC[BotController] --> BS["BotService<br/>ConcurrentDictionary&lt;int, BotAndOrEvent&gt; + SemaphoreSlim gate"]
+  BC[BotController] --> BS[BotService]
+  BS --> REG["EmulatorSlotRegistry<br/>ConcurrentDictionary&lt;int, BotAndOrEvent&gt; + SemaphoreSlim gate + AllocatePosition"]
+  BS --> RUN["BotEventRunner<br/>StartEvent / RunEventAsync / two-phase cancel"]
+  RUN --> REG
   BS --> BF[BotFactory]
   BF --> GC["GameContext<br/>ConsoleType / GameFlavor / RomInfo / ports / window slot"]
   BF --> Bot
@@ -124,7 +127,7 @@ flowchart TD
   Bot --> MC["IMemoryClient<br/>BizHawkMemoryClient"]
   Bot --> DR["IDataReader<br/>HgssDataReader / RsDataReader"]
   L --> RWL[BizHawkReaderWriterLock]
-  BS --> BAE["BotAndOrEvent<br/>Event / Task / CTS / GameState"]
+  REG --> BAE["BotAndOrEvent<br/>Event / Task / CTS / GameState"]
   BAE --> OE["OrchestratorEvent<br/>ChainedOrchestratorEvent"]
   OE --> ENC["SpinEncounterEvent / RunEncounterEvent"]
   OE --> BOE[BattleOrchestratorEvent]
@@ -144,7 +147,7 @@ flowchart TD
 `IBotEvent.ExecuteAsync(GameState, CancellationToken)` is the whole contract. Two families:
 
 - **Bot-driven events** are handed an existing bot. `OrchestratorEvent` is the top-level overworld state machine (`DecideOverworldAction → Encountering → BattleStart`), delegating to `SpinEncounterEvent`/`RunEncounterEvent` for finding encounters, `BattleOrchestratorEvent` for the fight (read foe, parse, persist, check target, fight/flee, level-up and evolution handling), and `NavigatorEvent` + `PathfindingService` for walking to a Pokemon Center. `ChainedOrchestratorEvent` runs a list of `EventLeg`s over one shared `GameState`. `HgssTogepiEggEvent` is a self-contained egg loop.
-- **Self-managing hunts** launch and own their own emulators: `MultiStarterHuntEvent`/`StarterHuntEvent` for RS soft-reset starter hunting (wave-based, with persisted parked shinies in `StarterHuntStateStore`), `MultiShinyHunterEvent`/`HgssShinyStarterEvent` for HGSS (channel-based). They are two unrelated orchestrations behind one dashboard action.
+- **Self-managing hunts** launch and own their own emulators: `MultiStarterHuntEvent`/`StarterHuntEvent` for RS soft-reset starter hunting (wave-based; progress, created saves and retired copies kept in Mongo via `StarterHuntStateStore`; parked shinies are dropped on restart), `MultiShinyHunterEvent`/`HgssShinyStarterEvent` for HGSS (channel-based). They are two unrelated orchestrations behind one dashboard action.
 
 `GameState` is the shared bag the events pass around: flavor, bot, milestone, target, train settings, tile penalties, and `State`, a `Stack<EventState>` (`Init`, `Running`, `Waiting`, `Resume`, `Complete` ...) that both the event loop and the dashboard read. `ITarget` decides whether an encounter parks the run (`Waiting`) for the operator to catch it; `Resume` re-enters and `CheckForCatchAsync` records the catch and flushes the save.
 
@@ -160,7 +163,7 @@ Inputs are macro strings authored as YAML under `Macro/Configs/{flavor}/`, expan
 - `EmulatorGrid` extracted as pure, tested arithmetic.
 
 ### Known weaknesses
-Detailed in the [review](../reviews/2026-10-code-review.md): three god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`, `BotService`); HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
+Detailed in the [review](../reviews/2026-10-code-review.md): two god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`), with `BotService` split into `EmulatorSlotRegistry`, `BotEventRunner` and `BotDtos.cs` in row 5.1 and its event dispatch shrinking further in row 5.3d; HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
 
 ## 8. ApiHawk and the emulator boundary
 
@@ -234,3 +237,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 
 ## Changelog
 - 2026-10-17: first draft; extension axes added after review discussion.
+- 2026-10-21: section 7 updated for the BotService split (row 5.1).
