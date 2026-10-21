@@ -496,16 +496,21 @@ namespace ShinyBotHunter.Service
 
         public List<EventArgumentOptions> GetAvailableActions(int pos)
         {
-            if (!botEvents.ContainsKey(pos))
+            if (!botEvents.TryGetValue(pos, out var botEvent))
             {
                 return [];
             }
-            var botEvent = botEvents[pos];
-            if(botEvent.GameState is not null && botEvent.GameState.State.Count > 0 && botEvent.GameState.State.Peek() == EventState.Waiting)
+            // Each field read once: a writer may replace it between two reads. Idleness is
+            // EventTask, which only the teardown clears under the gate, so a running loop is never
+            // idle whatever its stack shows mid-swap or after it pushed Complete.
+            GameState? gameState = botEvent.GameState;
+            Task? eventTask = botEvent.EventTask;
+            if(gameState is not null && gameState.State.TryPeek(out var top) && top == EventState.Waiting
+                && (eventTask is null || botEvent.Event is MultiStarterHuntEvent))
             {
                 return [actionMap["Resume"]];
             }
-            else if(botEvent.Event is null || (botEvent.GameState is not null && (botEvent.GameState.State.Count == 0 || botEvent.GameState.State.Peek() == EventState.Complete)))
+            else if(eventTask is null)
             {
                 // TODO continue game.
                 var actions = new List<EventArgumentOptions>
@@ -557,7 +562,12 @@ namespace ShinyBotHunter.Service
 
         public Dictionary<int, EmulatorState> GetBotDashboardState()
         {
-            return botEvents.Select(x => new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), x.Value.GameState is not null && x.Value.GameState.State.Count > 0 ? x.Value.GameState.State.Peek() : EventState.None, x.Value.Bot?.GameFlavor ?? x.Value.GameState?.GameFlavor ?? GameFlavor.HGSS))).ToDictionary();
+            return botEvents.Select(x =>
+            {
+                GameState? gameState = x.Value.GameState;
+                EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
+                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS));
+            }).ToDictionary();
         }
 
         /// <summary>
