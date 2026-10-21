@@ -63,8 +63,6 @@ namespace ShinyBotHunter.Bot
 
         public GameFlavor GameFlavor => this.context?.GameFlavor ?? GameFlavor.HGSS;
 
-        public IDataReader Reader => throw new NotImplementedException();
-
         public void HoldFrames(string button, int frames)
         {
             this.commandClient.HoldFrames(button, frames);
@@ -186,24 +184,6 @@ namespace ShinyBotHunter.Bot
         {
             await this.launcher.RepositionAsync(placement);
         }
-
-        //public async Task<IBot> Run()
-        //{
-        //    if (!File.Exists($"C:\\ROMs\\{this.game}{this.gameId}.nds"))
-        //    {
-        //        File.Copy($"C:\\ROMs\\{this.game}.nds", $"C:\\ROMs\\{this.game}{this.gameId}.nds");
-        //    }
-        //    await launcher.Launch();
-        //    Console.WriteLine($"Waiting on emu: {this.gameId}");
-        //    await Task.Delay(16000);
-        //    Console.WriteLine($"Connecting to emu on: {this.gameId} via port: {this.commandPort}");
-        //    commandClient.Connect();
-        //    memoryClient.Connect();
-        //    Console.WriteLine($"Executing Create Save Macro on emu: {this.gameId}");
-        //    commandClient.RunMacroString(MacroRegistry.Instance.GetMacro(MacroFlavor.HGSS, "CreateNewSave"));
-        //    await commandClient.WaitForMacroAsync();
-        //    return this;
-        //}
 
         public void RunMacroString(string macro)
         {
