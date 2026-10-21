@@ -15,7 +15,7 @@ namespace ShinyBotHunter.Tests
             var metadata = new EvolutionMetadata { MinLevel = 30, MinBeauty = 170, EvolveToId = 350 };
             var mon = new PokemonData { Level = 30, Beauty = 0 };
 
-            bool result = BattleOrchestratorEvent.WillEvolve(mon, metadata, new PokemonBattleState());
+            bool result = LevelUpFlow.WillEvolve(mon, metadata, new PokemonBattleState());
 
             Assert.False(result);
         }
@@ -26,7 +26,7 @@ namespace ShinyBotHunter.Tests
             var metadata = new EvolutionMetadata { MinLevel = 30, MinBeauty = 170, EvolveToId = 350 };
             var mon = new PokemonData { Level = 30, Beauty = 170 };
 
-            bool result = BattleOrchestratorEvent.WillEvolve(mon, metadata, new PokemonBattleState());
+            bool result = LevelUpFlow.WillEvolve(mon, metadata, new PokemonBattleState());
 
             Assert.True(result);
         }
@@ -37,7 +37,7 @@ namespace ShinyBotHunter.Tests
             var metadata = new EvolutionMetadata { MinHappiness = 220, EvolveToId = 169 };
             var mon = new PokemonData { Level = 30, Happiness = 255 };
 
-            bool result = BattleOrchestratorEvent.WillEvolve(mon, metadata, new PokemonBattleState());
+            bool result = LevelUpFlow.WillEvolve(mon, metadata, new PokemonBattleState());
 
             Assert.True(result);
         }
@@ -48,7 +48,7 @@ namespace ShinyBotHunter.Tests
             var oldState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 }, new PokemonData { Level = 10 } } };
             var newState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 } } };
 
-            PokemonData? result = BattleOrchestratorEvent.GetLevelUp(oldState, newState);
+            PokemonData? result = LevelUpFlow.GetLevelUp(oldState, newState);
 
             Assert.Null(result);
         }
@@ -60,7 +60,7 @@ namespace ShinyBotHunter.Tests
             var levelled = new PokemonData { Level = 11 };
             var newState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 }, levelled } };
 
-            PokemonData? result = BattleOrchestratorEvent.GetLevelUp(oldState, newState);
+            PokemonData? result = LevelUpFlow.GetLevelUp(oldState, newState);
 
             Assert.Same(levelled, result);
         }
