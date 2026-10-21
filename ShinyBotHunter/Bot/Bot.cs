@@ -124,9 +124,9 @@ namespace ShinyBotHunter.Bot
             return await this.memoryClient.ReadByteAsync(address);
         }
 
-        public async Task<byte[]> ReadBytesAsync(uint address, int length)
+        public async Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default)
         {
-            return await this.memoryClient.ReadBytesAsync(address, length);
+            return await this.memoryClient.ReadBytesAsync(address, length, ct);
         }
 
         public async Task<uint> ReadUIntAsync(uint address)
@@ -139,9 +139,9 @@ namespace ShinyBotHunter.Bot
             return await this.memoryClient.ReadUShortAsync(address);
         }
 
-        public async Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets)
+        public async Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets)
         {
-            return await this.memoryClient.ReadBytesViaPointerAsync(anchorAddress, length, hopOffsets);
+            return await this.memoryClient.ReadBytesViaPointerAsync(anchorAddress, length, ct, hopOffsets);
         }
 
         public async Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
@@ -235,14 +235,14 @@ namespace ShinyBotHunter.Bot
             this.commandClient.RunMacros(macro);
         }
 
-        public async Task<byte> GetBattleMenuState()
+        public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleMenuState();
+            return await dataReader.GetBattleMenuState(ct);
         }
 
-        public async Task<byte> GetBattleValue()
+        public async Task<byte> GetBattleValue(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleValue();
+            return await dataReader.GetBattleValue(ct);
         }
         public async Task<byte> GetBattleState()
         {

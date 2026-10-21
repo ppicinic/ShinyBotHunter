@@ -147,7 +147,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (topState == EventState.EnemyFainted)
                 {
-                    await WaitForLevelUpOrField(state);
+                    await WaitForLevelUpOrField(state, cancellationToken);
                 }
                 else if (topState == EventState.LevelUp)
                 {
@@ -223,7 +223,7 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task ProcessLevelUp(GameState state, CancellationToken ct)
         {
-            var newState = await reader.GetPokemonBattleState(state.Bot);
+            var newState = await reader.GetPokemonBattleState(state.Bot, ct: ct);
             Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
@@ -258,7 +258,7 @@ namespace ShinyBotHunter.BotEvents
                 // Fresh read via the battle-state reader -- during battle the game works on the
                 // battle copy of the party; the field party (GetPokemonState) is not synced
                 // until the battle fully ends, so reading it here returns pre-battle data.
-                var freshState = await reader.GetPokemonBattleState(state.Bot);
+                var freshState = await reader.GetPokemonBattleState(state.Bot, ct: ct);
                 if (freshState is not null)
                 {
                     state.BattleState = freshState;
@@ -484,7 +484,7 @@ namespace ShinyBotHunter.BotEvents
             return true;
         }
 
-        private async Task WaitForLevelUpOrField(GameState state)
+        private async Task WaitForLevelUpOrField(GameState state, CancellationToken ct)
         {
             bool endWait = false;
             
@@ -492,7 +492,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine("hit");
             while (!endWait)
             {
-                await Task.Delay(Constant.PollIntervalMs);
+                await Task.Delay(Constant.PollIntervalMs, ct);
                 try
                 {
                     if(state.PendingEvolutions.Count() > 0 && await state.Bot.GetBattleState() == 14)
@@ -500,12 +500,12 @@ namespace ShinyBotHunter.BotEvents
                         state.SwapState(EventState.EvolutionInit);
                         endWait = true;
                     }
-                    else if (!IsBattle(await state.Bot.GetBattleValue()))
+                    else if (!IsBattle(await state.Bot.GetBattleValue(ct)))
                     {
                         state.SwapState(EventState.BattleComplete);
                         endWait = true;
                     }
-                    else if (await reader.GetPokemonBattleState(state.Bot) is var battleState
+                    else if (await reader.GetPokemonBattleState(state.Bot, ct: ct) is var battleState
                                 && battleState is not null
                                 && battleState.ActivePokemon.HP == 0)
                     {
@@ -518,7 +518,7 @@ namespace ShinyBotHunter.BotEvents
                         endWait = true;
                     }
                 }
-                catch(Exception ex)
+                catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     Console.WriteLine(ex.ToString());
                     throw;
@@ -594,7 +594,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (!IsBattle(await state.Bot.GetBattleValue()))
+                        if (!IsBattle(await state.Bot.GetBattleValue(token)))
                             return (EventState.BattleComplete, null);
                         await Task.Delay(Constant.PollIntervalMs, token);
                     }
@@ -611,7 +611,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (await state.Bot.GetBattleMenuState() == 1)
+                        if (await state.Bot.GetBattleMenuState(token) == 1)
                         {
                             var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                             if (battleState is not null)
@@ -733,7 +733,7 @@ namespace ShinyBotHunter.BotEvents
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(ct);
 
-            SwitchOutcome outcome = await WaitForSwitchAsync(state, expectedPid);
+            SwitchOutcome outcome = await WaitForSwitchAsync(state, expectedPid, ct);
             if (outcome == SwitchOutcome.Landed)
             {
                 switchAttempts = 0;
@@ -780,22 +780,22 @@ namespace ShinyBotHunter.BotEvents
         /// run on after the macro ends, so a single read straight afterwards would often still show the
         /// trainee and be mistaken for a failed switch.
         /// </summary>
-        private async Task<SwitchOutcome> WaitForSwitchAsync(GameState state, uint expectedPid)
+        private async Task<SwitchOutcome> WaitForSwitchAsync(GameState state, uint expectedPid, CancellationToken ct)
         {
             var sw = Stopwatch.StartNew();
             while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
             {
-                if (!IsBattle(await state.Bot.GetBattleValue()))
+                if (!IsBattle(await state.Bot.GetBattleValue(ct)))
                 {
                     return SwitchOutcome.BattleOver;
                 }
-                var battleState = await reader.GetPokemonBattleState(state.Bot);
+                var battleState = await reader.GetPokemonBattleState(state.Bot, ct: ct);
                 if (battleState is not null && battleState.ActivePokemon.PID == expectedPid)
                 {
                     state.BattleState = battleState;
                     return SwitchOutcome.Landed;
                 }
-                await Task.Delay(Constant.PollIntervalMs);
+                await Task.Delay(Constant.PollIntervalMs, ct);
             }
             return SwitchOutcome.NotLanded;
         }
@@ -848,7 +848,7 @@ namespace ShinyBotHunter.BotEvents
                 await bot.WaitForMacroAsync(ct);
                 bot.RunMacroString("W.5"); // TODO tune this. the menu flag is available before we can actually press so we want to wait by frame not real time.
                 await bot.WaitForMacroAsync(ct);
-                state.BattleState = await reader.GetPokemonBattleState(bot);
+                state.BattleState = await reader.GetPokemonBattleState(bot, ct: ct);
                 state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
                 // New battle -- the trainee is back out front, so we owe another switch.
                 state.SwitchPerformed = false;
@@ -896,7 +896,7 @@ namespace ShinyBotHunter.BotEvents
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 Console.WriteLine(ex.ToString());
                 throw;
