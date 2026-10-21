@@ -51,8 +51,6 @@ namespace ShinyBotHunter.BotEvents
         private const uint ActionSelectionCursorAddress = 0x02024E60;
         private readonly Service.Pointers.IPointerService pointers;
 
-        public override EventState EventState { get; }
-
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
 
@@ -85,7 +83,6 @@ namespace ShinyBotHunter.BotEvents
             // The in-battle structures store internal indices rather than dex numbers.
             expectedInternalSpecies = Gen3PokemonParser.ToInternalSpecies(expectedSpecies);
             pointers = provider.GetRequiredService<GameServices>().Pointers(GameFlavor.RS);
-            EventState = EventState.NotStarted;
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -408,33 +405,6 @@ namespace ShinyBotHunter.BotEvents
             catch (Exception ex)
             {
                 return $"unavailable ({ex.Message})";
-            }
-        }
-
-        /// <summary>
-        /// Mashes B until the battle is running. The macro repeats indefinitely and is stopped here,
-        /// rather than being a fixed-length press sequence -- a fixed length would be a guess at load
-        /// timing, and would silently desync the moment that guess was wrong.
-        /// </summary>
-        private async Task<bool> AdvanceIntoBattleAsync(CancellationToken cancellationToken)
-        {
-            bot.RunRepeatMacro(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.BattleAdvanceMacro));
-            try
-            {
-                DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
-                while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
-                {
-                    if (await bot.GetBattleState() != 0)
-                    {
-                        return true;
-                    }
-                    await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
-                }
-                return false;
-            }
-            finally
-            {
-                bot.ClearMacro();
             }
         }
 

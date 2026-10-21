@@ -22,7 +22,6 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
         } = new GameState();
-        public override EventState EventState => throw new NotImplementedException();
 
         // The catch check is the one read worth waiting a long time for -- see
         // ReadStateForCatchCheckAsync.

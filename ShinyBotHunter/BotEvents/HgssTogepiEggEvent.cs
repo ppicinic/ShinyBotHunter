@@ -44,7 +44,6 @@ namespace ShinyBotHunter.BotEvents
             ReceivingEgg,
             Hatching,
             HatchAnimation,
-            ViewingSummary,
             SoftResetting,
             Complete,
         }
@@ -101,18 +100,11 @@ namespace ShinyBotHunter.BotEvents
             this.pathfindingService = provider.GetRequiredService<PathfindingService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
-            // Loaded here rather than at boot so the corridor and touch coordinates can be corrected
+            // Loaded here rather than at boot so the corridor can be corrected
             // between runs without restarting the server. Throws on anything unmeasured, which is
             // why it happens at construction -- before the dashboard reports the event as started.
             this.config = EggHuntConfig.Load(EggHuntConfig.DefaultPath);
         }
-
-        public override EventState EventState => state switch
-        {
-            EggHuntState.NotStarted => EventState.NotStarted,
-            EggHuntState.Complete => EventState.Complete,
-            _ => EventState.Running,
-        };
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)
         {
@@ -408,62 +400,6 @@ namespace ShinyBotHunter.BotEvents
             }
             throw new InvalidOperationException(
                 $"Position stalled {MaxFalseHatchRetries} times without the egg ever hatching. Something other than the hatch cutscene keeps blocking movement on this corridor.");
-        }
-
-        /// <summary>
-        /// Opens the hatched pokemon's summary and leaves it up long enough to be seen. Not called by
-        /// the active hunt -- the shiny call is made straight from WaitForHatchAsync's party read, since
-        /// the sparkle is already visible during the hatch animation and this is a redundant second
-        /// look. Left in place rather than deleted in case a future change wants that confirmation
-        /// back; see the same note on EggHuntConfig.PokemonMenuTouch.
-        /// </summary>
-        private async Task<PokemonData?> ShowSummaryAsync(uint eggPid, CancellationToken cancellationToken)
-        {
-            SetState(EggHuntState.ViewingSummary);
-            // Checked here rather than at construction -- see ValidateTouchCoordinates -- so a hunt
-            // can be run and watched all the way through pacing and the hatch animation before these
-            // have to be measured.
-            config.ValidateTouchCoordinates();
-
-            PokemonData?[]? party = await ReadPartyAsync(cancellationToken);
-            if (party is null)
-            {
-                return null;
-            }
-            int slot = -1;
-            for (int i = 0; i < party.Length; i++)
-            {
-                if (party[i]!.PID == eggPid)
-                {
-                    slot = i + 1;
-                    break;
-                }
-            }
-            if (slot == -1)
-            {
-                throw new InvalidOperationException(
-                    $"The pokemon hatched from pid {eggPid:X8} is no longer in the party. Nothing in this event moves it, so the save file is not in the state the hunt assumes.");
-            }
-            if (slot > config.PartySlotTouch.Count)
-            {
-                throw new InvalidOperationException($"Hatched into party slot {slot}, but only {config.PartySlotTouch.Count} slot touch coordinates are configured.");
-            }
-
-            var slotTouch = config.SlotTouch(slot);
-            // The HGSS overworld keeps the menu on the touch screen, so no button press is needed to
-            // open it -- the same reason the save macro starts straight in on S.Save. Hold/wait
-            // durations are from a real recording of this exact sequence, not a shared guess -- see
-            // EggHuntConfig.
-            string macro =
-                $"S.{config.PokemonMenuTouch.X}.{config.PokemonMenuTouch.Y}.{config.OpenPartyMenuHoldFrames};W.{config.OpenPartyMenuWaitFrames};" +
-                $"S.{slotTouch.X}.{slotTouch.Y}.3;W.{config.SlotTapWaitFrames};" +
-                $"S.{config.SummaryTouch.X}.{config.SummaryTouch.Y}.{config.SummaryTapHoldFrames};W.{config.SummaryTapWaitFrames}";
-            Console.WriteLine($"[TogepiEgg] Opening summary for party slot {slot}: {macro}");
-            bot.RunMacroString(macro);
-            await bot.WaitForMacroAsync(cancellationToken);
-
-            await Task.Delay(config.SummaryHoldMs, cancellationToken);
-            return party[slot - 1];
         }
 
         private async Task SaveAndFinishAsync(PersistPokemonData persistPokemon)

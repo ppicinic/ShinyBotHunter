@@ -19,13 +19,6 @@ namespace ShinyBotHunter.BotEvents
             directions.Enqueue(1);
             directions.Enqueue(3);
         }
-        public override EventState EventState
-        {
-            get
-            {
-                return EventState.Complete;
-            }
-        }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {

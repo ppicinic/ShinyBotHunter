@@ -52,13 +52,6 @@ namespace ShinyBotHunter.BotEvents
         private IMongoCollection<BaseGameState> _collection;
 
 
-        public override EventState EventState 
-        { 
-            get 
-            { 
-                return EventState.Complete;  
-            } 
-        }
         public int[] BotPositions 
         { 
             get 
