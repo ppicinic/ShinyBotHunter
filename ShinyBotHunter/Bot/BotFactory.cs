@@ -17,7 +17,7 @@ namespace ShinyBotHunter.Bot
             serviceProvider = provider;
             this.romInfoService = romInfoService;
         }
-        public IBot CreateBot(GameContext context)
+        public virtual IBot CreateBot(GameContext context)
         {
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
@@ -32,7 +32,7 @@ namespace ShinyBotHunter.Bot
         /// ROM still launches, but leaves <see cref="GameContext.Rom"/> null so flavor-dependent
         /// callers can refuse it.
         /// </summary>
-        public GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
+        public virtual GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
         {
             RomInfo? rom = romInfoService.GetByHandle(sourceGame);
             ConsoleType console = rom?.Console ?? ConsoleType.DS;
