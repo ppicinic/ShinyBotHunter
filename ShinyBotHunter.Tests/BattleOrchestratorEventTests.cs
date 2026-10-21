@@ -10,6 +10,17 @@ namespace ShinyBotHunter.Tests
     public class BattleOrchestratorEventTests
     {
         [Fact]
+        public void WillEvolve_BeautyRequirementUnmet_ReturnsFalse()
+        {
+            var metadata = new EvolutionMetadata { MinLevel = 30, MinBeauty = 170, EvolveToId = 350 };
+            var mon = new PokemonData { Level = 30, Beauty = 0 };
+
+            bool result = BattleOrchestratorEvent.WillEvolve(mon, metadata, new PokemonBattleState());
+
+            Assert.False(result);
+        }
+
+        [Fact]
         public void WillEvolve_BeautyMetAndLevelReached_ReturnsTrue()
         {
             var metadata = new EvolutionMetadata { MinLevel = 30, MinBeauty = 170, EvolveToId = 350 };

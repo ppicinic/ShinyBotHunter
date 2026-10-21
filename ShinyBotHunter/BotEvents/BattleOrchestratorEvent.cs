@@ -479,8 +479,6 @@ namespace ShinyBotHunter.BotEvents
                 return false;
             }
             if(evolutionMetadata.MinBeauty is not null && levelUp.Beauty < evolutionMetadata.MinBeauty)
-            // TODO remove - block auto making a level up for the conditions we haven't checked yet.
-            if(evolutionMetadata.MinLevel is null)
             {
                 return false;
             }
