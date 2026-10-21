@@ -9,38 +9,33 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
     public class PostgreSQLEncounterDao : IEncounterDao, IAsyncDisposable
     {
         private readonly IDbContextFactory<PokemonDbContext> _contextFactory;
+        private readonly ILogger<PostgreSQLEncounterDao> _logger;
         private Channel<List<PersistPokemonData>> ProducerQueue { get; }
 
-        public PostgreSQLEncounterDao(IDbContextFactory<PokemonDbContext> contextFactory)
+        public PostgreSQLEncounterDao(IDbContextFactory<PokemonDbContext> contextFactory, ILogger<PostgreSQLEncounterDao> logger)
         {
             _contextFactory = contextFactory;
+            _logger = logger;
             ProducerQueue = Channel.CreateUnbounded<List<PersistPokemonData>>();
         }
 
         public void Init()
         {
             // Fire and forget background processor
-            _ = Task.Run(async () => await ProcessAsync());
+            _ = Task.Run(() => BackgroundLoop.RunSupervisedAsync(ProcessAsync, _logger, nameof(PostgreSQLEncounterDao)));
         }
 
         public async Task ProcessAsync()
         {
             await foreach (var item in ProducerQueue.Reader.ReadAllAsync())
             {
-                try
+                using var context = await _contextFactory.CreateDbContextAsync();
+                foreach (var pokemonData in item)
                 {
-                    using var context = await _contextFactory.CreateDbContextAsync();
-                    foreach (var pokemonData in item)
-                    {
-                        var writeData = new PersistPokemonDataDao(pokemonData);
-                        await context.AddAsync(writeData);
-                    }
-                    await context.SaveChangesAsync();
+                    var writeData = new PersistPokemonDataDao(pokemonData);
+                    await context.AddAsync(writeData);
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Failed to write to DB: {e}");
-                }
+                await context.SaveChangesAsync();
             }
         }
 
