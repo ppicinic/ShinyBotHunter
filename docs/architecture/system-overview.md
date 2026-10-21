@@ -72,7 +72,7 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 1. Starts Discord and the encounter DAO's background writer.
 2. Loads metadata caches: Pokemon metadata (Mongo), phase definitions (`Phases/**/*.json` merged into Mongo), ROM inventory (hashes every file under `ROMBaseDirectory`).
 3. Starts the persistence service's two channel consumers and the bot service.
-4. Branches on CLI args: `--parsepokeapi`, `--parsepokemoveapi`, `--generatemapdatahgss`, else runs the web host and blocks on `Console.ReadLine` until `end`.
+4. Setup commands (`--parsepokeapi`, `--generatemapdatahgss <romDataDir> <decompDir> <headerCsv> <outputDir>`) run from `Tools/SetupCommands.cs` before the host is built; otherwise runs the web host and blocks on `Console.ReadLine` until `end`.
 
 Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is **keyed DI by `GameFlavor`** for `IPointerService`, `IPokemonParser` and `IBattlePokemonParser` (`Startup.cs:414-421`), resolved through `GameServices`. Adding a game flavor means adding those registrations plus macros and phase JSON.
 

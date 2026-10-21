@@ -37,15 +37,17 @@ namespace ShinyBotHunter.Scripts.Maps
         private MapService mapService;
         private Dictionary<int, List<NodeData>> maps = new Dictionary<int, List<NodeData>>();
         private PathfindingService pathfindingService;
+        private readonly string outputDir;
 
-        public GraphProcessor(IServiceProvider provider)
+        public GraphProcessor(MapService mapService, PathfindingService pathfindingService, string outputDir)
         {
-            this.mapService = provider.GetRequiredService<MapService>();
-            this.pathfindingService = provider.GetRequiredService<PathfindingService>();
+            this.mapService = mapService;
+            this.pathfindingService = pathfindingService;
+            this.outputDir = outputDir;
         }
         public async Task CreateBaseGraph()
         {
-            var warpSource = JsonConvert.DeserializeObject<Dictionary<short, BaseWarp[]>>(File.ReadAllText("D:\\Temp\\warp.json"));
+            var warpSource = JsonConvert.DeserializeObject<Dictionary<short, BaseWarp[]>>(File.ReadAllText(Path.Combine(outputDir, "warp.json")));
             HashSet<(int, int)> visited = new HashSet<(int, int)>();
             List<NodeData> nodes = new List<NodeData>();
             List<EdgeData> edges = new List<EdgeData>();
@@ -118,11 +120,11 @@ namespace ShinyBotHunter.Scripts.Maps
             }
 
             string nodeJson = JsonConvert.SerializeObject(nodes);
-            File.WriteAllText("D:\\Temp\\nodes.json", nodeJson);
+            File.WriteAllText(Path.Combine(outputDir, "nodes.json"), nodeJson);
             string edgeJson = JsonConvert.SerializeObject(edges);
-            File.WriteAllText("D:\\Temp\\edges.json", edgeJson);
+            File.WriteAllText(Path.Combine(outputDir, "edges.json"), edgeJson);
 
-            using (FileStream fileStream = new FileStream("D:\\Temp\\graph.bin", FileMode.Create, FileAccess.Write))
+            using (FileStream fileStream = new FileStream(Path.Combine(outputDir, "graph.bin"),FileMode.Create, FileAccess.Write))
             // 2. Wrap it in a GZipStream for compression
             using (GZipStream compressionStream = new GZipStream(fileStream, CompressionLevel.Optimal))
             // 3. Create a StreamWriter to write text into the compression stream
@@ -323,8 +325,6 @@ namespace ShinyBotHunter.Scripts.Maps
             }
             return capabilityMask;
         }
-
-        public record GraphData(List<NodeData> nodes, List<EdgeData> edges);
 
         private BaseWarp? FindMatchingWarp(int mapId, BaseWarp w, Dictionary<short, BaseWarp[]> warpSource)
         {

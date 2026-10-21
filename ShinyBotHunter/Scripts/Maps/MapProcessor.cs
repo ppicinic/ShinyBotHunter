@@ -48,14 +48,27 @@ namespace ShinyBotHunter.Scripts.Maps
     }
     public class MapProcessor
     {
+        private readonly string romDataDir;
+        private readonly string decompDir;
+        private readonly string outputDir;
+
+        public MapProcessor(string romDataDir, string decompDir, string outputDir)
+        {
+            this.romDataDir = romDataDir;
+            this.decompDir = decompDir;
+            this.outputDir = outputDir;
+        }
+
         public void ExtractMovePermissionsFile()
         {
-            var mapFiles = Directory.GetFiles("D:\\ExtractedROMs\\Pokemon HeartGold_SDSME\\data\\a\\0\\6\\map");
+            string movePermissionsDir = Path.Combine(outputDir, "MovePermissions");
+            Directory.CreateDirectory(movePermissionsDir);
+            var mapFiles = Directory.GetFiles(Path.Combine(romDataDir, "a", "0", "6", "map"));
             foreach(var mapFile in mapFiles)
             {
                 string fileName = Path.GetFileName(mapFile);
-                var reader = new System.IO.BinaryReader(File.OpenRead(mapFile));
-                var writer = new System.IO.BinaryWriter(File.Create($"D:\\Temp\\MovePermissions\\{fileName}"));
+                using var reader = new System.IO.BinaryReader(File.OpenRead(mapFile));
+                using var writer = new System.IO.BinaryWriter(File.Create(Path.Combine(movePermissionsDir, fileName)));
                 reader.ReadUInt32();
                 reader.ReadUInt32();
                 reader.BaseStream.Position += 0xA;
@@ -73,7 +86,7 @@ namespace ShinyBotHunter.Scripts.Maps
             Dictionary<string, int> warpMapping = GetWarpNames();
             Dictionary<int, WarpData[]> result = new Dictionary<int, WarpData[]>();
             Dictionary<int, ObjectData[]> result2 = new Dictionary<int, ObjectData[]>();
-            string[] files = Directory.GetFiles("D:\\Temp\\pokeheartgold\\files\\fielddata\\eventdata\\zone_event");
+            string[] files = Directory.GetFiles(Path.Combine(decompDir, "files", "fielddata", "eventdata", "zone_event"));
             //Console.WriteLine(String.Join("\n", files));
             Dictionary<(int, int), WarpData> warpMap = new Dictionary<(int, int), WarpData>();
             foreach(var botMapId in forwardLookup.Keys)
@@ -145,16 +158,16 @@ namespace ShinyBotHunter.Scripts.Maps
                 result3.Add(id, warpsToKeep.ToArray());
             }
             string json = JsonConvert.SerializeObject(result3);
-            File.WriteAllText("D:\\Temp\\warp.json", json); 
+            File.WriteAllText(Path.Combine(outputDir, "warp.json"), json);
             string json2 = JsonConvert.SerializeObject(result2);
-            File.WriteAllText("D:\\Temp\\objects.json", json2);
+            File.WriteAllText(Path.Combine(outputDir, "objects.json"), json2);
             return (result, result2);
         }
 
         private Dictionary<string, int> GetWarpNames()
         {
             Dictionary<string, int> mapping = new Dictionary<string, int>();
-            var lines = File.ReadAllLines("D:\\Temp\\pokeheartgold\\include\\constants\\maps.h");
+            var lines = File.ReadAllLines(Path.Combine(decompDir, "include", "constants", "maps.h"));
             for(int i = 3; i < 544; i++)
             {
                 var line = lines[i];
@@ -166,12 +179,13 @@ namespace ShinyBotHunter.Scripts.Maps
 
         public void GenerateMapFiles()
         {
+            Directory.CreateDirectory(Path.Combine(outputDir, "MapFiles"));
             List<(byte[,], int)> maps = new List<(byte[,], int)>();
-            var sourceFiles = Directory.GetFiles("D:\\matrixMaps").ToList();
+            var sourceFiles = Directory.GetFiles(Path.Combine(outputDir, "matrixMaps")).ToList();
             Dictionary<int, List<BoulderData>> boulderData = new Dictionary<int, List<BoulderData>>();
             sourceFiles.Sort();
             //Console.WriteLine(String.Join("\n", sourceFiles));
-            var reverseMap = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText("D:\\mapreverselookup.json"));
+            var reverseMap = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText(Path.Combine(outputDir, "mapreverselookup.json")));
             Dictionary<int, List<int>> forwardLookup = new Dictionary<int, List<int>>();
             foreach(var (key, value) in reverseMap!)
             {
@@ -195,7 +209,7 @@ namespace ShinyBotHunter.Scripts.Maps
         private void WriteBoulderFile(Dictionary<int, List<BoulderData>> boulderData)
         {
             string json = JsonConvert.SerializeObject(boulderData);
-            File.WriteAllText($"D:\\Temp\\boulders.json", json);
+            File.WriteAllText(Path.Combine(outputDir, "boulders.json"), json);
         }
 
         private (byte[,], int) GenerateMapFile(string sourceFile, int id, Dictionary<int, WarpData[]> warps, Dictionary<int, ObjectData[]> objectData, Dictionary<int, List<BoulderData>> boulders)
@@ -221,7 +235,7 @@ namespace ShinyBotHunter.Scripts.Maps
                     else
                     {
                         int mapFileId = sourceMap[outY,outX];
-                        var reader = new System.IO.BinaryReader(File.OpenRead($"D:\\Temp\\MovePermissions\\{mapFileId:D4}"));
+                        var reader = new System.IO.BinaryReader(File.OpenRead(Path.Combine(outputDir, "MovePermissions", $"{mapFileId:D4}")));
                         for (int y = 0; y < 32; y++)
                         {
                             for (int x = 0; x < 32; x++)
@@ -231,24 +245,7 @@ namespace ShinyBotHunter.Scripts.Maps
                                 byte value = 0x00;
                                 if (mapValue == 0x69 || mapValue == 0x6E)
                                 {
-                                    // We can remove warps on the map but this could be wrong, unsure.
-                                    //WarpData? warp = null;
-                                    //if(id == 0)
-                                    //{
-                                    //    Console.WriteLine($"{outX * 32 + x},{outY * 32 + y}");
-                                    //}
-                                    //if (warps.ContainsKey(id))
-                                    //{
-                                    //    warp = warps[id].Where(t => t.z == outY * 32 + y && t.x == outX * 32 + x).FirstOrDefault();
-                                    //}
-                                    //if (warp is not null)
-                                    //{
-                                        value = 0x01;
-                                    //}
-                                    //else
-                                    //{
-                                    //    value = 0x80;
-                                    //}
+                                    value = 0x01;
                                 }
                                 else if (mapValue == 0x11)
                                 {
@@ -410,13 +407,13 @@ namespace ShinyBotHunter.Scripts.Maps
 
             // 4. Join rows with a comma and newline to form the JSON array
             string json = "[\n" + string.Join(",\n", rows) + "\n]";
-            File.WriteAllText($"D:\\Temp\\MapFiles\\{id:D4}.json", json);
+            File.WriteAllText(Path.Combine(outputDir, "MapFiles", $"{id:D4}.json"), json);
 
         }
 
         private void WriteMapToFile(List<(byte[,], int)> maps)
         {
-            using (FileStream fileStream = new FileStream("D:\\Temp\\maps.bin", FileMode.Create))
+            using (FileStream fileStream = new FileStream(Path.Combine(outputDir, "maps.bin"), FileMode.Create))
             {
                 // Use GZipStream for compression. 
                 // CompressionLevel.Optimal gives the best balance of speed vs size.
@@ -448,30 +445,6 @@ namespace ShinyBotHunter.Scripts.Maps
                 }
             }
         }
-    }
-
-    public enum MapValues
-    {
-        Free = 0,
-        Portal1 = 1,
-        Portal2 = 2,
-        Grass = 3,
-        Surf = 4,
-        RightLedge = 5,
-        LeftLedge = 6,
-        DownLedge = 7,
-        RockClimb = 0x08,
-        Whirlpool = 0x09,
-        BridgeStart = 0x0A,
-        BridgeMiddle = 0x0B,
-        Bridge = 0x0C,
-        Waterfall = 0x0D,
-        Ice = 0x0E,
-        Cut = 0x0F,
-        RockSmash = 0x10,
-        WalkingTrainer = 0x11,
-        Blocked = 0x80,
-
     }
 
     /**
