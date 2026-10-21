@@ -72,7 +72,7 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 1. Starts Discord and the encounter DAO's background writer.
 2. Loads metadata caches: Pokemon metadata (Mongo), phase definitions (`Phases/**/*.json` merged into Mongo), ROM inventory (hashes every file under `ROMBaseDirectory`).
 3. Starts the persistence service's two channel consumers and the bot service.
-4. Branches on CLI args: `--parsepokeapi`, `--parsepokemoveapi`, `--migrateinfluxv1tov2`, `--migrateinfluxtopostgresql`, `--generatemapdatahgss`, else runs the web host and blocks on `Console.ReadLine` until `end`.
+4. Branches on CLI args: `--parsepokeapi`, `--parsepokemoveapi`, `--generatemapdatahgss`, else runs the web host and blocks on `Console.ReadLine` until `end`.
 
 Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is **keyed DI by `GameFlavor`** for `IPointerService`, `IPokemonParser` and `IBattlePokemonParser` (`Startup.cs:414-421`), resolved through `GameServices`. Adding a game flavor means adding those registrations plus macros and phase JSON.
 
@@ -101,7 +101,6 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Two EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
 | MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI) | Three DAOs/services with the raw driver |
-| InfluxDB 3 | legacy encounter store, migration source only | `InfluxDbEncounterDao` (unregistered) |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/`; starter-hunt state JSON via `StarterHuntStateStore` | |
 
 ### Write path
@@ -205,7 +204,7 @@ There is no backend-for-frontend layer and, per [principle 2.3](../engineering-p
 
 - **Logging:** `Console.WriteLine` throughout; no `ILogger`. Fine for a console-hosted tool, but faults in background loops are easy to miss.
 - **Error handling:** controllers mostly let exceptions become 500s; `PhaseMetadataController` turns any exception into 404.
-- **Config:** one `ApplicationSettings` class; several keys are legacy (Influx).
+- **Config:** one `ApplicationSettings` class.
 - **Testing:** hermetic unit tests, no emulator in the loop; see review section 3.
 
 ## 11. Extension axes
