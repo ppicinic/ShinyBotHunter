@@ -638,7 +638,8 @@ function BotControlTab(): JSX.Element {
     }))
   }
   const [submitting, setSubmitting] = useState<string | null>(null)
-  const [cancelling, setCancelling] = useState<number | null>(null)
+  // Set by a position's Run or Cancel button while its request is pending; one request per position.
+  const [posInFlight, setPosInFlight] = useState<Record<number, 'run' | 'cancel'>>({})
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
@@ -841,6 +842,8 @@ function BotControlTab(): JSX.Element {
   }, [switchPositionsKey, apiUrl, loadParty])
 
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
+    if (posInFlight[pos]) return
+    setPosInFlight((prev) => ({ ...prev, [pos]: 'run' }))
     setFeedback(null)
     try {
       const params = botActionParams[pos]?.[action.name] ?? {}
@@ -880,6 +883,12 @@ function BotControlTab(): JSX.Element {
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
       setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
+    } finally {
+      setPosInFlight((prev) => {
+        const next = { ...prev }
+        delete next[pos]
+        return next
+      })
     }
   }
 
@@ -948,8 +957,9 @@ function BotControlTab(): JSX.Element {
   }
 
   const handleCancelAction = async (pos: number): Promise<void> => {
+    if (posInFlight[pos]) return
+    setPosInFlight((prev) => ({ ...prev, [pos]: 'cancel' }))
     setConfirmCancelPos(null)
-    setCancelling(pos)
     setFeedback(null)
     try {
       const res = await fetch(`${apiUrl}/api/bot/cancelAction`, {
@@ -969,7 +979,11 @@ function BotControlTab(): JSX.Element {
     } catch (err) {
       setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true })
     } finally {
-      setCancelling(null)
+      setPosInFlight((prev) => {
+        const next = { ...prev }
+        delete next[pos]
+        return next
+      })
     }
   }
 
@@ -1049,7 +1063,7 @@ function BotControlTab(): JSX.Element {
                         <span className="text-xs text-slate-300">Confirm?</span>
                         <button
                           onClick={() => handleCancelAction(pos)}
-                          disabled={cancelling === pos}
+                          disabled={!!posInFlight[pos]}
                           className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors font-semibold"
                         >
                           Yes
@@ -1064,10 +1078,10 @@ function BotControlTab(): JSX.Element {
                     ) : (
                       <button
                         onClick={() => setConfirmCancelPos(pos)}
-                        disabled={cancelling === pos}
+                        disabled={!!posInFlight[pos]}
                         className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
                       >
-                        {cancelling === pos ? 'Cancelling...' : 'Cancel'}
+                        {posInFlight[pos] === 'cancel' ? 'Cancelling...' : 'Cancel'}
                       </button>
                     )}
                   </div>
@@ -1112,10 +1126,10 @@ function BotControlTab(): JSX.Element {
                                 )}
                                 <button
                                   onClick={() => handleRunBotAction(pos, action)}
-                                  disabled={!allFilled}
+                                  disabled={!allFilled || !!posInFlight[pos]}
                                   className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
-                                  Run
+                                  {posInFlight[pos] === 'run' ? 'Running...' : 'Run'}
                                 </button>
                               </div>
                             </div>
