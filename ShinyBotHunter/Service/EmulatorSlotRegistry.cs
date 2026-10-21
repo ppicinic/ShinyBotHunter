@@ -24,13 +24,12 @@ namespace ShinyBotHunter.Service
         public ConcurrentDictionary<int, BotAndOrEvent> Entries { get; } = new();
 
         /// <summary>
-        /// The occupied display positions, sorted, and the lowest free one. The caller holds
-        /// <see cref="Gate"/>.
+        /// Every registry key and every display position an entry reports, sorted and distinct, and
+        /// the lowest value in neither. The caller holds <see cref="Gate"/>.
         /// </summary>
         public (List<int> Occupied, int Next) AllocatePosition()
         {
-            var positions = Entries.Values.Aggregate(new List<int>(), (acc, x) => { acc.AddRange(x.GetBotPositions()); return acc; });
-            positions.Sort();
+            var positions = Entries.Keys.Concat(Entries.Values.SelectMany(e => e.GetBotPositions())).Distinct().Order().ToList();
             if (positions.Count() >= maxEmulators)
             {
                 throw new Exception("No open space to start any new emulators");
