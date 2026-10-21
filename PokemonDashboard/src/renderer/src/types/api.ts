@@ -123,13 +123,6 @@ export interface PokemonData {
   isShiny: boolean
 }
 
-export interface RecentEncounterEntry {
-  pokemon: PokemonData
-  game: string
-  phase: string
-  timestamp: string
-}
-
 // ============================================================
 // Phase info (fetched from REST API /api/phaseinfo/{game}/{phase})
 // Matches C# PhaseInfo / PhasePokemonInfo
@@ -298,18 +291,6 @@ export interface NewEventLegArguments {
   targetLevel?: number
   // 1-based party slot of the battler to swap to, Switch train mode only
   switchSlot?: number
-}
-
-export interface NewEventArguments {
-  eventName: string
-  gameName?: string
-  // C# TrainType enum, sent as its integer value (None=0, Standard=1, Switch=2)
-  trainType?: number
-  targetLevel?: number
-  // 1-based party slot of the battler to swap to, Switch train mode only
-  switchSlot?: number
-  // Chained actions only; the flat fields above carry a single encounter.
-  legs?: NewEventLegArguments[]
 }
 
 // Matches C# PartySlotInfo record in BotService.cs (GET /api/bot/getParty/{pos})
