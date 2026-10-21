@@ -602,7 +602,7 @@ function DashboardConfigTab(): JSX.Element {
 // EventState enum values matching C# EventState in IBotEvent.cs
 const ACTIONABLE_STATES = new Set([0, 3, 4]) // NotCreated=0, Waiting=3, Complete=4
 
-function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
+function BotControlTab(): JSX.Element {
   const { config, signalR } = useAppContext()
   const [actions, setActions] = useState<EventArgumentOptions[]>([])
   const [loadingActions, setLoadingActions] = useState(true)
@@ -839,11 +839,6 @@ function BotControlTab({ onRefresh }: { onRefresh: () => void }): JSX.Element {
     })
     loadedSwitchPositions.current = current
   }, [switchPositionsKey, apiUrl, loadParty])
-
-  // Expose refresh to parent
-  useEffect(() => {
-    onRefresh // just reference it so the parent can call loadDashboardState
-  }, [onRefresh])
 
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
     setFeedback(null)
@@ -1791,7 +1786,7 @@ export function AdminCard(): JSX.Element {
       <div className="flex-1 overflow-auto">
         {activeTab === 'config' && <DashboardConfigTab />}
         {activeTab === 'botControl' && (
-          <BotControlTab key={refreshKey} onRefresh={handleRefresh} />
+          <BotControlTab key={refreshKey} />
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
         {activeTab === 'windows' && <WindowLayoutTab />}
