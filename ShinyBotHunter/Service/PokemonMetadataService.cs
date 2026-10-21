@@ -1,5 +1,4 @@
-﻿using Grpc.Core;
-using ShinyBotHunter.Persistence.MongoDb;
+﻿using ShinyBotHunter.Persistence.MongoDb;
 
 namespace ShinyBotHunter.Service
 {
