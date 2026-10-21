@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import type { BotDashboardState, MacroRecordResult, MacroRecordStatus } from '../types/api'
 
 const STATUS_POLL_MS = 1000
@@ -34,7 +35,7 @@ export function MacroRecordTab(): JSX.Element {
   const loadBots = useCallback(async (): Promise<void> => {
     if (!apiUrl) return
     try {
-      const r = await fetch(`${apiUrl}/api/bot/getDashboardState`)
+      const r = await api.getDashboardState(apiUrl)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       setBotState((await r.json()) as BotDashboardState)
     } catch (err) {
@@ -69,7 +70,7 @@ export function MacroRecordTab(): JSX.Element {
     }
 
     pollRef.current = setInterval(() => {
-      fetch(`${apiUrl}/api/dev/macroRecord/status/${selectedPos}`)
+      api.getMacroRecordStatus(apiUrl, selectedPos)
         .then((r) => (r.ok ? r.json() : null))
         .then((s: MacroRecordStatus | null) => {
           if (s) setFrameCount(s.frameCount)
@@ -89,7 +90,7 @@ export function MacroRecordTab(): JSX.Element {
     setYaml('')
     setFrameCount(0)
     try {
-      const r = await fetch(`${apiUrl}/api/dev/macroRecord/start/${selectedPos}`, { method: 'POST' })
+      const r = await api.startMacroRecord(apiUrl, selectedPos)
       if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
       setRecording(true)
       setFeedback({ msg: `Recording emulator ${selectedPos}. Play the game, then press Stop.`, isError: false })
@@ -105,11 +106,7 @@ export function MacroRecordTab(): JSX.Element {
     setBusy(true)
     stopPolling()
     try {
-      const r = await fetch(`${apiUrl}/api/dev/macroRecord/stop/${selectedPos}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: macroName })
-      })
+      const r = await api.stopMacroRecord(apiUrl, selectedPos, macroName)
       if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
       const result = (await r.json()) as MacroRecordResult
       setYaml(result.yaml)
