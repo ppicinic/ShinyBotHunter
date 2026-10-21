@@ -64,13 +64,12 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 | `ApiHawk/` | net48 | BizHawk external tool loaded into EmuHawk. Exposes memory reads and input commands over local HTTP. Builds against the custom BizHawk fork below, so it is outside the solution and CI; deployed by `Scripts/deploy-apihawk.ps1`. |
 | BizHawk fork (external) | C# | `ppicinic/BizHawk`, branch `fix/4535-sticky-analog`, built as 2.11.2 with `Dist/BuildRelease.sh`. Not in this repo; see section 8. |
 | `PokemonDashboard/` | Electron + React + TS | Operator UI. Multi-window (admin, phase cards, recent encounters). |
-| `Lua Scripts/` | Lua | Legacy BizHawk integration, replaced by ApiHawk. Scheduled for deletion (plan 1.3). |
 
 ## 4. Backend startup and composition
 
 `Startup.MainAsync` (`Startup.cs:38`) builds the host, registers everything in `CreateServices` (`:360`), then:
 
-1. Starts Discord, the Lua loader (legacy), and the encounter DAO's background writer.
+1. Starts Discord and the encounter DAO's background writer.
 2. Loads metadata caches: Pokemon metadata (Mongo), phase definitions (`Phases/**/*.json` merged into Mongo), ROM inventory (hashes every file under `ROMBaseDirectory`).
 3. Starts the persistence service's two channel consumers and the bot service.
 4. Branches on CLI args: `--parsepokeapi`, `--parsepokemoveapi`, `--migrateinfluxv1tov2`, `--migrateinfluxtopostgresql`, `--generatemapdatahgss`, else runs the web host and blocks on `Console.ReadLine` until `end`.
@@ -138,7 +137,7 @@ flowchart TD
 ```
 
 ### Bot
-`IBot` is `ILauncher + ICommandClient + IMemoryClient + IDataReader + GameFlavor`; `Bot` is pure delegation to those four parts. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry, and `CreateBot` picks the launcher by `BizHawkMode` and the data reader by flavor.
+`IBot` is `ILauncher + ICommandClient + IMemoryClient + IDataReader + GameFlavor`; `Bot` is pure delegation to those four parts. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry, and `CreateBot` builds the ApiHawk launcher and clients and picks the data reader by flavor.
 
 `Bot.LaunchAsync`: start EmuHawk under a reader slot of `BizHawkReaderWriterLock`, wait for its window, fixed 5 s delay, connect both clients, verify the running game code. `DisposeAsync` takes the writer lock so a shutdown never overlaps a launch.
 
@@ -206,7 +205,7 @@ There is no backend-for-frontend layer and, per [principle 2.3](../engineering-p
 
 - **Logging:** `Console.WriteLine` throughout; no `ILogger`. Fine for a console-hosted tool, but faults in background loops are easy to miss.
 - **Error handling:** controllers mostly let exceptions become 500s; `PhaseMetadataController` turns any exception into 404.
-- **Config:** one `ApplicationSettings` class; several keys are legacy (Influx, Lua).
+- **Config:** one `ApplicationSettings` class; several keys are legacy (Influx).
 - **Testing:** hermetic unit tests, no emulator in the loop; see review section 3.
 
 ## 11. Extension axes

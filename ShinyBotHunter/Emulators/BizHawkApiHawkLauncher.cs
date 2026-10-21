@@ -7,16 +7,14 @@ using System.Text;
 namespace ShinyBotHunter.Emulators
 {
     /// <summary>
-    /// Launcher variant for ApiHawk mode.
+    /// Starts one EmuHawk with the ApiHawk external tool and places its window.
     ///
-    /// Differences from <see cref="BizHawkLauncher"/>:
-    ///   - No Lua scripts — does not pass <c>--lua=</c>.
     ///   - Passes <c>--open-ext-tool-dll=BotServer</c> to load the external tool DLL.
-    ///   - Passes the same <c>BIZHAWK_COMMAND_PORT</c> and <c>BIZHAWK_MEMORY_PORT</c>
-    ///     environment variables as the Lua launcher, so the existing TCP clients work unchanged.
-    ///   - Waits for the main EmuHawk window only (no Lua Console window).
+    ///   - Passes the ports in the <c>BIZHAWK_COMMAND_PORT</c> and <c>BIZHAWK_MEMORY_PORT</c>
+    ///     environment variables.
+    ///   - Waits for the main EmuHawk window.
     ///   - Exposes <see cref="MemoryPort"/> and <see cref="CommandPort"/> so
-    ///     <see cref="Bot.BotFactory"/> can pass them to the TCP clients.
+    ///     <see cref="Bot.BotFactory"/> can pass them to the clients.
     /// </summary>
     public class BizHawkApiHawkLauncher : ILauncher
     {
@@ -64,7 +62,7 @@ namespace ShinyBotHunter.Emulators
             _bizHawkDirectory = appSettings.BizHawkBaseDirectory;
             _locker           = provider.GetRequiredService<BizHawkReaderWriterLock>();
 
-            // Use the same port derivation as BotFactory / BizHawkLauncher
+            // Ports as derived by BotFactory.BuildGameContext
             MemoryPort  = context.MemoryPort;
             CommandPort = context.CommandPort;
 
@@ -86,7 +84,7 @@ namespace ShinyBotHunter.Emulators
                 }
             };
 
-            // Pass ports via the same env vars as the Lua launcher
+            // Pass the ports to BotServer via env vars
             _process.StartInfo.EnvironmentVariables["BIZHAWK_COMMAND_PORT"] = CommandPort.ToString();
             _process.StartInfo.EnvironmentVariables["BIZHAWK_MEMORY_PORT"]  = MemoryPort.ToString();
             // No save-slot variable: the fork now names SaveRAM after the ROM file rather than the
@@ -142,7 +140,6 @@ namespace ShinyBotHunter.Emulators
                         if (!IsWindowVisible(hWnd)) return true;
                         string title = GetWindowTextSafe(hWnd);
                         if (!string.IsNullOrWhiteSpace(title) &&
-                            !title.Contains("Lua Console", StringComparison.OrdinalIgnoreCase) &&
                             !title.Contains("Bot Server", StringComparison.OrdinalIgnoreCase))
                         {
                             found = hWnd;

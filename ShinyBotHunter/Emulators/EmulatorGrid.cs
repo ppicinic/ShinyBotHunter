@@ -5,7 +5,7 @@ namespace ShinyBotHunter.Emulators
     ///
     /// Display slots are handed out as a flat index, and the grid turns that index into a pixel
     /// position. Separated from the launcher so the arithmetic can be tested without starting an
-    /// emulator. The deprecated Lua launcher keeps its own hard-coded two rows and is left alone.
+    /// emulator.
     /// </summary>
     public static class EmulatorGrid
     {
