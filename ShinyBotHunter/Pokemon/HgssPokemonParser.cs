@@ -11,7 +11,6 @@ namespace ShinyBotHunter.Pokemon
             this._metadataService = service;
         }
         private uint LCRNG(uint seed) => seed * 0x41C64E6D + 0x6073;
-        Dictionary<int, byte[]> cache = new Dictionary<int, byte[]>();
 
         public PokemonData? Parse(byte[] raw)
         {

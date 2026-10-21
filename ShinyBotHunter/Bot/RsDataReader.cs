@@ -21,9 +21,6 @@ namespace ShinyBotHunter.Bot
         /// </summary>
         private const uint BattleTypeFlags = 0x020239F8;
 
-        /// <summary>gPlayerPartyCount, the first byte of the party region.</summary>
-        private const uint PartyCount = 0x03004350;
-
         private readonly IMemoryClient memory;
 
         public RsDataReader(IMemoryClient memoryClient)
@@ -37,9 +34,6 @@ namespace ShinyBotHunter.Bot
             uint flags = await memory.ReadUIntAsync(BattleTypeFlags);
             return (byte)(flags != 0 ? 1 : 0);
         }
-
-        /// <summary>How many pokemon are in the party, which is how a starter is detected as received.</summary>
-        public Task<byte> GetPartyCount() => memory.ReadByteAsync(PartyCount);
 
         public Task<byte> GetBattleMenuState() => throw new NotSupportedException(Unmapped(nameof(GetBattleMenuState)));
 
