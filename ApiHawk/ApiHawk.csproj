@@ -47,10 +47,7 @@
   </ItemGroup>
 
   <!--
-    After building, manually copy BotServer.dll from the build output to the emulator's
-    ExternalTools folder — this must be the BizHawk build the DLLs above came from, since
-    ApplicationSettings.BizHawkBaseDirectory points EmuHawk at it.
-    Example (Debug):   bin\Debug\net48\BotServer.dll   → D:\BizHawk-2.11\ExternalTools\BotServer.dll
-    Example (Release): bin\Release\net48\BotServer.dll → D:\BizHawk-2.11\ExternalTools\BotServer.dll
+    Deploy with Scripts/deploy-apihawk.ps1 (EmuHawk closed): it builds, copies BotServer.dll to the
+    BizHawk ExternalTools folder, and records its trust hash in BizHawk's config.
   -->
 </Project>
