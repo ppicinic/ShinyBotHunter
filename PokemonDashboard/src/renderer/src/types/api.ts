@@ -251,9 +251,11 @@ export type ConditionType = 'Eq' | 'Neq'
 // Matches C# TrainType enum in GameState.cs
 export type TrainType = 'None' | 'Standard' | 'Switch'
 
+// Matches C# EncounterType enum
+export type EncounterType = 'Spin' | 'Run'
+
 export interface Condition {
-  // C# enums serialize as integers by default; accept both string and number
-  conditionType: ConditionType | number
+  conditionType: ConditionType
   name: string
   value: string
 }
@@ -281,12 +283,10 @@ export interface EventArgumentOptions {
 export interface NewEventLegArguments {
   phaseName?: string
   targetType?: string
-  // C# EncounterType enum, sent as its integer value (Spin=0, Run=1)
-  encounterType?: number
+  encounterType?: EncounterType
   xRange?: number
   yRange?: number
-  // C# TrainType enum, sent as its integer value (None=0, Standard=1, Switch=2)
-  trainType?: number
+  trainType?: TrainType
   targetLevel?: number
   // 1-based party slot of the battler to swap to, Switch train mode only
   switchSlot?: number
@@ -305,9 +305,13 @@ export interface PartySlotInfo {
 // Matches C# EmulatorState record in BotService.cs
 export interface EmulatorState {
   name: string
-  eventState: number // 0=NotCreated, 1=NotStarted, 2=Running, 3=Waiting, 4=Complete
-  gameFlavor: number // C# GameFlavor enum — may serialize as int or string name
+  // C# EventState name, e.g. 'Waiting'
+  eventState: string
+  gameFlavor: GameFlavor
 }
+
+// Matches C# GameFlavor enum in Macro/GameFlavor.cs
+export type GameFlavor = 'HGSS' | 'RS'
 
 // Bot dashboard state returned by GET /api/bot/getDashboardState,
 // POST /api/startTopLevelAction, and POST /api/bot/cancelAction.

@@ -1,7 +1,6 @@
 import React from 'react'
 import type { Dispatch } from 'react'
 import type { AdminMetadata, EmulatorState, EventArgumentOptions, PartySlotInfo } from '../../types/api'
-import { normalizeGameFlavor } from '../../utils/gameFlavor'
 import { requiredParamsFilled } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
 import type { BotPositionsAction } from './botPositions'
@@ -46,7 +45,7 @@ export function EmulatorCard({
   feedback: JSX.Element | null
 }): JSX.Element {
   const selectedActionName = selected ?? availableActions[0]?.name
-  const gameName = emState ? normalizeGameFlavor(emState.gameFlavor) : ''
+  const gameName = emState ? emState.gameFlavor : ''
   const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
   return (
     <li

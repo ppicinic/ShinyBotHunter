@@ -7,8 +7,8 @@ import { botPositionsReducer, initialBotPositions } from './botPositions'
 import { EmulatorCard } from './EmulatorCard'
 import { TopLevelActionForm } from './TopLevelActionForm'
 
-// EventState enum values matching C# EventState in IBotEvent.cs
-const ACTIONABLE_STATES = new Set([0, 3, 4]) // NotCreated=0, Waiting=3, Complete=4
+// C# EventState names (IBotEvent.cs) in which a position can take a new action
+const ACTIONABLE_STATES = new Set(['None', 'Waiting', 'Complete'])
 
 export function BotControlTab(): JSX.Element {
   const { config, signalR } = useAppContext()

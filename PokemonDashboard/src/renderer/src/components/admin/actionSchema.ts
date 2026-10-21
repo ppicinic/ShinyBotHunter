@@ -1,4 +1,4 @@
-import type { ConditionalParameter, EventArgumentOptions, NewEventLegArguments } from '../../types/api'
+import type { Condition, ConditionalParameter, EncounterType, EventArgumentOptions, NewEventLegArguments, TrainType } from '../../types/api'
 
 // Maps internal parameter names to user-friendly display labels
 const PARAM_DISPLAY_NAMES: Record<string, string> = {
@@ -15,12 +15,6 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   Mode: 'Game',
 }
 export const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
-
-// Maps EncounterType string names to C# enum integer values (Spin=0, Run=1)
-const ENCOUNTER_TYPE_VALUES: Record<string, number> = { Spin: 0, Run: 1 }
-
-// Maps TrainType string names to C# enum integer values (None=0, Standard=1, Switch=2)
-const TRAIN_TYPE_VALUES: Record<string, number> = { None: 0, Standard: 1, Switch: 2 }
 
 /** Seed value for a freshly-discovered parameter. TrainType must default to 'None' rather than ''
  *  so the Neq condition guarding TargetLevel starts out unmet. */
@@ -40,15 +34,12 @@ function defaultParamValue(param: string): string {
   }
 }
 
-/** Evaluate whether a condition is met given the current param values.
- *  conditionType may be the string 'Eq'/'Neq' or the integer 0/1 (C# enum default serialization). */
-export function isConditionMet(condition: { conditionType: string | number; name: string; value: string }, params: Record<string, string>): boolean {
-  const isEq = condition.conditionType === 'Eq' || condition.conditionType === 0
-  if (isEq) {
+/** Evaluate whether a condition is met given the current param values. */
+export function isConditionMet(condition: Condition, params: Record<string, string>): boolean {
+  if (condition.conditionType === 'Eq') {
     return params[condition.name] === condition.value
   }
-  const isNeq = condition.conditionType === 'Neq' || condition.conditionType === 1
-  if (isNeq) {
+  if (condition.conditionType === 'Neq') {
     return params[condition.name] !== condition.value
   }
   return false
@@ -113,7 +104,7 @@ export function buildLegBody(params: Record<string, string>): NewEventLegArgumen
     leg.targetType = params['TargetType']
   }
   if (params['EncounterType'] !== undefined && params['EncounterType'] !== '') {
-    leg.encounterType = ENCOUNTER_TYPE_VALUES[params['EncounterType']]
+    leg.encounterType = params['EncounterType'] as EncounterType
   }
   if (params['xRange'] !== undefined) {
     leg.xRange = parseInt(params['xRange'], 10) || 0
@@ -122,7 +113,7 @@ export function buildLegBody(params: Record<string, string>): NewEventLegArgumen
     leg.yRange = parseInt(params['yRange'], 10) || 0
   }
   if (params['TrainType'] !== undefined) {
-    leg.trainType = TRAIN_TYPE_VALUES[params['TrainType']] ?? 0
+    leg.trainType = params['TrainType'] as TrainType
   }
   if (params['TargetLevel'] !== undefined && params['TargetLevel'] !== '' && params['TargetLevel'] !== '0') {
     leg.targetLevel = parseInt(params['TargetLevel'], 10)
