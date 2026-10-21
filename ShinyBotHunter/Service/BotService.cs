@@ -331,14 +331,12 @@ namespace ShinyBotHunter.Service
                 if (botEvents[pos].Event is MultiStarterHuntEvent multiHunt)
                 {
                     // The hunt's main task is still running; Resume is a call into it, not a restart.
+                    // Awaited under the gate, so a second Resume click settles the next parked shiny
+                    // rather than the same one, and a fault fails this request.
                     var resumeState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Target = new ShinyTarget() };
                     resumeState.State.Push(EventState.Resume);
-                    _ = multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None)
-                        .ContinueWith(t =>
-                        {
-                            if (t.IsFaulted) Console.WriteLine($"[StarterHunt] Resume failed: {t.Exception?.Flatten().InnerException?.Message}");
-                            _ = hubContext.Clients.All.ReceiveDashboardState(GetBotDashboardState());
-                        });
+                    await multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None);
+                    await RefreshDashboardState();
                     return GetBotDashboardState();
                 }
                 botEvents[pos].GameState!.SwapState(EventState.Resume);
