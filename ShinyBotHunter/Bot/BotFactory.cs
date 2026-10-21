@@ -21,7 +21,7 @@ namespace ShinyBotHunter.Bot
         {
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
-            IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort, localMemoryOnly: false);
+            IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);
             IDataReader reader = CreateReader(context, memoryClient);
             return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
         }

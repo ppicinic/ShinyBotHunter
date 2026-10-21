@@ -24,12 +24,6 @@ namespace ShinyBotHunter.Emulators
             _preprocessor = new CommandPreprocessor(console);
         }
 
-        public BizHawkCommandClient(GameContext context)
-            : base("BizHawkCommandClient", "127.0.0.1", context.CommandPort, TimeSpan.FromSeconds(60))
-        {
-            _preprocessor = new CommandPreprocessor(context.ConsoleType);
-        }
-
         protected override void Disconnect()
         {
             // Connectionless — nothing to tear down.

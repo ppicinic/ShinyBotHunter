@@ -1,5 +1,4 @@
-﻿using ShinyBotHunter.Context;
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Net.Http;
 
 namespace ShinyBotHunter.Emulators
@@ -15,18 +14,9 @@ namespace ShinyBotHunter.Emulators
         // Sentinel count the server sends when a validated party read exhausted its frame budget.
         private const byte PartyUnavailable = 0xFF;
 
-        private bool localMemoryOnly;
-
-        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 20001, bool localMemoryOnly = true)
+        public BizHawkMemoryClient(string host = "127.0.0.1", int port = 20001)
             : base("BizHawkMemoryClient", host, port, TimeSpan.FromSeconds(15))
         {
-            this.localMemoryOnly = localMemoryOnly;
-        }
-
-        public BizHawkMemoryClient(GameContext context, bool localMemoryOnly = true)
-            : base("BizHawkMemoryClient", "127.0.0.1", context.MemoryPort, TimeSpan.FromSeconds(15))
-        {
-            this.localMemoryOnly = localMemoryOnly;
         }
 
         protected override void Disconnect()
@@ -166,8 +156,7 @@ namespace ShinyBotHunter.Emulators
             {
                 throw new InvalidOperationException(
                     $"Memory server returned an empty body for opcode 0x{cmd:X2}. The running BotServer.dll " +
-                    "predates this opcode -- rebuild ApiHawk and copy BotServer.dll into BizHawk's ExternalTools folder. " +
-                    "(BizHawkMode 'LuaNet' does not implement it at all.)");
+                    "predates this opcode -- rebuild ApiHawk and copy BotServer.dll into BizHawk's ExternalTools folder.");
             }
         }
 
