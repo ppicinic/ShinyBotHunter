@@ -171,7 +171,6 @@ namespace ShinyBotHunter
                 .AddSingleton<MacroRecordingService>()
                 .AddSingleton<LocationService>()
                 .AddSingleton<BizHawkLuaLoader>()
-                .AddSingleton<EncounterEventTypeFactory>()
                 .AddSingleton<PokemonStateReader>()
                 .AddSingleton<GraphService>(x => GraphService.Instance)
                 .AddSingleton<PathfindingService>()

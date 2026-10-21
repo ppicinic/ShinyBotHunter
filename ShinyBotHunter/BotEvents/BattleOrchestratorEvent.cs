@@ -14,7 +14,6 @@ using ShinyBotHunter.Util;
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using YamlDotNet.Core;
-using static ShinyBotHunter.BotEvents.WildPokemonEncounterEvent;
 
 namespace ShinyBotHunter.BotEvents
 {
