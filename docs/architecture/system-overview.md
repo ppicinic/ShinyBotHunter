@@ -26,7 +26,7 @@ flowchart LR
   subgraph Backend["ShinyBotHunter (ASP.NET Core, net10)"]
     API[Controllers :5000<br/>Admin / Bot / PhaseMetadata / Dev]
     Hub[ElectronHub SignalR :5001]
-    BotSvc[BotService<br/>bot registry + event lifecycle]
+    BotSvc[BotService<br/>+ EmulatorSlotRegistry, BotEventRunner]
     Events[BotEvents<br/>Orchestrator / Navigator / StarterHunt / TogepiEgg ...]
     Persist[PokemonPersistenceService<br/>in-memory counts cache + channels]
     Discord[DiscordBotService + ShinyAlertService]
@@ -38,7 +38,7 @@ flowchart LR
   end
 
   PG[(PostgreSQL + Timescale<br/>encounters)]
-  Mongo[(MongoDB<br/>CaughtPokemon, PhaseInfos, PokemonMetadata)]
+  Mongo[(MongoDB<br/>CaughtPokemon, PhaseInfos, PokemonMetadata, PhaseStates)]
   DiscordAPI[(Discord)]
 
   Main -- REST --> API
@@ -100,13 +100,13 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 | Store | Data | Access |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Three EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
-| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`) | Three DAOs/services with the raw driver, plus `StarterHuntStateStore` |
+| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`) | Three DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/` | |
 
 ### Write path
 Bot event detects an encounter and calls `PokemonPersistenceService.AddEncounterAsync`. That posts to an unbounded `Channel`; a single consumer loop updates the in-memory counts cache, forwards to the DAO's own channel (which batches into EF `SaveChanges`), then notifies SignalR groups and Discord. Catches follow the same shape through `MongoCaughtPokemonDao`.
 
-This single-consumer channel design is the right one for this project and should be kept. Its weaknesses are supervision (a faulted loop is silent) and the cold-load path described next.
+This single-consumer channel design is the right one for this project and should be kept. The three loops are supervised by `BackgroundLoop.RunSupervisedAsync` (a fault is logged and the loop restarts), and the cold load is the grouped build described next.
 
 ### Read path
 Dashboard reads never hit the database directly; they read the counts cache. A game's cache is loaded whole on first use, under that game's own lock: three Postgres queries (grouped counts, since-last-shiny progress, latest 20) and the caught list from Mongo, from which `PokemonPersistenceService.BuildGameCache` builds the tree in memory. A requested key with no rows gets a zero node for increments to land on. Design in the [count queries spec](../specs/count-queries.md); background in the [review](../reviews/2026-10-code-review.md#1-query-performance-slow-first-load-of-counts).
@@ -141,12 +141,12 @@ flowchart TD
 ### Bot
 `IBot` is `ILauncher + ICommandClient + IMemoryClient + IDataReader + GameFlavor`; `Bot` is pure delegation to those four parts. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry, and `CreateBot` builds the ApiHawk launcher and clients and picks the data reader by flavor.
 
-`Bot.LaunchAsync`: start EmuHawk under a reader slot of `BizHawkReaderWriterLock`, wait for its window, fixed 5 s delay, connect both clients, verify the running game code. `DisposeAsync` takes the writer lock so a shutdown never overlaps a launch.
+`BizHawkApiHawkLauncher.LaunchAsync` (through `Bot.LaunchAsync`): start EmuHawk under a reader slot of `BizHawkReaderWriterLock`, wait for its window, fixed 5 s delay, connect both clients, verify the running game code. `DisposeAsync` takes the writer lock so a shutdown never overlaps a launch.
 
 ### Events
 `IBotEvent.ExecuteAsync(GameState, CancellationToken)` is the whole contract. Two families:
 
-- **Bot-driven events** are handed an existing bot. `OrchestratorEvent` is the top-level overworld state machine (`DecideOverworldAction → Encountering → BattleStart`), delegating to `SpinEncounterEvent`/`RunEncounterEvent` for finding encounters, `BattleOrchestratorEvent` for the fight (read foe, parse, persist, check target, fight/flee, level-up and evolution handling), and `NavigatorEvent` + `PathfindingService` for walking to a Pokemon Center. `ChainedOrchestratorEvent` runs a list of `EventLeg`s over one shared `GameState`. `HgssTogepiEggEvent` is a self-contained egg loop.
+- **Bot-driven events** are handed an existing bot. `OrchestratorEvent` is the top-level overworld state machine (`DecideOverworldAction → Encountering → BattleStart`), delegating to `SpinEncounterEvent`/`RunEncounterEvent` for finding encounters, `BattleOrchestratorEvent` for the fight (read foe, parse, persist, check target, fight/flee) with `LevelUpFlow` for level-up, move learning and evolution, and `NavigatorEvent` + `PathfindingService` for walking to a Pokemon Center. `ChainedOrchestratorEvent` runs a list of `EventLeg`s over one shared `GameState`. `HgssTogepiEggEvent` is a self-contained egg loop.
 - **Self-managing hunts** launch and own their own emulators: `MultiStarterHuntEvent`/`StarterHuntEvent` for RS soft-reset starter hunting (wave-based; progress, created saves and retired copies kept in Mongo via `StarterHuntStateStore`; parked shinies are dropped on restart), `MultiShinyHunterEvent`/`HgssShinyStarterEvent` for HGSS (channel-based). They are two unrelated orchestrations behind one dashboard action.
 
 `GameState` is the shared bag the events pass around: flavor, bot, milestone, target, train settings, tile penalties, and `State`, a `Stack<EventState>` (`Init`, `Running`, `Waiting`, `Resume`, `Complete` ...) that both the event loop and the dashboard read. `ITarget` decides whether an encounter parks the run (`Waiting`) for the operator to catch it; `Resume` re-enters and `CheckForCatchAsync` records the catch and flushes the save.
@@ -163,7 +163,7 @@ Inputs are macro strings authored as YAML under `Macro/Configs/{flavor}/`, expan
 - `EmulatorGrid` extracted as pure, tested arithmetic.
 
 ### Known weaknesses
-Detailed in the [review](../reviews/2026-10-code-review.md): two god classes (`BattleOrchestratorEvent`, `StarterHuntEvent`), with `BotService` split into `EmulatorSlotRegistry`, `BotEventRunner` and `BotDtos.cs` in row 5.1 and its event dispatch shrinking further in row 5.3d; HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
+Detailed in the [review](../reviews/2026-10-code-review.md): the three god classes were split in October 2026 (`BotService` into `EmulatorSlotRegistry`, `BotEventRunner` and `BotDtos.cs`; `LevelUpFlow` out of `BattleOrchestratorEvent`; `StarterSaveFiles` out of `StarterHuntEvent`), with `BotService` event dispatch shrinking further in row 5.3d; HGSS memory addresses defined in five places; a `IDataReader` that RS cannot implement. The dead duplicate events and the unsynchronised registry were removed in the October 2026 cleanup.
 
 ## 8. ApiHawk and the emulator boundary
 
@@ -178,7 +178,7 @@ ApiHawk is a BizHawk "external tool" DLL (`BotServer`) loaded into each EmuHawk 
 
 **Macro language.** A macro is `;`-separated frames, each `:`-separated ops with `.`-separated fields: `W.n` wait, `H.btn.n` hold, `R.btn` release, `S.x.y.f` touch, `M.btn.dest.addr[...]` move until a memory coordinate matches with a warp guard, `BTN.n`. Authored as YAML under `Macro/Configs/{flavor}/`, expanded by `CommandPreprocessor` and `MacroRegistry` on the backend, parsed again by `CommandServer.ParseFrameCommands` on the emulator side.
 
-Backend clients: `BizHawkClientBase` (shared `HttpClient`, 10 linear-backoff retries), `BizHawkCommandClient` (60 s timeout), `BizHawkMemoryClient` (15 s). Launch and shutdown are serialised through `BizHawkReaderWriterLock`.
+Backend clients: `BizHawkClientBase` (shared `HttpClient`, 10 linear-backoff retries), `BizHawkCommandClient` (60 s timeout), `BizHawkMemoryClient` (15 s). Launches run concurrently under reader slots of `BizHawkReaderWriterLock`; a shutdown takes the writer lock so it never overlaps a launch.
 
 ### The BizHawk fork
 The emulator is not stock BizHawk. It is `ppicinic/BizHawk`, branch `fix/4535-sticky-analog`, built with `Dist/BuildRelease.sh` so the assemblies are stamped 2.11.2.0 (a bare `dotnet build` stamps 1.0.0.0 and `BotServer.dll` then fails to bind at runtime). The fork carries:

@@ -1,6 +1,6 @@
 # Cleanup and Hardening Plan
 
-Status: Phases 0 to 2 implemented (2026-10-21, epic #30); phases 3 to 6 open
+Status: Phases 0 to 5 implemented except 5.3 (game profile and dependants), 5.6 and 5.9 (2026-10-21, epics #30 and #67); phases 4b and 6 open
 Last updated: 2026-10-21
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
@@ -127,7 +127,7 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 | 5.3d | Event registry | Each event type (`WildEncounter`, `ChainedEncounter`, `TogepiEgg`, `StarterHunt`, `HgssStarterHunt`, `LaunchBot`) becomes a registry entry: name, `EventArgumentOptions`, required capabilities, owns-emulators flag, factory. `BotService.ExecuteEvent`/`ExecuteNewBotOrSpecialEvent` become a lookup; `GetAvailableActions` filters the registry by the bot's profile; `SpecialEvents.json` either feeds the registry or is deleted. Do this after 5.1 so the registry lands in a small `BotService`. | L |
 | 5.3e | HGSS game-state reader | One small class on the game profile that reads the verified chain in one frame (ApiHawk pointer-chain opcode) and returns where the game is: field free, field task, battle at menu, move list, message waiting, script playing (which), experience or move-learn prompt, battle over (outcome), evolution, other app. Replace `0x021E76D2`, anchor `+0x230EC`, `+0x692C`, `+0x6930` reads with it; bound every wait loop by "state unchanged for N seconds"; confirm each button press by the state moving. Needs 6.2's input-ready flag for menu presses, or confirm-and-retry until then. | 5.3, 6.2 | M |
 | 5.4 | `BattleOrchestratorEvent` split | Extract move-learn/evolution flow and the Discord prompt into their own classes. | M |
-| 5.5 | `StarterHuntEvent` split | Extract save-file management (`EnsureSaveExists`, `WipeSaveSlot`, trainer-ID scan) into `SaveFileManager`. | M |
+| 5.5 | `StarterHuntEvent` split | Extract save-file management (`EnsureSaveExists`, `WipeSaveSlot`, trainer-ID scan) into `StarterSaveFiles`. | M |
 | 5.6 | Narrow `IBot` | Events receive `ICommandClient + IMemoryClient + GameFlavor`; launch/dispose stay with `BotService`. Drop `IDataReader` from `IBot` and resolve it by flavor where needed. | M |
 | 5.7 | Shared DTO shapes | Register `JsonStringEnumConverter` for controllers and SignalR; drop the int/string hedges in `types/api.ts`. Optionally generate `types/api.ts` from the OpenAPI document. | S/M |
 | 5.8 | Dashboard security tidy-up | REST through the main process via preload; sprites via a custom protocol; re-enable `webSecurity` and `sandbox`. | M |
@@ -159,7 +159,23 @@ Done on `feature/cleanup-hardening` under epic #30, one task issue per row or ro
 - 1.5: `ExtractMovePermissionsFile` was kept, not deleted; it is the only producer of the MovePermissions files the map generator reads, so the map command now runs it first.
 - 1.6: `IBotEvent.EventState` had overrides in five more files than the review table listed; all were removed.
 - 1.6b: the file in the plural `Services` namespace was `DiscordBotService`, not `ShinyAlertService`.
-- 2.2: readers of the bot registry stay lock-free on a `ConcurrentDictionary`; only writers take the `SemaphoreSlim`, because events call the readers from inside their own loops. Position allocation still ignores registry keys (a launch onto a taken key now throws instead of overwriting); fixing the allocation is a follow-up.
-- 2.7: the token reaches `ReadValidatedPartyAsync`, `FlushSave` and the battle-state read; `GetBattleValue`, `GetBattleMenuState` and `ReadBytesViaPointerAsync` still take none, so a cancel on a dead emulator can still take several seconds. Follow-up.
+- 2.2: readers of the bot registry stay lock-free on a `ConcurrentDictionary`; only writers take the `SemaphoreSlim`, because events call the readers from inside their own loops. Position allocation ignored registry keys until #72 (phases 3 to 5) made it skip keys as well as reported positions.
+- 2.7: the token reached `ReadValidatedPartyAsync`, `FlushSave` and the battle-state read in phase 2; `GetBattleValue`, `GetBattleMenuState` and `ReadBytesViaPointerAsync` followed in #83 (phases 3 to 5).
 - 4.8 was folded in; 1.6c was folded into 1.5.
 - The manual checks named in the testing strategy (one HGSS wild encounter, one RS starter wave, the map command on a real extraction) were not run by the agents and are for the owner before the merge to `main`.
+
+## Implementation notes, phases 3 to 5 (2026-10-21)
+Done on `feature/cleanup-phases-3-5` under epic #67, task issues #68 to #85 plus #91. Rows 5.3 (and 5.3b to 5.3e), 5.6 and 5.9 were out of scope and are open. Where the work diverged from the rows and the spec:
+- 3.1: measured on the local QA database with about 2,000,000 synthetic rows over 366 one-day chunks (the real numbers are the owner's, after the migration runs there). The grouped query took 850 ms before and after the index, because the planner keeps per-chunk seq scans at the synthetic data's 50% per-game selectivity; with `enable_seqscan = off` it ran as 366 index-only scans in 353 ms. The latest-20 query uses the existing `Timestamp` index. Planning across 366 chunks took 0.4 to 4 s, so the one-day chunk interval is worth revisiting on the real database. The index ships anyway; the cold-load win came from the query shape (3.3).
+- 3.3: the cold load is 3 Postgres queries plus the caught list, down from about 130 round trips; on the QA database a cold phase load went from 18.6 s to 5.2 s and a warm load is about 40 ms. FR-3 (under 1 s) was not met locally; the next step is `EXPLAIN ANALYZE` on the two new queries against real data. `PokemonPersistenceService` shrank from 667 to 488 lines, not by about 300, because the builder lives in the same file.
+- 3.5: no Mongo aggregation. Catches are counted from the caught list the load already fetches, which drops a round trip and a row type; and the spec's `"Pokemon.IsShiny": true` filter was not applied, because that property is a computed getter the documents may not store and today's loaders count every caught document (FR-2 wins). Caught documents written before `GameFileName` existed (May 2026) count at the game, phase and form levels but create no per-ROM-copy node.
+- 4.1 was done in phase 2 (#40); 4.4 is inside 3.3; 4.8 was done in phase 2 (#46).
+- 4.6: the store is Mongo-backed, not file-backed as the row said; the test is a BSON round trip of `StarterHuntGameState`.
+- 4.7: the planner found a latent bug in `PathfindingService.AddEdge` (the capability check reduced to "needs nothing"); fixed with tests in #91. Runtime behaviour was unchanged because every caller passes an empty capability.
+- 4.9: eslint's default TypeScript config needs `@eslint/js` and `typescript-eslint` beside `eslint`; with `vitest` those are the four dev packages added. `Scripts/ci-local.ps1` now runs 8 steps.
+- 5.1: `BotService` ends at about 570 lines, not 500; the remaining bulk is event dispatch that only 5.3d removes.
+- 5.4: one class, `LevelUpFlow`; the Discord prompt already lived in `DiscordBotService`.
+- 5.5: the class is `StarterSaveFiles`, not `SaveFileManager`.
+- 5.7: enums travel as names; integers still parse on input, which the QA harness relies on.
+- 5.8: sprites come through a `sprite://` scheme served from the configured folder only; REST goes through one preload call handled in the main process with an origin check; `webSecurity` and `sandbox` are back on.
+- Owner checks before the merge to `main`: run the migration against the real database and re-measure 3.1; run `countDocuments({GameFileName: null})` on the real `CaughtPokemon` collection; click through the dashboard with both security flags on, including sprites, a phase window, and a hunt's live counts; one wild encounter with a level-up; one RS starter wave.
