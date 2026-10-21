@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
 import type { AdminMetadata, BotDashboardState, EmulatorState, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
@@ -6,6 +6,7 @@ import { romLabel } from '../../types/api'
 import { normalizeGameFlavor } from '../../utils/gameFlavor'
 import { buildLegBody, getParamLabel, initialParamsFor, LEG_PARAM_KEYS, legsVisible, requiredParamsFilled, visibleConditionalsOf, visibleParamNames } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
+import { botPositionsReducer, initialBotPositions } from './botPositions'
 
 // Which hunt a mode-carrying action runs. Values are C# GameFlavor names; the label is what the
 // games are actually called.
@@ -22,7 +23,7 @@ export function BotControlTab(): JSX.Element {
   const [actions, setActions] = useState<EventArgumentOptions[]>([])
   const [loadingActions, setLoadingActions] = useState(true)
   const [actionsError, setActionsError] = useState<string | null>(null)
-  const [botState, setBotState] = useState<BotDashboardState>({})
+  const [positions, dispatch] = useReducer(botPositionsReducer, initialBotPositions)
   const [loadingState, setLoadingState] = useState(true)
   // Per-action parameter values: actionName -> { paramName -> value }
   const [paramValues, setParamValues] = useState<Record<string, Record<string, string>>>({})
@@ -53,8 +54,6 @@ export function BotControlTab(): JSX.Element {
     }))
   }
   const [submitting, setSubmitting] = useState<string | null>(null)
-  // Set by a position's Run or Cancel button while its request is pending; one request per position.
-  const [posInFlight, setPosInFlight] = useState<Record<number, 'run' | 'cancel'>>({})
   const [confirmCancelPos, setConfirmCancelPos] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean; at: number | string } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
@@ -70,16 +69,6 @@ export function BotControlTab(): JSX.Element {
     const rom = allGames.find((g) => g.handle === handle)
     return rom?.flavor ? (metadata?.games[rom.flavor]?.phases ?? []) : []
   }
-  // Per-bot available actions: pos -> EventArgumentOptions[]
-  const [botActions, setBotActions] = useState<Record<number, EventArgumentOptions[]>>({})
-  // Per-bot action parameter values: pos -> { actionName -> { paramName -> value } }
-  const [botActionParams, setBotActionParams] = useState<Record<number, Record<string, Record<string, string>>>>({})
-  // Legs of chained actions: pos -> { actionName -> one param record per leg }
-  const [botChainLegs, setBotChainLegs] = useState<Record<number, Record<string, Record<string, string>[]>>>({})
-  // Which action's form is showing per bot: pos -> actionName
-  const [selectedBotAction, setSelectedBotAction] = useState<Record<number, string>>({})
-  // Live party per bot, loaded on demand so Switch train mode can offer real pokemon: pos -> slots
-  const [partyByPos, setPartyByPos] = useState<Record<number, PartySlotInfo[]>>({})
   const [loadingParty, setLoadingParty] = useState<number | null>(null)
 
   const apiUrl = config?.apiUrl ?? ''
@@ -91,10 +80,10 @@ export function BotControlTab(): JSX.Element {
       const r = await api.getParty(apiUrl, pos)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       const party = await r.json() as PartySlotInfo[]
-      setPartyByPos((prev) => ({ ...prev, [pos]: party }))
+      dispatch({ type: 'partyLoaded', pos, party })
     } catch (err) {
       console.error(`Failed to load party for pos ${pos}:`, err)
-      setPartyByPos((prev) => ({ ...prev, [pos]: [] }))
+      dispatch({ type: 'partyLoaded', pos, party: [] })
     } finally {
       setLoadingParty(null)
     }
@@ -122,49 +111,7 @@ export function BotControlTab(): JSX.Element {
         }
       })
     )
-    setBotActions(updates)
-    // Initialize param values for any new actions (required + optional)
-    setBotActionParams((prev) => {
-      const next = { ...prev }
-      for (const [posStr, actionList] of Object.entries(updates)) {
-        const pos = Number(posStr)
-        if (!next[pos]) next[pos] = {}
-        actionList.forEach((action) => {
-          if (!next[pos][action.name]) {
-            next[pos][action.name] = initialParamsFor(action)
-          }
-        })
-      }
-      return next
-    })
-    // Chained actions start with a single leg; the operator adds the rest.
-    setBotChainLegs((prev) => {
-      const next = { ...prev }
-      for (const [posStr, actionList] of Object.entries(updates)) {
-        const pos = Number(posStr)
-        if (!next[pos]) next[pos] = {}
-        actionList.forEach((action) => {
-          if (action.legParameters && !next[pos][action.name]) {
-            next[pos][action.name] = [initialParamsFor(action.legParameters)]
-          }
-        })
-      }
-      return next
-    })
-    // Only one action's form shows at a time, so fall back to the first whenever the current pick
-    // is no longer on offer (the available set changes as the bot's state does).
-    setSelectedBotAction((prev) => {
-      const next = { ...prev }
-      for (const [posStr, actionList] of Object.entries(updates)) {
-        const pos = Number(posStr)
-        if (actionList.length === 0) {
-          delete next[pos]
-        } else if (!actionList.some((action) => action.name === next[pos])) {
-          next[pos] = actionList[0].name
-        }
-      }
-      return next
-    })
+    dispatch({ type: 'actionsLoaded', updates })
   }, [apiUrl])
 
   const loadDashboardState = useCallback(async (): Promise<void> => {
@@ -174,7 +121,7 @@ export function BotControlTab(): JSX.Element {
       const r = await api.getDashboardState(apiUrl)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       const state = await r.json() as BotDashboardState
-      setBotState(state)
+      dispatch({ type: 'stateReceived', state })
       await fetchBotActionsForState(state)
     } catch (err) {
       console.error('Failed to load bot dashboard state:', err)
@@ -227,7 +174,7 @@ export function BotControlTab(): JSX.Element {
   useEffect(() => {
     if (!signalR) return
     const unsub = signalR.onDashboardState(async (state: BotDashboardState) => {
-      setBotState(state)
+      dispatch({ type: 'stateReceived', state })
       setLoadingState(false)
       await fetchBotActionsForState(state)
     })
@@ -236,10 +183,10 @@ export function BotControlTab(): JSX.Element {
 
   // Positions whose encounter form -- single or any leg of a chain -- has Switch train mode picked.
   const switchPositions = new Set<string>()
-  Object.entries(botActionParams).forEach(([posStr, actionsForPos]) => {
+  Object.entries(positions.botActionParams).forEach(([posStr, actionsForPos]) => {
     if (Object.values(actionsForPos).some((p) => p['TrainType'] === 'Switch')) switchPositions.add(posStr)
   })
-  Object.entries(botChainLegs).forEach(([posStr, actionsForPos]) => {
+  Object.entries(positions.botChainLegs).forEach(([posStr, actionsForPos]) => {
     if (Object.values(actionsForPos).some((legs) => legs.some((p) => p['TrainType'] === 'Switch'))) switchPositions.add(posStr)
   })
   const switchPositionsKey = Array.from(switchPositions).sort().join(',')
@@ -257,14 +204,14 @@ export function BotControlTab(): JSX.Element {
   }, [switchPositionsKey, apiUrl, loadParty])
 
   const handleRunBotAction = async (pos: number, action: EventArgumentOptions): Promise<void> => {
-    if (posInFlight[pos]) return
-    setPosInFlight((prev) => ({ ...prev, [pos]: 'run' }))
+    if (positions.posInFlight[pos]) return
+    dispatch({ type: 'requestStarted', pos, kind: 'run' })
     setFeedback(null)
     try {
-      const params = botActionParams[pos]?.[action.name] ?? {}
+      const params = positions.botActionParams[pos]?.[action.name] ?? {}
       let body: Record<string, unknown>
       if (action.legParameters) {
-        body = { eventName: action.name, legs: (botChainLegs[pos]?.[action.name] ?? []).map(buildLegBody) }
+        body = { eventName: action.name, legs: (positions.botChainLegs[pos]?.[action.name] ?? []).map(buildLegBody) }
       } else {
         body = { eventName: action.name, ...buildLegBody(params) }
         // Find soundOn key case-insensitively
@@ -288,18 +235,14 @@ export function BotControlTab(): JSX.Element {
         throw new Error(text || `Server returned ${res.status}`)
       }
       const newState = await res.json() as BotDashboardState
-      setBotState(newState)
+      dispatch({ type: 'stateReceived', state: newState })
       await fetchBotActionsForState(newState)
       setFeedback({ msg: `Started "${action.name}" on bot #${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 4000)
     } catch (err) {
       setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
     } finally {
-      setPosInFlight((prev) => {
-        const next = { ...prev }
-        delete next[pos]
-        return next
-      })
+      dispatch({ type: 'requestFinished', pos })
     }
   }
 
@@ -353,7 +296,7 @@ export function BotControlTab(): JSX.Element {
         throw new Error(text || `Server returned ${res.status}`)
       }
       const newState = await res.json() as BotDashboardState
-      setBotState(newState)
+      dispatch({ type: 'stateReceived', state: newState })
       await fetchBotActionsForState(newState)
       setFeedback({ msg: `Started "${action.name}"`, isError: false, at: action.name })
       setTimeout(() => setFeedback(null), 4000)
@@ -365,8 +308,8 @@ export function BotControlTab(): JSX.Element {
   }
 
   const handleCancelAction = async (pos: number): Promise<void> => {
-    if (posInFlight[pos]) return
-    setPosInFlight((prev) => ({ ...prev, [pos]: 'cancel' }))
+    if (positions.posInFlight[pos]) return
+    dispatch({ type: 'requestStarted', pos, kind: 'cancel' })
     setConfirmCancelPos(null)
     setFeedback(null)
     try {
@@ -376,60 +319,22 @@ export function BotControlTab(): JSX.Element {
         throw new Error(text || `Server returned ${res.status}`)
       }
       const newState = await res.json() as BotDashboardState
-      setBotState(newState)
+      dispatch({ type: 'stateReceived', state: newState })
       await fetchBotActionsForState(newState)
       setFeedback({ msg: `Cancelled position ${pos}`, isError: false, at: pos })
       setTimeout(() => setFeedback(null), 3000)
     } catch (err) {
       setFeedback({ msg: err instanceof Error ? err.message : 'Unknown error', isError: true, at: pos })
     } finally {
-      setPosInFlight((prev) => {
-        const next = { ...prev }
-        delete next[pos]
-        return next
-      })
+      dispatch({ type: 'requestFinished', pos })
     }
   }
 
-  const activePositions = Object.entries(botState).map(([pos, state]) => ({
+  const activePositions = Object.entries(positions.botState).map(([pos, state]) => ({
     pos: Number(pos),
     name: (state as EmulatorState).name,
     eventState: (state as EmulatorState).eventState
   }))
-
-  const handleBotParamChange = (pos: number, actionName: string, param: string, value: string): void => {
-    setBotActionParams((prev) => ({
-      ...prev,
-      [pos]: {
-        ...prev[pos],
-        [actionName]: { ...(prev[pos]?.[actionName] ?? {}), [param]: value }
-      }
-    }))
-  }
-
-  const handleLegParamChange = (pos: number, actionName: string, legIndex: number, param: string, value: string): void => {
-    setBotChainLegs((prev) => {
-      const legs = (prev[pos]?.[actionName] ?? []).map((leg, i) => (i === legIndex ? { ...leg, [param]: value } : leg))
-      return { ...prev, [pos]: { ...prev[pos], [actionName]: legs } }
-    })
-  }
-
-  const handleAddLeg = (pos: number, action: EventArgumentOptions): void => {
-    if (!action.legParameters) return
-    setBotChainLegs((prev) => {
-      const legs = [...(prev[pos]?.[action.name] ?? []), initialParamsFor(action.legParameters!)]
-      return { ...prev, [pos]: { ...prev[pos], [action.name]: legs } }
-    })
-  }
-
-  const handleRemoveLeg = (pos: number, actionName: string, legIndex: number): void => {
-    setBotChainLegs((prev) => {
-      const legs = (prev[pos]?.[actionName] ?? []).filter((_, i) => i !== legIndex)
-      // A chain always keeps at least one leg -- an empty one is just the single-encounter form.
-      if (legs.length === 0) return prev
-      return { ...prev, [pos]: { ...prev[pos], [actionName]: legs } }
-    })
-  }
 
   // The last message shows next to the position or top-level action it came from.
   const renderFeedback = (at: number | string): JSX.Element | null => feedback?.at === at ? (
@@ -458,11 +363,11 @@ export function BotControlTab(): JSX.Element {
         ) : (
           <ul className="space-y-2">
             {activePositions.map(({ pos, name }) => {
-              const availableActions = botActions[pos] ?? []
-              const posParams = botActionParams[pos] ?? {}
-              const posLegs = botChainLegs[pos] ?? {}
-              const selectedActionName = selectedBotAction[pos] ?? availableActions[0]?.name
-              const emState = botState[pos] as EmulatorState | undefined
+              const availableActions = positions.botActions[pos] ?? []
+              const posParams = positions.botActionParams[pos] ?? {}
+              const posLegs = positions.botChainLegs[pos] ?? {}
+              const selectedActionName = positions.selectedBotAction[pos] ?? availableActions[0]?.name
+              const emState = positions.botState[pos] as EmulatorState | undefined
               const gameName = emState ? normalizeGameFlavor(emState.gameFlavor) : ''
               const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
               return (
@@ -480,7 +385,7 @@ export function BotControlTab(): JSX.Element {
                         <span className="text-xs text-slate-300">Confirm?</span>
                         <button
                           onClick={() => handleCancelAction(pos)}
-                          disabled={!!posInFlight[pos]}
+                          disabled={!!positions.posInFlight[pos]}
                           className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors font-semibold"
                         >
                           Yes
@@ -495,10 +400,10 @@ export function BotControlTab(): JSX.Element {
                     ) : (
                       <button
                         onClick={() => setConfirmCancelPos(pos)}
-                        disabled={!!posInFlight[pos]}
+                        disabled={!!positions.posInFlight[pos]}
                         className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
                       >
-                        {posInFlight[pos] === 'cancel' ? 'Cancelling...' : 'Cancel'}
+                        {positions.posInFlight[pos] === 'cancel' ? 'Cancelling...' : 'Cancel'}
                       </button>
                     )}
                   </div>
@@ -509,7 +414,7 @@ export function BotControlTab(): JSX.Element {
                           {availableActions.map((action) => (
                             <button
                               key={action.name}
-                              onClick={() => setSelectedBotAction((prev) => ({ ...prev, [pos]: action.name }))}
+                              onClick={() => dispatch({ type: 'actionSelected', pos, actionName: action.name })}
                               className={`px-2 py-0.5 text-xs rounded transition-colors ${
                                 selectedActionName === action.name
                                   ? 'bg-indigo-700 text-white'
@@ -535,7 +440,7 @@ export function BotControlTab(): JSX.Element {
                               <div className="flex items-center gap-1.5">
                                 {action.legParameters && (
                                   <button
-                                    onClick={() => handleAddLeg(pos, action)}
+                                    onClick={() => dispatch({ type: 'legAdded', pos, action })}
                                     className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
                                   >
                                     + Leg
@@ -543,10 +448,10 @@ export function BotControlTab(): JSX.Element {
                                 )}
                                 <button
                                   onClick={() => handleRunBotAction(pos, action)}
-                                  disabled={!allFilled || !!posInFlight[pos]}
+                                  disabled={!allFilled || !!positions.posInFlight[pos]}
                                   className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                                 >
-                                  {posInFlight[pos] === 'run' ? 'Running...' : 'Run'}
+                                  {positions.posInFlight[pos] === 'run' ? 'Running...' : 'Run'}
                                 </button>
                               </div>
                             </div>
@@ -557,7 +462,7 @@ export function BotControlTab(): JSX.Element {
                                     <span className="text-xs text-slate-400">Leg {legIndex + 1}</span>
                                     {legs.length > 1 && (
                                       <button
-                                        onClick={() => handleRemoveLeg(pos, action.name, legIndex)}
+                                        onClick={() => dispatch({ type: 'legRemoved', pos, actionName: action.name, legIndex })}
                                         className="text-xs text-red-400 hover:text-red-300 transition-colors"
                                       >
                                         Remove
@@ -567,9 +472,9 @@ export function BotControlTab(): JSX.Element {
                                   <ActionParamFields
                                     schema={action.legParameters!}
                                     params={leg}
-                                    onChange={(param, value) => handleLegParamChange(pos, action.name, legIndex, param, value)}
+                                    onChange={(param, value) => dispatch({ type: 'legParamChanged', pos, actionName: action.name, legIndex, param, value })}
                                     availablePhases={availablePhases}
-                                    party={partyByPos[pos]}
+                                    party={positions.partyByPos[pos]}
                                     onReloadParty={() => loadParty(pos)}
                                     partyLoading={loadingParty === pos}
                                   />
@@ -579,9 +484,9 @@ export function BotControlTab(): JSX.Element {
                               <ActionParamFields
                                 schema={action}
                                 params={params}
-                                onChange={(param, value) => handleBotParamChange(pos, action.name, param, value)}
+                                onChange={(param, value) => dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })}
                                 availablePhases={availablePhases}
-                                party={partyByPos[pos]}
+                                party={positions.partyByPos[pos]}
                                 onReloadParty={() => loadParty(pos)}
                                 partyLoading={loadingParty === pos}
                               />
