@@ -5,6 +5,8 @@ namespace ShinyBotHunter.Persistence
 {
     public interface IEncounterDao : IAsyncDisposable
     {
+        Task<List<CountRow>> GetCountsAsync(GameFlavor game);
+        Task<List<ProgressRow>> GetPhaseProgressAsync(GameFlavor game);
         Task<(long, long)> GetAllEncountersForGame(GameFlavor game);
         Task<(long, long)> GetAllEncountersForGameName(string gameFileName);
         Task<(long, long)> GetAllPhaseEncountersForGame(GameFlavor game, string phase);

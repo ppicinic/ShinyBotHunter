@@ -39,6 +39,54 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             }
         }
 
+        public async Task<List<CountRow>> GetCountsAsync(GameFlavor game)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return await context.Database
+                .SqlQuery<CountRow>($@"
+            SELECT ""Milestone"" AS ""Milestone"",
+                   ""GameFileName"" AS ""GameFileName"",
+                   ""FormCode"" AS ""FormCode"",
+                   ""Species""::int AS ""Species"",
+                   COUNT(*) AS ""Encounters"",
+                   COUNT(*) FILTER (WHERE ""IsShiny"") AS ""ShinyEncounters""
+            FROM ""encounters""
+            WHERE ""Game"" = {(int)game}
+            GROUP BY 1, 2, 3, 4")
+                .ToListAsync();
+        }
+
+        // One statement, two groupings: per ROM copy against that copy's last shiny, and per phase against the
+        // last shiny across all copies. GROUPING SETS cannot do it because the since-filter differs per grouping.
+        public async Task<List<ProgressRow>> GetPhaseProgressAsync(GameFlavor game)
+        {
+            using var context = await _contextFactory.CreateDbContextAsync();
+            return await context.Database
+                .SqlQuery<ProgressRow>($@"
+            WITH per_file AS (
+                SELECT ""Milestone"", ""GameFileName"", MAX(""Timestamp"") FILTER (WHERE ""IsShiny"") AS last_shiny_at
+                FROM ""encounters""
+                WHERE ""Game"" = {(int)game}
+                GROUP BY 1, 2
+            ), per_phase AS (
+                SELECT ""Milestone"", MAX(last_shiny_at) AS last_shiny_at
+                FROM per_file
+                GROUP BY 1
+            )
+            SELECT e.""Milestone"" AS ""Milestone"", e.""GameFileName"" AS ""GameFileName"", COUNT(*)::int AS ""SinceLastShiny""
+            FROM ""encounters"" e
+            JOIN per_file l ON l.""Milestone"" = e.""Milestone"" AND l.""GameFileName"" = e.""GameFileName""
+            WHERE e.""Game"" = {(int)game} AND (l.last_shiny_at IS NULL OR e.""Timestamp"" > l.last_shiny_at)
+            GROUP BY 1, 2
+            UNION ALL
+            SELECT e.""Milestone"", NULL, COUNT(*)::int
+            FROM ""encounters"" e
+            JOIN per_phase p ON p.""Milestone"" = e.""Milestone""
+            WHERE e.""Game"" = {(int)game} AND (p.last_shiny_at IS NULL OR e.""Timestamp"" > p.last_shiny_at)
+            GROUP BY 1")
+                .ToListAsync();
+        }
+
         public async Task<(long, long)> GetAllEncountersForGame(GameFlavor game)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
