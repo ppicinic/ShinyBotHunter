@@ -43,6 +43,17 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void GetLevelUp_NewPartyShorter_ReturnsNullWithoutThrowing()
+        {
+            var oldState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 }, new PokemonData { Level = 10 } } };
+            var newState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 } } };
+
+            PokemonData? result = BattleOrchestratorEvent.GetLevelUp(oldState, newState);
+
+            Assert.Null(result);
+        }
+
+        [Fact]
         public void GetLevelUp_SecondMonLevelled_ReturnsIt()
         {
             var oldState = new PokemonBattleState { PartyPokemon = { new PokemonData { Level = 10 }, new PokemonData { Level = 10 } } };

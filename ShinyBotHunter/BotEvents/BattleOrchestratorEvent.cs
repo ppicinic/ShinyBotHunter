@@ -539,7 +539,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 return null;
             }
-            for(int i = 0; i < oldState.PartyPokemon.Count(); i++)
+            for(int i = 0; i < Math.Min(oldState.PartyPokemon.Count, newState.PartyPokemon.Count); i++)
             {
                 if (newState.PartyPokemon[i].Level > oldState.PartyPokemon[i].Level)
                 {
