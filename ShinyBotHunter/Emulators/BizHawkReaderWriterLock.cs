@@ -26,6 +26,9 @@ namespace ShinyBotHunter.Emulators
             });
         }
 
+        // Not reentrant: a caller that holds a reader lock must not ask for the writer lock, because the
+        // writer waits for every reader slot, including the caller's own, and never gets it.
+        // The writer takes reader slots one at a time, so while it waits for the last slot, new readers wait too.
         public async Task<IAsyncDisposable> GetWriterLockAsync()
         {
             await _writerLock.WaitAsync();
