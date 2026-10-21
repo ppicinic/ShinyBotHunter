@@ -94,5 +94,18 @@ namespace ShinyBotHunter.Tests
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             Assert.Equal([0, 0], factory.Positions);
         }
+
+        [Fact]
+        public void LaunchBesideEntryKeyedAtZeroReportingOne_GetsPositionTwo()
+        {
+            // A hunt keyed at 0 whose copy at 0 was parked, so it reports only position 1.
+            var slots = new EmulatorSlotRegistry(3);
+            slots.Entries[0] = new BotAndOrEvent { BotPosition = 1 };
+
+            var (occupied, next) = slots.AllocatePosition();
+
+            Assert.Equal(2, next);
+            Assert.Equal([0, 1], occupied);
+        }
     }
 }
