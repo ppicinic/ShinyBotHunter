@@ -294,6 +294,7 @@ namespace ShinyBotHunter.Service
             var enemyData = await bot.ReadBytesViaPointerAsync(
                 pointerService.Anchor,
                 PokemonBlockSize,
+                ct,
                 (int)pointerService.EnemyAnchor,
                 (int)pointerService.Enemy);
             var enemyPokemon = parser.Parse(enemyData);
@@ -311,13 +312,14 @@ namespace ShinyBotHunter.Service
                 enemyData = await bot.ReadBytesViaPointerAsync(
                     pointerService.Anchor,
                     PokemonBlockSize,
+                    ct,
                     (int)pointerService.EnemyAnchor,
                     (int)pointerService.Enemy);
                 enemyPokemon = parser.Parse(enemyData);
             }
             sw.Stop();
-            var battleEnemyPokemonData = await bot.ReadBytesViaPointerAsync(pointerService.Anchor, BattlePokemonBlockSize, (int)pointerService.BattleEnemyPokemon);
-            var battlePokemonData = await bot.ReadBytesViaPointerAsync(pointerService.Anchor, BattlePokemonBlockSize, (int)pointerService.BattlePokemon);
+            var battleEnemyPokemonData = await bot.ReadBytesViaPointerAsync(pointerService.Anchor, BattlePokemonBlockSize, ct, (int)pointerService.BattleEnemyPokemon);
+            var battlePokemonData = await bot.ReadBytesViaPointerAsync(pointerService.Anchor, BattlePokemonBlockSize, ct, (int)pointerService.BattlePokemon);
             var activePokemon = battleParser.ParseBattlePokemon(battlePokemonData, partyPokemon);
             if(activePokemon is null)
             {

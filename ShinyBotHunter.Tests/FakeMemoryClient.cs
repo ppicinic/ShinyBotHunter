@@ -49,7 +49,7 @@ namespace ShinyBotHunter.Tests
             return Task.FromResult(blocks);
         }
 
-        public Task<byte[]> ReadBytesAsync(uint address, int length)
+        public Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default)
         {
             ByteReads.Add((address, length));
             return Task.FromResult(new byte[length]);
@@ -70,7 +70,7 @@ namespace ShinyBotHunter.Tests
         public Task<byte> ReadByteAsync(uint address) => Task.FromResult((byte)0);
         public Task<ushort> ReadUShortAsync(uint address) => Task.FromResult((ushort)0);
         public Task WriteByteAsync(uint address, byte value) => Task.CompletedTask;
-        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets) => Task.FromResult(new byte[length]);
+        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets) => Task.FromResult(new byte[length]);
         public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((byte)0);
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
