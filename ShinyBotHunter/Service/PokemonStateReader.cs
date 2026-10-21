@@ -308,7 +308,7 @@ namespace ShinyBotHunter.Service
                     return null;
                 }
                 await Task.Delay(100, ct);
-                enemyData =await bot.ReadBytesViaPointerAsync(
+                enemyData = await bot.ReadBytesViaPointerAsync(
                     pointerService.Anchor,
                     PokemonBlockSize,
                     (int)pointerService.EnemyAnchor,
