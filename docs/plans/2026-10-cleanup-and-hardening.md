@@ -63,13 +63,14 @@ Outcome: two simultaneous dashboard actions cannot corrupt the bot registry, dou
 | 2.10 | Dashboard: disable while in flight | Action buttons in `BotControlTab` disable until the start/cancel/resume request returns, and show the 400 message inline. The lock is the real guard; this stops the double-click from being possible in normal use. | 2.2 | S | A fast double-click sends one request. |
 
 ### Phase 3: Count query performance (one or two PRs)
+Design: [Count queries spec](../specs/count-queries.md). Decided 2026-10-21: the query shape changes (indexes alone are not enough); no cache invalidation, since the cache is keyed by stored row values, not phase definitions.
 Outcome: a cold dashboard load of a phase is a handful of round trips, each an index scan.
 
 | # | Task | Details | Depends on | Size | Done when |
 |---|---|---|---|---|---|
 | 3.1 | Measure | Baseline is known: 1 to 2 million rows, 10 to 30 s cold load. Record the exact row count and the `EXPLAIN ANALYZE` of one `LongCount` before 3.2 so the index gain is visible. Target: cold phase load under 1 s. | — | S | Numbers in the PR. |
-| 3.2 | Indexes | EF migration adding `(Game, Milestone, Timestamp DESC)` and `(GameFileName, Milestone, Timestamp DESC)`, each `INCLUDE (IsShiny, FormCode, Species)`; consider a partial index `WHERE IsShiny`. On Timescale, create them on the hypertable so chunks inherit. | 3.1 | S | `EXPLAIN` shows index scans; re-measure. |
-| 3.3 | One grouped load per game | Replace the ~25 `IEncounterDao.GetAll*` methods with two: `GetCountsForGame(game)` returning `(Milestone, GameFileName, FormCode, Species, Count, ShinyCount)` rows via `COUNT(*) FILTER (WHERE "IsShiny")` grouped, and `GetCurrentPhaseCounts(game)` as one window query. Build the whole `GameEncounterCache` tree from those rows in `LoadGameCache`; delete the per-leaf loaders and the per-leaf semaphore dance. | 3.2 | L | First load is ≤ 4 Postgres queries; `PokemonPersistenceService` shrinks by ~300 lines; a unit test builds the tree from a fake row set. |
+| 3.2 | Index | EF migration adding `(Game, Milestone, GameFileName, Timestamp DESC) INCLUDE (IsShiny, FormCode, Species)` on the hypertable. Ships alone. | 3.1 | S | `EXPLAIN` shows an index-only scan for the grouped query; re-measure. |
+| 3.3 | One grouped load per game | Per the spec: `GetCountsAsync` (grouped counts), `GetPhaseProgressAsync` (since-last-shiny), the existing latest-20; a pure `rows -> GameEncounterCache` builder with unit tests; delete the per-leaf loaders and the static semaphore. | 3.2 | L | Cold load ≤ 4 round trips; numbers identical to the old code on seeded data; `PokemonPersistenceService` shrinks by ~300 lines. |
 | 3.4 | Encounter rate in one query | Merge the bins query and the min/max query; delete the `gameFileName` duplicate by making the filter optional. | 3.2 | S | |
 | 3.5 | One Mongo aggregation for caught shinies | Replace the eleven `GetAllCaught*CountAsync` methods with one `$group` aggregation per game keyed by phase, game file, form code and species, consumed by the same tree builder as 3.3. Keep the per-game `GetAllCaughtShiniesAsync` list for the dashboard. | 3.3 | S | First load issues one Mongo query. `MongoCaughtPokemonDao` shrinks. |
 
