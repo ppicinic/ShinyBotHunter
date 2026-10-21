@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence;
-using ShinyBotHunter.Persistence.InfluxDb;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
