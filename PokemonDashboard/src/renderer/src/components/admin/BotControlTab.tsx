@@ -3,10 +3,10 @@ import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
 import type { AdminMetadata, BotDashboardState, EmulatorState, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
-import { normalizeGameFlavor } from '../../utils/gameFlavor'
 import { buildLegBody, getParamLabel, initialParamsFor, LEG_PARAM_KEYS, legsVisible, requiredParamsFilled, visibleConditionalsOf, visibleParamNames } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
 import { botPositionsReducer, initialBotPositions } from './botPositions'
+import { EmulatorCard } from './EmulatorCard'
 
 // Which hunt a mode-carrying action runs. Values are C# GameFlavor names; the label is what the
 // games are actually called.
@@ -362,144 +362,29 @@ export function BotControlTab(): JSX.Element {
           <p className="text-slate-500 text-sm">No active emulators.</p>
         ) : (
           <ul className="space-y-2">
-            {activePositions.map(({ pos, name }) => {
-              const availableActions = positions.botActions[pos] ?? []
-              const posParams = positions.botActionParams[pos] ?? {}
-              const posLegs = positions.botChainLegs[pos] ?? {}
-              const selectedActionName = positions.selectedBotAction[pos] ?? availableActions[0]?.name
-              const emState = positions.botState[pos] as EmulatorState | undefined
-              const gameName = emState ? normalizeGameFlavor(emState.gameFlavor) : ''
-              const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
-              return (
-                <li
-                  key={pos}
-                  className="bg-card-border/30 rounded px-3 py-2 space-y-1.5"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-white">
-                      <span className="text-slate-400 text-xs mr-2">#{pos}</span>
-                      {name}
-                    </span>
-                    {confirmCancelPos === pos ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-xs text-slate-300">Confirm?</span>
-                        <button
-                          onClick={() => handleCancelAction(pos)}
-                          disabled={!!positions.posInFlight[pos]}
-                          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors font-semibold"
-                        >
-                          Yes
-                        </button>
-                        <button
-                          onClick={() => setConfirmCancelPos(null)}
-                          className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
-                        >
-                          No
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmCancelPos(pos)}
-                        disabled={!!positions.posInFlight[pos]}
-                        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
-                      >
-                        {positions.posInFlight[pos] === 'cancel' ? 'Cancelling...' : 'Cancel'}
-                      </button>
-                    )}
-                  </div>
-                  {availableActions.length > 0 && (
-                    <div className="space-y-1 pt-1 border-t border-slate-700/50">
-                      {availableActions.length > 1 && (
-                        <div className="flex items-center gap-1">
-                          {availableActions.map((action) => (
-                            <button
-                              key={action.name}
-                              onClick={() => dispatch({ type: 'actionSelected', pos, actionName: action.name })}
-                              className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                                selectedActionName === action.name
-                                  ? 'bg-indigo-700 text-white'
-                                  : 'bg-card-border text-slate-400 hover:text-white'
-                              }`}
-                            >
-                              {action.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {/* Only the selected action's form renders, so its Run button is unambiguous. */}
-                      {availableActions.filter((action) => action.name === selectedActionName).map((action) => {
-                        const params = posParams[action.name] ?? {}
-                        const legs = posLegs[action.name] ?? []
-                        const allFilled = action.legParameters
-                          ? legs.length > 0 && legs.every((leg) => requiredParamsFilled(action.legParameters!, leg))
-                          : requiredParamsFilled(action, params)
-                        return (
-                          <div key={action.name} className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-slate-300">{action.name}</span>
-                              <div className="flex items-center gap-1.5">
-                                {action.legParameters && (
-                                  <button
-                                    onClick={() => dispatch({ type: 'legAdded', pos, action })}
-                                    className="px-2 py-0.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded transition-colors"
-                                  >
-                                    + Leg
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleRunBotAction(pos, action)}
-                                  disabled={!allFilled || !!positions.posInFlight[pos]}
-                                  className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
-                                >
-                                  {positions.posInFlight[pos] === 'run' ? 'Running...' : 'Run'}
-                                </button>
-                              </div>
-                            </div>
-                            {action.legParameters ? (
-                              legs.map((leg, legIndex) => (
-                                <div key={legIndex} className="border border-slate-700/60 rounded px-2 py-1 space-y-1">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs text-slate-400">Leg {legIndex + 1}</span>
-                                    {legs.length > 1 && (
-                                      <button
-                                        onClick={() => dispatch({ type: 'legRemoved', pos, actionName: action.name, legIndex })}
-                                        className="text-xs text-red-400 hover:text-red-300 transition-colors"
-                                      >
-                                        Remove
-                                      </button>
-                                    )}
-                                  </div>
-                                  <ActionParamFields
-                                    schema={action.legParameters!}
-                                    params={leg}
-                                    onChange={(param, value) => dispatch({ type: 'legParamChanged', pos, actionName: action.name, legIndex, param, value })}
-                                    availablePhases={availablePhases}
-                                    party={positions.partyByPos[pos]}
-                                    onReloadParty={() => loadParty(pos)}
-                                    partyLoading={loadingParty === pos}
-                                  />
-                                </div>
-                              ))
-                            ) : (
-                              <ActionParamFields
-                                schema={action}
-                                params={params}
-                                onChange={(param, value) => dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })}
-                                availablePhases={availablePhases}
-                                party={positions.partyByPos[pos]}
-                                onReloadParty={() => loadParty(pos)}
-                                partyLoading={loadingParty === pos}
-                              />
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {renderFeedback(pos)}
-                </li>
-              )
-            })}
+            {activePositions.map(({ pos, name }) => (
+              <EmulatorCard
+                key={pos}
+                pos={pos}
+                name={name}
+                emState={positions.botState[pos] as EmulatorState | undefined}
+                metadata={metadata}
+                actions={positions.botActions[pos] ?? []}
+                params={positions.botActionParams[pos] ?? {}}
+                legs={positions.botChainLegs[pos] ?? {}}
+                selected={positions.selectedBotAction[pos]}
+                party={positions.partyByPos[pos]}
+                partyLoading={loadingParty === pos}
+                inFlight={positions.posInFlight[pos]}
+                confirmingCancel={confirmCancelPos === pos}
+                onConfirmCancel={setConfirmCancelPos}
+                onCancel={() => handleCancelAction(pos)}
+                onRun={(action) => handleRunBotAction(pos, action)}
+                onReloadParty={() => loadParty(pos)}
+                dispatch={dispatch}
+                feedback={renderFeedback(pos)}
+              />
+            ))}
           </ul>
         )}
       </div>
