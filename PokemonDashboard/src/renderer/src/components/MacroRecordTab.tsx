@@ -49,7 +49,6 @@ export function MacroRecordTab(): JSX.Element {
   // Default to the first emulator once the list arrives, and drop a selection that went away.
   useEffect(() => {
     setSelectedPos((prev) => (prev !== null && positions.includes(prev) ? prev : positions[0] ?? null))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botState])
 
   // Live frame counter while recording. Kept in a ref so the interval can be torn down from

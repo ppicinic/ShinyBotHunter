@@ -52,11 +52,6 @@ export class IpcSignalRService {
     this.unsubscribers = []
   }
 
-  // The main process owns SignalR group membership (it subscribes based on the
-  // dashboard config it receives), so per-window subscribe calls are no-ops.
-  async subscribeToGamePhase(_game: string, _phase: string): Promise<void> {}
-  async unsubscribeFromGamePhase(_game: string, _phase: string): Promise<void> {}
-
   onEncounters(handler: EncountersHandler): () => void {
     this.encountersHandlers.push(handler)
     return () => {

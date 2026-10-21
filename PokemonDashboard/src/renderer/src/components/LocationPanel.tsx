@@ -41,7 +41,6 @@ export function LocationPanel(): JSX.Element {
 
   useEffect(() => {
     setSelectedPos((prev) => (prev !== null && positions.includes(prev) ? prev : positions[0] ?? null))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botState])
 
   // Values belong to the emulator they were read from — drop them on switch so a stale reading
