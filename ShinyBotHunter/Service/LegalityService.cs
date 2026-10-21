@@ -71,23 +71,6 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        /// <summary>
-        /// Logs a verdict without acting on it. Used by the QA pass that measures how common illegal
-        /// pokemon actually are before the check starts rejecting anything.
-        /// </summary>
-        public void LogVerdict(byte[] raw, GameFlavor flavor, string description = "")
-        {
-            LegalityResult result = Analyze(raw, flavor);
-            if (result.IsLegal)
-            {
-                logger.LogInformation("Legality OK {Context}", description);
-            }
-            else
-            {
-                logger.LogWarning("Legality FAILED {Context}: {Report}", description, result.Report);
-            }
-        }
-
         private static EntityContext ContextFor(GameFlavor flavor) => flavor switch
         {
             GameFlavor.RS => EntityContext.Gen3,

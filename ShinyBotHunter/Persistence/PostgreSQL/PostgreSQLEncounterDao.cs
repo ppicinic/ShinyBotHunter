@@ -289,7 +289,6 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
         }
 
         public async Task WriteToQueueAsync(List<PersistPokemonData> pokemonData) => await ProducerQueue.Writer.WriteAsync(pokemonData);
-        public async Task WriteToQueue(PersistPokemonData pokemonData) => await ProducerQueue.Writer.WriteAsync(new List<PersistPokemonData> { pokemonData });
 
         public async ValueTask DisposeAsync()
         {
