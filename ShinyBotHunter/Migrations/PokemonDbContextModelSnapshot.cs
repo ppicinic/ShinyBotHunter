@@ -84,6 +84,12 @@ namespace ShinyBotHunter.Migrations
 
                     b.HasKey("Id", "Timestamp");
 
+                    b.HasIndex("Game", "Milestone", "GameFileName", "Timestamp")
+                        .HasDatabaseName("encounters_game_milestone_file_time")
+                        .IsDescending(false, false, false, true);
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("Game", "Milestone", "GameFileName", "Timestamp"), new[] { "IsShiny", "FormCode", "Species" });
+
                     b.ToTable("encounters");
 
                     b
