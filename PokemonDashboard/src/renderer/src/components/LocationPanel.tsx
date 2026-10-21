@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import type { BotDashboardState, LocationInfo } from '../types/api'
 
 /**
@@ -27,7 +28,7 @@ export function LocationPanel(): JSX.Element {
   const loadBots = useCallback(async (): Promise<void> => {
     if (!apiUrl) return
     try {
-      const r = await fetch(`${apiUrl}/api/bot/getDashboardState`)
+      const r = await api.getDashboardState(apiUrl)
       if (!r.ok) throw new Error(`Server returned ${r.status}`)
       setBotState((await r.json()) as BotDashboardState)
     } catch (err) {
@@ -54,7 +55,7 @@ export function LocationPanel(): JSX.Element {
     if (selectedPos === null) return
     setReading(true)
     try {
-      const r = await fetch(`${apiUrl}/api/dev/location/${selectedPos}`)
+      const r = await api.getLocation(apiUrl, selectedPos)
       if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
       setLocation((await r.json()) as LocationInfo)
       setError(null)

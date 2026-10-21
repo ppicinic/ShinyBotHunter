@@ -197,11 +197,11 @@ Risks found are in the [review](../reviews/2026-10-code-review.md#5-architecture
 Electron, one `BrowserWindow` per card (admin, recent encounters, one per subscribed game+phase), as laid out in `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md`. Bounds persist to `window-layout.json` so windows can be placed for OBS capture.
 
 - **SignalR** lives only in the main process (`src/main/signalRClient.ts`) and is fanned out to every window over IPC. Reconnect and resubscribe are handled with backoff.
-- **REST** is called directly from each renderer with `fetch` against port 5000. That works only because windows run with `webSecurity: false` and `sandbox: false` (`windowManager.ts:135-136`), originally to load `file://` sprites; the backend has no CORS configuration.
+- **REST** goes through the main process. Every renderer request is a function in `services/apiClient.ts`, which calls `window.api.request` (the `api-request` IPC channel); main forwards it with `net.fetch` only when the URL's origin is the configured `apiUrl` and returns the status and body. Windows run with the Electron defaults (`webSecurity` and `sandbox` on); sprites come from the `sprite://` scheme served by main. The backend has no CORS configuration and needs none.
 - **State** is one `AppContext` per window holding config, connection state, subscriptions and recent encounters. `types/api.ts` hand-mirrors the C# response shapes.
 - `AdminCard.tsx` (1802 lines) holds the dashboard config tab, the bot control tab, the phase editor and the shared schema-driven action form. The review proposes a split.
 
-There is no backend-for-frontend layer and, per [principle 2.3](../engineering-principles.md), there should not be one. The only indirection worth adding is routing REST through the main process (one `window.api.fetch`), which would let `webSecurity` be turned back on. That is a security tidy-up, not a tier.
+There is no backend-for-frontend layer and, per [principle 2.3](../engineering-principles.md), there should not be one. Routing REST through the main process (one `window.api.request`) is the only indirection, and it exists so `webSecurity` and `sandbox` can stay on. That is a security measure, not a tier.
 
 ## 10. Cross-cutting
 

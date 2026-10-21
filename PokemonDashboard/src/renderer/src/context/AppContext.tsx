@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import * as api from '../services/apiClient'
 import { IpcSignalRService } from '../services/ipcSignalRService'
 import type {
   AppConfig,
@@ -44,11 +45,7 @@ async function fetchWrappedPhaseInfo(
   gameName?: string | null
 ): Promise<{ phaseInfo: PhaseInfo; encounterData: GameEncounterResponse } | null> {
   try {
-    const encodedPhase = encodeURIComponent(phase)
-    const url = gameName
-      ? `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
-      : `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}`
-    const response = await fetch(url)
+    const response = await api.getSubscriptionPhaseInfo(apiUrl, game, phase, gameName)
     if (!response.ok) return null
     const wrapped = (await response.json()) as WrappedPokemonPhase
     return { phaseInfo: wrapped.phaseInfo, encounterData: wrapped.data }

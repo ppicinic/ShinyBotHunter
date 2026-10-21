@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('api', {
   setWindowBounds: (name: string, bounds: Partial<WindowBounds>): Promise<WindowInfo[]> =>
     ipcRenderer.invoke(IPC.setWindowBounds, name, bounds),
   getSignalRState: (): Promise<SignalRSnapshot> => ipcRenderer.invoke(IPC.getSignalRState),
+  request: (method: string, url: string, body?: string): Promise<{ status: number; body: string }> =>
+    ipcRenderer.invoke(IPC.apiRequest, method, url, body),
   onWindowBoundsChanged: on<WindowInfo[]>(IPC.windowBoundsChanged),
   onSignalRConnectionState: on<ConnectionState>(IPC.signalRConnectionState),
   onDashboardConfig: on<SharedDashboardConfig>(IPC.signalRDashboardConfig),

@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import { getSpriteUrl } from '../utils/sprites'
 import { WindowCloseButton } from './WindowChrome'
 
@@ -74,11 +75,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
     const fetchRate = async (): Promise<void> => {
       try {
-        const encodedPhase = encodeURIComponent(phase)
-        const url = gameName
-          ? `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
-          : `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
-        const res = await fetch(url)
+        const res = await api.getEncounterRate(config.apiUrl, game, phase, gameName)
         if (!res.ok) return
         const rate = await res.json() as number
         setEncounterRate(rate)
