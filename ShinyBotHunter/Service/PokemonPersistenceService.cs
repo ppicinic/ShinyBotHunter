@@ -5,6 +5,7 @@ using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace ShinyBotHunter.Service
@@ -16,7 +17,8 @@ namespace ShinyBotHunter.Service
         private IEncounterDao _encounterDao;
         private MongoCaughtPokemonDao _caughtPokemonDao;
         private readonly ILogger<PokemonPersistenceService> _logger;
-        private static readonly SemaphoreSlim semaphore = new SemaphoreSlim(1, 1);
+        // One per game, held only while that game's tree is loaded, so two games' cold loads do not wait on each other.
+        private readonly ConcurrentDictionary<GameFlavor, SemaphoreSlim> loadLocks = new();
         private List<INotify<EncounterNotification, CacheLoadRequest, GameEncounterResponse>> notifies;
         private Channel<List<PersistPokemonData>> EncounterChannel { get; set; }
         private ConcurrentBag<PokemonData> CaughtPokemon { get; set; }
@@ -33,6 +35,7 @@ namespace ShinyBotHunter.Service
          *          -> Pokemon
          *          -> All Pokemon
         **/
+        // Written once per game under that game's load lock; read lock-free. Nodes are added with GetOrAdd and counts change only through Interlocked.
         private ConcurrentDictionary<GameFlavor, GameEncounterCache> gameCache = new();
 
         public PokemonPersistenceService(IEncounterDao encounterDao, MongoCaughtPokemonDao mongoCaughtPokemonDao, ILogger<PokemonPersistenceService> logger)
@@ -180,301 +183,40 @@ namespace ShinyBotHunter.Service
         }
 
 
-        //TODO add form encounters
         private async Task<GameEncounterCache> GetOrLoadCacheAsync(CacheLoadRequest request)
         {
-            if (!gameCache.ContainsKey(request.Game))
+            if (!gameCache.TryGetValue(request.Game, out var cache))
             {
+                var loadLock = loadLocks.GetOrAdd(request.Game, _ => new SemaphoreSlim(1, 1));
+                await loadLock.WaitAsync();
                 try
                 {
-                    await semaphore.WaitAsync();
-                    if (!gameCache.ContainsKey(request.Game))
+                    if (!gameCache.TryGetValue(request.Game, out cache))
                     {
-                        await LoadGameCache(request.Game);
+                        cache = await LoadGameCacheAsync(request.Game);
+                        gameCache[request.Game] = cache;
                     }
                 }
                 finally
                 {
-                    semaphore.Release();
+                    loadLock.Release();
                 }
             }
-            var cache = gameCache[request.Game];
-            foreach(var formCode in request.FormCodes)
-            {
-                if (!cache.PokemonEncounterCache.ContainsKey(formCode))
-                {
-                    try
-                    {
-                        await semaphore.WaitAsync();
-                        if (!cache.PokemonEncounterCache.ContainsKey(formCode))
-                        {
-                            await LoadFormCache(cache, request.Game, formCode);
-                        }
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }
-            }
-            foreach(var phase in request.Phases)
-            {
-                if (!cache.PhaseEncounterCache.ContainsKey(phase))
-                {
-                    try
-                    {
-                        await semaphore.WaitAsync();
-                        if (!cache.PhaseEncounterCache.ContainsKey(phase))
-                        {
-                            await LoadPhaseCache(cache, request.Game, phase);
-                        }
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }
-                foreach(var formCode in request.FormCodes)
-                {
-                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
-                    {
-                        try
-                        {
-                            await semaphore.WaitAsync();
-                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
-                            {
-                                await LoadPhaseFormCache(cache, request.Game, phase, formCode);
-                            }
-                        }
-                        finally
-                        {
-                            semaphore.Release();
-                        }
-                    }
-                }
-            }
-            foreach(var gameFileName in request.GameFileNames)
-            {
-                await EnsureLoadGameLevelCache(cache, gameFileName, request);
-            }
+            EnsureKeys(cache, request);
             return cache;
         }
 
-        private async Task EnsureLoadGameLevelCache(GameEncounterCache gameFlavorCache, string gameFileName, CacheLoadRequest request)
+        private async Task<GameEncounterCache> LoadGameCacheAsync(GameFlavor game)
         {
-            if (!gameFlavorCache.GameLevelCache.ContainsKey(gameFileName))
-            {
-                try
-                {
-                    await semaphore.WaitAsync();
-                    if (!gameFlavorCache.GameLevelCache.ContainsKey(gameFileName))
-                    {
-                        await LoadGameLevelCache(gameFlavorCache, request.Game, gameFileName);
-                    }
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }
-            var cache = gameFlavorCache.GameLevelCache[gameFileName];
-            foreach (var formCode in request.FormCodes)
-            {
-                if (!cache.PokemonEncounterCache.ContainsKey(formCode))
-                {
-                    try
-                    {
-                        await semaphore.WaitAsync();
-                        if (!cache.PokemonEncounterCache.ContainsKey(formCode))
-                        {
-                            await LoadGameLevelFormCache(cache, gameFileName, formCode);
-                        }
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }
-            }
-            foreach (var phase in request.Phases)
-            {
-                if (!cache.PhaseEncounterCache.ContainsKey(phase))
-                {
-                    try
-                    {
-                        await semaphore.WaitAsync();
-                        if (!cache.PhaseEncounterCache.ContainsKey(phase))
-                        {
-                            await LoadGameLevelPhaseCache(cache, gameFileName, phase);
-                        }
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }
-                foreach (var formCode in request.FormCodes)
-                {
-                    if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
-                    {
-                        try
-                        {
-                            await semaphore.WaitAsync();
-                            if (!cache.PhaseEncounterCache[phase].PokemonEncounterCache.ContainsKey(formCode))
-                            {
-                                await LoadGameLevelPhaseFormCache(cache, gameFileName, phase, formCode);
-                            }
-                        }
-                        finally
-                        {
-                            semaphore.Release();
-                        }
-                    }
-                }
-            }
-        }
-
-        private async Task LoadPhaseFormCache(GameEncounterCache cache, GameFlavor game, string phase, string formCode)
-        {
-            (long, long) encounters = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _encounterDao.GetAllPhaseSpeciesEncountersForGame(game, phase, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _encounterDao.GetAllPhaseFormEncountersForGame(game, phase, formCode);
-            long shiniesCaught = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _caughtPokemonDao.GetAllCaughtPhaseSpeciesShiniesCountAsync(game, phase, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _caughtPokemonDao.GetAllCaughtPhaseFormShiniesCountAsync(game, phase, formCode);
-            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
-            {
-                Encounters = encounters.Item1,
-                ShinyEncounters = encounters.Item2,
-                ShiniesCaught = shiniesCaught,
-            });
-        }
-
-        private async Task LoadPhaseCache(GameEncounterCache cache, GameFlavor game, string phase)
-        {
-            (long, long) encounters = await _encounterDao.GetAllPhaseEncountersForGame(game, phase);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseShiniesCountAsync(game, phase);
-            int phaseCount = await _encounterDao.GetCurrentPhaseCount(game, phase);
-            cache.PhaseEncounterCache.TryAdd(phase, new PhaseEncounterCache()
-            {
-                AllPokemonCounts = new PokemonCounts()
-                {
-                    Encounters = encounters.Item1,
-                    ShinyEncounters = encounters.Item2,
-                    ShiniesCaught = shiniesCaught,
-                },
-                PhaseCount = phaseCount
-            });
-        }
-
-        private async Task LoadFormCache(GameEncounterCache cache, GameFlavor game, string formCode)
-        {
-            (long, long) encounters = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _encounterDao.GetAllSpeciesEncountersForGame(game, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _encounterDao.GetAllFormEncountersForGame(game, formCode);
-            long shiniesCaught = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _caughtPokemonDao.GetAllCaughtSpeciesShiniesCountAsync(game, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _caughtPokemonDao.GetAllCaughtFormShiniesCountAsync(game, formCode);
-            cache.PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
-            {
-                Encounters = encounters.Item1,
-                ShinyEncounters = encounters.Item2,
-                ShiniesCaught = shiniesCaught,
-            });
-        }
-
-        private async Task LoadGameCache(GameFlavor game)
-        {
-            (long, long) encounters = await _encounterDao.GetAllEncountersForGame(game);
-            List<CaughtPokemon> caughtShinies = await _caughtPokemonDao.GetAllCaughtShiniesAsync(game);
-            long shiniesCaught = caughtShinies.Count();
-            List<PokemonData> latestPokemon = await _encounterDao.GetLatestEncounters(game);
-            var thisGameCache = new GameEncounterCache()
-            {
-                AllPokemonCounts = new PokemonCounts()
-                {
-                    Encounters = encounters.Item1,
-                    ShinyEncounters = encounters.Item2,
-                    ShiniesCaught = shiniesCaught,
-                },
-                LatestEncounters = new ConcurrentQueue<PokemonData>(),
-                CaughtPokemon = new ConcurrentBag<CaughtPokemon>(caughtShinies)
-            };
-            for(int i = latestPokemon.Count()-1; i>= 0; i--)
-            {
-                thisGameCache.LatestEncounters.Enqueue(latestPokemon[i]);
-            }
-            gameCache.TryAdd(game, thisGameCache);
-
-        }
-
-        private async Task LoadGameLevelCache(GameEncounterCache gameFlavorCache, GameFlavor gameFlavor, string gameFileName)
-        {
-            (long, long) encounters = encounters = await _encounterDao.GetAllEncountersForGameName(gameFileName);
-            // TODO filter by game on query to DB is faster.
-            List<CaughtPokemon> caughtShinies = await _caughtPokemonDao.GetAllCaughtShiniesAsync(gameFlavor);
-            caughtShinies = caughtShinies.Where(x => x.GameFileName == gameFileName).ToList();
-            long shiniesCaught = caughtShinies.Count();
-            var thisGameCache = new GameEncounterCacheBase()
-            {
-                AllPokemonCounts = new PokemonCounts()
-                {
-                    Encounters = encounters.Item1,
-                    ShinyEncounters = encounters.Item2,
-                    ShiniesCaught = shiniesCaught,
-                },
-                CaughtPokemon = new ConcurrentBag<CaughtPokemon>(caughtShinies)
-            };
-            gameFlavorCache.GameLevelCache.TryAdd(gameFileName, thisGameCache);
-        }
-
-        private async Task LoadGameLevelPhaseFormCache(GameEncounterCacheBase cache, string gameFileName, string phase, string formCode)
-        {
-            (long, long) encounters = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _encounterDao.GetAllPhaseSpeciesEncountersForGameName(gameFileName, phase, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _encounterDao.GetAllPhaseFormEncountersForGameName(gameFileName, phase, formCode);
-            long shiniesCaught = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _caughtPokemonDao.GetAllCaughtPhaseSpeciesShiniesCountAsync(gameFileName, phase, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _caughtPokemonDao.GetAllCaughtPhaseFormShiniesCountAsync(gameFileName, phase, formCode);
-            cache.PhaseEncounterCache[phase].PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
-            {
-                Encounters = encounters.Item1,
-                ShinyEncounters = encounters.Item2,
-                ShiniesCaught = shiniesCaught,
-            });
-        }
-
-        private async Task LoadGameLevelPhaseCache(GameEncounterCacheBase cache, string gameFileName, string phase)
-        {
-            (long, long) encounters = await _encounterDao.GetAllPhaseEncountersForGameName(gameFileName, phase);
-            long shiniesCaught = await _caughtPokemonDao.GetAllCaughtPhaseShiniesCountAsync(gameFileName, phase);
-            int phaseCount = await _encounterDao.GetCurrentPhaseCount(gameFileName, phase);
-            cache.PhaseEncounterCache.TryAdd(phase, new PhaseEncounterCache()
-            {
-                AllPokemonCounts = new PokemonCounts()
-                {
-                    Encounters = encounters.Item1,
-                    ShinyEncounters = encounters.Item2,
-                    ShiniesCaught = shiniesCaught,
-                },
-                PhaseCount = phaseCount
-            });
-        }
-
-        private async Task LoadGameLevelFormCache(GameEncounterCacheBase cache, string gameFileName, string formCode)
-        {
-            (long, long) encounters = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _encounterDao.GetAllSpeciesEncountersForGameName(gameFileName, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _encounterDao.GetAllFormEncountersForGameName(gameFileName, formCode);
-            long shiniesCaught = CacheLoadRequest.IsSpeciesKey(formCode)
-                ? await _caughtPokemonDao.GetAllCaughtSpeciesShiniesCountAsync(gameFileName, CacheLoadRequest.SpeciesFromKey(formCode))
-                : await _caughtPokemonDao.GetAllCaughtFormShiniesCountAsync(gameFileName, formCode);
-            cache.PokemonEncounterCache.TryAdd(formCode, new PokemonCounts()
-            {
-                Encounters = encounters.Item1,
-                ShinyEncounters = encounters.Item2,
-                ShiniesCaught = shiniesCaught,
-            });
+            var stopwatch = Stopwatch.StartNew();
+            List<CountRow> counts = await _encounterDao.GetCountsAsync(game);
+            List<ProgressRow> progress = await _encounterDao.GetPhaseProgressAsync(game);
+            List<PokemonData> latest = await _encounterDao.GetLatestEncounters(game);
+            List<CaughtPokemon> caught = await _caughtPokemonDao.GetAllCaughtShiniesAsync(game);
+            var cache = BuildGameCache(counts, progress, caught, latest);
+            _logger.LogInformation("Loaded {Game} counts from 3 Postgres queries and 1 Mongo find: {CountRows} count rows, {ProgressRows} progress rows, {Caught} caught, in {ElapsedMs} ms",
+                game, counts.Count, progress.Count, caught.Count, stopwatch.ElapsedMilliseconds);
+            return cache;
         }
 
         // Builds a game's whole tree from the grouped rows. Every row counts under its form code and its "#species"
@@ -604,8 +346,6 @@ namespace ShinyBotHunter.Service
         /// one or the other.
         /// </summary>
         public static string SpeciesKey(int speciesId) => "#" + speciesId;
-        public static bool IsSpeciesKey(string key) => key.StartsWith("#");
-        public static int SpeciesFromKey(string key) => int.Parse(key.Substring(1));
 
         public GameFlavor Game { get; private set; }
         public List<string> FormCodes { get; private set;  }
