@@ -160,7 +160,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                     : pkmn.hasFemaleForm
                       ? '♂'
                       : ''
-                const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
+                const spritePath = getSpriteUrl(pkmn.formCode, true)
 
                 return (
                   <tr

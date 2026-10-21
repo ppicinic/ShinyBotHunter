@@ -5,7 +5,6 @@
 export interface AppConfig {
   backendUrl: string
   apiUrl: string
-  spritesRootPath: string
   /** How often to poll the encounter rate endpoint, in milliseconds. Default: 60000 (1 min) */
   encounterRatePollingIntervalMs: number
   cards: {
