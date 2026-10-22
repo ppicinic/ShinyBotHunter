@@ -15,6 +15,7 @@ namespace ShinyBotHunter.Bot
         private ICommandClient commandClient;
         private IMemoryClient memoryClient;
         private IDataReader dataReader;
+        private readonly IOverworldReader? overworld;
         private GameContext? context;
         public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
         {
@@ -25,11 +26,14 @@ namespace ShinyBotHunter.Bot
             this.Profile = profile;
             this.Addresses = addresses;
             this.context = context;
+            this.overworld = profile.CreateOverworldReader?.Invoke(memoryClient, addresses);
         }
 
         public GameProfile Profile { get; }
 
         public IPointerService Addresses { get; }
+
+        public IOverworldReader Overworld => overworld ?? throw new InvalidOperationException($"{Profile.Flavor} has no overworld reader.");
 
         public void ClearMacro()
         {

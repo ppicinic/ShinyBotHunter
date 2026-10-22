@@ -18,5 +18,8 @@ namespace ShinyBotHunter.Bot
 
         /// <summary>The address table for the launched ROM's revision.</summary>
         IPointerService Addresses { get; }
+
+        /// <summary>The overworld reads. Throws InvalidOperationException for a flavor without them.</summary>
+        IOverworldReader Overworld { get; }
     }
 }

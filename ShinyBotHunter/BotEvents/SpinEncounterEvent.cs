@@ -1,5 +1,6 @@
 ﻿using DnsClient;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Text;
@@ -9,16 +10,16 @@ namespace ShinyBotHunter.BotEvents
     public class SpinEncounterEvent : AbstractBotEvent<bool>
     {
         private IBot bot;
-        Queue<byte> directions = new Queue<byte>();
-        Dictionary<byte, string> cachedMacros = new Dictionary<byte, string>();
+        Queue<Direction> directions = new Queue<Direction>();
+        Dictionary<Direction, string> cachedMacros = new Dictionary<Direction, string>();
 
         public SpinEncounterEvent(IBot bot)
         {
             this.bot = bot; 
-            directions.Enqueue(0);
-            directions.Enqueue(2);
-            directions.Enqueue(1);
-            directions.Enqueue(3);
+            directions.Enqueue(Direction.Up);
+            directions.Enqueue(Direction.Left);
+            directions.Enqueue(Direction.Down);
+            directions.Enqueue(Direction.Right);
         }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -26,12 +27,12 @@ namespace ShinyBotHunter.BotEvents
             // Spinning resumes straight after a battle, when the field is still fading in and the
             // facing byte has not settled. Reading it early picks a rotation that starts from the
             // wrong direction, so wait for the overworld the same way navigation does.
-            if (!await Overworld.WaitForReadyAsync(bot, cancellationToken))
+            if (!await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken))
             {
                 Console.WriteLine("[Spin] Overworld coordinates never settled; spinning from the current facing anyway.");
             }
 
-            byte facing = await bot.GetFacing();
+            Direction facing = await bot.Overworld.GetFacingAsync(cancellationToken);
             string macro = GetSpinMacro(facing);
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
@@ -60,7 +61,7 @@ namespace ShinyBotHunter.BotEvents
             return inBattle;
         }
 
-        private string GetSpinMacro(byte facing)
+        private string GetSpinMacro(Direction facing)
         {
             if (cachedMacros.ContainsKey(facing))
             {
@@ -89,23 +90,8 @@ namespace ShinyBotHunter.BotEvents
                         sb.Append(";");
                     }
                     sb.Append("T.");
-                    byte dir = directions.Dequeue();
-                    if (dir == 0)
-                    {
-                        sb.Append("Up");
-                    }
-                    else if (dir == 1)
-                    {
-                        sb.Append("Down");
-                    }
-                    else if (dir == 2)
-                    {
-                        sb.Append("Left");
-                    }
-                    else if (dir == 3)
-                    {
-                        sb.Append("Right");
-                    }
+                    Direction dir = directions.Dequeue();
+                    sb.Append(dir.ToString());
                     sb.Append(";W.5");
                     directions.Enqueue(dir);
                 }

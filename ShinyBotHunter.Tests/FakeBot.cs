@@ -75,5 +75,8 @@ namespace ShinyBotHunter.Tests
         public Task<short> GetTrainerXPos() => Task.FromResult((short)0);
         public Task<short> GetTrainerYPos() => Task.FromResult((short)0);
         public Task<byte> GetFacing() => Task.FromResult((byte)0);
+
+        // No test that uses FakeBot reads the overworld.
+        public IOverworldReader Overworld => throw new NotImplementedException();
     }
 }
