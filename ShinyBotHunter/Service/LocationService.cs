@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 
 namespace ShinyBotHunter.Service
