@@ -1,31 +1,17 @@
 ﻿using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Service.Pointers;
 using YamlDotNet.Core.Tokens;
 
 namespace ShinyBotHunter.Bot
 {
     public class HgssDataReader : IDataReader
     {
-        // memory addresses
-        private const uint Anchor = 0x21D4158;
-
-        private const uint BattlePokemon = 0x25E2C;
-
-        private const uint BattleEnemyPokemon = 0x25EEC;
-        private const uint BattlePartyPokemon = 0x2AAB0;
-        public const uint PartySize = 0x23F44;
-        private const uint EnemyAnchor = 0x6930;
-        private const uint EnemyCount = 0xC14;
-        private const uint Enemy = 0xC18;
-        private const uint BattleMenuState = 0x230EC;
-        private const uint BattleState = 0x692C;
-        private const uint MapId = 0x22DA4;
-        private const uint TrainerX = 0x21DA6F4;
-        private const uint TrainerY = 0x21DA6FC;
-        private const uint Facing = 0x1DC4;
         private IMemoryClient bot;
-        public HgssDataReader(IMemoryClient memoryClient)
+        private readonly HgssPointerService addresses;
+        public HgssDataReader(IMemoryClient memoryClient, HgssPointerService addresses)
         {
             this.bot = memoryClient;
+            this.addresses = addresses;
         }
 
         // These four go through the anchor. Reading the anchor and then reading through it as two
@@ -34,22 +20,22 @@ namespace ShinyBotHunter.Bot
 
         public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
         {
-            return (await bot.ReadBytesViaPointerAsync(Anchor, 1, ct, (int)BattleMenuState))[0];
+            return (await bot.ReadBytesViaPointerAsync(addresses.Anchor, 1, ct, (int)addresses.BattleMenuState))[0];
         }
 
         public async Task<byte> GetBattleValue(CancellationToken ct = default)
         {
-            return (await bot.ReadBytesAsync(0x21E76D2, 1, ct))[0];
+            return (await bot.ReadBytesAsync(addresses.BattleIndicator, 1, ct))[0];
         }
 
         public async Task<byte> GetBattleState()
         {
-            return await bot.ReadByteViaPointerAsync(Anchor, (int)BattleState);
+            return await bot.ReadByteViaPointerAsync(addresses.Anchor, addresses.BattleStateOffset);
         }
 
         public async Task<ushort> GetMapId()
         {
-            return await bot.ReadUShortViaPointerAsync(Anchor, -(int)MapId);
+            return await bot.ReadUShortViaPointerAsync(addresses.Anchor, addresses.MapIdOffset);
         }
 
         private short to_s16(uint u32)
@@ -59,17 +45,17 @@ namespace ShinyBotHunter.Bot
 
         public async Task<short> GetTrainerXPos()
         {
-            return to_s16(await bot.ReadUIntAsync(TrainerX));
+            return to_s16(await bot.ReadUIntAsync(addresses.TrainerX));
         }
 
         public async Task<short> GetTrainerYPos()
         {
-            return to_s16(await bot.ReadUIntAsync(TrainerY));
+            return to_s16(await bot.ReadUIntAsync(addresses.TrainerY));
         }
 
         public async Task<byte> GetFacing()
         {
-            return await bot.ReadByteViaPointerAsync(Anchor, (int)Facing);
+            return await bot.ReadByteViaPointerAsync(addresses.Anchor, addresses.FacingOffset);
         }
     }
 }

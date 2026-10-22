@@ -2,6 +2,7 @@
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -31,6 +32,7 @@ namespace ShinyBotHunter.BotEvents
                 await bot.LaunchAsync();
                 await Task.Delay(10000);
                 bool shinyFound = false;
+                var hgss = (HgssPointerService)bot.Addresses;
                 while (!shinyFound && !cancellationToken.IsCancellationRequested)
                 {
                     
@@ -38,13 +40,13 @@ namespace ShinyBotHunter.BotEvents
                     await bot.WaitForMacroAsync(cancellationToken);
                     await Task.Delay(2000);
 
-                    uint anchor = await bot.ReadUIntAsync(0x21D4158);
-                    uint starterData = anchor + 0x1BC00;
+                    uint anchor = await bot.ReadUIntAsync(hgss.Anchor);
+                    uint starterData = anchor + hgss.StarterPreviewOffset;
                     List<PersistPokemonData> pokemonData = new List<PersistPokemonData>();
                     DateTime now = DateTime.UtcNow;
                     for (uint i = 0; i < 3; i++)
                     {
-                        var rawData = await this.bot.ReadBytesAsync(starterData + (0xEC * i), 0xEC);
+                        var rawData = await this.bot.ReadBytesAsync(starterData + ((uint)hgss.PartyPokemonSize * i), hgss.PartyPokemonSize);
                         PokemonData? starter = parser.Parse(rawData);
                         if (starter is not null && !starter.IsCorrupt)
                         {

@@ -1,5 +1,6 @@
 ﻿using DnsClient;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Text;
 
@@ -35,7 +36,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
 
-            uint battleIndicator = 0x21E76D2;
+            uint battleIndicator = ((HgssPointerService)bot.Addresses).BattleIndicator;
             var battleValue = await bot.ReadByteAsync(battleIndicator);
             while (!(battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0) && !cancellationToken.IsCancellationRequested)
             {

@@ -4,6 +4,7 @@ using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -48,10 +49,6 @@ namespace ShinyBotHunter.BotEvents
             Complete,
         }
 
-        // Trainer coordinates, the same addresses RunEncounterEvent paces against.
-        private const uint TrainerXAddress = 0x21DA6F4;
-        private const uint TrainerYAddress = 0x21DA6FC;
-
         // How long a single party read is retried before the caller is told the read failed. Short:
         // every caller here is already inside its own polling loop with its own timeout.
         private const int PartyReadAttempts = 3;
@@ -87,12 +84,14 @@ namespace ShinyBotHunter.BotEvents
         private readonly ShinyAlertService shinyAlertService;
         private readonly BotService botService;
         private readonly EggHuntConfig config;
+        private readonly HgssPointerService addresses;
 
         private EggHuntState state = EggHuntState.NotStarted;
 
         public HgssTogepiEggEvent(IBot bot, GameFlavor flavor, string phase, IServiceProvider provider, BotService botService)
         {
             this.bot = bot;
+            this.addresses = (HgssPointerService)bot.Addresses;
             this.flavor = flavor;
             this.phase = phase;
             this.botService = botService;
@@ -440,9 +439,9 @@ namespace ShinyBotHunter.BotEvents
             if (config.IsVerticalCorridor)
             {
                 // Up decreases y, matching RunEncounterEvent.
-                return $"M.Up.{config.HatchLow}.{TrainerYAddress};M.Down.{config.HatchHigh}.{TrainerYAddress}";
+                return $"M.Up.{config.HatchLow}.{addresses.TrainerY};M.Down.{config.HatchHigh}.{addresses.TrainerY}";
             }
-            return $"M.Left.{config.HatchLow}.{TrainerXAddress};M.Right.{config.HatchHigh}.{TrainerXAddress}";
+            return $"M.Left.{config.HatchLow}.{addresses.TrainerX};M.Right.{config.HatchHigh}.{addresses.TrainerX}";
         }
 
         private static PokemonData? FindByPid(PokemonData?[]? party, uint pid)

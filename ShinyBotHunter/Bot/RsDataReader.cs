@@ -1,4 +1,5 @@
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
@@ -15,23 +16,19 @@ namespace ShinyBotHunter.Bot
     /// </summary>
     public class RsDataReader : IDataReader
     {
-        /// <summary>
-        /// gBattleTypeFlags. Zero in the overworld and non-zero once a battle is running, which is
-        /// what the starter hunt waits on before the chosen pokemon is worth reading.
-        /// </summary>
-        private const uint BattleTypeFlags = 0x020239F8;
-
         private readonly IMemoryClient memory;
+        private readonly RsPointerService addresses;
 
-        public RsDataReader(IMemoryClient memoryClient)
+        public RsDataReader(IMemoryClient memoryClient, RsPointerService addresses)
         {
             this.memory = memoryClient;
+            this.addresses = addresses;
         }
 
         /// <summary>Non-zero once a battle is under way.</summary>
         public async Task<byte> GetBattleState()
         {
-            uint flags = await memory.ReadUIntAsync(BattleTypeFlags);
+            uint flags = await memory.ReadUIntAsync(addresses.BattleMenuState);
             return (byte)(flags != 0 ? 1 : 0);
         }
 
