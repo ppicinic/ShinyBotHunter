@@ -1,7 +1,7 @@
 # Spec: game profile
 
-Status: Draft
-Last updated: 2026-10-21
+Status: Implemented (epic #118, 2026-10-22); divergences are recorded in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-game-profile-2026-10-22) and marked below
+Last updated: 2026-10-22
 Owner: Phil
 Related: [plan rows 5.3 to 5.3e](../plans/2026-10-cleanup-and-hardening.md#phase-5-structural-splits-after-1-3-one-file-per-pr), [architecture, extension axes](../architecture/system-overview.md#axis-1-game-flavors), [pointer discovery](../research/pointer-discovery.md), [HGSS state reader spec](hgss-state-reader.md) (the follow-up), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md)
 
@@ -42,7 +42,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 | FR-2 | No literal memory address or battle magic value exists outside the address tables and the state readers. | Must | `grep -rnE "0x0?2[0-9A-F]{6}\b" ShinyBotHunter --include=*.cs` matches only `Service/Pointers/`, `Games/Hgss/`, `RomInfoService.cs` (console header addresses) and `Gen3SaveFile.cs` (save format). |
 | FR-3 | Addresses are looked up by `(flavor, revision)`. Launching a ROM whose revision has no table fails at launch with a message naming the flavor and revision. | Must | Unit test: `HgssProfile.Addresses(1)` throws `NotSupportedException` with "HGSS revision 1"; `Addresses(0)` returns the table. |
 | FR-4 | `GameCapabilities` is a record of booleans declared by each profile. `GetAvailableActions` returns only actions whose required capabilities the bot's profile has; `ExecuteEvent` returns 400 for any other. | Must | Unit test: an RS bot's action list is empty of `Wild Encounter`, `Chained Encounter`, `HGSS Togepi Egg`; starting one returns 400 with the missing capability named. |
-| FR-5 | `RsDataReader` and `HgssDataReader` are deleted. `IDataReader` is replaced by `IOverworldReader` (map, position, facing) and `IGameStateReader` (where the game is). A profile without overworld support has no overworld reader and declares `HasOverworldNavigation = false`. | Must | No `NotSupportedException` remains in `Bot/` or `Games/`. |
+| FR-5 | `RsDataReader` and `HgssDataReader` are deleted. `IDataReader` is replaced by `IOverworldReader` (map, position, facing) and `IGameStateReader` (where the game is). A profile without overworld support has no overworld reader and declares `HasOverworldNavigation = false`. | Must | No reader stub throws `NotSupportedException` in `Bot/` or `Games/`; the FR-3 revision throw is the one that remains. |
 | FR-6 | Map and graph data are instances owned by the HGSS profile, loaded from `Data/HGSS`. `MapService.Instance` and `GraphService.Instance` are deleted. `PathfindingService` is built per profile. | Must | A test constructs an `HgssProfile` with the internal test constructor and no files on disk. |
 | FR-7 | Each event type is an `EventRegistration` in one static list. `BotService.ExecuteEvent`, `ExecuteNewBotOrSpecialEvent`, the `actionMap` dictionary and `SpecialEvents.json` are replaced by lookups in that list. | Must | Unit test: registry names are unique; every entry's required capabilities are members of `GameCapabilities`; the dashboard list for an idle HGSS bot equals today's. |
 | FR-8 | `IGameStateReader.ReadAsync` returns a `GameSnapshot` whose `Screen` is a value of the `GameScreen` enum. The one implementation in this spec, `HgssLegacyStateReader`, reproduces today's classification from today's three bytes and returns only the four values the bot distinguishes today. | Must | Table-driven test over the three bytes; every event's `IsBattle`, `GetBattleMenuState() == 1` and `GetBattleState() == 14` comparison is replaced by a `Screen` comparison and nothing else in the event changes. |
@@ -97,7 +97,7 @@ Responsibilities, one per type:
 | `PokemonStateReader` (unchanged) | party, boxes and battle Pokémon as `PokemonData` | the profile's addresses and parsers, `IMemoryClient` | game state, events |
 | `EventRegistration` | one event type's name, parameters, needs and factory | `GameCapabilities` | `BotService` |
 
-The profile is the only new composition point. It is a `sealed record` with init-only members and one constructor assertion (a capability that is declared true has its part present). No method on it does work; the two `Create*` members are delegates stored at construction so a reader can be built per bot without the profile holding a memory client.
+The profile is the only new composition point. It is a `sealed record` with one constructor assertion (a capability that is declared true has its part present). No method on it does work; the two `Create*` members are delegates stored at construction so a reader can be built per bot without the profile holding a memory client. As built: the members are get-only and set by the constructor (an `init` member cannot be checked by the constructor), and the constructor takes an unstored `revisions` list for the box-layout clause.
 
 ### `GameProfile`
 
@@ -141,7 +141,7 @@ IOverworldReader Overworld { get; }          // same
 
 `IPointerService` keeps its name and members. It already has one job (the memory map); `HgssPointerService` and `RsPointerService` already hold it. What changes:
 
-- `HgssPointerService` gains the members that today live elsewhere, so the inline copies can be deleted. Each member is one of two kinds, stated in its comment (FR-9):
+- `HgssPointerService` gains the members that today live elsewhere, so the inline copies can be deleted. As built, the names below that duplicate an existing member keep the existing name (`FieldSystem` is `Anchor`, `EnemySetupOffset` is `EnemyAnchor`, `EnemyCountOffset` is `EnemyCount`, `EnemyOffset` is `Enemy`, `BattleMenuStateOffset` is `BattleMenuState`); the flavor-only members are on the concrete table class, not on `IPointerService`, and an event specific to one flavor casts `bot.Addresses` once. Each member is one of two kinds, stated in its comment (FR-9):
   - **static roots**, which depend on the ROM revision: `FieldSystem` (`0x021D4158`, `sFieldSysPtr`, the bot's "anchor"), `TrainerX` and `TrainerY` (`0x021DA6F4`, `0x021DA6FC`), `BattleIndicator` (`0x021E76D2`; overlay code, legacy reader only).
   - **offsets from a dereferenced root**, which depend on the struct layout and not the revision: `MapIdOffset` (`-0x22DA4`), `FacingOffset` (`0x1DC4`), `BattleMenuStateOffset` (`0x230EC`, legacy), `BattleStateOffset` (`0x692C`, legacy), `EnemySetupOffset` (`0x6930`, legacy; the real pointer is `app.setup`, see the follow-up), `EnemyCountOffset` (`0xC14`), `EnemyOffset` (`0xC18`), `StarterPreviewOffset` (`0x1BC00`), and the party, box and battle-mirror offsets already there.
   The members marked legacy are the ones the [state reader spec](hgss-state-reader.md) deletes; keeping them in the table now is what makes that deletion a table edit.
@@ -219,17 +219,21 @@ This is an interface with one implementation in this spec. The second implementa
 
 ### Map data per profile
 
-`MapService` and `GraphService` keep their code and lose their static `Instance` members and private constructors. `HgssProfile.Create` constructs them from `Data/HGSS` (the paths move from `MapService.cs:56-91` and `GraphService.cs:37-85` into `HgssProfile`), then a `PathfindingService` over them. `Startup.cs:111-113` registers nothing for them; `NavigatorEvent`, `HgssTogepiEggEvent` and `LocationService` take `bot.Profile.Pathfinding` / `.Maps`. `PathfindingService.cs:256-261` reads the coordinate and map-guard addresses from the profile's revision-0 table, passed in at construction. The map generator under `Scripts/Maps/` is a setup command and keeps reading files directly.
+`MapService` and `GraphService` keep their code and lose their static `Instance` members and private constructors. `HgssProfile.Create` constructs them from `Data/HGSS` (as built, the directory is `HgssProfile.DataDirectory` and the file names stay in the two services, which take the directory), then a `PathfindingService` over them. `Startup.cs:111-113` registers nothing for them; `NavigatorEvent`, `HgssTogepiEggEvent` and `LocationService` take `bot.Profile.Pathfinding` / `.Maps`. `PathfindingService.cs:256-261` reads the coordinate and map-guard addresses from the profile's revision-0 table, passed in at construction. The map generator under `Scripts/Maps/` is a setup command and keeps reading files directly.
 
 ### Event registry
 
 ```csharp
+// As built (owner's decision 2026-10-22). The draft typed Create as a factory returning an IBotEvent,
+// but Launch Bot, Launch Bot + Continue and Resume build no event, so Create is the BotService
+// method that starts the action and returns the dashboard state; Requires carries the capability
+// name so the refusal can say which one is missing.
 public sealed record EventRegistration(
     string Name,
     EventArgumentOptions Options,                         // the dashboard's parameter schema, as today
-    Func<GameCapabilities, bool> Requires,                // e.g. c => c.HasWildEncounters
-    bool OwnsEmulators,                                   // true for the hunts that launch their own bots
-    Func<IServiceProvider, NewEventArguments, BotAndOrEvent?, IBotEvent> Create);
+    (string Capability, Func<GameCapabilities, bool> Has)? Requires,   // null when the action needs nothing
+    bool OwnsEmulators,                                   // true for the launches and the hunts that own their emulators
+    Func<BotService, NewEventArguments, int, Task<Dictionary<int, EmulatorState>>> Create);
 
 public static class EventRegistry
 {
@@ -240,7 +244,7 @@ public static class EventRegistry
 
 Entries: `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS, `OwnsEmulators`, requires `HasSoftResetStarterHunt`), `HGSS Shiny Starter Hunt` (`OwnsEmulators`, requires `HasShinyStarterHunt`; the `Mode == HGSS` alias in `BotService.cs` goes), `Wild Encounter`, `Chained Encounter` (both require `HasWildEncounters`), `HGSS Togepi Egg` (requires `HasEggs`), `Resume`. The `Create` delegates are the bodies of today's branches, moved verbatim; `ValidateAndBuildLeg` and `EnsurePartyHasRoomForEggAsync` stay as private helpers called from the delegates.
 
-`BotService` keeps slot allocation, the gate and the runner. `ExecuteEventUnderGate` becomes: look up the entry (unknown name → 400), check `entry.Requires(bot.Profile.Capabilities)` (false → 400 naming the capability), check the bot's state as today, build, start. `ExecuteNewBotOrSpecialEventUnderGate` becomes the same over the `OwnsEmulators` entries, with the capability checked against the profile of the first ROM's flavor. `GetAvailableActions` filters `EventRegistry.All` by the bot's state as today and then by `Requires`. `GetTopLevelOptions` returns the `OwnsEmulators` entries' options. `SpecialEvents.json` and `BotService.Init` are deleted; the `Shiny Starter Hunt` conditional parameters move into code as an `EventArgumentOptions` literal.
+`BotService` keeps slot allocation, the gate and the runner. `ExecuteEventUnderGate` becomes: look up the entry (unknown name → 400), check `entry.Requires(bot.Profile.Capabilities)` (false → 400 naming the capability), check the bot's state as today, build, start. `ExecuteNewBotOrSpecialEventUnderGate` becomes the same over the `OwnsEmulators` entries, with the capability checked against the profile of the first ROM's flavor. `GetAvailableActions` filters `EventRegistry.All` by the bot's state as today and then by `Requires`. `GetTopLevelOptions` returns the three options the dashboard showed before (`Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt`); `HGSS Shiny Starter Hunt` is reachable by name only, as it was. `SpecialEvents.json` and `BotService.Init` are deleted; the `Shiny Starter Hunt` conditional parameters move into code as an `EventArgumentOptions` literal.
 
 The dashboard reads the same `EventArgumentOptions` shape, so no dashboard change is needed. The pre-existing hole that an RS bot is offered HGSS actions closes with FR-4.
 
@@ -283,7 +287,7 @@ From the survey of 2026-10-21 (`feature/cleanup-phases-3-5`, since merged as PR 
 | `BattleOrchestratorEvent.cs:395-431` anchor, `0x6930`, `0xC14`, `0xC18`, `0xEC`, `0x230EC` | `bot.Addresses.*`; the menu poll compares `Screen == BattleMenu` |
 | `BattleOrchestratorEvent.cs:58`, `HgssShinyStarterEventFactory.cs:14` keyed `IPokemonParser` | `bot.Profile.Parser` |
 | `RunEncounterEvent.cs:11-12, 38-44`, `SpinEncounterEvent.cs:38-48` | coordinates from `bot.Addresses`; the battle poll compares `Screen` |
-| `ShinyStarterEvent.cs:41-47` | `bot.Addresses.FieldSystem`, `.StarterPreviewOffset`, `.PartyPokemonSize` |
+| `ShinyStarterEvent.cs:41-47` | the HGSS table's `Anchor`, `StarterPreviewOffset`, `PartyPokemonSize` |
 | `HgssTogepiEggEvent.cs:52-53` | `bot.Addresses.TrainerX/Y` |
 | `PathfindingService.cs:256-261` | constructor parameters from the profile |
 | `NavigatorEvent.cs:695`, `BattleOrchestratorEvent.cs:137`, `Run/SpinEncounterEvent` `0x41/0x97/0xC0` | inside `HgssLegacyStateReader` only |
@@ -351,3 +355,4 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-10-21: first draft from the plan rows, the pointer spike and a code survey; RS held to a wrapper profile; ApiHawk-side parsing and retry explicitly kept.
 - 2026-10-21: open questions closed by the owner; the chain reader, bounded waits and confirm-and-retry presses split out into the HGSS state reader spec so this one is restructure only; FR-9 (root/offset/scenario comment on every address) and the rule for future reads added.
 - 2026-10-22: references moved to `main` after PR #106; NFR-1 names the two QA scenarios that exist.
+- 2026-10-22: implemented under epic #118 (PRs #126 to #132). "As built" notes mark where the code differs from the draft: get-only profile members, existing address names kept, flavor-only members on the concrete tables, the data directory in `HgssProfile`, the `EventRegistration` shape, the top-level options, and the FR-5 wording. The full list is in the plan's implementation notes.
