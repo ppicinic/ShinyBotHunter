@@ -1,3 +1,4 @@
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service.BattlePokemonParser;
@@ -23,6 +24,9 @@ namespace ShinyBotHunter.Games
         /// <summary>Null when the flavor has no battle reads.</summary>
         public IBattlePokemonParser? BattleParser { get; }
 
+        /// <summary>Null when the flavor has no overworld reads.</summary>
+        public Func<IMemoryClient, IPointerService, IOverworldReader>? CreateOverworldReader { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -30,8 +34,13 @@ namespace ShinyBotHunter.Games
             IReadOnlyList<int> revisions,
             Func<int, IPointerService> addresses,
             IPokemonParser parser,
-            IBattlePokemonParser? battleParser)
+            IBattlePokemonParser? battleParser,
+            Func<IMemoryClient, IPointerService, IOverworldReader>? createOverworldReader = null)
         {
+            if (capabilities.HasOverworldNavigation && createOverworldReader is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no overworld reader.");
+            }
             if (capabilities.HasWildEncounters && battleParser is null)
             {
                 throw new ArgumentException($"{flavor} declares HasWildEncounters but has no battle parser.");
@@ -51,6 +60,7 @@ namespace ShinyBotHunter.Games
             Addresses = addresses;
             Parser = parser;
             BattleParser = battleParser;
+            CreateOverworldReader = createOverworldReader;
         }
     }
 }
