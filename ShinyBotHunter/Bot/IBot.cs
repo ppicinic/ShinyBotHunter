@@ -5,7 +5,7 @@ using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
-    public interface IBot : ILauncher, ICommandClient, IMemoryClient, IDataReader
+    public interface IBot : ILauncher, ICommandClient, IMemoryClient
     {
         /// <summary>
         /// Which game this emulator is running, from its ROM header. Callers that need a flavor should

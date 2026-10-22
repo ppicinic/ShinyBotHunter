@@ -14,16 +14,14 @@ namespace ShinyBotHunter.Bot
         private ILauncher launcher;
         private ICommandClient commandClient;
         private IMemoryClient memoryClient;
-        private IDataReader? dataReader;
         private readonly IOverworldReader? overworld;
         private readonly IGameStateReader? state;
         private GameContext? context;
-        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader? reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
+        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, GameProfile profile, IPointerService addresses, GameContext? context = null)
         {
             this.launcher = launcher;
             this.commandClient = commandClient;
             this.memoryClient = memoryClient;
-            this.dataReader = reader;
             this.Profile = profile;
             this.Addresses = addresses;
             this.context = context;
@@ -38,8 +36,6 @@ namespace ShinyBotHunter.Bot
         public IOverworldReader Overworld => overworld ?? throw new InvalidOperationException($"{Profile.Flavor} has no overworld reader.");
 
         public IGameStateReader State => state ?? throw new InvalidOperationException($"{Profile.Flavor} has no state reader.");
-
-        private IDataReader DataReader => dataReader ?? throw new InvalidOperationException($"{Profile.Flavor} has no battle reads.");
 
         public void ClearMacro()
         {
@@ -251,20 +247,6 @@ namespace ShinyBotHunter.Bot
         public void RunMacros(params MacroStruct[] macro)
         {
             this.commandClient.RunMacros(macro);
-        }
-
-        public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
-        {
-            return await DataReader.GetBattleMenuState(ct);
-        }
-
-        public async Task<byte> GetBattleValue(CancellationToken ct = default)
-        {
-            return await DataReader.GetBattleValue(ct);
-        }
-        public async Task<byte> GetBattleState()
-        {
-            return await DataReader.GetBattleState();
         }
     }
 }
