@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Service;
 
@@ -36,6 +37,13 @@ namespace ShinyBotHunter.Tests
                 Bots.Add(bot);
                 return bot;
             }
+        }
+
+        private class ThrowingEvent : IBotEvent
+        {
+            // Faults the returned task rather than throwing, because StartEvent calls this inline.
+            public Task ExecuteAsync(GameState state, CancellationToken cancellationToken) =>
+                Task.FromException(new InvalidOperationException("Event crashed"));
         }
 
         private static readonly NewEventArguments LaunchBot = new() { EventName = "Launch Bot", GameName = "fake.nds" };
@@ -93,6 +101,30 @@ namespace ShinyBotHunter.Tests
 
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             Assert.Equal([0, 0], factory.Positions);
+        }
+
+        [Fact]
+        public async Task CrashedEvent_LeavesBotIdleWithNoGameState()
+        {
+            var slots = new EmulatorSlotRegistry(2);
+            var runner = new BotEventRunner(slots, () => Task.CompletedTask);
+            var state = new GameState();
+            state.State.Push(EventState.LevelUp);
+            var entry = new BotAndOrEvent(new FakeBot(Task.CompletedTask)) { GameState = state };
+            slots.Entries[0] = entry;
+
+            await slots.Gate.WaitAsync();
+            runner.StartEvent(0, entry, new ThrowingEvent(), state, "Route 33", removeWhenDone: false);
+            Task running = entry.EventTask!;
+            slots.Gate.Release();
+            await running;
+
+            Assert.NotNull(entry.Bot);
+            Assert.Null(entry.Event);
+            Assert.Null(entry.EventTask);
+            Assert.Null(entry.CancellationTokenSource);
+            Assert.Null(entry.GameState);
+            Assert.True(slots.Entries.ContainsKey(0));
         }
 
         [Fact]

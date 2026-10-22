@@ -65,6 +65,7 @@ namespace ShinyBotHunter.Service
         /// </summary>
         private async Task RunEventAsync(int key, BotAndOrEvent entry, Task eventTask, CancellationTokenSource cts, GameState state, string name, bool removeWhenDone)
         {
+            bool faulted = false;
             try
             {
                 await eventTask;
@@ -74,6 +75,7 @@ namespace ShinyBotHunter.Service
             }
             catch (Exception ex)
             {
+                faulted = true;
                 // Without this, an unhandled exception in the event loop is indistinguishable from a
                 // clean finish: the bot silently goes idle, or a hunt vanishes, with no trace of why.
                 Console.WriteLine($"[BotService] Event '{name}' crashed. State: {(state.State.TryPeek(out var crashedAt) ? crashedAt : EventState.None)}");
@@ -89,12 +91,14 @@ namespace ShinyBotHunter.Service
             await slots.Gate.WaitAsync();
             try
             {
-                if (cancelled)
+                bool parked = state.State.TryPeek(out var top) && top == EventState.Waiting;
+                // A crash leaves the stack at whatever state it died in, which the dashboard would keep showing as busy.
+                if (cancelled || (faulted && !parked))
                 {
                     entry.Event = null;
                     entry.GameState = null;
                 }
-                else if (!(state.State.TryPeek(out var top) && top == EventState.Waiting))
+                else if (!parked)
                 {
                     entry.Event = null;
                 }
