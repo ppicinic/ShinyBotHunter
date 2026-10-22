@@ -45,16 +45,19 @@ $g = [System.Drawing.Graphics]::FromImage($bmp)
 $ffmpeg = (Get-Command ffmpeg).Source
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $ffmpeg
-$psi.Arguments = "-y -loglevel error -f rawvideo -pix_fmt bgra -s ${w}x${h} -r $Fps -i - -vf pad=ceil(iw/2)*2:ceil(ih/2)*2 -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p `"$OutFile`""
+$psi.Arguments = "-y -loglevel error -f rawvideo -pix_fmt bgra -s ${w}x${h} -r $Fps -i - -vf scale=iw*2:ih*2:flags=neighbor -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p `"$OutFile`""
 $psi.UseShellExecute = $false
 $psi.RedirectStandardInput = $true
+# Process.Start writes the console input encoding's preamble into a redirected stdin. Under code page 65001
+# that is a 3-byte BOM, which shifts every raw frame by three bytes (the video turns red). Same code page, no BOM.
+if ([Console]::InputEncoding.GetPreamble().Length -gt 0) { [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false }
 $ff = [System.Diagnostics.Process]::Start($psi)
 $stdin = $ff.StandardInput.BaseStream
 $frameMs = [int](1000 / $Fps)
 $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
 $buf = New-Object byte[] ($w * $h * 4)
 $frames = 0
-"recording $ProcessName hwnd=$hwnd ${w}x${h} -> $OutFile" | Out-File -FilePath "$OutFile.log" -Encoding utf8
+"recording $ProcessName hwnd=$hwnd ${w}x${h} -> $OutFile cp=$([Console]::InputEncoding.CodePage)" | Out-File -FilePath "$OutFile.log" -Encoding utf8
 try {
     while (-not (Test-Path $StopFile)) {
         $t0 = [Environment]::TickCount
