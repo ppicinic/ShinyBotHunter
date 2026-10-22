@@ -23,6 +23,8 @@ const sha256 = (file: string): string => createHash('sha256').update(fs.readFile
 test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', async () => {
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
+  // Before the try, so the finally block never kills an emulator this run did not start.
+  expect(emuHawkRunning(), 'an EmuHawk is already running; close it first').toBe(false)
   try {
     // 1. Build the dashboard so out/ carries the current test ids.
     const build = spawnSync('npm run build', { cwd: dashboardDir, shell: true, encoding: 'utf8' })
@@ -30,7 +32,6 @@ test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', 
     expect(build.status, 'npm run build in PokemonDashboard failed; see dashboard-build.log').toBe(0)
 
     // 2. Preconditions.
-    expect(emuHawkRunning(), 'an EmuHawk is already running; close it first').toBe(false)
     expect(fs.existsSync(SAVE), `missing ${SAVE}`).toBe(true)
     expect(fs.existsSync(SAVE + '.bak'), `missing ${SAVE}.bak`).toBe(true)
     step(`SaveRAM sha256 ${sha256(SAVE)}, .bak sha256 ${sha256(SAVE + '.bak')}`)
@@ -167,5 +168,10 @@ test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', 
     if (app) await app.close().catch(() => undefined)
     if (backend && backend.exitCode === null) killTree(backend.pid!)
     if (emuHawkRunning()) killEmuHawk()
+    // On every outcome: a forced kill must not have changed the save either.
+    if (fs.existsSync(SAVE) && fs.existsSync(SAVE + '.bak')) {
+      const same = fs.readFileSync(SAVE).equals(fs.readFileSync(SAVE + '.bak'))
+      step(`after teardown: SaveRAM ${same ? 'equals' : 'DIFFERS FROM'} .bak (SaveRAM sha256 ${sha256(SAVE)}, .bak sha256 ${sha256(SAVE + '.bak')})`)
+    }
   }
 })

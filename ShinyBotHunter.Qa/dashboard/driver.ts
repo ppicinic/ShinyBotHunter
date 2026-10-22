@@ -147,6 +147,8 @@ foreach ($vk in 0x7B,0x10,0x11) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirt
   return out.endsWith('foreground=True')
 }
 
+// Not locked: one scenario runs per worker process. The test sets this once, and stopRecorder clears it
+// (called by the test and again by its finally block), never concurrently.
 let recorder: ChildProcess | null = null
 const stopFile = path.join(runDir, 'stop-recorder')
 
