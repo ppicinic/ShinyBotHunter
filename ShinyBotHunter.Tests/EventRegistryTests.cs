@@ -1,6 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
@@ -77,11 +80,22 @@ namespace ShinyBotHunter.Tests
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Run, xRange = 1 };
 
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.ExecuteEvent(0, args));
+            var result = await new BotController(service).StartAction(0, args);
 
-            Assert.Contains("HasWildEncounters", ex.Message);
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Contains("HasWildEncounters", content.Content);
             // No GameState was assigned, so no event was built.
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task UnknownTopLevelActionIs400()
+        {
+            var result = await new BotController(Build()).StartTopLevelAction(new NewEventArguments { EventName = "No Such Action" });
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
         }
 
         // A verbatim copy of Configs/SpecialEvents/SpecialEvents.json as it was when the registry
