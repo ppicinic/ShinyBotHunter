@@ -113,6 +113,7 @@ export function TopLevelActionForm({
 
   return (
     <div
+      data-testid={`top-level-action-${action.name}`}
       className="bg-card-border/20 rounded-lg px-3 py-2.5 space-y-2"
     >
       <div className="flex items-center justify-between">

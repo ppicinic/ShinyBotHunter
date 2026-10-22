@@ -40,7 +40,7 @@ export function ActionParamFields({
   return (
     <>
       {schema.requiredParameters?.map((param) => (
-        <div key={param} className="flex items-center gap-2">
+        <div key={param} data-testid={`param-${param}`} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
           {param === 'GameName' && games ? (
             <select
@@ -101,7 +101,7 @@ export function ActionParamFields({
         <div className="pt-0.5 border-t border-slate-700/30">
           <span className="text-xs text-slate-600">Optional</span>
           {schema.optionalParameters.map((param) => (
-            <div key={param} className="flex items-center gap-2 mt-0.5">
+            <div key={param} data-testid={`param-${param}`} className="flex items-center gap-2 mt-0.5">
               <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
               {param.toLowerCase() === 'soundon' || param === 'RequireFemale' ? (
                 <input
@@ -142,7 +142,7 @@ export function ActionParamFields({
             // and is never selectable.
             const isBattlerPicker = cp.name === 'SwitchSlot' && party !== undefined && party.length > 0
             return (
-              <div key={cp.name} className="flex items-center gap-2 mt-0.5">
+              <div key={cp.name} data-testid={`param-${cp.name}`} className="flex items-center gap-2 mt-0.5">
                 <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
                 {isBattlerPicker ? (
                   <select

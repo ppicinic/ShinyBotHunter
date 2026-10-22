@@ -49,6 +49,7 @@ export function EmulatorCard({
   const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
   return (
     <li
+      data-testid={`emulator-card-${pos}`}
       className="bg-card-border/30 rounded px-3 py-2 space-y-1.5"
     >
       <div className="flex items-center justify-between">
