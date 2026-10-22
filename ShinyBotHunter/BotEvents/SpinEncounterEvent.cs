@@ -1,7 +1,6 @@
 ﻿using DnsClient;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Text;
 
@@ -37,17 +36,16 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
 
-            uint battleIndicator = ((HgssPointerService)bot.Addresses).BattleIndicator;
-            var battleValue = await bot.ReadByteAsync(battleIndicator);
-            while (!(battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0) && !cancellationToken.IsCancellationRequested)
+            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution) && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                battleValue = await bot.ReadByteAsync(battleIndicator);
+                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
             }
             bot.ClearMacro();
             await bot.WaitForMacroAsync();
 
-            bool inBattle = battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
+            bool inBattle = screen is GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution;
             if (inBattle)
             {
                 Console.WriteLine("Found battle");

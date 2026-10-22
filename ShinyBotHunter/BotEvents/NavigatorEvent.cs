@@ -1,5 +1,6 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
@@ -682,12 +683,12 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
-            byte battleValue = await bot.GetBattleValue();
-            while (battleValue != 0x41 && battleValue != 0x97 && battleValue != 0xC0
+            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution)
                    && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-                battleValue = await bot.GetBattleValue();
+                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
             }
         }
     }

@@ -1,4 +1,5 @@
-﻿using ShinyBotHunter.Persistence.MongoDb;
+﻿using ShinyBotHunter.Games;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Util;
@@ -381,12 +382,13 @@ namespace ShinyBotHunter.BotEvents
                 await Task.Delay(Constant.PollIntervalMs, ct);
                 try
                 {
-                    if(state.PendingEvolutions.Count() > 0 && await state.Bot.GetBattleState() == 14)
+                    GameSnapshot snapshot = await state.Bot.State.ReadAsync(ct);
+                    if(state.PendingEvolutions.Count() > 0 && snapshot.Screen == GameScreen.Evolution)
                     {
                         state.SwapState(EventState.EvolutionInit);
                         endWait = true;
                     }
-                    else if (!BattleOrchestratorEvent.IsBattle(await state.Bot.GetBattleValue(ct)))
+                    else if (snapshot.Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
                     {
                         state.SwapState(EventState.BattleComplete);
                         endWait = true;
