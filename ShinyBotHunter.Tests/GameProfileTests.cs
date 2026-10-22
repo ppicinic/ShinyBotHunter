@@ -2,7 +2,9 @@ using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -16,7 +18,10 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public void HgssProfileIsConsistent()
         {
-            GameProfile profile = HgssProfile.Create(Metadata());
+            MapService maps = new(new Dictionary<int, Map>());
+            GraphService graph = new();
+
+            GameProfile profile = HgssProfile.Create(Metadata(), maps, graph);
 
             Assert.Equal(GameFlavor.HGSS, profile.Flavor);
             Assert.Equal(new GameCapabilities(
@@ -29,6 +34,9 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.Equal(new BoxLayout(-0x148D8, 18, 30, 4096), profile.Addresses(0).BoxLayout);
+            Assert.Same(maps, profile.Maps);
+            Assert.Same(graph, profile.Graph);
+            Assert.NotNull(profile.Pathfinding);
         }
 
         [Fact]
@@ -49,12 +57,15 @@ namespace ShinyBotHunter.Tests
             Assert.Same(profile.Addresses(1), profile.Addresses(2));
             Assert.IsType<RsPointerService>(profile.Addresses(1));
             Assert.Null(profile.Addresses(1).BoxLayout);
+            Assert.Null(profile.Maps);
+            Assert.Null(profile.Graph);
+            Assert.Null(profile.Pathfinding);
         }
 
         [Fact]
         public void UnknownRevisionThrows()
         {
-            GameProfile hgss = HgssProfile.Create(Metadata());
+            GameProfile hgss = HgssProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()), new GraphService());
             GameProfile rs = RsProfile.Create(Metadata());
 
             var hgssError = Assert.Throws<NotSupportedException>(() => hgss.Addresses(1));

@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Options;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tools
 {
@@ -39,7 +41,11 @@ namespace ShinyBotHunter.Tools
                     maps.ExtractMovePermissionsFile();
                     new MatrixProcessor(headerCsv, romDataDir, outputDir).GenerateAllMaps();
                     maps.GenerateMapFiles();
-                    await new GraphProcessor(MapService.Instance, new PathfindingService(MapService.Instance, GraphService.Instance), outputDir).CreateBaseGraph();
+                    var mapService = new MapService(HgssProfile.DataDirectory);
+                    var graphService = new GraphService(HgssProfile.DataDirectory);
+                    var table = new HgssPointerService();
+                    var pathfinding = new PathfindingService(mapService, graphService, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset);
+                    await new GraphProcessor(mapService, pathfinding, outputDir).CreateBaseGraph();
                     return true;
                 default:
                     return false;

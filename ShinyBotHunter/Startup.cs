@@ -10,11 +10,9 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
-using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Persistence.PostgreSQL;
-using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Tools;
 using System.Text.Json.Serialization;
@@ -110,9 +108,6 @@ namespace ShinyBotHunter
                 .AddSingleton<MacroRecordingService>()
                 .AddSingleton<LocationService>()
                 .AddSingleton<PokemonStateReader>()
-                .AddSingleton<GraphService>(x => GraphService.Instance)
-                .AddSingleton<PathfindingService>()
-                .AddSingleton<MapService>(x => MapService.Instance)
                 .AddSingleton<SmogonDamageService>()
                 .AddTransient<BattleOrchestratorEvent>()
                 .AddTransient<NavigatorEvent>()

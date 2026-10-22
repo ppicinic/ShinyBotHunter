@@ -1,6 +1,8 @@
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 
@@ -27,6 +29,12 @@ namespace ShinyBotHunter.Games
         /// <summary>Null when the flavor has no overworld reads.</summary>
         public Func<IMemoryClient, IPointerService, IOverworldReader>? CreateOverworldReader { get; }
 
+        public MapService? Maps { get; }
+
+        public GraphService? Graph { get; }
+
+        public PathfindingService? Pathfinding { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -35,11 +43,24 @@ namespace ShinyBotHunter.Games
             Func<int, IPointerService> addresses,
             IPokemonParser parser,
             IBattlePokemonParser? battleParser,
-            Func<IMemoryClient, IPointerService, IOverworldReader>? createOverworldReader = null)
+            Func<IMemoryClient, IPointerService, IOverworldReader>? createOverworldReader = null,
+            MapService? maps = null,
+            GraphService? graph = null,
+            PathfindingService? pathfinding = null)
         {
-            if (capabilities.HasOverworldNavigation && createOverworldReader is null)
+            if (capabilities.HasOverworldNavigation)
             {
-                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no overworld reader.");
+                List<string> missing = new (object? Part, string Name)[]
+                {
+                    (createOverworldReader, "overworld reader"),
+                    (maps, "maps"),
+                    (graph, "graph"),
+                    (pathfinding, "pathfinding"),
+                }.Where(p => p.Part is null).Select(p => p.Name).ToList();
+                if (missing.Count > 0)
+                {
+                    throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no {string.Join(", ", missing)}.");
+                }
             }
             if (capabilities.HasWildEncounters && battleParser is null)
             {
@@ -61,6 +82,9 @@ namespace ShinyBotHunter.Games
             Parser = parser;
             BattleParser = battleParser;
             CreateOverworldReader = createOverworldReader;
+            Maps = maps;
+            Graph = graph;
+            Pathfinding = pathfinding;
         }
     }
 }

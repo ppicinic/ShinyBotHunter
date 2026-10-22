@@ -1,6 +1,7 @@
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
@@ -12,7 +13,8 @@ namespace ShinyBotHunter.Tests
         private static PathfindingService ServiceFor(Map map)
         {
             // ASearch and Djitriska never touch GraphService.
-            return new PathfindingService(new MapService(new() { [1] = map }), graphService: null!);
+            var table = new HgssPointerService();
+            return new PathfindingService(new MapService(new Dictionary<int, Map> { [1] = map }), graphService: null!, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset);
         }
 
         private static List<(int X, int Y)> Chain(MapPoint end)

@@ -97,7 +97,7 @@ namespace ShinyBotHunter.BotEvents
             this.phase = phase;
             this.botService = botService;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
-            this.pathfindingService = provider.GetRequiredService<PathfindingService>();
+            this.pathfindingService = bot.Profile.Pathfinding!;
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             // Loaded here rather than at boot so the corridor can be corrected

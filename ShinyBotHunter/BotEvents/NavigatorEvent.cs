@@ -12,7 +12,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
-        private readonly PathfindingService pathfindingService;
         private readonly PokemonStateReader reader;
 
         // How often the party is re-read while walking to catch a poison faint. Each tick costs a
@@ -63,9 +62,8 @@ namespace ShinyBotHunter.BotEvents
             Blocked,
         }
 
-        public NavigatorEvent(PathfindingService pathfindingService, PokemonStateReader reader)
+        public NavigatorEvent(PokemonStateReader reader)
         {
-            this.pathfindingService = pathfindingService;
             this.reader = reader;
         }
 
@@ -91,7 +89,7 @@ namespace ShinyBotHunter.BotEvents
                 var mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
                 var (x, y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
                 var facing = await state.Bot.Overworld.GetFacingAsync(cancellationToken);
-                var nodePath = await pathfindingService.FindClosestPokemonCenter(mapId, x, y, new Capability(), (byte)facing);
+                var nodePath = await state.Bot.Profile.Pathfinding!.FindClosestPokemonCenter(mapId, x, y, new Capability(), (byte)facing);
                 if (nodePath is null)
                 {
                     Console.WriteLine($"[Navigator] No pokemon center found from map={mapId} ({x},{y})");
@@ -196,7 +194,7 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 var facing = await state.Bot.Overworld.GetFacingAsync(cancellationToken);
-                var nodePath = await pathfindingService.FindNodePath(
+                var nodePath = await state.Bot.Profile.Pathfinding!.FindNodePath(
                     mapId, x, y,
                     state.StartMapId, state.StartX, state.StartY,
                     new Capability(), (byte)facing);
@@ -305,7 +303,7 @@ namespace ShinyBotHunter.BotEvents
                 bool overshoot = false;
                 if (toNodeIsPortal)
                 {
-                    var portalTile = pathfindingService.GetAdjacentPortalTarget(mapId, toNode.X, toNode.Y, x, y);
+                    var portalTile = state.Bot.Profile.Pathfinding!.GetAdjacentPortalTarget(mapId, toNode.X, toNode.Y, x, y);
                     if (portalTile.HasValue)
                     {
                         destX = portalTile.Value.X;
@@ -320,7 +318,7 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex}: map={mapId} ({x},{y}) -> ({destX},{destY}) portal={toNodeIsPortal} overshoot={overshoot}");
-                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), (byte)facing, destBotMapId, overshoot, PenaltiesForMap(state, mapId));
+                string? macro = state.Bot.Profile.Pathfinding!.Pathfind(mapId, x, y, destX, destY, new Capability(), (byte)facing, destBotMapId, overshoot, PenaltiesForMap(state, mapId));
                 Console.WriteLine($"[Navigator] Macro: {(macro ?? "null")}");
 
                 if (macro is not null)
