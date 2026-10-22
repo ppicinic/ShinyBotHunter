@@ -48,19 +48,21 @@ namespace ShinyBotHunter.Games
             GraphService? graph = null,
             PathfindingService? pathfinding = null)
         {
-            if (capabilities.HasOverworldNavigation)
+            if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
-                List<string> missing = new (object? Part, string Name)[]
-                {
-                    (createOverworldReader, "overworld reader"),
-                    (maps, "maps"),
-                    (graph, "graph"),
-                    (pathfinding, "pathfinding"),
-                }.Where(p => p.Part is null).Select(p => p.Name).ToList();
-                if (missing.Count > 0)
-                {
-                    throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no {string.Join(", ", missing)}.");
-                }
+                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no overworld reader.");
+            }
+            if (capabilities.HasOverworldNavigation && maps is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no maps.");
+            }
+            if (capabilities.HasOverworldNavigation && graph is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no graph.");
+            }
+            if (capabilities.HasOverworldNavigation && pathfinding is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no pathfinding.");
             }
             if (capabilities.HasWildEncounters && battleParser is null)
             {
