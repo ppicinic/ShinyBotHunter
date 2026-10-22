@@ -1,4 +1,5 @@
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -95,6 +96,18 @@ namespace ShinyBotHunter.Tests
         public void NoMovementProducesNoMacro()
         {
             Assert.Equal(string.Empty, RsStartMenuService.BuildCursorMacro(0));
+        }
+
+        [Fact]
+        public async Task ReadsTheActionsArrayAtTheTableAddress()
+        {
+            // sCurrentStartMenuActions, ten entries. FakeMemoryClient records only multi-byte reads,
+            // so the cursor and count bytes are not observed here.
+            var memory = new FakeMemoryClient();
+
+            await new RsStartMenuService().ReadAsync(memory, new RsPointerService());
+
+            Assert.Equal((0x0202E8FEu, 10), Assert.Single(memory.ByteReads));
         }
     }
 }

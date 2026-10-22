@@ -43,11 +43,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly ushort expectedSpecies;
         private readonly ushort expectedInternalSpecies;
 
-        // Candidate signals for "the action menu is up", probed rather than assumed. gBattleCommunication
-        // carries per-battler turn state; gActionSelectionCursor is the FIGHT/BAG/POKEMON/RUN cursor.
-        private const uint BattleCommunicationAddress = 0x02024D1E;
-        private const uint ActionSelectionCursorAddress = 0x02024E60;
-        private readonly Service.Pointers.IPointerService pointers;
+        private readonly Service.Pointers.RsPointerService pointers;
 
         /// <summary>The shiny that ended the hunt, once one has been found and kept.</summary>
         public PokemonData? Result { get; private set; }
@@ -78,7 +74,7 @@ namespace ShinyBotHunter.BotEvents
                 .GetPokemonMetadata(entry.Starter).Id;
             // The in-battle structures store internal indices rather than dex numbers.
             expectedInternalSpecies = Gen3PokemonParser.ToInternalSpecies(expectedSpecies);
-            pointers = bot.Addresses;
+            pointers = (Service.Pointers.RsPointerService)bot.Addresses;
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -289,11 +285,11 @@ namespace ShinyBotHunter.BotEvents
                             seenOnField = true;
                         }
 
-                        byte[] comm = await bot.ReadBytesAsync(BattleCommunicationAddress, 4);
+                        byte[] comm = await bot.ReadBytesAsync(pointers.BattleCommunication, 4);
 
                         if (config.LogBattleStateProbe)
                         {
-                            byte cursor = await bot.ReadByteAsync(ActionSelectionCursorAddress);
+                            byte cursor = await bot.ReadByteAsync(pointers.ActionSelectionCursor);
                             Console.WriteLine(
                                 $"[StarterHunt] probe t+{(int)(DateTime.UtcNow - started).TotalMilliseconds}ms " +
                                 $"onField={seenOnField} comm=[{string.Join(",", comm)}] cursor={cursor}");
@@ -468,7 +464,7 @@ namespace ShinyBotHunter.BotEvents
             const int MaxPresses = 24;
             for (int presses = 0; presses < MaxPresses; presses++)
             {
-                RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot);
+                RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot, pointers);
                 if (menu.CursorPos == target)
                 {
                     return;
@@ -479,7 +475,7 @@ namespace ShinyBotHunter.BotEvents
                 await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
             }
 
-            RsStartMenuService.MenuState final = await startMenu.ReadAsync(bot);
+            RsStartMenuService.MenuState final = await startMenu.ReadAsync(bot, pointers);
             throw new InvalidOperationException(
                 $"Start-menu cursor would not settle on position {target} after {MaxPresses} presses " +
                 $"({final.Describe()}). Refusing to press A on whatever is highlighted.");
@@ -493,7 +489,7 @@ namespace ShinyBotHunter.BotEvents
         private async Task<RsStartMenuService.MenuState> WaitForStartMenuAsync(CancellationToken cancellationToken)
         {
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
-            RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot);
+            RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot, pointers);
 
             while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
             {
@@ -502,7 +498,7 @@ namespace ShinyBotHunter.BotEvents
                     return menu;
                 }
                 await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
-                menu = await startMenu.ReadAsync(bot);
+                menu = await startMenu.ReadAsync(bot, pointers);
             }
 
             // Returned rather than thrown so StepsTo produces the failure, with the menu contents in
