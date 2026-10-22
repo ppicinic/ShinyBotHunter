@@ -1,7 +1,7 @@
 # Spec: HGSS game-state reader (follow-up to the game profile)
 
 Status: Draft, blocked on the [game profile spec](game-profile.md) P1 to P7 and on the QA scenarios in the [gate](#qa-gate)
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 Owner: Phil
 Related: [game profile spec](game-profile.md), [pointer discovery](../research/pointer-discovery.md) (the source for every value here), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md), plan rows [5.3e and 6.2](../plans/2026-10-cleanup-and-hardening.md)
 
@@ -85,7 +85,7 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 
 | `GameScreen` | Condition | Qualifier fields | Status |
 |---|---|---|---|
-| `Transitioning` | any pointer out of range, or roots changed between reads (FR-2, FR-3) | | by construction |
+| `Transitioning` | a block the snapshot needs is not `Ok` (FR-3) | | by construction |
 | `FieldFree` | `app == 0 && taskman == 0 && mapReady == 1 && paused == 0` | | observed around battles; scripts, menus, warps not yet |
 | `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]` | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5` |
 | `OtherApp` | `app != 0 && ovyId != 12` | | decomp only |
@@ -131,7 +131,7 @@ Blocks the snapshot does not need (for example `ctx` on the field, where it come
 
 Owner's decision, 2026-10-22, recorded in [the decisions file](../decisions/game-profile.md#a-multi-block-chain-read-opcode-for-the-state-reader): ApiHawk's `MemoryServer` drains its request queue once per frame, so each sequential HTTP read costs one emulator frame (about 16 ms at 60 fps), and S1's measurement put a five-read battle-menu snapshot at 79 ms median. No arrangement of plain reads meets NFR-1. ApiHawk gains one opcode, `0x05`, that follows as many pointer chains as the request names and reads every block on the same frame.
 
-Request: the shared 9-byte header `[0x05][addr: 0][aux: retryFrames u32]`, then `[blockCount:1]` and per block `[anchor:4 LE][hopCount:1][hops: i32 LE × hopCount][length:4 LE]`. `hopCount` 0 is a direct read at `anchor`. Limits: 16 blocks, 8 hops per block, 0x1000 bytes per block; a body outside them is a 400.
+Request: the shared 9-byte header `[0x05][addr: 0][aux: retryFrames u32]`, then `[blockCount:1]` and per block `[anchor:4 LE][hopCount:1][hops: i32 LE × hopCount][length:4 LE]`. `hopCount` 0 is a direct read at `anchor`. Limits: 16 blocks, 8 hops per block, 0x1000 bytes per block, and `retryFrames` up to 300 (5 s at 60 fps, the handler's wait); a body outside them is a 400.
 
 Response: `200` with, per block in request order, `[status:1][hop:1][length:4 LE][bytes]`. Status 0 `Ok` (length as requested), 1 `NullPointer` (the pointer read at hop `hop` was zero; length 0), 2 `OutOfRange` (the pointer at hop `hop` was outside the console's addressable RAM; length 0), 3 `ShortRead` (the core returned fewer bytes; length as returned). A failed block never fails the request: a null pointer is how the game says "no app", "no task", "no getter", and an out-of-range pointer is a snapshot taken mid-write that the reader maps to `Transitioning`. The 502 path stays for the existing opcodes only.
 
@@ -150,7 +150,7 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R1 | byte `0x021E76D2 ∈ {0x41, 0x97, 0xC0}` = "in a wild battle" | `HgssLegacyStateReader`; polled by `RunEncounterEvent`, `SpinEncounterEvent`, `NavigatorEvent.WaitForBattleAsync`, `BattleOrchestratorEvent.IsBattle` | Pokédex overlay 18 code that happens to be loaded; reads garbage during the overlay swap | `app != 0 && app.ovyId == 12` → `Screen` is any `Battle*` or `Evolution` | observed | `hgss-route33` |
 | R2 | same byte leaving the set = "battle over" | `WaitForMoveEnd.PollBattleEnded`, `LevelUpFlow.WaitForLevelUpOrField` | as R1 | `Screen == BattleOver` (command 45) then `app == 0`; `Outcome` says how | 45, won, fled observed | `hgss-route33` |
 | R3 | `[FS] + 0x230EC == 1` = "menu ready" | `HgssLegacyStateReader`; `BattleOrchestratorEvent` battle-start loop and `WaitForMoveEnd.PollMenuUp` | `ctx.sel` reached through a heap coincidence; dangling after the battle (stays 14) | `Screen == BattleMenu` (command 5, sel 1), pressed with `PressUntilAsync` | observed; input-ready gap covered by retry | `hgss-route33` |
-| R4 | `[FS] + 0x692C == 14` = "evolution" | `HgssLegacyStateReader`; `LevelUpFlow.cs:384` | `app.state` through the same coincidence | `Screen == Evolution` (`app.state` 13 or 14) | 14 observed | `hgss-route33-evolve` |
+| R4 | `[FS] + 0x692C == 14` = "evolution" | `HgssLegacyStateReader`; `LevelUpFlow.cs:384` | `app.state` through the same coincidence | `Screen == Evolution` (`app.state` 14) | 14 observed | `hgss-route33-evolve` |
 | R5 | `[FS] + 0x6930` → `+0xC14` foe count, `+0xC18` enemy block | `BattleOrchestratorEvent.PokemonDataPending` through `bot.Addresses.EnemySetupOffset` | `app.setup` (`BattleSetup`) through the same coincidence; the `+0xC14`/`+0xC18` offsets inside it are right | root changes to `app.setup = [app + 0x18]`; the enemy block keeps being read with the pointer-chain opcode and parsed by `IBattlePokemonParser` / validated as today | observed | `hgss-route33` |
 | R6 | three racing polls in `WaitForMoveEnd` (R2, R3, and party HP 0) | `BattleOrchestratorEvent.cs:140-237` | timing guesses | one `UntilAsync(Screen is BattleMenu or BattleOver or BattleScript{6} or BattleExpPrompt or BattleMoveLearnPrompt)`; HP is then read once to decide, not polled | menu, over, script 6, prompts observed | `hgss-route33-train` |
 | R7 | blind macros `W.325`, `W.1245`, 120-frame padding for level-up and move-learn | `LevelUpFlow.cs:17-49` | "reads during that menu crash" was the old byte reading garbage | press at `Prompt` 11/13 (A), 21 (yes/no), 23 (pick), 34 (yes/no) via `PressUntilAsync` | 11, 13, 21, 34 observed; 23 decomp only | `hgss-route33-train` |
@@ -239,9 +239,9 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 | Test | Covers |
 |---|---|
 | `HgssFieldSystemStateReaderTests.<Screen>` one per state-table row, scripted memory | FR-1 |
-| `HgssFieldSystemStateReaderTests.ChangedAppBetweenReadsIsTransitioning` | FR-2 |
-| `HgssFieldSystemStateReaderTests.OutOfRangePointerIsTransitioning` (each hop) | FR-3 |
-| `HgssFieldSystemStateReaderTests.RootsReReadAfterThreeTransitioning` | the recovery path |
+| `HgssFieldSystemStateReaderTests.OneRequestOnEveryScreen` | FR-2 |
+| `HgssFieldSystemStateReaderTests.BadPointerAtEachHop` (each hop) | FR-3 |
+| `HgssFieldSystemStateReaderTests.RequestIsTheSevenBlocksOfTheWalk` | FR-2, the block table |
 | `GameStateWaitTests.UntilReturnsOnMatch`, `.UntilThrowsWhenStale`, `.StaleCountsSameScriptAsUnchanged`, `.PressRetriesThenThrows` | FR-5, FR-6 |
 | `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu | FR-7 |
 
@@ -273,3 +273,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-22: the blocked-step pointer deferred by the owner; R10 keeps the stall timeout and the decomp-only table records what would replace it.
 - 2026-10-22: field scripts traced (poison, Pokémon Center): R18, R19 and S4 added; `FieldTask` for scripts and warps moved from decomp-only to observed; the heal macro's fainted rule recorded as wrong for a non-lead faint.
 - 2026-10-22: S1's measurement (PR #142) showed every sequential read costs one emulator frame, so the plain-read walk cannot meet NFR-1 (79 ms median at the battle menu). Owner's decision: ApiHawk opcode `0x05`, a multi-block chain read with a retry count defaulting to 0, as row S0; "The walk" is one request of seven blocks; FR-2, FR-3, NFR-1 reworded, NFR-3 added; `Evolution` narrowed to state 14 after state 13 was seen on a fled battle.
+- 2026-10-22: S1 reworked onto the single-frame read (#137): the `Transitioning` condition, R4 and the test-case rows follow the one-request reader; the opcode's limits include `retryFrames` up to 300.
