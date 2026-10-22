@@ -12,7 +12,8 @@ const BIZHAWK = 'C:\\BizHawk-2.11'
 const SAVE = path.join(BIZHAWK, 'NDS', 'SaveRAM', 'Pokemon HeartGold.SaveRAM')
 const CHEAT_SOURCE = path.join(repoDir, 'ShinyBotHunter.Qa', 'Cheats', 'hgss-usa-rev0', 'wild-shiny.cht')
 const CHEAT_TARGET = path.join(BIZHAWK, 'NDS', 'Cheats', 'Pokemon HeartGold.cht')
-const PATCH_SITES: [number, number][] = [[0x02247d90, 0x2300], [0x02247d98, 0xfe3f]]
+// [address, original, patched] for the two halfwords of the wild-shiny cheat.
+const PATCH_SITES: [number, number, number][] = [[0x02247d90, 0x2300, 0x682b], [0x02247d98, 0xfe3f, 0xfdbb]]
 const Y_ADDR = 0x21da6fc
 const PHASE_TITLE = 'HGSS — Route 33'
 const TEN_MINUTES = 10 * 60 * 1000
@@ -65,6 +66,9 @@ test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', 
     const pages = { admin, recent, phase }
     const countEl = phase.getByTestId('phase-encounter-count')
     const encounterCount = async (): Promise<number> => Number((await countEl.textContent())!.replace(/\D/g, ''))
+    // The count reads 0 until the phase info and encounters arrive together; the loading line goes when they do.
+    await expect(countEl).toBeVisible({ timeout: 60_000 })
+    await expect(phase.getByText('Loading milestone requirements...')).toHaveCount(0, { timeout: 60_000 })
     const before = await encounterCount()
     step(`windows attached; Route 33 encounters before: ${before}`)
 
@@ -76,17 +80,22 @@ test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', 
     const card = admin.getByTestId('emulator-card-0')
     const wildPicker = card.getByRole('button', { name: 'Wild Encounter', exact: true })
     await expect(wildPicker).toBeVisible({ timeout: 5 * 60 * 1000 })
+    // The card appears before the Continue macro has run; the form's button reads "Starting..." until the launch request returns.
+    await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * 60 * 1000 })
     startEmulatorRecorder()
     await shotAll('01-launched', pages)
 
-    // 6. The patch must not be active before the hotkey.
-    for (const [addr, original] of PATCH_SITES) {
+    // 6. The patch must not be active before the hotkey. Other overlays share these addresses while
+    // the game is still loading, so wait until the site holds either the original or the patched value.
+    for (const [addr, original, patched] of PATCH_SITES) {
+      await expect.poll(async () => [original, patched].includes(await readU16(addr)), { timeout: 60_000, intervals: [500] }).toBe(true)
       const value = await readU16(addr)
       step(`patch site ${addr.toString(16)} = ${value.toString(16)}`)
       expect(value, 'patch active at launch').toBe(original)
     }
 
-    // 7. Two tiles down from the path into the grass.
+    // 7. Two tiles down from the path into the grass. The position reads -1 until the overworld has faded in.
+    await expect.poll(async () => toS16(await readU32(Y_ADDR)), { timeout: 60_000, intervals: [500] }).toBeGreaterThan(0)
     const y = toS16(await readU32(Y_ADDR))
     await runMacro(`M.Down.${y + 2}.${Y_ADDR}`)
     expect(toS16(await readU32(Y_ADDR))).toBe(y + 2)
