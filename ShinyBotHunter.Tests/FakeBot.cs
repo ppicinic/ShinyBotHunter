@@ -1,6 +1,10 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -20,6 +24,8 @@ namespace ShinyBotHunter.Tests
         public bool Disposed { get; private set; }
 
         public GameFlavor GameFlavor => GameFlavor.HGSS;
+        public GameProfile Profile { get; } = HgssProfile.Create(new PokemonMetadataService(null!));
+        public IPointerService Addresses => Profile.Addresses(0);
         public string GameFileName => "fake.nds";
 
         public Task LaunchAsync() => launch;

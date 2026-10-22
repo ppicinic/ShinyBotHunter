@@ -78,7 +78,7 @@ namespace ShinyBotHunter.BotEvents
                 .GetPokemonMetadata(entry.Starter).Id;
             // The in-battle structures store internal indices rather than dex numbers.
             expectedInternalSpecies = Gen3PokemonParser.ToInternalSpecies(expectedSpecies);
-            pointers = provider.GetRequiredService<GameServices>().Pointers(GameFlavor.RS);
+            pointers = bot.Addresses;
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)

@@ -1,8 +1,10 @@
 ﻿using System.Text;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
@@ -14,14 +16,20 @@ namespace ShinyBotHunter.Bot
         private IMemoryClient memoryClient;
         private IDataReader dataReader;
         private GameContext? context;
-        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader, GameContext? context = null)
+        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
         {
             this.launcher = launcher;
             this.commandClient = commandClient;
             this.memoryClient = memoryClient;
             this.dataReader = reader;
+            this.Profile = profile;
+            this.Addresses = addresses;
             this.context = context;
         }
+
+        public GameProfile Profile { get; }
+
+        public IPointerService Addresses { get; }
 
         public void ClearMacro()
         {
@@ -61,7 +69,7 @@ namespace ShinyBotHunter.Bot
 
         public string GameFileName => this.launcher.GameFileName;
 
-        public GameFlavor GameFlavor => this.context?.GameFlavor ?? GameFlavor.HGSS;
+        public GameFlavor GameFlavor => Profile.Flavor;
 
         public void HoldFrames(string button, int frames)
         {

@@ -26,13 +26,7 @@ namespace ShinyBotHunter.Service.Pointers
 
         public int BoxPokemonSize => 136;
 
-        public int BoxStorage => -0x148D8;
-
-        public int BoxCount => 18;
-
-        public int BoxCapacity => 30;
-
-        public int BoxStride => 4096;
+        public BoxLayout? BoxLayout { get; } = new(-0x148D8, 18, 30, 4096);
 
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 

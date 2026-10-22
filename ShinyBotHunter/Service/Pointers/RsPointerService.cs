@@ -55,16 +55,6 @@ namespace ShinyBotHunter.Service.Pointers
         // Box storage lives inside the save block rather than at a standalone address, and nothing in
         // the starter hunt reads it. Left unimplemented so a caller that needs it fails saying so
         // rather than reading an address that was guessed.
-        public int BoxStorage => throw new NotSupportedException(BoxMessage);
-
-        public int BoxCount => throw new NotSupportedException(BoxMessage);
-
-        public int BoxCapacity => throw new NotSupportedException(BoxMessage);
-
-        public int BoxStride => throw new NotSupportedException(BoxMessage);
-
-        private const string BoxMessage =
-            "Ruby/Sapphire box storage is not mapped. It lives inside the save block rather than at a " +
-            "fixed address, and no Gen 3 flow reads it yet.";
+        public BoxLayout? BoxLayout => null;
     }
 }

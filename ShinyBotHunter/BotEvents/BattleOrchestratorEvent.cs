@@ -1,5 +1,4 @@
-﻿﻿using Microsoft.Extensions.DependencyInjection;
-using Discord;
+﻿﻿using Discord;
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
@@ -37,7 +36,6 @@ namespace ShinyBotHunter.BotEvents
             { 6, "SwitchToPartySlotSix" },
         };
 
-        private IPokemonParser parser;
         private PokemonPersistenceService persistenceService;
         private PokemonMetadataService metadataService;
         private ApplicationSettings appSettings;
@@ -55,10 +53,9 @@ namespace ShinyBotHunter.BotEvents
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
-        public BattleOrchestratorEvent([FromKeyedServices(GameFlavor.HGSS)] IPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
+        public BattleOrchestratorEvent(PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
-            this.parser = parser;
             this.persistenceService = persistenceService;
             this.appSettings = appSettings.Value;
             this.reader = reader;
@@ -407,13 +404,13 @@ namespace ShinyBotHunter.BotEvents
                 foeCount = await bot.ReadByteAsync(foeCountPtr);
             }
 
-            PokemonData? pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
+            PokemonData? pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
             while (pokemon is null || pokemon.IsCorrupt)
             {
                 await Task.Delay(Constant.PollIntervalMs);
                 anchor = await bot.ReadUIntAsync(0x21D4158);
                 foeAnchor = await bot.ReadUIntAsync(anchor + 0x6930);
-                pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
+                pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
             }
 
 
