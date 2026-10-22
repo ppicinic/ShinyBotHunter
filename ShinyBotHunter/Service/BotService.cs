@@ -8,8 +8,6 @@ using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
 namespace ShinyBotHunter.Service
@@ -20,7 +18,6 @@ namespace ShinyBotHunter.Service
         private readonly BotEventRunner runner;
         private BotFactory botFactory;
         private IServiceProvider provider;
-        private EventArgumentOptions[] specialEvents;
         private IHubContext<ElectronHub, IElectronClient> hubContext;
         private ApplicationSettings settings;
         private RomInfoService romInfoService;
@@ -36,22 +33,7 @@ namespace ShinyBotHunter.Service
             runner = new BotEventRunner(slots, RefreshDashboardState);
             this.botFactory = botFactory;
             this.provider = provider;
-            specialEvents = Array.Empty<EventArgumentOptions>();
             this.hubContext = hubContext;
-        }
-
-        public void Init()
-        {
-            string json = File.ReadAllText("./Configs/SpecialEvents/SpecialEvents.json");
-            // String enum names so a condition reads "Eq" in the config rather than 0, and comments
-            // so the file can explain itself the way the event configs do.
-            var options = new JsonSerializerOptions
-            {
-                Converters = { new JsonStringEnumConverter() },
-                ReadCommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true,
-            };
-            specialEvents = JsonSerializer.Deserialize<EventArgumentOptions[]>(json, options)!;
         }
 
         public async Task<Dictionary<int, EmulatorState>> ExecuteNewBotOrSpecialEvent(NewEventArguments args)
@@ -544,7 +526,7 @@ namespace ShinyBotHunter.Service
 
         public EventArgumentOptions[] GetTopLevelOptions()
         {
-            return specialEvents;
+            return EventRegistry.All.Where(e => e.OwnsEmulators && e.Name != "HGSS Shiny Starter Hunt").Select(e => e.Options).ToArray();
         }
 
         public async Task RefreshDashboardState()
