@@ -5,6 +5,7 @@ using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -23,8 +24,10 @@ namespace ShinyBotHunter.Service
         private IHubContext<ElectronHub, IElectronClient> hubContext;
         private ApplicationSettings settings;
         private RomInfoService romInfoService;
-        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext, RomInfoService romInfoService)
+        private GameProfiles profiles;
+        public BotService(IOptions<ApplicationSettings> appSettings, BotFactory botFactory, IServiceProvider provider, IHubContext<ElectronHub, IElectronClient> hubContext, RomInfoService romInfoService, GameProfiles profiles)
         {
+            this.profiles = profiles;
             this.settings = appSettings.Value;
             this.romInfoService = romInfoService;
             // Display slots and ports are one pool shared by every console, so the ceiling on
@@ -173,7 +176,7 @@ namespace ShinyBotHunter.Service
 
                 // The shared state is what the dashboard reads: the event holds it at Waiting while a
                 // shiny is parked, which is what surfaces Resume.
-                var huntState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
+                var huntState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
                 huntState.State.Push(EventState.Running);
                 var huntEvent = new BotAndOrEvent { GameState = huntState };
                 slots.Entries[newPos] = huntEvent;
@@ -218,7 +221,7 @@ namespace ShinyBotHunter.Service
             var ev = provider.GetRequiredService<MultiShinyHunterEvent>();
             var botEvent = new BotAndOrEvent();
             slots.Entries[newPos] = botEvent;
-            runner.StartEvent(newPos, botEvent, ev, new GameState(), "HGSS Shiny Starter Hunt", removeWhenDone: true);
+            runner.StartEvent(newPos, botEvent, ev, new GameState { Profile = profiles.Get(GameFlavor.HGSS) }, "HGSS Shiny Starter Hunt", removeWhenDone: true);
             return GetBotDashboardState();
         }
 
@@ -293,7 +296,7 @@ namespace ShinyBotHunter.Service
                 var eggEvent = new HgssTogepiEggEvent(slots.Entries[pos].Bot!, slots.Entries[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
                 slots.Entries[pos].GameState = new GameState()
                 {
-                    GameFlavor = slots.Entries[pos].Bot!.GameFlavor,
+                    Profile = slots.Entries[pos].Bot!.Profile,
                     BotService = this,
                     Bot = slots.Entries[pos].Bot!,
                     Milestone = args.PhaseName,
@@ -312,7 +315,7 @@ namespace ShinyBotHunter.Service
                     // The hunt's main task is still running; Resume is a call into it, not a restart.
                     // Awaited under the gate, so a second Resume click settles the next parked shiny
                     // rather than the same one, and a fault fails this request.
-                    var resumeState = new GameState { GameFlavor = GameFlavor.RS, BotService = this, Target = new ShinyTarget() };
+                    var resumeState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Target = new ShinyTarget() };
                     resumeState.State.Push(EventState.Resume);
                     await multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None);
                     await RefreshDashboardState();
@@ -434,7 +437,7 @@ namespace ShinyBotHunter.Service
             return new GameState()
             {
                 OriginalBattleMode = leg.TrainType != TrainType.None ? BattleMode.Battle : BattleMode.Flee,
-                GameFlavor = slots.Entries[pos].Bot!.GameFlavor,
+                Profile = slots.Entries[pos].Bot!.Profile,
                 BotService = this,
                 Target = leg.Target,
                 Milestone = leg.PhaseName,

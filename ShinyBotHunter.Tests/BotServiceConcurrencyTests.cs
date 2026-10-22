@@ -53,7 +53,7 @@ namespace ShinyBotHunter.Tests
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, launch);
             // The launch and idle-cancel paths touch neither the hub, the provider nor the ROM index.
-            return (new BotService(settings, factory, null!, null!, null!), factory);
+            return (new BotService(settings, factory, null!, null!, null!, null!), factory);
         }
 
         [Fact]

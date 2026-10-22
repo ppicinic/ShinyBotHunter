@@ -1,5 +1,6 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -29,7 +30,8 @@ namespace ShinyBotHunter.BotEvents
         public BattleMode BattleMode { get; set; }
         public BattleMode OriginalBattleMode { get; set; }
         public Stack<EventState> State { get; private set; } = new Stack<EventState>();
-        public GameFlavor GameFlavor { get; set; } = GameFlavor.HGSS;
+        public GameProfile Profile { get; set; } = null!;
+        public GameFlavor GameFlavor => Profile.Flavor;
         public string Milestone { get; set; } = null!;
 
         public PokemonBattleState? BattleState { get; set; } = null;
