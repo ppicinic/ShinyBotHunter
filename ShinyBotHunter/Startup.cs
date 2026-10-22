@@ -7,16 +7,13 @@ using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
-using ShinyBotHunter.Macro;
-using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Persistence.PostgreSQL;
-using ShinyBotHunter.Pokemon;
-using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
-using ShinyBotHunter.Service.BattlePokemonParser;
-using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Tools;
 using System.Text.Json.Serialization;
 
@@ -47,7 +44,6 @@ namespace ShinyBotHunter
             services.GetRequiredService<NotificationService>().Init();
             services.GetRequiredService<MongoCaughtPokemonDao>().Init();
             services.GetRequiredService<PokemonPersistenceService>().Init();
-            services.GetRequiredService<BotService>().Init();
             Console.WriteLine(string.Join(", ", args));
             await MainRunnerAsync(app, services);
 
@@ -96,7 +92,9 @@ namespace ShinyBotHunter
                 .AddSingleton<BizHawkReaderWriterLock>()
                 .AddSingleton<MongoDbMetadataDao>()
                 .AddSingleton<PokemonMetadataService>()
-                .AddSingleton<HgssPokemonParser>()
+                .AddSingleton(sp => new GameProfiles(
+                    HgssProfile.Create(sp.GetRequiredService<PokemonMetadataService>()),
+                    RsProfile.Create(sp.GetRequiredService<PokemonMetadataService>())))
                 .AddSingleton<HgssShinyStarterEventFactory>()
                 .AddSingleton<PokemonPersistenceService>()
                 .AddSingleton<IEncounterDao, PostgreSQLEncounterDao>()
@@ -109,24 +107,12 @@ namespace ShinyBotHunter
                 .AddSingleton<MacroRecordingService>()
                 .AddSingleton<LocationService>()
                 .AddSingleton<PokemonStateReader>()
-                .AddSingleton<GraphService>(x => GraphService.Instance)
-                .AddSingleton<PathfindingService>()
-                .AddSingleton<MapService>(x => MapService.Instance)
                 .AddSingleton<SmogonDamageService>()
                 .AddTransient<BattleOrchestratorEvent>()
                 .AddTransient<NavigatorEvent>()
-                .AddSingleton<GameServices>()
                 .AddSingleton<LegalityService>()
                 .AddSingleton<RsStartMenuService>()
                 .AddSingleton<StarterHuntStateStore>()
-                // Per-game services, resolved by flavor at the point a bot's game is known rather
-                // than named literally at construction. A new flavor is added by registering its
-                // three implementations here.
-                .AddKeyedSingleton<IPointerService>(GameFlavor.HGSS, new HgssPointerService())
-                .AddKeyedSingleton<IBattlePokemonParser>(GameFlavor.HGSS, new HgssBattlePokemonParser())
-                .AddKeyedSingleton<IPokemonParser>(GameFlavor.HGSS, (sp, _) => sp.GetRequiredService<HgssPokemonParser>())
-                .AddKeyedSingleton<IPointerService>(GameFlavor.RS, new RsPointerService())
-                .AddKeyedSingleton<IPokemonParser>(GameFlavor.RS, (sp, _) => new Gen3PokemonParser(sp.GetRequiredService<PokemonMetadataService>()))
                 .AddSingleton(new DiscordSocketConfig
                 {
                     // Safe default for initial bot setup; add privileged intents later if needed.

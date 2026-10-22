@@ -26,15 +26,15 @@ namespace ShinyBotHunter.Scripts.Maps
         private Dictionary<int, List<Node>> maps = new Dictionary<int, List<Node>>(); 
         private Dictionary<int, MapLookup> mapLookup = new Dictionary<int, MapLookup>();
 
-        public static GraphService Instance { get; private set; } = new GraphService();
-        private GraphService()
+        public GraphService(string directory)
         {
-            LoadGraph();
+            LoadGraph(directory);
         }
-        private void LoadGraph()
+        internal GraphService() { }
+        private void LoadGraph(string directory)
         {
             Console.WriteLine("Load graphs");
-            using (FileStream compressedFileStream = new FileStream(".\\data\\HGSS\\graph.bin", FileMode.Open))
+            using (FileStream compressedFileStream = new FileStream(Path.Combine(directory, "graph.bin"), FileMode.Open))
             using (GZipStream decompressor = new GZipStream(compressedFileStream, CompressionMode.Decompress))
             using (BinaryReader reader = new BinaryReader(decompressor))
             {
@@ -82,7 +82,7 @@ namespace ShinyBotHunter.Scripts.Maps
                     fromNode.Edges.Add(edge);
                 }
             }
-            mapLookup = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText(".\\data\\HGSS\\mapreverselookup.json"))!;
+            mapLookup = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText(Path.Combine(directory, "mapreverselookup.json")))!;
         }
 
         public List<Node> GetNodesFromMap(int mapId, bool isInternalId = false)

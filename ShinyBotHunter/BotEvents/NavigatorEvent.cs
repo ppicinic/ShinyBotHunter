@@ -1,5 +1,6 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
@@ -12,7 +13,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
-        private readonly PathfindingService pathfindingService;
         private readonly PokemonStateReader reader;
 
         // How often the party is re-read while walking to catch a poison faint. Each tick costs a
@@ -63,9 +63,8 @@ namespace ShinyBotHunter.BotEvents
             Blocked,
         }
 
-        public NavigatorEvent(PathfindingService pathfindingService, PokemonStateReader reader)
+        public NavigatorEvent(PokemonStateReader reader)
         {
-            this.pathfindingService = pathfindingService;
             this.reader = reader;
         }
 
@@ -88,11 +87,10 @@ namespace ShinyBotHunter.BotEvents
             await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
             if (state.NavigationPath is null)
             {
-                var mapId = (int)await state.Bot.GetMapId();
-                var x = await state.Bot.GetTrainerXPos();
-                var y = await state.Bot.GetTrainerYPos();
-                var facing = await state.Bot.GetFacing();
-                var nodePath = await pathfindingService.FindClosestPokemonCenter(mapId, x, y, new Capability(), facing);
+                var mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+                var (x, y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+                var facing = await state.Bot.Overworld.GetFacingAsync(cancellationToken);
+                var nodePath = await state.Bot.Profile.Pathfinding!.FindClosestPokemonCenter(mapId, x, y, new Capability(), (byte)facing);
                 if (nodePath is null)
                 {
                     Console.WriteLine($"[Navigator] No pokemon center found from map={mapId} ({x},{y})");
@@ -185,9 +183,8 @@ namespace ShinyBotHunter.BotEvents
             await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
             if (state.NavigationPath is null)
             {
-                var mapId = (int)await state.Bot.GetMapId();
-                var x = await state.Bot.GetTrainerXPos();
-                var y = await state.Bot.GetTrainerYPos();
+                var mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+                var (x, y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
 
                 // Already home -- pathfinding a zero-length route would either fail or emit an
                 // empty macro, so short circuit. Common when the run ends between encounters.
@@ -197,11 +194,11 @@ namespace ShinyBotHunter.BotEvents
                     return;
                 }
 
-                var facing = await state.Bot.GetFacing();
-                var nodePath = await pathfindingService.FindNodePath(
+                var facing = await state.Bot.Overworld.GetFacingAsync(cancellationToken);
+                var nodePath = await state.Bot.Profile.Pathfinding!.FindNodePath(
                     mapId, x, y,
                     state.StartMapId, state.StartX, state.StartY,
-                    new Capability(), facing);
+                    new Capability(), (byte)facing);
                 if (nodePath is null)
                 {
                     Console.WriteLine($"[Navigator] No path back to start from map={mapId} ({x},{y}) -- completing in place");
@@ -285,10 +282,9 @@ namespace ShinyBotHunter.BotEvents
 
                 var toNode = path[state.NavigationPathIndex + 1].Node;
 
-                var mapId = (int)await state.Bot.GetMapId();
-                var x = await state.Bot.GetTrainerXPos();
-                var y = await state.Bot.GetTrainerYPos();
-                var facing = await state.Bot.GetFacing();
+                var mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+                var (x, y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+                var facing = await state.Bot.Overworld.GetFacingAsync(cancellationToken);
 
                 // If the node after toNode is on a different map, toNode is a portal tile
                 // (door/cave entrance). Pass the destination node's internal map id so the
@@ -308,7 +304,7 @@ namespace ShinyBotHunter.BotEvents
                 bool overshoot = false;
                 if (toNodeIsPortal)
                 {
-                    var portalTile = pathfindingService.GetAdjacentPortalTarget(mapId, toNode.X, toNode.Y, x, y);
+                    var portalTile = state.Bot.Profile.Pathfinding!.GetAdjacentPortalTarget(mapId, toNode.X, toNode.Y, x, y);
                     if (portalTile.HasValue)
                     {
                         destX = portalTile.Value.X;
@@ -323,7 +319,7 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex}: map={mapId} ({x},{y}) -> ({destX},{destY}) portal={toNodeIsPortal} overshoot={overshoot}");
-                string? macro = pathfindingService.Pathfind(mapId, x, y, destX, destY, new Capability(), facing, destBotMapId, overshoot, PenaltiesForMap(state, mapId));
+                string? macro = state.Bot.Profile.Pathfinding!.Pathfind(mapId, x, y, destX, destY, new Capability(), (byte)facing, destBotMapId, overshoot, PenaltiesForMap(state, mapId));
                 Console.WriteLine($"[Navigator] Macro: {(macro ?? "null")}");
 
                 if (macro is not null)
@@ -358,7 +354,7 @@ namespace ShinyBotHunter.BotEvents
 
                 // After a portal crossing, poll until we're on the destination map
                 // and coordinates are valid.
-                var mapIdAfter = (int)await state.Bot.GetMapId();
+                var mapIdAfter = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
                 if (toNodeIsPortal)
                 {
                     var warpDest = path[state.NavigationPathIndex + 2].Node;
@@ -414,14 +410,12 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
-            short lastX = await bot.GetTrainerXPos();
-            short lastY = await bot.GetTrainerYPos();
+            (short lastX, short lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
             var still = Stopwatch.StartNew();
             while (true)
             {
                 await Task.Delay(StallPollIntervalMs, cancellationToken);
-                short x = await bot.GetTrainerXPos();
-                short y = await bot.GetTrainerYPos();
+                (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != lastX || y != lastY)
                 {
                     lastX = x;
@@ -447,9 +441,8 @@ namespace ShinyBotHunter.BotEvents
             state.Bot.RunMacroString(DismissTextMacro);
             await state.Bot.WaitForMacroAsync(cancellationToken);
 
-            int mapId = (int)await state.Bot.GetMapId();
-            int x = await state.Bot.GetTrainerXPos();
-            int y = await state.Bot.GetTrainerYPos();
+            int mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+            (int x, int y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
 
             if (!state.TilePenalties.TryGetValue(mapId, out var penalties))
             {
@@ -665,7 +658,7 @@ namespace ShinyBotHunter.BotEvents
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                if ((int)await bot.GetMapId() == destMapId)
+                if ((int)await bot.Overworld.GetMapIdAsync(cancellationToken) == destMapId)
                     break;
                 await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
@@ -673,8 +666,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    var x = await bot.GetTrainerXPos();
-                    var y = await bot.GetTrainerYPos();
+                    var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
                     await Task.Delay(Constant.PollIntervalMs, cancellationToken);
@@ -687,16 +679,16 @@ namespace ShinyBotHunter.BotEvents
         // After a battle the overworld coordinates read (0,0) for a moment while the field
         // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
         private static Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
-            => Overworld.WaitForReadyAsync(bot, cancellationToken);
+            => Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
-            byte battleValue = await bot.GetBattleValue();
-            while (battleValue != 0x41 && battleValue != 0x97 && battleValue != 0xC0
+            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution)
                    && !cancellationToken.IsCancellationRequested)
             {
                 await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-                battleValue = await bot.GetBattleValue();
+                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
             }
         }
     }

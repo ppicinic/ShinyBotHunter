@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Options;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
@@ -11,19 +13,22 @@ namespace ShinyBotHunter.Bot
         private ApplicationSettings applicationSettings;
         private IServiceProvider serviceProvider;
         private RomInfoService romInfoService;
-        public BotFactory(IOptions<ApplicationSettings> appSettings, IServiceProvider provider, RomInfoService romInfoService)
+        private GameProfiles profiles;
+        public BotFactory(IOptions<ApplicationSettings> appSettings, IServiceProvider provider, RomInfoService romInfoService, GameProfiles profiles)
         {
             applicationSettings = appSettings.Value;
             serviceProvider = provider;
             this.romInfoService = romInfoService;
+            this.profiles = profiles;
         }
         public virtual IBot CreateBot(GameContext context)
         {
+            GameProfile profile = profiles.Get(context.GameFlavor);
+            IPointerService addresses = profile.Addresses(context.Revision);
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
             IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);
-            IDataReader reader = CreateReader(context, memoryClient);
-            return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, context);
+            return new Bot(apiHawkLauncher, commandClient, memoryClient, profile, addresses, context);
         }
 
         /// <summary>
@@ -61,17 +66,6 @@ namespace ShinyBotHunter.Bot
                 GameFlavor = rom?.Flavor ?? GameFlavor.HGSS,
             };
         }
-
-        /// <summary>
-        /// Game-state reads are per game, so the reader follows the ROM's flavor. An unrecognised
-        /// flavor gets the HGSS reader rather than nothing, because a bot still has to be launchable
-        /// for macro recording -- reads are what fail, and they fail loudly.
-        /// </summary>
-        private static IDataReader CreateReader(GameContext context, IMemoryClient memoryClient) => context.GameFlavor switch
-        {
-            GameFlavor.RS => new RsDataReader(memoryClient),
-            _ => new HgssDataReader(memoryClient),
-        };
 
         private static int Setting(Dictionary<string, int> settings, string consoleKey)
         {

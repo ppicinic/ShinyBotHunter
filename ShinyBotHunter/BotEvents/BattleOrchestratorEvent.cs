@@ -1,8 +1,8 @@
-﻿﻿using Microsoft.Extensions.DependencyInjection;
-using Discord;
+﻿﻿using Discord;
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -37,7 +37,6 @@ namespace ShinyBotHunter.BotEvents
             { 6, "SwitchToPartySlotSix" },
         };
 
-        private IPokemonParser parser;
         private PokemonPersistenceService persistenceService;
         private PokemonMetadataService metadataService;
         private ApplicationSettings appSettings;
@@ -55,10 +54,9 @@ namespace ShinyBotHunter.BotEvents
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
-        public BattleOrchestratorEvent([FromKeyedServices(GameFlavor.HGSS)] IPokemonParser parser, PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
+        public BattleOrchestratorEvent(PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
-            this.parser = parser;
             this.persistenceService = persistenceService;
             this.appSettings = appSettings.Value;
             this.reader = reader;
@@ -132,11 +130,6 @@ namespace ShinyBotHunter.BotEvents
             state.SwapState(EventState.WaitForMovesEnd);
         }
 
-        internal static bool IsBattle(byte battleValue)
-        {
-            return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
-        }
-
         private async Task WaitForMoveEnd(GameState state, CancellationToken cancellationToken)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -183,7 +176,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (!IsBattle(await state.Bot.GetBattleValue(token)))
+                        if ((await state.Bot.State.ReadAsync(token)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
                             return (EventState.BattleComplete, null);
                         await Task.Delay(Constant.PollIntervalMs, token);
                     }
@@ -200,7 +193,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (await state.Bot.GetBattleMenuState(token) == 1)
+                        if ((await state.Bot.State.ReadAsync(token)).Screen == GameScreen.BattleMenu)
                         {
                             var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                             if (battleState is not null)
@@ -374,7 +367,7 @@ namespace ShinyBotHunter.BotEvents
             var sw = Stopwatch.StartNew();
             while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
             {
-                if (!IsBattle(await state.Bot.GetBattleValue(ct)))
+                if ((await state.Bot.State.ReadAsync(ct)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
                 {
                     return SwitchOutcome.BattleOver;
                 }
@@ -392,28 +385,28 @@ namespace ShinyBotHunter.BotEvents
         private async Task PokemonDataPending(GameState state, CancellationToken ct)
         {
             IBot bot = state.Bot;
-            uint anchor = await bot.ReadUIntAsync(0x21D4158);
-            uint foeAnchorPtr = anchor + 0x6930;
+            uint anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
+            uint foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
             uint foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-            uint foeCountPtr = foeAnchor + 0xC14;
+            uint foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
             var foeCount = await bot.ReadByteAsync(foeCountPtr);
             while (foeCount == 0)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(0x21D4158);
-                foeAnchorPtr = anchor + 0x6930;
+                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
+                foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
                 foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-                foeCountPtr = foeAnchor + 0xC14;
+                foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
                 foeCount = await bot.ReadByteAsync(foeCountPtr);
             }
 
-            PokemonData? pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
+            PokemonData? pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
             while (pokemon is null || pokemon.IsCorrupt)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(0x21D4158);
-                foeAnchor = await bot.ReadUIntAsync(anchor + 0x6930);
-                pokemon = pokemon = parser.Parse(await bot.ReadBytesAsync(foeAnchor + 0xC18, 0xEC));
+                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
+                foeAnchor = await bot.ReadUIntAsync(anchor + bot.Addresses.EnemyAnchor);
+                pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
             }
 
 
@@ -421,15 +414,11 @@ namespace ShinyBotHunter.BotEvents
 
             // this code is repeated but it's unique cause we need to progress through the first pokemon.
             bot.RunRepeatMacro("T.B;W.5");
-            anchor = await bot.ReadUIntAsync(0x21D4158);
-            var battleMenuStatePtr = anchor + 0x230EC;
-            byte battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
-            while (battleMenuState != 1)
+            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+            while (screen != GameScreen.BattleMenu)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(0x21D4158);
-                battleMenuStatePtr = anchor + 0x230EC;
-                battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
+                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
             }
             bot.ClearMacro();
             try

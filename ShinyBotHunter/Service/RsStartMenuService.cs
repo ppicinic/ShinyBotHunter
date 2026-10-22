@@ -1,4 +1,5 @@
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Service
 {
@@ -16,12 +17,6 @@ namespace ShinyBotHunter.Service
     /// </summary>
     public class RsStartMenuService
     {
-        // sStartMenuCursorPos, sNumStartMenuActions, sCurrentStartMenuActions. Verified identical
-        // across Ruby and Sapphire at every revision.
-        private const uint CursorPosAddress = 0x0202E8FC;
-        private const uint ActionCountAddress = 0x0202E8FD;
-        private const uint ActionsAddress = 0x0202E8FE;
-
         /// <summary>The actions array is fixed-size regardless of how many entries are in use.</summary>
         private const int ActionsLength = 10;
 
@@ -33,11 +28,11 @@ namespace ShinyBotHunter.Service
             public string Describe() => $"cursor {CursorPos}, {Count} entries [{string.Join(", ", Actions.Take(Count))}]";
         }
 
-        public async Task<MenuState> ReadAsync(IMemoryClient memory)
+        public async Task<MenuState> ReadAsync(IMemoryClient memory, RsPointerService addresses)
         {
-            byte cursor = await memory.ReadByteAsync(CursorPosAddress);
-            byte count = await memory.ReadByteAsync(ActionCountAddress);
-            byte[] actions = await memory.ReadBytesAsync(ActionsAddress, ActionsLength);
+            byte cursor = await memory.ReadByteAsync(addresses.StartMenuCursorPos);
+            byte count = await memory.ReadByteAsync(addresses.StartMenuActionCount);
+            byte[] actions = await memory.ReadBytesAsync(addresses.StartMenuActions, ActionsLength);
             return new MenuState(cursor, count, actions);
         }
 

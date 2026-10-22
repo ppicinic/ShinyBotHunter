@@ -1,9 +1,11 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -48,10 +50,6 @@ namespace ShinyBotHunter.BotEvents
             Complete,
         }
 
-        // Trainer coordinates, the same addresses RunEncounterEvent paces against.
-        private const uint TrainerXAddress = 0x21DA6F4;
-        private const uint TrainerYAddress = 0x21DA6FC;
-
         // How long a single party read is retried before the caller is told the read failed. Short:
         // every caller here is already inside its own polling loop with its own timeout.
         private const int PartyReadAttempts = 3;
@@ -87,17 +85,19 @@ namespace ShinyBotHunter.BotEvents
         private readonly ShinyAlertService shinyAlertService;
         private readonly BotService botService;
         private readonly EggHuntConfig config;
+        private readonly HgssPointerService addresses;
 
         private EggHuntState state = EggHuntState.NotStarted;
 
         public HgssTogepiEggEvent(IBot bot, GameFlavor flavor, string phase, IServiceProvider provider, BotService botService)
         {
             this.bot = bot;
+            this.addresses = (HgssPointerService)bot.Addresses;
             this.flavor = flavor;
             this.phase = phase;
             this.botService = botService;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
-            this.pathfindingService = provider.GetRequiredService<PathfindingService>();
+            this.pathfindingService = bot.Profile.Pathfinding!;
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             // Loaded here rather than at boot so the corridor can be corrected
@@ -181,14 +181,13 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         private async Task EnsureStartPositionAsync(CancellationToken cancellationToken)
         {
-            await Overworld.WaitForReadyAsync(bot, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
 
-            ushort mapId = await bot.GetMapId();
-            short x = await bot.GetTrainerXPos();
-            short y = await bot.GetTrainerYPos();
-            byte facing = await bot.GetFacing();
+            ushort mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+            (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
+            Direction facing = await bot.Overworld.GetFacingAsync(cancellationToken);
 
-            if (mapId == config.StartMapId && x == config.StartX && y == config.StartY && facing == (byte)config.StartFacingDirection)
+            if (mapId == config.StartMapId && x == config.StartX && y == config.StartY && facing == config.StartFacingDirection)
             {
                 Console.WriteLine($"[TogepiEgg] Already at the start position (map={mapId} ({x},{y}) facing={config.StartFacingDirection}).");
                 return;
@@ -206,7 +205,7 @@ namespace ShinyBotHunter.BotEvents
             if (x != config.StartX || y != config.StartY)
             {
                 Console.WriteLine($"[TogepiEgg] At map={mapId} ({x},{y}); walking to the start tile ({config.StartX},{config.StartY}).");
-                string? walk = pathfindingService.Pathfind(mapId, x, y, config.StartX, config.StartY, new Capability(), facing);
+                string? walk = pathfindingService.Pathfind(mapId, x, y, config.StartX, config.StartY, new Capability(), (byte)facing);
                 if (walk is null)
                 {
                     throw new InvalidOperationException(
@@ -214,19 +213,18 @@ namespace ShinyBotHunter.BotEvents
                 }
                 bot.RunMacroString(walk);
                 await bot.WaitForMacroAsync(cancellationToken);
-                await Overworld.WaitForReadyAsync(bot, cancellationToken);
+                await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
 
-                x = await bot.GetTrainerXPos();
-                y = await bot.GetTrainerYPos();
+                (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != config.StartX || y != config.StartY)
                 {
                     throw new InvalidOperationException(
                         $"Walked to the start tile but ended up at ({x},{y}) instead of ({config.StartX},{config.StartY}).");
                 }
-                facing = await bot.GetFacing();
+                facing = await bot.Overworld.GetFacingAsync(cancellationToken);
             }
 
-            if (facing != (byte)config.StartFacingDirection)
+            if (facing != config.StartFacingDirection)
             {
                 // A short tap turns in place rather than stepping -- the same behaviour SpinEncounterEvent
                 // relies on. Only safe because the facing differs; tapping the direction already faced
@@ -253,7 +251,7 @@ namespace ShinyBotHunter.BotEvents
             SetState(EggHuntState.ReceivingEgg);
             // The macro opens by pressing A immediately, so it has to start from a settled overworld --
             // whether we just walked here or just came back from a soft reset.
-            await Overworld.WaitForReadyAsync(bot, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
             await Task.Delay(config.StartPositionSettleMs, cancellationToken);
 
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, config.ReceiveEggMacro));
@@ -314,7 +312,8 @@ namespace ShinyBotHunter.BotEvents
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    int pos = config.IsVerticalCorridor ? await bot.GetTrainerYPos() : await bot.GetTrainerXPos();
+                    var position = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    int pos = config.IsVerticalCorridor ? position.Y : position.X;
                     if (pos == lastPos)
                     {
                         consecutiveSame++;
@@ -425,7 +424,7 @@ namespace ShinyBotHunter.BotEvents
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, config.ContinueMacro));
             await bot.WaitForMacroAsync(cancellationToken);
             await Task.Delay(config.PostContinueDelayMs, cancellationToken);
-            await Overworld.WaitForReadyAsync(bot, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
         }
 
         // -- Helpers ----------------------------------------------------------------------------
@@ -440,9 +439,9 @@ namespace ShinyBotHunter.BotEvents
             if (config.IsVerticalCorridor)
             {
                 // Up decreases y, matching RunEncounterEvent.
-                return $"M.Up.{config.HatchLow}.{TrainerYAddress};M.Down.{config.HatchHigh}.{TrainerYAddress}";
+                return $"M.Up.{config.HatchLow}.{addresses.TrainerY};M.Down.{config.HatchHigh}.{addresses.TrainerY}";
             }
-            return $"M.Left.{config.HatchLow}.{TrainerXAddress};M.Right.{config.HatchHigh}.{TrainerXAddress}";
+            return $"M.Left.{config.HatchLow}.{addresses.TrainerX};M.Right.{config.HatchHigh}.{addresses.TrainerX}";
         }
 
         private static PokemonData? FindByPid(PokemonData?[]? party, uint pid)

@@ -1,5 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -22,21 +23,24 @@ namespace ShinyBotHunter.Tests
             public PokemonData? Parse(byte[] raw) => new PokemonData();
         }
 
-        private static PokemonStateReader BuildReader()
-        {
-            ServiceCollection services = new();
-            services.AddKeyedSingleton<IPointerService>(GameFlavor.HGSS, new HgssPointerService());
-            services.AddKeyedSingleton<IPokemonParser>(GameFlavor.HGSS, new StubParser());
-            services.AddSingleton<GameServices>();
-            return new PokemonStateReader(services.BuildServiceProvider().GetRequiredService<GameServices>());
-        }
+        private static readonly HgssPointerService Addresses = new();
+
+        private static readonly GameProfile Profile = new(
+            GameFlavor.HGSS,
+            new GameCapabilities(false, false, false, true, false, false),
+            [0],
+            _ => Addresses,
+            new StubParser(),
+            battleParser: null);
+
+        private static PokemonStateReader BuildReader() => new();
 
         [Fact]
         public async Task PartyRead_UsesTheHgssMemoryMap()
         {
             FakeMemoryClient memory = new(partySize: 2);
 
-            await BuildReader().GetPartyState(memory, GameFlavor.HGSS);
+            await BuildReader().GetPartyState(memory, Profile, Addresses);
 
             FakeMemoryClient.PartyRead read = Assert.IsType<FakeMemoryClient.PartyRead>(memory.LastPartyRead);
             Assert.Equal(0x21D4158u, read.Anchor);
@@ -56,7 +60,7 @@ namespace ShinyBotHunter.Tests
         {
             FakeMemoryClient memory = new(partySize: 3);
 
-            var state = await BuildReader().GetPartyState(memory, GameFlavor.HGSS);
+            var state = await BuildReader().GetPartyState(memory, Profile, Addresses);
 
             Assert.Equal(3, state.PartySize);
             Assert.NotNull(state.PartyPokemon[0]);
@@ -68,7 +72,7 @@ namespace ShinyBotHunter.Tests
         {
             FakeMemoryClient memory = new(partySize: 0);
 
-            await BuildReader().GetPokemonState(memory, GameFlavor.HGSS);
+            await BuildReader().GetPokemonState(memory, Profile, Addresses);
 
             // 18 boxes of 4096 bytes, read as a single block rather than slot by slot.
             Assert.Contains(memory.ByteReads, r => r.Length == 18 * 4096);
@@ -77,15 +81,16 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task ReadingAFlavorWithNoServices_SaysWhatIsMissing()
+        public async Task BoxRead_OnRsProfile_ThrowsNamingCanReadBoxes()
         {
-            FakeMemoryClient memory = new();
+            GameProfile rs = RsProfile.Create(new PokemonMetadataService(null!));
+            FakeMemoryClient memory = new(partySize: 0);
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => BuildReader().GetPartyState(memory, GameFlavor.RS));
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => BuildReader().GetPokemonState(memory, rs, rs.Addresses(1)));
 
-            Assert.Contains("IPointerService", ex.Message);
-            Assert.Contains("RS", ex.Message);
+            Assert.Contains("CanReadBoxes", ex.Message);
+            Assert.Null(memory.LastPartyRead);
+            Assert.Empty(memory.ByteReads);
         }
     }
 }

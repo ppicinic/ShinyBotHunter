@@ -2,7 +2,6 @@
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -33,7 +32,6 @@ namespace ShinyBotHunter.BotEvents
         private NavigatorEvent navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
-        private MapService mapService;
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
 
@@ -44,7 +42,6 @@ namespace ShinyBotHunter.BotEvents
             navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
-            this.mapService = provider.GetRequiredService<MapService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
         }
@@ -77,9 +74,8 @@ namespace ShinyBotHunter.BotEvents
                 if(state.StartX == -1 && state.StartY == -1 && state.StartMapId == -1)
                 {
                     // TODO set map start point.
-                    state.StartMapId = await state.Bot.GetMapId();
-                    state.StartX = await state.Bot.GetTrainerXPos();
-                    state.StartY = await state.Bot.GetTrainerYPos();
+                    state.StartMapId = await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+                    (state.StartX, state.StartY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
                     Console.WriteLine($"[Orchestrator] Start tile captured: map={state.StartMapId} ({state.StartX},{state.StartY})");
                 }
                 // Every Init, not just the first: a chained leg re-enters here with the start tile

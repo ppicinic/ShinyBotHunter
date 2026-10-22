@@ -1,4 +1,4 @@
-using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using System.Diagnostics;
 
 namespace ShinyBotHunter.Util
@@ -19,13 +19,12 @@ namespace ShinyBotHunter.Util
         /// started against a facing value that isn't real yet.
         /// </summary>
         /// <returns>True once the coordinates look valid, false if the timeout elapsed first.</returns>
-        public static async Task<bool> WaitForReadyAsync(IBot bot, CancellationToken cancellationToken = default)
+        public static async Task<bool> WaitForReadyAsync(IOverworldReader overworld, CancellationToken cancellationToken = default)
         {
             var sw = Stopwatch.StartNew();
             while (!cancellationToken.IsCancellationRequested && sw.ElapsedMilliseconds < ReadyTimeoutMs)
             {
-                var x = await bot.GetTrainerXPos();
-                var y = await bot.GetTrainerYPos();
+                var (x, y) = await overworld.GetPositionAsync(cancellationToken);
                 // Neither coord can be negative. An edge tile (one == 0) is valid, but both-zero
                 // and any negative are the not-loaded values (e.g. (0,0), (0,-1)).
                 if (x >= 0 && y >= 0 && (x > 0 || y > 0))

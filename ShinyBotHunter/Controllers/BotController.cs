@@ -21,8 +21,20 @@ namespace ShinyBotHunter.Controllers
         [HttpPost("startTopLevelAction")]
         public async Task<ActionResult<Dictionary<int, EmulatorState>>> StartTopLevelAction([FromBody] NewEventArguments args)
         {
-            var state = await botService.ExecuteNewBotOrSpecialEvent(args);
-            return Ok(state);
+            try
+            {
+                return Ok(await botService.ExecuteNewBotOrSpecialEvent(args));
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FileNotFoundException)
+            {
+                // The same mapping as StartAction: a refused request comes back as its message alone.
+                return new ContentResult
+                {
+                    StatusCode = StatusCodes.Status400BadRequest,
+                    Content = ex.Message,
+                    ContentType = "text/plain",
+                };
+            }
         }
 
         [HttpGet("bot/getDashboardState")]

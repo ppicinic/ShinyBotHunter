@@ -1,11 +1,41 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Context;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
 {
+    internal class FakeBotFactory : BotFactory
+    {
+        private readonly Task launch;
+        private readonly GameProfile? profile;
+
+        public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch, GameProfile? profile) : base(settings, null!, null!, null!)
+        {
+            this.launch = launch;
+            this.profile = profile;
+        }
+
+        public List<int> Positions { get; } = new();
+        public List<FakeBot> Bots { get; } = new();
+
+        public override GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
+        {
+            Positions.Add(displayPosition);
+            return new GameContext { SourceGameName = sourceGame, DisplayPosition = displayPosition };
+        }
+
+        public override IBot CreateBot(GameContext context)
+        {
+            var bot = new FakeBot(launch, profile);
+            Bots.Add(bot);
+            return bot;
+        }
+    }
+
     /// <summary>
     /// The BotService gate: launches are serialised, so two at once get different positions and a
     /// launch past the emulator budget is refused before anything is built. No sleeps: a launch is
@@ -13,32 +43,6 @@ namespace ShinyBotHunter.Tests
     /// </summary>
     public class BotServiceConcurrencyTests
     {
-        private class FakeBotFactory : BotFactory
-        {
-            private readonly Task launch;
-
-            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch) : base(settings, null!, null!)
-            {
-                this.launch = launch;
-            }
-
-            public List<int> Positions { get; } = new();
-            public List<FakeBot> Bots { get; } = new();
-
-            public override GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
-            {
-                Positions.Add(displayPosition);
-                return new GameContext { SourceGameName = sourceGame, DisplayPosition = displayPosition };
-            }
-
-            public override IBot CreateBot(GameContext context)
-            {
-                var bot = new FakeBot(launch);
-                Bots.Add(bot);
-                return bot;
-            }
-        }
-
         private class ThrowingEvent : IBotEvent
         {
             // Faults the returned task rather than throwing, because StartEvent calls this inline.
@@ -48,12 +52,12 @@ namespace ShinyBotHunter.Tests
 
         private static readonly NewEventArguments LaunchBot = new() { EventName = "Launch Bot", GameName = "fake.nds" };
 
-        private static (BotService Service, FakeBotFactory Factory) Build(Task launch)
+        private static (BotService Service, FakeBotFactory Factory) Build(Task launch, GameProfile? profile = null)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
-            var factory = new FakeBotFactory(settings, launch);
+            var factory = new FakeBotFactory(settings, launch, profile);
             // The launch and idle-cancel paths touch neither the hub, the provider nor the ROM index.
-            return (new BotService(settings, factory, null!, null!, null!), factory);
+            return (new BotService(settings, factory, null!, null!, null!, null!), factory);
         }
 
         [Fact]

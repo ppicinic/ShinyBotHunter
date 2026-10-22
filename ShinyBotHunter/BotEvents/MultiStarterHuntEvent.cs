@@ -209,7 +209,7 @@ namespace ShinyBotHunter.BotEvents
             var hunt = new StarterHuntEvent(bot, context, entry, config, launchGate, provider);
             GameState huntState = new()
             {
-                GameFlavor = GameFlavor.RS,
+                Profile = bot.Profile,
                 Bot = bot,
                 Milestone = milestone,
                 Target = new Target.ShinyTarget(),

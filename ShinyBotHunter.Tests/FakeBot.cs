@@ -1,6 +1,12 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -12,14 +18,17 @@ namespace ShinyBotHunter.Tests
     {
         private readonly Task launch;
 
-        public FakeBot(Task launch)
+        public FakeBot(Task launch, GameProfile? profile = null)
         {
             this.launch = launch;
+            Profile = profile ?? HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
         }
 
         public bool Disposed { get; private set; }
 
-        public GameFlavor GameFlavor => GameFlavor.HGSS;
+        public GameFlavor GameFlavor => Profile.Flavor;
+        public GameProfile Profile { get; }
+        public IPointerService Addresses => Profile.Addresses(0);
         public string GameFileName => "fake.nds";
 
         public Task LaunchAsync() => launch;
@@ -61,12 +70,8 @@ namespace ShinyBotHunter.Tests
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
             PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte[]>());
 
-        public Task<byte> GetBattleMenuState(CancellationToken ct = default) => Task.FromResult((byte)0);
-        public Task<byte> GetBattleValue(CancellationToken ct = default) => Task.FromResult((byte)0);
-        public Task<byte> GetBattleState() => Task.FromResult((byte)0);
-        public Task<ushort> GetMapId() => Task.FromResult((ushort)0);
-        public Task<short> GetTrainerXPos() => Task.FromResult((short)0);
-        public Task<short> GetTrainerYPos() => Task.FromResult((short)0);
-        public Task<byte> GetFacing() => Task.FromResult((byte)0);
+        // No test that uses FakeBot reads the overworld or the game state.
+        public IOverworldReader Overworld => throw new NotImplementedException();
+        public IGameStateReader State => throw new NotImplementedException();
     }
 }

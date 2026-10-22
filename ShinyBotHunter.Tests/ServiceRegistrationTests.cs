@@ -1,9 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ShinyBotHunter;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Pokemon;
-using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -69,7 +68,7 @@ namespace ShinyBotHunter.Tests
         [Theory]
         [InlineData(GameFlavor.HGSS)]
         [InlineData(GameFlavor.RS)]
-        public void EveryPlayableFlavorHasItsPerGameServices(GameFlavor flavor)
+        public void EveryPlayableFlavorHasAGameProfile(GameFlavor flavor)
         {
             ServiceCollection services = HostServices();
             new Startup().CreateServices(services);
@@ -77,8 +76,7 @@ namespace ShinyBotHunter.Tests
 
             // A flavor the dashboard will offer but that has no memory map or parser would fail at
             // the first read, long after the hunt reported itself as running.
-            Assert.NotNull(provider.GetKeyedService<IPointerService>(flavor));
-            Assert.NotNull(provider.GetKeyedService<IPokemonParser>(flavor));
+            Assert.Equal(flavor, provider.GetRequiredService<GameProfiles>().Get(flavor).Flavor);
         }
     }
 }

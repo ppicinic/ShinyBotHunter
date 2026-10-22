@@ -106,7 +106,7 @@ So the rules above do not read as "never improve anything":
 
 - **Indexes and query shape** over caches, and measured caches over speculative ones.
 - **Explicit state machines** for bot events (the `EventState` stack is a good start) over implicit booleans.
-- **Keyed DI by flavor** (already in `Startup.cs`) growing into the game profile, and an event registry, as the two extension points.
+- **The game profile per flavor and the event registry** (`ShinyBotHunter/Games/`) as the two extension points.
 - **Channels for producer/consumer** (already used for persistence) over hand-rolled queues.
 - **Small records for request/response shapes** shared between controller and dashboard types, kept in sync by hand and checked by a test.
 

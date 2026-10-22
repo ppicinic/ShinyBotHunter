@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 
 namespace ShinyBotHunter.Service
@@ -31,13 +32,11 @@ namespace ShinyBotHunter.Service
     public class LocationService
     {
         private readonly BotService botService;
-        private readonly MapService mapService;
         private readonly ApplicationSettings settings;
 
-        public LocationService(BotService botService, MapService mapService, IOptions<ApplicationSettings> appSettings)
+        public LocationService(BotService botService, IOptions<ApplicationSettings> appSettings)
         {
             this.botService = botService;
-            this.mapService = mapService;
             this.settings = appSettings.Value;
         }
 
@@ -50,14 +49,13 @@ namespace ShinyBotHunter.Service
 
             // Sequential rather than concurrent: each read is serviced on the emulator's frame
             // thread, and the memory client is not built for parallel in-flight requests.
-            ushort mapId = await bot.GetMapId();
-            short x = await bot.GetTrainerXPos();
-            short y = await bot.GetTrainerYPos();
-            byte facing = await bot.GetFacing();
+            ushort mapId = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
+            (short x, short y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
+            Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
 
-            (int? botMapId, string? internalName) = LookupMap(mapId);
+            (int? botMapId, string? internalName) = LookupMap(bot.Profile.Maps!, mapId);
 
-            return new LocationInfo(mapId, botMapId, internalName, x, y, facing, DescribeFacing(facing));
+            return new LocationInfo(mapId, botMapId, internalName, x, y, (byte)facing, DescribeFacing(facing));
         }
 
         /// <summary>
@@ -65,11 +63,11 @@ namespace ShinyBotHunter.Service
         /// A map the lookup table has never heard of is a normal thing to stand on while exploring,
         /// not a server error — report the raw id and leave the name fields empty.
         /// </summary>
-        private (int? BotMapId, string? InternalName) LookupMap(int mapId)
+        private (int? BotMapId, string? InternalName) LookupMap(MapService maps, int mapId)
         {
             try
             {
-                MapLookup lookup = mapService.GetMapLookup(mapId);
+                MapLookup lookup = maps.GetMapLookup(mapId);
                 return (lookup.BotMapId, lookup.InternalName);
             }
             catch (KeyNotFoundException)
@@ -78,9 +76,7 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        private static string DescribeFacing(byte facing)
-            => Enum.IsDefined(typeof(Direction), (int)facing)
-                ? ((Direction)facing).ToString()
-                : facing.ToString();
+        private static string DescribeFacing(Direction facing)
+            => Enum.IsDefined(facing) ? facing.ToString() : ((byte)facing).ToString();
     }
 }
