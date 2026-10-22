@@ -33,11 +33,22 @@ namespace ShinyBotHunter.Tests
         public async Task ClassifiesTodaysThreeBytes(byte indicator, byte battleState, byte menu, GameScreen expected)
         {
             HgssPointerService table = new();
-            HgssLegacyStateReader reader = new(Memory(table, indicator, battleState, menu), table);
+            FakeMemoryClient memory = Memory(table, indicator, battleState, menu);
+            HgssLegacyStateReader reader = new(memory, table);
 
             GameSnapshot snapshot = await reader.ReadAsync(CancellationToken.None);
 
             Assert.Equal(expected, snapshot.Screen);
+            // The reads stop once the screen is decided: the state byte only in battle, the menu byte
+            // only when the state byte is not the evolution value.
+            int[][] expectedHops = expected switch
+            {
+                GameScreen.FieldFree => [],
+                GameScreen.Evolution => [[table.BattleStateOffset]],
+                _ => [[table.BattleStateOffset], [(int)table.BattleMenuState]],
+            };
+            Assert.All(memory.PointerReads, read => Assert.Equal(table.Anchor, read.Anchor));
+            Assert.Equal(expectedHops, memory.PointerReads.Select(read => read.Hops));
             Assert.Null(snapshot.Outcome);
             Assert.Null(snapshot.Script);
             Assert.Null(snapshot.Prompt);
@@ -76,6 +87,7 @@ namespace ShinyBotHunter.Tests
             await reader.ReadAsync(CancellationToken.None);
 
             Assert.Equal([(table.BattleIndicator, 1)], memory.ByteReads);
+            Assert.Empty(memory.PointerReads);
         }
     }
 }
