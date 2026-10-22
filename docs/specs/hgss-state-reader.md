@@ -23,7 +23,7 @@ The change is one new class, one changed line in `HgssProfile`, and the wait loo
 
 ## Non-goals
 
-- Any ApiHawk change. The reader uses plain reads only; see [Why not a single-frame read](#why-not-a-single-frame-read).
+- Any ApiHawk change beyond the one multi-block opcode in [The single-frame read](#the-single-frame-read) (owner's decision, 2026-10-22, after S1's measurement showed plain reads cannot meet NFR-1).
 - RS. Its chain is unmapped (plan row 6.1).
 - Finding the battle UI's input-ready flag. The gap is covered by confirm-and-retry; if the flag is found later it is one more enum value.
 - Reading values the gate cannot observe (lost, draw, caught, a faint on our side, "use next Pokémon?"). They are mapped, documented as decomp-only, and left for the scenario that first reaches them.
@@ -36,15 +36,16 @@ The change is one new class, one changed line in `HgssProfile`, and the wait loo
 | ID | Requirement | Priority | Acceptance |
 |---|---|---|---|
 | FR-1 | `HgssFieldSystemStateReader` implements `IGameStateReader` and returns every `GameScreen` value per the [state table](#state-table). | Must | Table-driven unit test over scripted memory, one case per row of the state table plus the out-of-range and changed-pointer cases. |
-| FR-2 | A snapshot is consistent with itself: the reader re-reads its roots and returns `Transitioning` when they moved between reads. | Must | Unit test: a scripted client that changes `app` between reads yields `Transitioning`, not a mixed snapshot. |
-| FR-3 | A pointer outside DS main RAM (`0x02000000` to `0x02400000`) makes the snapshot `Transitioning`; nothing throws on bad memory. | Must | Unit test with a zero and an out-of-range pointer at each hop. |
+| FR-2 | A snapshot is consistent with itself: every block it decides from comes from one emulator frame, read by one request through the multi-block opcode. | Must | Unit test: the reader issues exactly one `ReadChainBlocksAsync` per snapshot and no other read; the fake serves every block from the same placed memory. |
+| FR-3 | A pointer outside DS main RAM (`0x02000000` to `0x02400000`) on a hop the snapshot needs makes it `Transitioning`; a null pointer is a state (no app, no task, no getter), not an error; nothing throws on bad memory. | Must | Unit test with a zero and an out-of-range pointer at each hop; the out-of-range block comes back with its status, not an exception. |
 | FR-4 | Every row of the [read table](#read-table) marked "replace" has no remaining caller of the old read after S2; rows marked "keep" are unchanged. | Must | FR-2 grep of the profile spec plus `grep -rn "BattleIndicator\|BattleMenuStateOffset\|BattleStateOffset\|EnemySetupOffset" ShinyBotHunter/` is empty after S2. |
 | FR-5 | Every memory-polling wait in an HGSS event goes through `GameStateWait.UntilAsync` with a stale-timeout, listed in the [timeout table](#stale-timeouts). | Must | No `while (true)` or `while (!ct.IsCancellationRequested)` around a memory read remains in `BotEvents/` without a stale-timeout. |
 | FR-6 | Run and move selection in battle use `GameStateWait.PressUntilAsync`; the `W.5` after the menu read and its TODO are gone. | Must | QA: `hgss-route33` flees on the first or second press in every encounter of the run. |
 | FR-7 | Level-up and move-learn handling presses at the prompt states (11/13, 21, 23, 34) instead of fixed frame waits (`LevelUpFlow.cs:17-49`). | Must | QA: `hgss-route33-train` learns or declines the move with no padding macro. |
 | FR-8 | Decomp-only values are mapped in the reader and listed in the [decomp-only table](#decomp-only-values); no event branches on them until the table marks them observed. | Must | Reviewer checklist; the table is updated in the same PR as any branch. |
 | FR-9 | Every read the bot makes on HGSS, including any added by a later feature, is a row in the [read table](#read-table) with symbol, kind, status and scenario, and a commented member of `HgssPointerService`. | Must | Reviewer checklist item on every PR that touches `IMemoryClient` calls or `HgssPointerService`. |
-| NFR-1 | One snapshot is at most five memory requests and under 50 ms on localhost. | Must | Measured and logged by the `hgss-route33` run. A miss stops S1 and is reported to the owner; no fallback is built unasked. |
+| NFR-1 | One snapshot is one memory request and under 50 ms on localhost. | Must | Measured and logged by the `hgss-route33` and `hgss-route33-evolve` runs with the reader attached as a passive probe. A miss stops S1 and is reported to the owner; no fallback is built unasked. |
+| NFR-3 | The opcode's retry count defaults to 0 (answer from the first frame); a caller that needs a frame-by-frame retry on garbage asks for it explicitly. | Must | The reader passes no retry count; the client's default is 0. |
 | NFR-2 | The change to select the reader is one line in `HgssProfile`, and reverting it restores the legacy reader. | Must | S2's diff shows the line. |
 
 ## Design
@@ -89,8 +90,8 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 | `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]` | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5` |
 | `OtherApp` | `app != 0 && ovyId != 12` | | decomp only |
 | `BattleStarting` | `ovyId == 12 && state < 9` | | observed (3, 8) |
-| `Evolution` | `ovyId == 12 && state ∈ {13, 14}` | | 14 observed |
-| `BattleOver` | `ovyId == 12 && (state > 9 && state ∉ {13,14})`, or `state == 9 && command == 45` | `Outcome` from `[BS + 0x2420]` | 45 observed; outcome 1 and 5 observed |
+| `Evolution` | `ovyId == 12 && state == 14` | | 14 observed; 13 is the evolution check every battle end passes through (seen on a flee, 2026-10-22) |
+| `BattleOver` | `ovyId == 12 && (state > 9 && state != 14)`, or `state == 9 && command == 45` | `Outcome` from `[BS + 0x2420]` | 45 observed; outcome 1 and 5 observed |
 | `BattleScript` | `state == 9 && command == 22` | `Script = [ctx + 0xB0]` | observed: 0, 1, 3, 4, 6, 276 and twelve unnamed |
 | `BattleMenu` | `state == 9 && command == 5 && sel == 1` | | observed |
 | `BattleMoveList` | `state == 9 && command == 5 && sel == 4` | | observed |
@@ -103,19 +104,40 @@ Precedence inside `state == 9`: command 45, then command 22, then getter prompts
 
 ### The walk
 
-Five plain `ReadBytesAsync` calls at most, no exceptions on the happy path, no ApiHawk change:
+One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these seven blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset):
 
-1. `FS = [0x021D4158]` and `sub0 = [FS]` are read on the first `ReadAsync` and cached for the reader's lifetime (the research doc shows them stable for the session). If three consecutive snapshots are `Transitioning`, both are re-read; this is the only recovery path.
-2. One read of 0x70 bytes at `FS` (taskman at `+0x10`, mapReady at `+0x6C`) and one of 12 bytes at `sub0` (mapApp, app, paused). With `app == 0` the field rows above decide, with one more read of 8 bytes at `taskman` for `FieldTask`.
-3. One read of 0x20 bytes at `app` (ovyId, state, setup, BS). `OtherApp`, `BattleStarting`, `Evolution`, and the `state > 9` form of `BattleOver` decide here; `BattleOver` reads one byte at `BS + 0x2420` if `BS` is in range.
-4. With `state == 9`: `ctx = [BS + 0x30]` (4 bytes), then one read of 0x180 bytes at `ctx` (sel, command, script, getter). The getter state is one more 4-byte read when `getter != 0`.
-5. The 12 bytes at `sub0` and, when `app != 0`, the 4 bytes at `app + 0x14` are read again. If either differs from steps 2 and 3, the snapshot is `Transitioning`.
+| Block | Chain from `0x021D4158` | Length | Used for |
+|---|---|---|---|
+| `fs` | `[+0]` | 0x70 | taskman `+0x10`, mapReady `+0x6C` |
+| `sub0` | `[+0] [+0]` | 12 | mapApp, app, paused |
+| `task` | `[+0] [+0x10]` | 8 | task function `+4` |
+| `app` | `[+0] [+0] [+4]` | 0x20 | ovyId, state, setup, BS |
+| `ctx` | `[+0] [+0] [+4] [+0x1C] [+0x30]` | 0x17C | sel, command, script, getter |
+| `getter` | `[+0] [+0] [+4] [+0x1C] [+0x30] [+0x178] +0x28` | 4 | getter state |
+| `outcome` | `[+0] [+0] [+4] [+0x1C] +0x2420` | 1 | outcome |
 
-Reads 2 and 5 are the cost floor (two requests); a battle menu snapshot is five (FS block, sub0, app, ctx, re-check) plus the ctx pointer, which is six. If the measurement in NFR-1 misses, the ctx pointer read folds into the app block by reading `[BS + 0x30]` through the existing pointer-chain opcode with two hops, which is within today's four-hop limit and still no ApiHawk change.
+Classification, in this order, each step using only blocks whose status is `Ok`:
 
-### Why not a single-frame read
+1. `fs` or `sub0` not `Ok`: `Transitioning` (the roots are mid-write or the game is not in the field system yet).
+2. `app == 0`: the field rows of the state table from `fs`, `sub0` and `task`. A `task` block that is `NullPointer` is "no task running"; any other failed status with `taskman != 0` is `Transitioning`. A field state matching no row (for example `mapReady 0` with a task, seen on every battle entry and exit) is `Transitioning`.
+3. `app != 0` and `app` not `Ok`: `Transitioning`. Otherwise `OtherApp`, `BattleStarting`, `Evolution` and the `state > 9` form of `BattleOver` decide from `app`; `Outcome` comes from `outcome` when that block is `Ok`, else null.
+4. `state == 9` and `ctx` not `Ok`: `Transitioning`. Otherwise the precedence inside `state == 9` from the state table, with the getter prompts read from `getter` when `ctx.getter != 0` and `getter` is `Ok` (a failed `getter` block with a non-null getter pointer is `Transitioning`).
 
-ApiHawk's pointer-chain opcode allows four hops; the battle context is five from the root and the getter six. Raising the limit or adding a multi-block opcode is an ApiHawk change the project rule reserves for tasks that say so, and it would not give consistency on its own, since a snapshot needs the field roots and the battle context together. The re-read in step 5 gives the same guarantee for one extra small read. If NFR-1 is still missed after the fold-in above, S1 stops and reports the numbers; whether to add an opcode is the owner's decision.
+Blocks the snapshot does not need (for example `ctx` on the field, where it comes back `NullPointer` at the app hop) are ignored whatever their status. `Evolution` is `app.state == 14` only: the app passes through state 13 on every battle end (seen on a fled battle, 2026-10-22), so 13 is `BattleOver`.
+
+### The single-frame read
+
+Owner's decision, 2026-10-22, recorded in [the decisions file](../decisions/game-profile.md#a-multi-block-chain-read-opcode-for-the-state-reader): ApiHawk's `MemoryServer` drains its request queue once per frame, so each sequential HTTP read costs one emulator frame (about 16 ms at 60 fps), and S1's measurement put a five-read battle-menu snapshot at 79 ms median. No arrangement of plain reads meets NFR-1. ApiHawk gains one opcode, `0x05`, that follows as many pointer chains as the request names and reads every block on the same frame.
+
+Request: the shared 9-byte header `[0x05][addr: 0][aux: retryFrames u32]`, then `[blockCount:1]` and per block `[anchor:4 LE][hopCount:1][hops: i32 LE × hopCount][length:4 LE]`. `hopCount` 0 is a direct read at `anchor`. Limits: 16 blocks, 8 hops per block, 0x1000 bytes per block; a body outside them is a 400.
+
+Response: `200` with, per block in request order, `[status:1][hop:1][length:4 LE][bytes]`. Status 0 `Ok` (length as requested), 1 `NullPointer` (the pointer read at hop `hop` was zero; length 0), 2 `OutOfRange` (the pointer at hop `hop` was outside the console's addressable RAM; length 0), 3 `ShortRead` (the core returned fewer bytes; length as returned). A failed block never fails the request: a null pointer is how the game says "no app", "no task", "no getter", and an out-of-range pointer is a snapshot taken mid-write that the reader maps to `Transitioning`. The 502 path stays for the existing opcodes only.
+
+Retry: `retryFrames` is the number of further frames to try when any block is `OutOfRange` (not `NullPointer`), re-following every chain from its anchor each time, like the validated party read. 0, the default, answers from the first frame. The last attempt's statuses are returned as they are. The state reader passes 0; the parameter exists so a future caller that sees garbage can ask for a frame-by-frame retry without a protocol change (NFR-3).
+
+Client: `IMemoryClient.ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default)` returning `ChainBlockResult[]`, with `ChainBlockRequest(uint Anchor, int[] Hops, int Length)`, `ChainBlockResult(ChainBlockStatus Status, byte Hop, byte[] Bytes)` and the `ChainBlockStatus` enum in `Emulators/`. `FakeMemoryClient` serves the blocks from its placed bytes with the same hop and range rules, so the reader's tests script one memory image and get one-frame semantics for free. The existing opcodes, `ReadBytesViaPointerAsync` and the validated party read are untouched.
+
+Deployment: `Scripts/deploy-apihawk.ps1 -BizHawkDir C:\BizHawk-2.11` for the QA install, run by the orchestrator before S0's QA; the hunting install is the owner's. An emulator running the old `BotServer.dll` answers opcode `0x05` with an empty body, which the client reports as the existing "predates this opcode" error.
 
 ### Read table
 
@@ -183,11 +205,12 @@ A timeout ends the event with the exception, logged in full, and the bot's state
 
 ### Migration order
 
-Three PRs after the profile spec's P7 is on `main`.
+PRs after the profile spec's P7 is on `main`.
 
 | # | PR | Depends on | Behaviour change | Size |
 |---|---|---|---|---|
-| S1 | `HgssFieldSystemStateReader` with the chain members on `HgssPointerService` and its unit tests; `GameStateWait` with tests; not selected by the profile; NFR-1 measured in a QA run with the reader attached as a passive logger | profile P7 on `main`; the gate's scenarios passing on the legacy reader | none | M |
+| S0 | ApiHawk opcode `0x05` (multi-block chain read with the retry count), `IMemoryClient.ReadChainBlocksAsync`, the `BizHawkMemoryClient` encoding, the `FakeMemoryClient` implementation; no caller yet. Added 2026-10-22 after S1's measurement. | — | none (new opcode, old ones unchanged) | M |
+| S1 | `HgssFieldSystemStateReader` with the chain members on `HgssPointerService` and its unit tests; `GameStateWait` with tests; not selected by the profile; NFR-1 measured in a QA run with the reader attached as a passive logger | S0; profile P7 on `main`; the gate's scenarios passing on the legacy reader | none | M |
 | S2 | select the reader in `HgssProfile`; delete `HgssLegacyStateReader` and the four legacy table members; R1 to R8 rewritten per the read table; every loop in the timeout table bounded | S1, QA gate | yes: the pointer change | L |
 | S3 | R9 and R10: `Overworld.WaitForReadyAsync` on `FieldFree`, navigator stall only while `FieldFree`; R11, R12 bounded | S2 | yes | S |
 | S4 | R18 and R19: the script-chain press loop replaces the two heal macros and `ClearFaintText`; `HasFaintedPartyMemberAsync` deleted; the script chain members join `HgssPointerService` | S3 | yes | M |
@@ -230,15 +253,16 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 
 | Risk | Mitigation |
 |---|---|
-| `FS` or `sub0` move on a save reload or title-screen return (the HGSS starter hunt soft-resets) | the three-strikes re-read; `hgss-starter-shiny` joins the gate if the starter hunt is moved onto the reader (it does not use it today) |
+| `FS` or `sub0` move on a save reload or title-screen return (the HGSS starter hunt soft-resets) | nothing is cached; every snapshot walks from the static root. `hgss-starter-shiny` joins the gate if the starter hunt is moved onto the reader (it does not use it today) |
 | Stale-timeouts too short for an unobserved animation | each value above has a 3x margin over what was observed; a timeout is loud (exception, dashboard `Waiting`), not silent |
-| A transition that happens and reverts between the two root reads | the next poll sees the true state; no decision is taken on a single `Transitioning` |
+| Seven chains per snapshot cost the frame thread about twenty pointer reads | each is a `ReadByteRange` of 4 bytes on the core, microseconds; the party read already does more per frame |
+| The QA install and the hunting install run different `BotServer.dll` builds | the client's "predates this opcode" error names the fix; the owner redeploys the hunting install before using the reader there |
 | The read table drifts as features are added | FR-9 and the reviewer checklist; the profile spec's grep catches a literal, this table catches an undocumented member |
 | Decomp-only values turn out wrong when first observed | they are mapped, not branched on; the first scenario that reaches one updates the table before any event uses it |
 
 ## Open questions
 
-> **OPEN:** whether S2 ships as one PR over the size tripwire or as S2a/S2b. Owner's call when the task issue is opened.
+> **OPEN:** whether S2 ships as one PR over the size tripwire or as S2a/S2b. Owner's call when the task issue is opened (opened as S2a #138 and S2b #139 on 2026-10-22).
 
 ## Changelog
 
@@ -246,3 +270,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-22: gate rewritten around the two Playwright scenarios that exist on `main` (`hgss-route33`, `hgss-route33-train`); the level-up scenario is the existing one, the new ones are the learn-accept path and evolution.
 - 2026-10-22: the blocked-step pointer deferred by the owner; R10 keeps the stall timeout and the decomp-only table records what would replace it.
 - 2026-10-22: field scripts traced (poison, Pokémon Center): R18, R19 and S4 added; `FieldTask` for scripts and warps moved from decomp-only to observed; the heal macro's fainted rule recorded as wrong for a non-lead faint.
+- 2026-10-22: S1's measurement (PR #142) showed every sequential read costs one emulator frame, so the plain-read walk cannot meet NFR-1 (79 ms median at the battle menu). Owner's decision: ApiHawk opcode `0x05`, a multi-block chain read with a retry count defaulting to 0, as row S0; "The walk" is one request of seven blocks; FR-2, FR-3, NFR-1 reworded, NFR-3 added; `Evolution` narrowed to state 14 after state 13 was seen on a fled battle.

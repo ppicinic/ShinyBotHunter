@@ -73,3 +73,21 @@ The RS profile is composed from today's `RsPointerService` and `Gen3PokemonParse
 ### Consequences
 - RS keeps working exactly as today, and the dashboard stops offering it HGSS-only actions.
 - Row 6.1 (pokeruby symbols) is the prerequisite for any RS state reader or revision table, and is scheduled by the owner.
+
+---
+
+## A multi-block chain read opcode for the state reader
+
+Status: Accepted
+Date: 2026-10-22
+
+### Context
+The decision above kept the state reader on plain reads with a consistency re-read, and made a one-frame multi-block opcode the owner's option if NFR-1 (a snapshot under 50 ms) was missed. S1's measurement (PR #142) missed it structurally: `MemoryServer` drains its request queue once per frame, so each dependent read costs one emulator frame, and a five-read battle-menu snapshot measured 79 ms median with the request count already at the spec's minimum.
+
+### Decision
+ApiHawk gains opcode `0x05`: one request names any number of pointer chains (up to the limits in the [spec](../specs/hgss-state-reader.md#the-single-frame-read)) and gets every block from the same frame, with a per-block status instead of a 502 for a null or out-of-range pointer. It takes a retry count, defaulting to 0, that retries the whole request on later frames when a pointer was out of range, so a future caller that meets garbage can ask for a frame-by-frame retry without a protocol change. The existing opcodes, the validated party read and the pointer-chain read are unchanged. The state reader issues one such request per snapshot and caches nothing.
+
+### Consequences
+- The "no ApiHawk change" non-goal of the state reader spec is narrowed to this one opcode; `BotServer.dll` is redeployed to the QA install by the orchestrator and to the hunting install by the owner.
+- A snapshot is consistent by construction; the reader's root cache, strike counter and re-read go away.
+- The 50 ms budget becomes one frame plus the HTTP round trip.
