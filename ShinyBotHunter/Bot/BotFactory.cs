@@ -28,7 +28,7 @@ namespace ShinyBotHunter.Bot
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
             IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);
-            IDataReader reader = CreateReader(context, memoryClient, addresses);
+            IDataReader? reader = CreateReader(context, memoryClient, addresses);
             return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, profile, addresses, context);
         }
 
@@ -69,13 +69,14 @@ namespace ShinyBotHunter.Bot
         }
 
         /// <summary>
-        /// Game-state reads are per game, so the reader follows the ROM's flavor. An unrecognised
-        /// flavor gets the HGSS reader rather than nothing, because a bot still has to be launchable
-        /// for macro recording -- reads are what fail, and they fail loudly.
+        /// Battle reads are per game, so the reader follows the ROM's flavor. RS has none, so its bot
+        /// gets no reader and a battle read throws. An unrecognised flavor gets the HGSS reader rather
+        /// than nothing, because a bot still has to be launchable for macro recording -- reads are what
+        /// fail, and they fail loudly.
         /// </summary>
-        private static IDataReader CreateReader(GameContext context, IMemoryClient memoryClient, IPointerService addresses) => context.GameFlavor switch
+        private static IDataReader? CreateReader(GameContext context, IMemoryClient memoryClient, IPointerService addresses) => context.GameFlavor switch
         {
-            GameFlavor.RS => new RsDataReader(memoryClient, (RsPointerService)addresses),
+            GameFlavor.RS => null,
             _ => new HgssDataReader(memoryClient, (HgssPointerService)addresses),
         };
 
