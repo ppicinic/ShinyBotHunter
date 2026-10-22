@@ -229,6 +229,13 @@ public sealed class DiscordBotService
 
     public async Task SendMessageAsync(DiscordMessage message)
     {
+        // The queue's only reader starts after login, so a message queued without one is never read
+        // and StopAsync would wait on the drain forever.
+        if (_client.LoginState != LoginState.LoggedIn)
+        {
+            Console.WriteLine($"Discord is not logged in; dropping message: {message.StringMessage ?? message.EmbedMessage?.Title}");
+            return;
+        }
         await messageQueue.Writer.WriteAsync(message);
     }
 
