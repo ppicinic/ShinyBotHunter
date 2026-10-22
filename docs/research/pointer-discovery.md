@@ -150,6 +150,59 @@ With these signals the bot can classify where it is at any moment instead of inf
 
 `ctx.sel` turns 1 a little before the touch screen accepts input. In the trace, a Run tap sent the moment the menu state read 1 was ignored; the same tap 40 s later fled at once. This is the gap the bot covers with `W.5` and the comment "the menu flag is available before we can actually press". The battle UI keeps its own state in `BattleInput` (pointer at `BS + 0x19C`, field `curMenuId`), but the decomp warns its offsets are unreliable. Finding the UI's "input enabled" flag is the next step; until then, a press should be confirmed by `ctx.sel` changing, and retried if it does not.
 
+## Field scripts: poison and the Pokémon Center (2026-10-22)
+
+The battle chain above says nothing about dialogue on the field. The heal at a Pokémon Center and the "survived the poisoning" message are both **field scripts**, and the game runs them through one more chain hanging off the same `FieldSystem`. Traced live on four PKHeX copies of the Route 33 save (poisoned lead; fainted lead; fainted second slot with a hurt lead; Pokérus on the lead with the "told about Pokérus" flag cleared) while the real bot walked, fled and healed.
+
+```
+taskman   = u32 [FS + 0x10]              top field task
+task.func = u32 [taskman + 0x04]         0x0203FF45 = Task_RunScripts (Thumb bit set): a script is running
+task.env  = u32 [taskman + 0x0C]         ScriptEnvironment while func is Task_RunScripts
+env.check = u32 [env + 0x00]             222271 (0x3643F), the environment's magic
+env.state = u8  [env + 0x04]
+env.count = u8  [env + 0x09]             live script contexts (0 to 3)
+env.script= u16 [env + 0x0A]             script id: 1 = this map's NPC script, 2003 = std_survive_poisoning
+env.ctx[i]= u32 [env + 0x38 + 4*i]       ScriptContext, i in 0..2
+ctx.mode  = u8  [ctx + 0x01]             0 stopped, 1 running bytecode, 2 waiting in a native
+ctx.native= u32 [ctx + 0x04]             the native function it waits in (Thumb bit set), meaningful while mode == 2
+ctx.pc    = u32 [ctx + 0x08]             bytecode pointer
+```
+
+Natives seen, by address (all `scrcmd_c.c` / `scrcmd_message.c` in the decomp, static ARM9 or overlay 1, revision 0):
+
+| `ctx.native` | Decomp | Meaning | Status |
+|---|---|---|---|
+| `0x021EF349` | `ov01_021EF348` (from `ScrCmd_NPCMsg`) | a message is printing, **or finished and waiting at the ▼ arrow**; the text printer's own `state` (2 or 3) distinguishes those and was not read | observed in every message |
+| `0x02041075` | `sub_02041074` (`ScrCmd_WaitButton`) | waiting for A or B | decomp only: every message observed used `\r`, which waits inside the printer |
+| `0x02041041`, `0x020410F1` | `WaitButtonOrDelay`, `WaitButtonOrDpad` | | decomp only |
+| `0x02040BCD` | `ScrNative_WaitStd` (from `ScrCmd_CallStd`) | this context called a standard script and waits for it; the work is in the next context | observed: the map's NPC script (ctx 0) calling the nurse (ctx 1) |
+| `0x020477C1` | `sub_020477C0` (`ScrCmd_GetMenuChoice`) | a Yes/No or list menu is open | observed: the nurse's "Heal?" |
+| `0x02047745` | `ScrCmd_TouchscreenMenuShow` | restoring the touch menu at the end | observed |
+| `0x020476E9` | `sub_020476E8` (touch menu hide) | | observed |
+| `0x02041CA9` | not named in the decomp's C | sits between messages; almost certainly `WaitMovement` (the nurse turns and bows) | observed |
+
+Task functions seen on the field (`[taskman + 4]`), adding to the battle ones above: `0x0203FF45` script; `0x02056041` / `0x02056005` stepping onto a door; `0x020552D5`, `0x02055DBD`, `0x0205528D`, `0x02055C31`, `0x02053741`, `0x02056531` the warp and map load; `0x02205B15` and `0x0224BB91` children the nurse script pushes for the fade and the heal animation (the script task is underneath them; `taskman` points at the child, so a reader must treat "task is not the script task" as "script still running" until the environment is gone).
+
+### Poison
+Every fourth step with a poisoned party member (`ov01_021E794C`, counter `& 3`), `ApplyPoisonStep` takes 1 HP from each poisoned member and **stops at 1 HP**: no faint on the field in HGSS. The member that reaches 1 HP is cured and `std_survive_poisoning` (2003) starts as a field script: one NPC message, two lines, `\r` at the end, so the printer waits at the arrow (printing native, not `WaitButton`). Observed: `task=0203FF45 script#=2003 ctx0 mode=2 native=PRINTING`; two A presses 0.9 s apart (the first lands while the text is still drawing and only speeds it up); then `task=-`, field free, 1.5 s after the script appeared. The navigator's "poison event" (`WaitForPoisonEventAsync`, party diff every second) and its `ClearFaintText` macro are this script.
+
+### Pokémon Center
+The nurse script (`scr_seq_0003.s`, std bank 0040) ran in context 1 under the map's NPC script in context 0 (`WaitStd`). Sequence observed on the Pokérus copy: greeting `PRINTING` → touch menu hide → `MENU_CHOICE` (Yes/No) → `0x02041CA9` (nurse moves) → `PRINTING` → bytecode (the fade and heal animation as child tasks, 6 s) → `0x02041CA9` → `PRINTING` (the Pokérus explanation, three boxes, 10 s at the arrows until the macro's presses) → `TOUCHMENU_SHOW` → contexts gone → `task=-`. The whole interaction was 26 s on each copy.
+
+What each party variant did to the bot's blind macro (`heal_pokemon.yaml`, `heal_pokemon_fainted.yaml`):
+
+| Copy | Script branch (from `scr_seq_0003.s`) | Macro the navigator chose | Result |
+|---|---|---|---|
+| fainted lead | the first alive member changed, so the "your lead is now X" fade and box play | `HealPokemonFainted` (any member fainted) | in step; field free at the macro's end |
+| hurt lead, slot 2 fainted | first alive member unchanged: **no extra box** | `HealPokemonFainted` | one A too many: the nurse script ended, and 2 s later a **second nurse conversation** started (`script#=1` again, `ctxs=2`); the macro's remaining presses happened to answer it and the bot walked away 14 s late |
+| hurt lead with Pokérus, flag 0x65 cleared | Pokérus explanation added after the heal, flag set | `HealPokemon` | the three extra boxes were absorbed by the macro's long waits and its later presses this time; it is timing luck, not a branch the macro knows |
+
+So the navigator's rule "any fainted member means the longer macro" is wrong in the direction the script shows: the extra box is tied to the **lead** changing, and a wrong guess either way presses A into the overworld or leaves a box up. The fix is not a third macro. With the chain above the heal is: walk to the tile, face the nurse, then **while the script task or its children are up: press A whenever a context waits in the printing or wait-button natives until the menu native appears, one A there to choose Yes, and B for every wait after that, stopping when the environment is gone and the field is free**, bounded by a stale-timeout. B dismisses a message as well as A does and cannot start a second conversation or answer a second Yes/No, which is what the stray A did on the slot-2 copy. Box count, Pokérus, trainer-card stars and the changed-lead fade stop mattering.
+
+Not observed: a bare `WaitButton` native; every message seen waits inside the text printer. The text printer's `state` byte (2 and 3 are "waiting at the arrow", `render_text.c`) would separate "still drawing" from "waiting for a press", but the printer lives in a static array whose address is not in the decomp tree; pressing while drawing is harmless, so it was not chased.
+
+Saves used (PKHeX copies of the Route 33 save, made with the spike's `savetool edit`): `Pokemon HeartGold5` lead poisoned at 6 HP; `HeartGold6` lead at 0 HP; `HeartGold7` lead at 15 HP and slot 2 at 0 HP; `HeartGold8` lead at 15 HP with Pokérus strain 1 and event flag `0x65` cleared. PKHeX's Gen 4 event-flag index matched the decomp's `FLAG_WAS_TOLD_ABOUT_POKERUS` (the flag read true on a save whose party carries cured Pokérus, and clearing it brought the dialogue back).
+
 ## Suspected issues, not confirmed
 
 Spotted while reading the code for this spike. None has been reproduced, and none is planned work; each needs a demonstration before it is treated as a bug.
@@ -194,6 +247,7 @@ The Reverse Engineer Anything MCP was not needed for HGSS: the decomp plus RAM w
 3. **Map RS** from `pret/pokeruby`: `gMain.inBattle`, `gBattleTypeFlags`, the battle controller state, `gRngValue`, for the RS profile and QA cheats.
 4. **RS addresses per revision.** RS is hunted on 1.1 and 1.2, so the RS mapping needs both revisions' static addresses; HGSS has only 1.0.
 5. **Feed into plan 5.3**: the game profile holds this chain; a small HGSS state reader classifies "where the game is" and the battle and navigation events use it.
+6. **Field scripts** (done 2026-10-22 for poison and the Pokémon Center): the egg receive and hatch and the HGSS starter selection are the remaining scripted screens; each is one PKHeX copy and one trace with the same probe.
 
 ## Risks
 | Risk | Mitigation |
@@ -218,6 +272,7 @@ Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunt
 - **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
+- 2026-10-22: field script chain (task manager → script environment → script contexts → native) mapped and verified live through the poison message and the Pokémon Center heal on four PKHeX copies; the heal macro's fainted rule shown wrong for a non-lead faint; Pokérus dialogue reproduced.
 - 2026-10-17: first draft.
 - 2026-10-20: level-up, move-learn and evolution states observed on PKHeX save copies; every value now marked observed or decomp only.
 - 2026-10-20: HGSS battle and field state mapped from the decomp and verified live: the `FieldSystem` chain, battle app states, server commands, menu states, scripts, experience and move-learn prompts, outcome; what each bot constant really is; replacement table; bugs found; input-ready gap.

@@ -139,6 +139,8 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R15 | starter preview block `[FS] + 0x1BC00`, stride `0xEC` | `ShinyStarterEvent` | not traced | keep | n/a | `hgss-starter-shiny` |
 | R16 | validated party, boxes, battle mirrors (`+0x25E2C`, `+0x25EEC`, `+0x2AAB0`), enemy via pointer chain | `PokemonStateReader` through ApiHawk opcodes 3 and 4 | correct; parsing and retry on the emulator side by decision | keep | n/a | all |
 | R17 | `M.` macro coordinate and map-guard reads inside ApiHawk | `CommandServer` | correct | keep | n/a | all |
+| R18 | heal at the Pokémon Center: blind macro, `HealPokemonFainted` when any member is fainted | `NavigatorEvent` heal step, `heal_pokemon*.yaml` | the nurse script's extra box depends on the **lead** changing, not on any faint; Pokérus and trainer-card stars add boxes the macros do not know (research doc, field scripts) | face the nurse, then loop on the script chain: `[FS+0x10]` → task `0x0203FF45` or its children → env `[taskman+0xC]` (magic 222271) → contexts `[env+0x38+4i]`; press A while a context waits in `0x021EF349` (printing) or `0x02041075` (wait button) until the menu native `0x020477C1` appears, one A there (Yes), then B for every later wait so a stray press can never start a second conversation or a second heal; nothing during movement natives; done when the environment is gone and `FieldFree`; stale-timeout 20 s | observed on fainted lead, fainted non-lead and Pokérus copies | `hgss-heal-variants` |
+| R19 | poison on the field: party diff every second, then the `ClearFaintText` macro | `NavigatorEvent.WaitForPoisonEventAsync`, `clear_faint_text.yaml` | `std_survive_poisoning` (script 2003) as a field script; poison stops at 1 HP, nothing faints on the field | `FieldTask` with the script task and `env.script == 2003`; same press loop as R18 (two A presses observed) | observed | `hgss-poison-walk` |
 
 Rows R1 to R10 are the whole of what changes. R11 and R12 only gain a timeout. R13 is a non-read recorded so nobody re-derives it. R14 to R17 are listed so the table is the complete inventory FR-9 demands.
 
@@ -154,7 +156,8 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | script 231 | `[ctx + 0xB0]` | "use next Pokémon?" | a lead that faints with a party behind it |
 | script 5, 8, 10, 11, 284 | | lost, escape failed, party list, throw ball, escape success | as above |
 | getter 23, 24-30 | `[getter + 0x28]` | choosing the move to forget; the "learned" path | `hgss-route33-train` answering yes |
-| `FieldTask` for scripts, warps, start menu | `[taskman + 4]` | the task function addresses are unknown until seen | `hgss-navigate-heal-return` |
+| `FieldTask` for the start menu | `[taskman + 4]` | the task function address is unknown until seen | a navigation scenario that opens the menu |
+| `WaitButton` natives `0x02041075`, `0x02041041`, `0x020410F1` | `[ctx + 4]` | a script waiting for A/B outside a message; every message seen so far waits inside the printer instead | any script with a bare `WaitButton` |
 
 ### Stale-timeouts
 
@@ -185,6 +188,7 @@ Three PRs after the profile spec's P7 is on `main`.
 | S1 | `HgssFieldSystemStateReader` with the chain members on `HgssPointerService` and its unit tests; `GameStateWait` with tests; not selected by the profile; NFR-1 measured in a QA run with the reader attached as a passive logger | profile P7 on `main`; the gate's scenarios passing on the legacy reader | none | M |
 | S2 | select the reader in `HgssProfile`; delete `HgssLegacyStateReader` and the four legacy table members; R1 to R8 rewritten per the read table; every loop in the timeout table bounded | S1, QA gate | yes: the pointer change | L |
 | S3 | R9 and R10: `Overworld.WaitForReadyAsync` on `FieldFree`, navigator stall only while `FieldFree`; R11, R12 bounded | S2 | yes | S |
+| S4 | R18 and R19: the script-chain press loop replaces the two heal macros and `ClearFaintText`; `HasFaintedPartyMemberAsync` deleted; the script chain members join `HgssPointerService` | S3 | yes | M |
 
 S2 is over the size tripwire by design (one PR so the swap and the loops it changes are one revertable unit); the task issue says so and the owner accepts it when the issue is opened, or S2 is split into S2a (swap, R1 to R5) and S2b (R6 to R8) with S2a's loops temporarily bounded only by cancellation.
 
@@ -238,3 +242,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 
 - 2026-10-21: split out of the game profile spec at the owner's request so the profile work is restructure only; read table (R1 to R17), decomp-only table, stale-timeout table and the FR-9 rule added.
 - 2026-10-22: gate rewritten around the two Playwright scenarios that exist on `main` (`hgss-route33`, `hgss-route33-train`); the level-up scenario is the existing one, the new ones are the learn-accept path and evolution.
+- 2026-10-22: field scripts traced (poison, Pokémon Center): R18, R19 and S4 added; `FieldTask` for scripts and warps moved from decomp-only to observed; the heal macro's fainted rule recorded as wrong for a non-lead faint.

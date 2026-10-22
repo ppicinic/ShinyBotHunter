@@ -231,6 +231,8 @@ Preconditions:
 | `hgss-route33-phase-count` | encounter, persistence | none; counts after N encounters |
 | `hgss-starter-shiny` | starter-hunt | RNG freeze (proven by spike, harness not yet built) |
 | `hgss-navigate-heal-return` | navigation | none |
+| `hgss-heal-variants` | navigation | none; the three heal saves in turn (fainted lead, fainted slot 2, Pokérus), each must end with the bot back on Route 33 and no second nurse conversation (spike 2026-10-22 saw one on the slot-2 save) |
+| `hgss-poison-walk` | navigation | none; pace the path row on the poison save until the "survived the poisoning" message, which must be cleared and the walk resumed |
 | `hgss-togepi-egg-hatch` | egg | none, or an egg PID patch once mapped |
 | `rs-starter-wave-shiny-park` | starter-hunt, bot-engine | RNG freeze, once RS is mapped |
 | `rs-starter-double-find` | starter-hunt (the race the review found) | RNG freeze on two emulators |
@@ -300,7 +302,10 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-route33` | `Pokemon HeartGold` | Route 33 path tile above the grass, lead Slowpoke Lv 25, full party | 15613 / 35374 | the `hgss-route33-*` scenarios |
 | `hgss.qa-starter` | `Pokemon HeartGold1` | Elm's lab at starter selection, no starter yet | 3591 / 51910 | `hgss-starter-shiny` (seed `1234695E` gives PID `D1DC151F`) |
 | `hgss.qa-route33-movelearn` | `Pokemon HeartGold2` | Route 33 path tile, lead Bulbasaur Lv 14, one EXP short of Lv 15 (Take Down); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-train` |
-| `hgss.qa-heal` | to make | A few tiles outside a Pokemon Center, lead at low HP | | `hgss-navigate-heal-return` |
+| `hgss.qa-poison` | `Pokemon HeartGold5` | Route 33 path tile; lead Slowpoke poisoned at 6 HP; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-poison-walk` |
+| `hgss.qa-heal-lead-fainted` | `Pokemon HeartGold6` | Route 33 path tile; lead at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
+| `hgss.qa-heal-slot2-fainted` | `Pokemon HeartGold7` | Route 33 path tile; lead at 15 HP, slot 2 at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
+| `hgss.qa-heal-pokerus` | `Pokemon HeartGold8` | Route 33 path tile; lead at 15 HP with Pokérus, event flag `0x65` cleared so the nurse explains it; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
 | `rs.qa-starter` | to make | Whatever the RS starter hunt expects | | the `rs-starter-*` scenarios |
 
@@ -311,6 +316,7 @@ Scenarios never save in-game, and the spike runs left both saves byte-identical 
 ## Changelog
 - 2026-10-22: `hgss-route33-train` scenario and the `Pokemon HeartGold2` save row; recorder scales 2x and strips the stdin BOM that turned the video red.
 - 2026-10-21: Dashboard driver section rewritten for the Playwright driver in `ShinyBotHunter.Qa/dashboard/`; `data-testid` attributes allowed in `PokemonDashboard/`.
+- 2026-10-22: four PKHeX clone saves for poison and the three heal variants; `hgss-heal-variants` and `hgss-poison-walk` scenarios from the field-script spike.
 - 2026-10-17: first draft.
 - 2026-10-20: saves loaded by `Scripts/qa-load-save.ps1` with an agent allow rule, instead of copy logic inside the harness.
 - 2026-10-20: cheats stored per game and revision under `ShinyBotHunter.Qa/Cheats/`; saves moved out of the repo to a sibling `shinybothunterqasaves/` folder.
