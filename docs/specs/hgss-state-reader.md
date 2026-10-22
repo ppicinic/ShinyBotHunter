@@ -28,6 +28,7 @@ The change is one new class, one changed line in `HgssProfile`, and the wait loo
 - Finding the battle UI's input-ready flag. The gap is covered by confirm-and-retry; if the flag is found later it is one more enum value.
 - Reading values the gate cannot observe (lost, draw, caught, a faint on our side, "use next Pokémon?"). They are mapped, documented as decomp-only, and left for the scenario that first reaches them.
 - Fixing the suspected issues from the spike that a wait-loop rewrite does not touch.
+- A "step refused" signal for blocked paths. The navigator keeps its position-unchanged timeout (now only while the field is free); reading the player map object's movement result is a later spike, deferred 2026-10-22, and the Slowpoke Well epic (#28) is the fix for the phantom NPCs themselves.
 - The evolution task's "done" byte (`+0x67`, inferred and shown wrong): evolution end is detected by the app closing, not by that byte.
 
 ## Requirements
@@ -131,7 +132,7 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R7 | blind macros `W.325`, `W.1245`, 120-frame padding for level-up and move-learn | `LevelUpFlow.cs:17-49` | "reads during that menu crash" was the old byte reading garbage | press at `Prompt` 11/13 (A), 21 (yes/no), 23 (pick), 34 (yes/no) via `PressUntilAsync` | 11, 13, 21, 34 observed; 23 decomp only | `hgss-route33-train` |
 | R8 | Run spammed with `W.3` while R1 holds | `BattleOrchestratorEvent.cs:130` macro `"W.10;S.Run.3;W.5;"` and the flee loop | no outcome check; "it's possible we won't run" TODO | `PressUntilAsync(Run, expect Screen == BattleOver && Outcome == Fled, or Screen == BattleMessage)`; `BattleMessage` (sel 15, "Can't escape!") → press B and fight or retry per `BattleMode` | fled observed; sel 15 decomp only | `hgss-route33` |
 | R9 | coordinates non-zero = "overworld ready" | `Overworld.WaitForReadyAsync` | heuristic on the fade-in | `Screen == FieldFree` | observed around battles only | `hgss-route33`, `hgss-navigate-heal-return` |
-| R10 | position unchanged 2.5 s = "stalled / blocked" | `NavigatorEvent.WaitForStallAsync` | cannot tell a wall from a script or message | stall only while `Screen == FieldFree`; `FieldTask` means talking or warping, not blocked | task functions observed for encounters and returns; scripts, warps not yet | `hgss-navigate-heal-return` |
+| R10 | position unchanged 2.5 s = "stalled / blocked" | `NavigatorEvent.WaitForStallAsync` | cannot tell a wall from a script or message | stall only while `Screen == FieldFree`; `FieldTask` means talking or warping, not blocked. The stall itself stays a timeout: the pointer that says "this step was refused" (the player's map object, see the decomp-only table) is deferred to a later spike with a save beside the Violet City phantom NPC | scripts and warps observed 2026-10-22 | `hgss-navigate-heal-return` |
 | R11 | map id poll until it equals the destination | `NavigatorEvent.WaitForWarpAsync` | correct read, unbounded | keep the read (overworld reader); bound it with a stale-timeout on `(Screen, mapId)` | n/a | `hgss-navigate-heal-return` |
 | R12 | party diff every 1 s for poison or faint | `NavigatorEvent.WaitForPoisonEventAsync` | correct read, unbounded | keep; bound with the segment's stale-timeout | n/a | `hgss-navigate-heal-return` |
 | R13 | evolution "done" byte `[app.setup + 0x198] + 0x67` | not read today (inferred in the spike, shown wrong) | | not used; evolution end is `app == 0` after `Evolution` | observed (app closed) | `hgss-route33-evolve` |
@@ -151,6 +152,7 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | Value | Field | Meaning | Scenario that would observe it |
 |---|---|---|---|
 | `OtherApp` | `app.ovyId != 12` | bag, party, PC, summary open | a navigation scenario that opens the menu |
+| a refused step | `FS.playerAvatar` → map object movement state and collision flags | the player pushed against a wall or NPC and stayed on the tile; would replace the 2.5 s stall timeout | deferred: a trace on a save beside the Violet City Pokémon Center's story-flagged NPC, when the owner has one |
 | `BattleMessage` | `sel == 15` | "Can't escape!" or another dismissable message | a flee from a trapping foe (Wobbuffet, Arena Trap); or Mean Look in `hgss-route33` with an edited foe |
 | outcome 2, 3, 4 | `[BS + 0x2420]` | lost, draw, caught | a weak lead that faints; a Poké Ball in the bag |
 | script 231 | `[ctx + 0xB0]` | "use next Pokémon?" | a lead that faints with a party behind it |
@@ -242,4 +244,5 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 
 - 2026-10-21: split out of the game profile spec at the owner's request so the profile work is restructure only; read table (R1 to R17), decomp-only table, stale-timeout table and the FR-9 rule added.
 - 2026-10-22: gate rewritten around the two Playwright scenarios that exist on `main` (`hgss-route33`, `hgss-route33-train`); the level-up scenario is the existing one, the new ones are the learn-accept path and evolution.
+- 2026-10-22: the blocked-step pointer deferred by the owner; R10 keeps the stall timeout and the decomp-only table records what would replace it.
 - 2026-10-22: field scripts traced (poison, Pokémon Center): R18, R19 and S4 added; `FieldTask` for scripts and warps moved from decomp-only to observed; the heal macro's fainted rule recorded as wrong for a non-lead faint.
