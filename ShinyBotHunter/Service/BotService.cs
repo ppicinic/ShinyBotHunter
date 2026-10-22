@@ -69,29 +69,10 @@ namespace ShinyBotHunter.Service
 
         private async Task<Dictionary<int, EmulatorState>> ExecuteNewBotOrSpecialEventUnderGate(NewEventArguments args)
         {
+            var entry = EventRegistry.Get(args.EventName);
+            if (!entry.OwnsEmulators) throw new ArgumentException($"{args.EventName} is not a top-level action.");
             var (_, newPos) = slots.AllocatePosition();
-            if (args.EventName == "Launch Bot")
-            {
-                return await StartLaunchBotAsync(args, newPos);
-            }
-            else if(args.EventName == "Launch Bot + Continue")
-            {
-                return await StartLaunchBotAndContinueAsync(args, newPos);
-            }
-            else if(args.EventName == "HGSS Shiny Starter Hunt")
-            {
-                // Off the menu, which now reaches this through the unified action's HGSS mode, but
-                // still accepted so a direct API call or a saved script keeps working.
-                return await StartHgssStarterHunt(newPos);
-            }
-            else if(args.EventName == "Shiny Starter Hunt")
-            {
-                return await StartShinyStarterHuntAsync(args, newPos);
-            }
-            else
-            {
-                throw new Exception($"{args.EventName} does not exist.");
-            }
+            return await entry.Create(this, args, newPos);
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartLaunchBotAsync(NewEventArguments args, int newPos)
@@ -177,9 +158,9 @@ namespace ShinyBotHunter.Service
                 if (rom.Flavor is not { } flavor)
                 {
                     throw new ArgumentException(
-                        $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                        $"Shiny Starter Hunt needs {nameof(GameCapabilities.HasSoftResetStarterHunt)}; '{raw.GameName}' is {rom.DisplayName}, which has no game profile.");
                 }
-                RequireCapability("Shiny Starter Hunt", profiles.Get(flavor));
+                RequireCapability(EventRegistry.Get("Shiny Starter Hunt"), profiles.Get(flavor));
                 firstRom ??= rom;
 
                 string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
@@ -229,7 +210,7 @@ namespace ShinyBotHunter.Service
         /// </summary>
         internal Task<Dictionary<int, EmulatorState>> StartHgssStarterHunt(int newPos)
         {
-            RequireCapability("HGSS Shiny Starter Hunt", profiles.Get(GameFlavor.HGSS));
+            RequireCapability(EventRegistry.Get("HGSS Shiny Starter Hunt"), profiles.Get(GameFlavor.HGSS));
             if (!slots.Entries.IsEmpty)
             {
                 throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
@@ -261,34 +242,16 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException($"There is not bot at position: {pos}");
             }
+            var entry = EventRegistry.Get(args.EventName);
             // Before the valid-actions check, which would refuse a filtered-out action without
             // naming the capability. A hunt's entry has no bot; the check below refuses it as before.
-            if (slots.Entries[pos].Bot is { } bot) RequireCapability(args.EventName, bot.Profile);
+            if (slots.Entries[pos].Bot is { } bot) RequireCapability(entry, bot.Profile);
             var validActions = GetAvailableActions(pos);
             if(validActions.Where(x => x.Name == args.EventName).Count() == 0)
             {
                 throw new ArgumentException($"{args.EventName} is not a valid action to run currently.");
             }
-            if(args.EventName == "Wild Encounter")
-            {
-                return await StartWildEncounter(args, pos);
-            }
-            else if(args.EventName == "Chained Encounter")
-            {
-                return await StartChainedEncounter(args, pos);
-            }
-            else if(args.EventName == "HGSS Togepi Egg")
-            {
-                return await StartTogepiEggAsync(args, pos);
-            }
-            else if(args.EventName == "Resume")
-            {
-                return await ResumeAsync(args, pos);
-            }
-            else
-            {
-                throw new Exception($"{args.EventName} does not exist.");
-            }
+            return await entry.Create(this, args, pos);
         }
 
         internal Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
@@ -529,17 +492,17 @@ namespace ShinyBotHunter.Service
             if(gameState is not null && gameState.State.TryPeek(out var top) && top == EventState.Waiting
                 && (eventTask is null || botEvent.Event is MultiStarterHuntEvent))
             {
-                return [actionMap["Resume"]];
+                return [EventRegistry.Get("Resume").Options];
             }
             else if(eventTask is null && bot is not null)
             {
                 // TODO continue game.
                 // A hunt's entry has no bot, and is visible idle while it starts and tears down.
-                var actions = new List<EventArgumentOptions>
-                {
-                    actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"],
-                };
-                return actions.Where(a => !requiredCapability.TryGetValue(a.Name, out var need) || need.Has(bot.Profile.Capabilities)).ToList();
+                return EventRegistry.All
+                    .Where(e => !e.OwnsEmulators && e.Name != "Resume")
+                    .Where(e => e.Requires is not { } need || need.Has(bot.Profile.Capabilities))
+                    .Select(e => e.Options)
+                    .ToList();
             }
             else
             {
@@ -547,49 +510,11 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        // The parameters of a single encounter. Also serves as the per-leg schema of a chain, so the
-        // dashboard renders one set of fields per leg without a second definition to keep in sync.
-        private static EventArgumentOptions EncounterParameters(string name) => new EventArgumentOptions()
+        private static void RequireCapability(EventRegistration entry, GameProfile profile)
         {
-            Name = name,
-            RequiredParameters = ["PhaseName", "TargetType", "EncounterType"],
-            OptionalParameters = ["TrainType"],
-            ConditionalParameters = [new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "xRange" },
-                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "EncounterType", Value = "Run" }, Name = "yRange" },
-                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Neq, Name = "TrainType", Value = "None" }, Name = "TargetLevel" },
-                new ConditionalParameters() { Condition = new Condition() { ConditionType = ConditionType.Eq, Name = "TrainType", Value = "Switch" }, Name = "SwitchSlot" }
-            ]
-        };
-
-        private static Dictionary<string, EventArgumentOptions> actionMap = new Dictionary<string, EventArgumentOptions>()
-        {
-            {"Continue Game", new EventArgumentOptions() { Name = "Continue Game" } },
-            {"Wild Encounter", EncounterParameters("Wild Encounter") },
-            {"Chained Encounter", new EventArgumentOptions() { Name = "Chained Encounter", LegParameters = EncounterParameters("Leg") } },
-            // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
-            // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.
-            {"HGSS Togepi Egg", new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] } },
-            // Macros, timings and the save-menu id live in Configs/Events/RsStarterHunt.json, so the
-            // only per-hunt choices are which starter to take and what to file the encounters under.
-            {"Resume", new EventArgumentOptions() { Name = "Resume" } }
-        };
-
-        // The capability each action needs; an action not listed needs none. The name travels with
-        // the predicate because the refusal has to say which capability is missing.
-        private static readonly Dictionary<string, (string Name, Func<GameCapabilities, bool> Has)> requiredCapability = new()
-        {
-            {"Wild Encounter", (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters) },
-            {"Chained Encounter", (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters) },
-            {"HGSS Togepi Egg", (nameof(GameCapabilities.HasEggs), c => c.HasEggs) },
-            {"Shiny Starter Hunt", (nameof(GameCapabilities.HasSoftResetStarterHunt), c => c.HasSoftResetStarterHunt) },
-            {"HGSS Shiny Starter Hunt", (nameof(GameCapabilities.HasShinyStarterHunt), c => c.HasShinyStarterHunt) },
-        };
-
-        private static void RequireCapability(string action, GameProfile profile)
-        {
-            if (requiredCapability.TryGetValue(action, out var need) && !need.Has(profile.Capabilities))
+            if (entry.Requires is { } need && !need.Has(profile.Capabilities))
             {
-                throw new ArgumentException($"{action} needs {need.Name}, which {profile.Flavor} does not have.");
+                throw new ArgumentException($"{entry.Name} needs {need.Capability}, which {profile.Flavor} does not have.");
             }
         }
 
