@@ -102,7 +102,7 @@ steps:
 ### Projects and placement
 - `ShinyBotHunter.Qa/` (net10 console). Talks to the backend over HTTP, to the emulator over ApiHawk's existing ports, to Postgres with `psql` or Npgsql, and to Windows for focus, hotkeys and capture. References `ShinyBotHunter` only for DTO types and the parsers.
 - `ShinyBotHunter.Qa/Cheats/` holds the cheat definitions, one folder per game and ROM revision (see below). This is the only place cheats exist in the repo.
-- `ShinyBotHunter/`, `ApiHawk/`, `PokemonDashboard/`, the fork: no changes, no QA code, no cheats. Decided 2026-10-20.
+- `ShinyBotHunter/`, `ApiHawk/`, `PokemonDashboard/`, the fork: no changes, no QA code, no cheats. Decided 2026-10-20. The one allowance is `data-testid` attributes in `PokemonDashboard/` where the dashboard driver has no stable selector; they are a test seam, not QA code.
 - Saves are not in the repo. They live in a sibling folder, `../shinybothunterqasaves/` relative to the repo root, and `Scripts/qa-load-save.ps1` copies one into the configured BizHawk install (see [QA save files](#qa-save-files)).
 - QA configuration lives in the dev PC's user secrets for the backend (connection string, blank Discord token, sprite and BizHawk folders). `Startup` reads only `appsettings.json` and user secrets, so an `appsettings.Qa.json` would need a code change; the dev PC is not the streaming PC, so its user secrets are the QA configuration and no code change is needed.
 
@@ -193,7 +193,32 @@ areas:
 `select --changed` diffs the working tree and the current branch against `main`, maps files to areas, and returns every scenario sharing an area. A change outside every glob (docs, scripts) selects nothing; `--all` overrides.
 
 ### Dashboard driver
-One scenario (`dashboard-smoke`) starts the Electron app with Playwright's Electron support, subscribes to the scenario's phase, and screenshots each window after an encounter is pushed over SignalR. All other scenarios run headless against the API.
+`ShinyBotHunter.Qa/dashboard/` is a small Node project with `@playwright/test` as its only dependency. It drives the built Electron dashboard with Playwright's Electron support, using the dashboard's own Electron binary, and attaches to the Admin, Recent Encounters and `HGSS — Route 33` windows by title. The rest of `ShinyBotHunter.Qa` (the console, YAML scenarios, `qa-map.yaml`) does not exist yet.
+
+One scenario, `hgss-route33.spec.ts`, runs the real bot on Route 33 through the UI:
+1. It rebuilds the dashboard, copies `Cheats/hgss-usa-rev0/wild-shiny.cht` into the QA install disabled, and starts the backend with `dotnet run` on localhost:5000.
+2. It launches the dashboard and subscribes HGSS / Route 33 in Dashboard Config if it is not listed.
+3. In Bot Control it runs Launch Bot + Continue for Pokemon HeartGold, then moves the player two tiles into the grass with a macro over ApiHawk's command port.
+4. It starts Wild Encounter (Route 33, ShinyTarget, Run, xRange 3), waits for three new encounters on the phase card, and arms the cheat with the hotkey.
+5. It waits for Resume on the emulator card, cancels twice (event, then bot), and stops the backend by writing `end` to its stdin.
+
+It asserts that the count rose by at least 3, that Resume appeared, that the card is gone and no EmuHawk remains, that the save equals its `.bak`, and that the backend exited. Selectors are roles and visible text, plus the `data-testid` attributes `phase-encounter-count`, `emulator-card-<pos>`, `top-level-action-<name>` and `param-<name>`.
+
+Run it:
+```
+cd ShinyBotHunter.Qa/dashboard
+npm ci
+npx playwright install ffmpeg    # once per machine; Playwright's own ffmpeg, needed for its videos
+npx playwright test
+```
+Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`.
+
+Preconditions:
+- Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost, with the Discord token blank.
+- `PokemonDashboard/override-config.json` sets `spritesRootPath`.
+- The QA BizHawk install is in `C:\BizHawk-2.11` with the Route 33 save and its `.bak` in `NDS\SaveRAM`.
+- Playwright's ffmpeg is installed (`npx playwright install ffmpeg`). Without it, launching with video recording leaves every window unanswered and the scenario hangs until its timeout.
+- ffmpeg is on PATH (for `record-window.ps1`), the desktop is unlocked, and nothing else holds port 5000 or runs EmuHawk. The emulator must keep focus while the hotkey is sent.
 
 ### Initial scenario set
 | Scenario | Areas | Cheat |
@@ -279,6 +304,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-21: Dashboard driver section rewritten for the Playwright driver in `ShinyBotHunter.Qa/dashboard/`; `data-testid` attributes allowed in `PokemonDashboard/`.
 - 2026-10-17: first draft.
 - 2026-10-20: saves loaded by `Scripts/qa-load-save.ps1` with an agent allow rule, instead of copy logic inside the harness.
 - 2026-10-20: cheats stored per game and revision under `ShinyBotHunter.Qa/Cheats/`; saves moved out of the repo to a sibling `shinybothunterqasaves/` folder.
