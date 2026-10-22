@@ -133,6 +133,8 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 | 5.8 | Dashboard security tidy-up | REST through the main process via preload; sprites via a custom protocol; re-enable `webSecurity` and `sandbox`. | M |
 | 5.9 | ApiHawk hardening | Guard `ParseFrameCommands` with try/catch that clears the pending flag and returns an error; make `/flush` report timeout; cap read length; respond outside `_completionLock`. | M |
 
+Rows 5.3 to 5.3d and the `IBot` change in 5.6 are designed in the [game profile spec](../specs/game-profile.md) (2026-10-21); its P1 to P7 are the task split and change no behaviour. Row 5.3e is the [HGSS state reader spec](../specs/hgss-state-reader.md), a follow-up gated on QA scenarios that do not exist yet, with a read-by-read table of what each pointer replaces. RS stays a wrapper profile until row 6.1.
+
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
 - Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.

@@ -215,7 +215,7 @@ There is no backend-for-frontend layer and, per [principle 2.3](../engineering-p
 The project grows in two known directions. Each gets one seam; nothing else is generalised (principle 2.2).
 
 ### Axis 1: game flavors
-`GameFlavor` is the key. Today the per-flavor parts are three keyed registrations (`IPointerService`, `IPokemonParser`, `IBattlePokemonParser`) resolved through `GameServices`. That is the right shape; the plan grows it into a **game profile**, one object per flavor that is the only place game knowledge lives:
+`GameFlavor` is the key. Today the per-flavor parts are three keyed registrations (`IPointerService`, `IPokemonParser`, `IBattlePokemonParser`) resolved through `GameServices`. That is the right shape; the plan grows it into a **game profile**, one object per flavor that is the only place game knowledge lives (designed in the [game profile spec](../specs/game-profile.md): the profile is a composition record with no logic; addresses, parsers, capabilities, map data and the game-state reader stay separate types):
 
 | Part | Varies by | Today | Target |
 |---|---|---|---|
