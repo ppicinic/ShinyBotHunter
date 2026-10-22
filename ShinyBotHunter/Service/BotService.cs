@@ -69,125 +69,140 @@ namespace ShinyBotHunter.Service
 
         private async Task<Dictionary<int, EmulatorState>> ExecuteNewBotOrSpecialEventUnderGate(NewEventArguments args)
         {
-            var (positions, newPos) = slots.AllocatePosition();
+            var (_, newPos) = slots.AllocatePosition();
             if (args.EventName == "Launch Bot")
             {
-                if(args is not null && args.GameName is not null)
-                {
-                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
-                    var bot = botFactory.CreateBot(gameContext);
-                    await bot.LaunchAsync();
-                    if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
-                    {
-                        throw new InvalidOperationException($"Position {newPos} is already taken.");
-                    }
-                    return GetBotDashboardState();
-                }
-                else
-                {
-                    throw new ArgumentException("No game name was supplied to start bot");
-                }
+                return await StartLaunchBotAsync(args, newPos);
             }
             else if(args.EventName == "Launch Bot + Continue")
             {
-                if (args is not null && args.GameName is not null)
-                {
-                    var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
-                    var bot = botFactory.CreateBot(gameContext);
-                    await bot.LaunchAsync();
-                    if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
-                    {
-                        throw new InvalidOperationException($"Position {newPos} is already taken.");
-                    }
-                    await Task.Delay(4000);
-                    bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
-                    await bot.WaitForMacroAsync();
-                    return GetBotDashboardState();
-                }
-                else
-                {
-                    throw new ArgumentException("No game name was supplied to start bot");
-                }
+                return await StartLaunchBotAndContinueAsync(args, newPos);
             }
             else if(args.EventName == "HGSS Shiny Starter Hunt")
             {
                 // Off the menu, which now reaches this through the unified action's HGSS mode, but
                 // still accepted so a direct API call or a saved script keeps working.
-                return StartHgssStarterHunt(positions, newPos);
-            }
-            else if(args.EventName == "Shiny Starter Hunt" && StarterHuntMode(args.Mode) == GameFlavor.HGSS)
-            {
-                // One menu entry, two hunts. HGSS keeps the event it has always had; only the way it
-                // is reached changed.
-                return StartHgssStarterHunt(positions, newPos);
+                return await StartHgssStarterHunt(newPos);
             }
             else if(args.EventName == "Shiny Starter Hunt")
             {
-                if (positions.Count() != 0)
-                {
-                    throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
-                }
-                if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
-
-                // Each queue entry picks its own ROM, starter and recording label, like chained
-                // encounter legs. The flat fields remain usable as a single-entry shorthand.
-                List<NewEventLegArguments> rawEntries;
-                if (args.Legs is { Count: > 0 })
-                {
-                    rawEntries = args.Legs;
-                }
-                else if (!string.IsNullOrWhiteSpace(args.GameName) && !string.IsNullOrWhiteSpace(args.Starter))
-                {
-                    rawEntries = [new NewEventLegArguments { GameName = args.GameName, Starter = args.Starter, RecordingName = args.RecordingName }];
-                }
-                else
-                {
-                    throw new ArgumentException("At least one starter entry (game + starter) is required for the shiny starter hunt.");
-                }
-
-                var entries = new List<StarterHuntEntry>();
-                RomInfo? firstRom = null;
-                foreach (NewEventLegArguments raw in rawEntries)
-                {
-                    if (string.IsNullOrWhiteSpace(raw.GameName)) throw new ArgumentException("Every starter entry must pick a game.");
-                    if (string.IsNullOrWhiteSpace(raw.Starter)) throw new ArgumentException("Every starter entry must pick a starter.");
-
-                    RomInfo rom = romInfoService.GetByHandle(raw.GameName)
-                        ?? throw new ArgumentException($"No ROM named '{raw.GameName}' was found.");
-                    if (rom.Flavor is not { } flavor)
-                    {
-                        throw new ArgumentException(
-                            $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
-                    }
-                    RequireCapability("Shiny Starter Hunt", profiles.Get(flavor));
-                    firstRom ??= rom;
-
-                    string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
-                    entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording, raw.RequireFemale ?? false));
-                }
-
-                int budget = settings.MaxEmulatorsFor(firstRom!.Console);
-                int requested = args.Emulators ?? 1;
-                if (requested < 1 || requested > budget)
-                {
-                    throw new ArgumentException($"Emulators must be between 1 and {budget} for {firstRom.Console}.");
-                }
-
-                var hunt = new MultiStarterHuntEvent(entries, args.PhaseName, requested, budget, StarterHuntConfig.Load(), provider);
-
-                // The shared state is what the dashboard reads: the event holds it at Waiting while a
-                // shiny is parked, which is what surfaces Resume.
-                var huntState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
-                huntState.State.Push(EventState.Running);
-                var huntEvent = new BotAndOrEvent { GameState = huntState };
-                slots.Entries[newPos] = huntEvent;
-                runner.StartEvent(newPos, huntEvent, hunt, huntState, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", removeWhenDone: true);
-                return GetBotDashboardState();
+                return await StartShinyStarterHuntAsync(args, newPos);
             }
             else
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        internal async Task<Dictionary<int, EmulatorState>> StartLaunchBotAsync(NewEventArguments args, int newPos)
+        {
+            if(args is not null && args.GameName is not null)
+            {
+                var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
+                var bot = botFactory.CreateBot(gameContext);
+                await bot.LaunchAsync();
+                if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                {
+                    throw new InvalidOperationException($"Position {newPos} is already taken.");
+                }
+                return GetBotDashboardState();
+            }
+            else
+            {
+                throw new ArgumentException("No game name was supplied to start bot");
+            }
+        }
+
+        internal async Task<Dictionary<int, EmulatorState>> StartLaunchBotAndContinueAsync(NewEventArguments args, int newPos)
+        {
+            if (args is not null && args.GameName is not null)
+            {
+                var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
+                var bot = botFactory.CreateBot(gameContext);
+                await bot.LaunchAsync();
+                if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                {
+                    throw new InvalidOperationException($"Position {newPos} is already taken.");
+                }
+                await Task.Delay(4000);
+                bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
+                await bot.WaitForMacroAsync();
+                return GetBotDashboardState();
+            }
+            else
+            {
+                throw new ArgumentException("No game name was supplied to start bot");
+            }
+        }
+
+        internal Task<Dictionary<int, EmulatorState>> StartShinyStarterHuntAsync(NewEventArguments args, int newPos)
+        {
+            if (StarterHuntMode(args.Mode) == GameFlavor.HGSS)
+            {
+                // One menu entry, two hunts. HGSS keeps the event it has always had; only the way it
+                // is reached changed.
+                return StartHgssStarterHunt(newPos);
+            }
+            if (!slots.Entries.IsEmpty)
+            {
+                throw new Exception("The shiny starter hunt manages its own emulators, so it has to be the only thing running.");
+            }
+            if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the shiny starter hunt.");
+
+            // Each queue entry picks its own ROM, starter and recording label, like chained
+            // encounter legs. The flat fields remain usable as a single-entry shorthand.
+            List<NewEventLegArguments> rawEntries;
+            if (args.Legs is { Count: > 0 })
+            {
+                rawEntries = args.Legs;
+            }
+            else if (!string.IsNullOrWhiteSpace(args.GameName) && !string.IsNullOrWhiteSpace(args.Starter))
+            {
+                rawEntries = [new NewEventLegArguments { GameName = args.GameName, Starter = args.Starter, RecordingName = args.RecordingName }];
+            }
+            else
+            {
+                throw new ArgumentException("At least one starter entry (game + starter) is required for the shiny starter hunt.");
+            }
+
+            var entries = new List<StarterHuntEntry>();
+            RomInfo? firstRom = null;
+            foreach (NewEventLegArguments raw in rawEntries)
+            {
+                if (string.IsNullOrWhiteSpace(raw.GameName)) throw new ArgumentException("Every starter entry must pick a game.");
+                if (string.IsNullOrWhiteSpace(raw.Starter)) throw new ArgumentException("Every starter entry must pick a starter.");
+
+                RomInfo rom = romInfoService.GetByHandle(raw.GameName)
+                    ?? throw new ArgumentException($"No ROM named '{raw.GameName}' was found.");
+                if (rom.Flavor is not { } flavor)
+                {
+                    throw new ArgumentException(
+                        $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
+                }
+                RequireCapability("Shiny Starter Hunt", profiles.Get(flavor));
+                firstRom ??= rom;
+
+                string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
+                entries.Add(new StarterHuntEntry(raw.GameName, raw.Starter, entryRecording, raw.RequireFemale ?? false));
+            }
+
+            int budget = settings.MaxEmulatorsFor(firstRom!.Console);
+            int requested = args.Emulators ?? 1;
+            if (requested < 1 || requested > budget)
+            {
+                throw new ArgumentException($"Emulators must be between 1 and {budget} for {firstRom.Console}.");
+            }
+
+            var hunt = new MultiStarterHuntEvent(entries, args.PhaseName, requested, budget, StarterHuntConfig.Load(), provider);
+
+            // The shared state is what the dashboard reads: the event holds it at Waiting while a
+            // shiny is parked, which is what surfaces Resume.
+            var huntState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
+            huntState.State.Push(EventState.Running);
+            var huntEvent = new BotAndOrEvent { GameState = huntState };
+            slots.Entries[newPos] = huntEvent;
+            runner.StartEvent(newPos, huntEvent, hunt, huntState, $"Shiny hunt: {string.Join(", ", entries.Select(e => e.Starter))}", removeWhenDone: true);
+            return Task.FromResult(GetBotDashboardState());
         }
 
         /// <summary>
@@ -212,10 +227,10 @@ namespace ShinyBotHunter.Service
         /// The HGSS hunt, unchanged. It predates the generalized RS hunt and stays its own event; the
         /// unified dashboard action is a grouping, not a merge.
         /// </summary>
-        private Dictionary<int, EmulatorState> StartHgssStarterHunt(List<int> positions, int newPos)
+        internal Task<Dictionary<int, EmulatorState>> StartHgssStarterHunt(int newPos)
         {
             RequireCapability("HGSS Shiny Starter Hunt", profiles.Get(GameFlavor.HGSS));
-            if (positions.Count() != 0)
+            if (!slots.Entries.IsEmpty)
             {
                 throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
             }
@@ -224,7 +239,7 @@ namespace ShinyBotHunter.Service
             var botEvent = new BotAndOrEvent();
             slots.Entries[newPos] = botEvent;
             runner.StartEvent(newPos, botEvent, ev, new GameState { Profile = profiles.Get(GameFlavor.HGSS) }, "HGSS Shiny Starter Hunt", removeWhenDone: true);
-            return GetBotDashboardState();
+            return Task.FromResult(GetBotDashboardState());
         }
 
         public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
@@ -256,84 +271,104 @@ namespace ShinyBotHunter.Service
             }
             if(args.EventName == "Wild Encounter")
             {
-                var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
-
-                var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
-                slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
-                slots.Entries[pos].GameState!.State.Push(EventState.Init);
-                runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
-
-                return GetBotDashboardState();
+                return await StartWildEncounter(args, pos);
             }
             else if(args.EventName == "Chained Encounter")
             {
-                if (args.Legs is null || args.Legs.Count == 0)
-                {
-                    throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
-                }
-                // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
-                // after leg 1 has already been running for an hour.
-                var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor)).ToList();
-
-                var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
-                // The chain shares one GameState across all legs so the start tile survives leg
-                // boundaries; ChainedOrchestratorEvent re-applies each leg's own fields as it goes.
-                slots.Entries[pos].GameState = NewGameStateForLeg(pos, legs[0]);
-                slots.Entries[pos].GameState!.State.Push(EventState.Init);
-                string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
-                runner.StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
-
-                return GetBotDashboardState();
+                return await StartChainedEncounter(args, pos);
             }
             else if(args.EventName == "HGSS Togepi Egg")
             {
-                if (args.PhaseName is null)
-                {
-                    throw new ArgumentException("PhaseName cannot be null for the Togepi egg hunt.");
-                }
-                // Before the event is constructed or started, so a full party comes back as a plain
-                // error on the start request instead of faulting a background task the dashboard
-                // cannot report on.
-                await EnsurePartyHasRoomForEggAsync(pos);
-                // Constructing the event loads and validates its config, so a corridor or a touch
-                // coordinate that was never measured fails here with a message rather than after the
-                // dashboard has already reported the hunt as running.
-                var eggEvent = new HgssTogepiEggEvent(slots.Entries[pos].Bot!, slots.Entries[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
-                slots.Entries[pos].GameState = new GameState()
-                {
-                    Profile = slots.Entries[pos].Bot!.Profile,
-                    BotService = this,
-                    Bot = slots.Entries[pos].Bot!,
-                    Milestone = args.PhaseName,
-                    // Nothing in this event consults the target -- the egg is the only thing it ever
-                    // looks at -- but GameState requires one and shiny is what the hunt is for.
-                    Target = new ShinyTarget(),
-                };
-                runner.StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
-
-                return GetBotDashboardState();
+                return await StartTogepiEggAsync(args, pos);
             }
             else if(args.EventName == "Resume")
             {
-                if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)
-                {
-                    // The hunt's main task is still running; Resume is a call into it, not a restart.
-                    // Awaited under the gate, so a second Resume click settles the next parked shiny
-                    // rather than the same one, and a fault fails this request.
-                    var resumeState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Target = new ShinyTarget() };
-                    resumeState.State.Push(EventState.Resume);
-                    await multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None);
-                    await RefreshDashboardState();
-                    return GetBotDashboardState();
-                }
-                slots.Entries[pos].GameState!.SwapState(EventState.Resume);
-                runner.StartEvent(pos, slots.Entries[pos], slots.Entries[pos].Event!, slots.Entries[pos].GameState!, slots.Entries[pos].GetName(pos), removeWhenDone: false);
-                return GetBotDashboardState();
+                return await ResumeAsync(args, pos);
             }
             else
             {
                 throw new Exception($"{args.EventName} does not exist.");
             }
+        }
+
+        internal Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
+        {
+            var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
+
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
+            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            slots.Entries[pos].GameState!.State.Push(EventState.Init);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
+
+            return Task.FromResult(GetBotDashboardState());
+        }
+
+        internal Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
+        {
+            if (args.Legs is null || args.Legs.Count == 0)
+            {
+                throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
+            }
+            // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
+            // after leg 1 has already been running for an hour.
+            var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor)).ToList();
+
+            var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
+            // The chain shares one GameState across all legs so the start tile survives leg
+            // boundaries; ChainedOrchestratorEvent re-applies each leg's own fields as it goes.
+            slots.Entries[pos].GameState = NewGameStateForLeg(pos, legs[0]);
+            slots.Entries[pos].GameState!.State.Push(EventState.Init);
+            string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
+            runner.StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
+
+            return Task.FromResult(GetBotDashboardState());
+        }
+
+        internal async Task<Dictionary<int, EmulatorState>> StartTogepiEggAsync(NewEventArguments args, int pos)
+        {
+            if (args.PhaseName is null)
+            {
+                throw new ArgumentException("PhaseName cannot be null for the Togepi egg hunt.");
+            }
+            // Before the event is constructed or started, so a full party comes back as a plain
+            // error on the start request instead of faulting a background task the dashboard
+            // cannot report on.
+            await EnsurePartyHasRoomForEggAsync(pos);
+            // Constructing the event loads and validates its config, so a corridor or a touch
+            // coordinate that was never measured fails here with a message rather than after the
+            // dashboard has already reported the hunt as running.
+            var eggEvent = new HgssTogepiEggEvent(slots.Entries[pos].Bot!, slots.Entries[pos].Bot!.GameFlavor, args.PhaseName, provider, this);
+            slots.Entries[pos].GameState = new GameState()
+            {
+                Profile = slots.Entries[pos].Bot!.Profile,
+                BotService = this,
+                Bot = slots.Entries[pos].Bot!,
+                Milestone = args.PhaseName,
+                // Nothing in this event consults the target -- the egg is the only thing it ever
+                // looks at -- but GameState requires one and shiny is what the hunt is for.
+                Target = new ShinyTarget(),
+            };
+            runner.StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Togepi Egg: {args.PhaseName}", removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
+        internal async Task<Dictionary<int, EmulatorState>> ResumeAsync(NewEventArguments args, int pos)
+        {
+            if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)
+            {
+                // The hunt's main task is still running; Resume is a call into it, not a restart.
+                // Awaited under the gate, so a second Resume click settles the next parked shiny
+                // rather than the same one, and a fault fails this request.
+                var resumeState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Target = new ShinyTarget() };
+                resumeState.State.Push(EventState.Resume);
+                await multiHunt.ExecuteWithResultAsync(resumeState, CancellationToken.None);
+                await RefreshDashboardState();
+                return GetBotDashboardState();
+            }
+            slots.Entries[pos].GameState!.SwapState(EventState.Resume);
+            runner.StartEvent(pos, slots.Entries[pos], slots.Entries[pos].Event!, slots.Entries[pos].GameState!, slots.Entries[pos].GetName(pos), removeWhenDone: false);
+            return GetBotDashboardState();
         }
 
         /// <summary>
