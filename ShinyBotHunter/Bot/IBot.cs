@@ -1,5 +1,7 @@
 ﻿using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
@@ -10,5 +12,11 @@ namespace ShinyBotHunter.Bot
         /// ask the bot rather than assume one — that assumption is what kept the codebase single-game.
         /// </summary>
         GameFlavor GameFlavor { get; }
+
+        /// <summary>The parts this bot's game uses, resolved once from its flavor.</summary>
+        GameProfile Profile { get; }
+
+        /// <summary>The address table for the launched ROM's revision.</summary>
+        IPointerService Addresses { get; }
     }
 }

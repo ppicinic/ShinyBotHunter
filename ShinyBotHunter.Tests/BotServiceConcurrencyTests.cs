@@ -17,7 +17,7 @@ namespace ShinyBotHunter.Tests
         {
             private readonly Task launch;
 
-            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch) : base(settings, null!, null!)
+            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch) : base(settings, null!, null!, null!)
             {
                 this.launch = launch;
             }

@@ -7,6 +7,9 @@ using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence;
@@ -96,6 +99,9 @@ namespace ShinyBotHunter
                 .AddSingleton<BizHawkReaderWriterLock>()
                 .AddSingleton<MongoDbMetadataDao>()
                 .AddSingleton<PokemonMetadataService>()
+                .AddSingleton(sp => new GameProfiles(
+                    HgssProfile.Create(sp.GetRequiredService<PokemonMetadataService>()),
+                    RsProfile.Create(sp.GetRequiredService<PokemonMetadataService>())))
                 .AddSingleton<HgssPokemonParser>()
                 .AddSingleton<HgssShinyStarterEventFactory>()
                 .AddSingleton<PokemonPersistenceService>()
