@@ -70,11 +70,8 @@ namespace ShinyBotHunter.Tests
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
             PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte[]>());
 
-        public Task<byte> GetBattleMenuState(CancellationToken ct = default) => Task.FromResult((byte)0);
-        public Task<byte> GetBattleValue(CancellationToken ct = default) => Task.FromResult((byte)0);
-        public Task<byte> GetBattleState() => Task.FromResult((byte)0);
-
-        // No test that uses FakeBot reads the overworld.
+        // No test that uses FakeBot reads the overworld or the game state.
         public IOverworldReader Overworld => throw new NotImplementedException();
+        public IGameStateReader State => throw new NotImplementedException();
     }
 }

@@ -5,7 +5,7 @@ using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Bot
 {
-    public interface IBot : ILauncher, ICommandClient, IMemoryClient, IDataReader
+    public interface IBot : ILauncher, ICommandClient, IMemoryClient
     {
         /// <summary>
         /// Which game this emulator is running, from its ROM header. Callers that need a flavor should
@@ -21,5 +21,8 @@ namespace ShinyBotHunter.Bot
 
         /// <summary>The overworld reads. Throws InvalidOperationException for a flavor without them.</summary>
         IOverworldReader Overworld { get; }
+
+        /// <summary>Where the game is right now. Throws InvalidOperationException for a flavor without a state reader.</summary>
+        IGameStateReader State { get; }
     }
 }

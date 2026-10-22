@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -129,11 +130,6 @@ namespace ShinyBotHunter.BotEvents
             state.SwapState(EventState.WaitForMovesEnd);
         }
 
-        internal static bool IsBattle(byte battleValue)
-        {
-            return battleValue == 0x41 || battleValue == 0x97 || battleValue == 0xC0;
-        }
-
         private async Task WaitForMoveEnd(GameState state, CancellationToken cancellationToken)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -180,7 +176,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (!IsBattle(await state.Bot.GetBattleValue(token)))
+                        if ((await state.Bot.State.ReadAsync(token)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
                             return (EventState.BattleComplete, null);
                         await Task.Delay(Constant.PollIntervalMs, token);
                     }
@@ -197,7 +193,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     while (!token.IsCancellationRequested)
                     {
-                        if (await state.Bot.GetBattleMenuState(token) == 1)
+                        if ((await state.Bot.State.ReadAsync(token)).Screen == GameScreen.BattleMenu)
                         {
                             var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
                             if (battleState is not null)
@@ -371,7 +367,7 @@ namespace ShinyBotHunter.BotEvents
             var sw = Stopwatch.StartNew();
             while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
             {
-                if (!IsBattle(await state.Bot.GetBattleValue(ct)))
+                if ((await state.Bot.State.ReadAsync(ct)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
                 {
                     return SwitchOutcome.BattleOver;
                 }
@@ -418,15 +414,11 @@ namespace ShinyBotHunter.BotEvents
 
             // this code is repeated but it's unique cause we need to progress through the first pokemon.
             bot.RunRepeatMacro("T.B;W.5");
-            anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-            var battleMenuStatePtr = anchor + bot.Addresses.BattleMenuState;
-            byte battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
-            while (battleMenuState != 1)
+            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+            while (screen != GameScreen.BattleMenu)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-                battleMenuStatePtr = anchor + bot.Addresses.BattleMenuState;
-                battleMenuState = await bot.ReadByteAsync(battleMenuStatePtr);
+                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
             }
             bot.ClearMacro();
             try

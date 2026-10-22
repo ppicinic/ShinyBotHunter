@@ -6,6 +6,7 @@ using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -33,6 +34,7 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: true), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
+            Assert.NotNull(profile.CreateStateReader);
             Assert.Equal(new BoxLayout(-0x148D8, 18, 30, 4096), profile.Addresses(0).BoxLayout);
             Assert.Same(maps, profile.Maps);
             Assert.Same(graph, profile.Graph);
@@ -54,6 +56,7 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: false), profile.Capabilities);
             Assert.Null(profile.BattleParser);
             Assert.Null(profile.CreateOverworldReader);
+            Assert.Null(profile.CreateStateReader);
             Assert.Same(profile.Addresses(1), profile.Addresses(2));
             Assert.IsType<RsPointerService>(profile.Addresses(1));
             Assert.Null(profile.Addresses(1).BoxLayout);
@@ -98,6 +101,55 @@ namespace ShinyBotHunter.Tests
                 _ => new RsPointerService(),
                 new Gen3PokemonParser(Metadata()),
                 battleParser: null));
+        }
+
+        [Fact]
+        public void WildEncountersWithoutStateReaderThrows()
+        {
+            HgssPointerService table = new();
+            MapService maps = new(new Dictionary<int, Map>());
+            GraphService graph = new();
+
+            var error = Assert.Throws<ArgumentException>(() => new GameProfile(
+                GameFlavor.HGSS,
+                new GameCapabilities(
+                    HasOverworldNavigation: true,
+                    HasWildEncounters: true,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false),
+                [0],
+                _ => table,
+                new HgssPokemonParser(Metadata()),
+                new HgssBattlePokemonParser(),
+                createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
+                maps,
+                graph,
+                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset)));
+
+            Assert.Contains("no state reader", error.Message);
+        }
+
+        [Fact]
+        public void WildEncountersWithoutOverworldNavigationThrows()
+        {
+            var error = Assert.Throws<ArgumentException>(() => new GameProfile(
+                GameFlavor.HGSS,
+                new GameCapabilities(
+                    HasOverworldNavigation: false,
+                    HasWildEncounters: true,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false),
+                [0],
+                _ => new HgssPointerService(),
+                new HgssPokemonParser(Metadata()),
+                new HgssBattlePokemonParser(),
+                createStateReader: (memory, t) => new HgssLegacyStateReader(memory, (HgssPointerService)t)));
+
+            Assert.Contains("not HasOverworldNavigation", error.Message);
         }
     }
 }
