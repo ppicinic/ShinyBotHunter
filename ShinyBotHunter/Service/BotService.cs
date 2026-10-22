@@ -154,11 +154,12 @@ namespace ShinyBotHunter.Service
 
                     RomInfo rom = romInfoService.GetByHandle(raw.GameName)
                         ?? throw new ArgumentException($"No ROM named '{raw.GameName}' was found.");
-                    if (rom.Flavor != GameFlavor.RS)
+                    if (rom.Flavor is not { } flavor)
                     {
                         throw new ArgumentException(
                             $"'{raw.GameName}' is {rom.DisplayName}; the starter hunt is implemented for Ruby/Sapphire.");
                     }
+                    RequireCapability("Shiny Starter Hunt", profiles.Get(flavor));
                     firstRom ??= rom;
 
                     string entryRecording = string.IsNullOrWhiteSpace(raw.RecordingName) ? raw.GameName : raw.RecordingName;
@@ -213,6 +214,7 @@ namespace ShinyBotHunter.Service
         /// </summary>
         private Dictionary<int, EmulatorState> StartHgssStarterHunt(List<int> positions, int newPos)
         {
+            RequireCapability("HGSS Shiny Starter Hunt", profiles.Get(GameFlavor.HGSS));
             if (positions.Count() != 0)
             {
                 throw new Exception("Multi shiny hunting in HGSS can be the only active bot[s].");
@@ -244,6 +246,9 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException($"There is not bot at position: {pos}");
             }
+            // Before the valid-actions check, which would refuse a filtered-out action without
+            // naming the capability. A hunt's entry has no bot; the check below refuses it as before.
+            if (slots.Entries[pos].Bot is { } bot) RequireCapability(args.EventName, bot.Profile);
             var validActions = GetAvailableActions(pos);
             if(validActions.Where(x => x.Name == args.EventName).Count() == 0)
             {
@@ -485,19 +490,21 @@ namespace ShinyBotHunter.Service
             // idle whatever its stack shows mid-swap or after it pushed Complete.
             GameState? gameState = botEvent.GameState;
             Task? eventTask = botEvent.EventTask;
+            IBot? bot = botEvent.Bot;
             if(gameState is not null && gameState.State.TryPeek(out var top) && top == EventState.Waiting
                 && (eventTask is null || botEvent.Event is MultiStarterHuntEvent))
             {
                 return [actionMap["Resume"]];
             }
-            else if(eventTask is null)
+            else if(eventTask is null && bot is not null)
             {
                 // TODO continue game.
+                // A hunt's entry has no bot, and is visible idle while it starts and tears down.
                 var actions = new List<EventArgumentOptions>
                 {
                     actionMap["Wild Encounter"], actionMap["Chained Encounter"], actionMap["HGSS Togepi Egg"],
                 };
-                return actions;
+                return actions.Where(a => !requiredCapability.TryGetValue(a.Name, out var need) || need.Has(bot.Profile.Capabilities)).ToList();
             }
             else
             {
@@ -531,6 +538,25 @@ namespace ShinyBotHunter.Service
             // only per-hunt choices are which starter to take and what to file the encounters under.
             {"Resume", new EventArgumentOptions() { Name = "Resume" } }
         };
+
+        // The capability each action needs; an action not listed needs none. The name travels with
+        // the predicate because the refusal has to say which capability is missing.
+        private static readonly Dictionary<string, (string Name, Func<GameCapabilities, bool> Has)> requiredCapability = new()
+        {
+            {"Wild Encounter", (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters) },
+            {"Chained Encounter", (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters) },
+            {"HGSS Togepi Egg", (nameof(GameCapabilities.HasEggs), c => c.HasEggs) },
+            {"Shiny Starter Hunt", (nameof(GameCapabilities.HasSoftResetStarterHunt), c => c.HasSoftResetStarterHunt) },
+            {"HGSS Shiny Starter Hunt", (nameof(GameCapabilities.HasShinyStarterHunt), c => c.HasShinyStarterHunt) },
+        };
+
+        private static void RequireCapability(string action, GameProfile profile)
+        {
+            if (requiredCapability.TryGetValue(action, out var need) && !need.Has(profile.Capabilities))
+            {
+                throw new ArgumentException($"{action} needs {need.Name}, which {profile.Flavor} does not have.");
+            }
+        }
 
         /// <summary>The bot at a display position, or null when nothing is running there.</summary>
         public IBot? GetBotAt(int pos)

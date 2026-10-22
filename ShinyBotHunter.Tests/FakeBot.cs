@@ -16,15 +16,16 @@ namespace ShinyBotHunter.Tests
     {
         private readonly Task launch;
 
-        public FakeBot(Task launch)
+        public FakeBot(Task launch, GameProfile? profile = null)
         {
             this.launch = launch;
+            Profile = profile ?? HgssProfile.Create(new PokemonMetadataService(null!));
         }
 
         public bool Disposed { get; private set; }
 
-        public GameFlavor GameFlavor => GameFlavor.HGSS;
-        public GameProfile Profile { get; } = HgssProfile.Create(new PokemonMetadataService(null!));
+        public GameFlavor GameFlavor => Profile.Flavor;
+        public GameProfile Profile { get; }
         public IPointerService Addresses => Profile.Addresses(0);
         public string GameFileName => "fake.nds";
 

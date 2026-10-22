@@ -1,7 +1,10 @@
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Context;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
@@ -16,10 +19,12 @@ namespace ShinyBotHunter.Tests
         private class FakeBotFactory : BotFactory
         {
             private readonly Task launch;
+            private readonly GameProfile? profile;
 
-            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch) : base(settings, null!, null!, null!)
+            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch, GameProfile? profile) : base(settings, null!, null!, null!)
             {
                 this.launch = launch;
+                this.profile = profile;
             }
 
             public List<int> Positions { get; } = new();
@@ -33,7 +38,7 @@ namespace ShinyBotHunter.Tests
 
             public override IBot CreateBot(GameContext context)
             {
-                var bot = new FakeBot(launch);
+                var bot = new FakeBot(launch, profile);
                 Bots.Add(bot);
                 return bot;
             }
@@ -48,10 +53,10 @@ namespace ShinyBotHunter.Tests
 
         private static readonly NewEventArguments LaunchBot = new() { EventName = "Launch Bot", GameName = "fake.nds" };
 
-        private static (BotService Service, FakeBotFactory Factory) Build(Task launch)
+        private static (BotService Service, FakeBotFactory Factory) Build(Task launch, GameProfile? profile = null)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
-            var factory = new FakeBotFactory(settings, launch);
+            var factory = new FakeBotFactory(settings, launch, profile);
             // The launch and idle-cancel paths touch neither the hub, the provider nor the ROM index.
             return (new BotService(settings, factory, null!, null!, null!, null!), factory);
         }
@@ -125,6 +130,45 @@ namespace ShinyBotHunter.Tests
             Assert.Null(entry.CancellationTokenSource);
             Assert.Null(entry.GameState);
             Assert.True(slots.Entries.ContainsKey(0));
+        }
+
+        [Fact]
+        public async Task IdleRsBot_SeesNoHgssActions()
+        {
+            var (service, _) = Build(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)));
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
+
+            Assert.DoesNotContain("Wild Encounter", names);
+            Assert.DoesNotContain("Chained Encounter", names);
+            Assert.DoesNotContain("HGSS Togepi Egg", names);
+            Assert.Empty(names);
+        }
+
+        [Fact]
+        public async Task IdleHgssBot_SeesTodaysThreeActions()
+        {
+            var (service, _) = Build(Task.CompletedTask);
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
+
+            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg"], names);
+        }
+
+        [Fact]
+        public async Task WildEncounterOnRsBot_IsRefusedNamingTheCapability()
+        {
+            var (service, _) = Build(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)));
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+            var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Run, xRange = 1 };
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.ExecuteEvent(0, args));
+
+            Assert.Contains("HasWildEncounters", ex.Message);
+            // No GameState was assigned, so no event was built.
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
         [Fact]

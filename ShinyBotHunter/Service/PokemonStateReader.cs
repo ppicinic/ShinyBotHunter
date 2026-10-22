@@ -168,8 +168,10 @@ namespace ShinyBotHunter.Service
         /// <inheritdoc cref="GetPokemonState(IBot)"/>
         public async Task<PokemonState> GetPokemonState(IMemoryClient bot, GameProfile profile, IPointerService addresses)
         {
+            if (!profile.Capabilities.CanReadBoxes) throw new InvalidOperationException($"{profile.Flavor} does not declare CanReadBoxes; read the party with GetPartyState instead.");
             IPokemonParser parser = profile.Parser;
-            BoxLayout boxes = addresses.BoxLayout ?? throw new NotSupportedException($"{profile.Flavor} box storage is not mapped.");
+            // The GameProfile constructor refuses CanReadBoxes without a box layout for every revision.
+            BoxLayout boxes = addresses.BoxLayout!;
             int boxCount = boxes.Count;
             int boxCapacity = boxes.Capacity;
             int boxStride = boxes.Stride;
