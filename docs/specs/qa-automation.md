@@ -233,7 +233,7 @@ Preconditions:
 | `rs-starter-double-find` | starter-hunt (the race the review found) | RNG freeze on two emulators |
 | `api-concurrent-launch` | bot-engine (plan task 2.2) | none; two launches at once |
 | `counts-cold-load` | persistence (plan phase 3) | none; first-load time against a seeded 1M-row database |
-| `dashboard-smoke` | dashboard | none |
+| `hgss-route33-dashboard` (exists, #107) | dashboard, bot-engine, encounter | `hgss-usa-rev0/wild-shiny` |
 
 ## Spike results (2026-10-20)
 
