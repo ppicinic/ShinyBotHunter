@@ -1,0 +1,2 @@
+2247D90	682B	2300	ARM9 System Bus	0	wild shiny: ldr r3,[r5]	w	h	0	Equal
+2247D98	FDBB	FE3F	ARM9 System Bus	0	wild shiny: bl lo half	w	h	0	Equal

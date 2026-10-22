@@ -238,3 +238,6 @@ $RECYCLE.BIN/
 # test build output
 ShinyBotHunter.Tests/bin/
 ShinyBotHunter.Tests/obj/
+
+# QA dashboard driver run output
+ShinyBotHunter.Qa/dashboard/qa-runs/
