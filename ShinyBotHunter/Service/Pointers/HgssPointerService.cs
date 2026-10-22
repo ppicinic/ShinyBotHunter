@@ -60,10 +60,10 @@ namespace ShinyBotHunter.Service.Pointers
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33, hgss-route33-train
         public int PartyPokemonSize => 0xEC;
 
-        // no symbol in pointer-discovery.md; offset (revision-independent); QA: none yet: box read
+        // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33 (catch check on Resume)
         public int BoxPokemonSize => 136;
 
-        // no symbol in pointer-discovery.md; offset (revision-independent); QA: none yet: box read
+        // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33 (catch check on Resume)
         public BoxLayout? BoxLayout { get; } = new(-0x148D8, 18, 30, 4096);
 
         // Layout flag, not an address.
