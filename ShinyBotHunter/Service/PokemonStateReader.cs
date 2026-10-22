@@ -12,22 +12,13 @@ namespace ShinyBotHunter.Service
 {
     public class PokemonState
     {
-        public PokemonState()
-        {
-            BoxPokemon = new PokemonData?[18][];
-            for (int i = 0; i < 18; i++)
-            {
-                BoxPokemon[i] = new PokemonData?[30];
-            }
-        }
         public PokemonData?[] PartyPokemon { get; set; } = new PokemonData[6];
-        public PokemonData?[][] BoxPokemon { get; set; }
+        public PokemonData?[][] BoxPokemon { get; set; } = [];
         public int PartySize { get; set; }
 
         /// <summary>
-        /// Whether the box arrays were actually filled. GetPartyState allocates them and leaves every
-        /// entry null, so a box-inclusive query against a party-only state would scan 540 nulls and
-        /// quietly answer "not present". For the catch check that reads as "the pokemon got away":
+        /// Whether the box arrays were actually filled. GetPartyState leaves them empty, so a
+        /// box-inclusive query against a party-only state would scan no boxes and quietly answer "not present". For the catch check that reads as "the pokemon got away":
         /// nothing is persisted, the milestone never completes, and the only repair is by hand. The
         /// box-reading queries below therefore refuse to run rather than trusting the caller.
         /// </summary>
@@ -53,9 +44,9 @@ namespace ShinyBotHunter.Service
                     return true;
                 }
             }
-            for(int box = 0; box < 18; box++)
+            for(int box = 0; box < BoxPokemon.Length; box++)
             {
-                for(int slot = 0; slot < 30; slot++)
+                for(int slot = 0; slot < BoxPokemon[box].Length; slot++)
                 {
                     var compare = BoxPokemon[box][slot];
                     if(compare is not null && compare.PID == pokemon.PID && compare.Species == pokemon.Species)
@@ -75,9 +66,9 @@ namespace ShinyBotHunter.Service
             {
                 list.Add(PartyPokemon[i]!);
             }
-            for(int box = 0; box < 18; box++)
+            for(int box = 0; box < BoxPokemon.Length; box++)
             {
-                for(int slot = 0; slot < 30; slot++)
+                for(int slot = 0; slot < BoxPokemon[box].Length; slot++)
                 {
                     if (BoxPokemon[box][slot] is not null)
                     {
@@ -186,12 +177,18 @@ namespace ShinyBotHunter.Service
         {
             IPointerService pointers = games.Pointers(flavor);
             IPokemonParser parser = games.Parser(flavor);
-            int boxCount = pointers.BoxCount;
-            int boxCapacity = pointers.BoxCapacity;
-            int boxStride = pointers.BoxStride;
+            BoxLayout boxes = pointers.BoxLayout ?? throw new NotSupportedException($"{flavor} box storage is not mapped.");
+            int boxCount = boxes.Count;
+            int boxCapacity = boxes.Capacity;
+            int boxStride = boxes.Stride;
             int boxSlotSize = pointers.BoxPokemonSize;
 
             PokemonState state = await GetPartyState(bot, flavor);
+            state.BoxPokemon = new PokemonData?[boxCount][];
+            for (int i = 0; i < boxCount; i++)
+            {
+                state.BoxPokemon[i] = new PokemonData?[boxCapacity];
+            }
             uint anchor;
             //constantly polling is too slow. load the whole party data into memory
 
@@ -205,7 +202,7 @@ namespace ShinyBotHunter.Service
                 }
             }
             anchor = await bot.ReadUIntAsync(pointers.Anchor);
-            uint boxBase = (uint)(anchor + pointers.BoxStorage);
+            uint boxBase = (uint)(anchor + boxes.Storage);
             byte[] fullBoxData = await bot.ReadBytesAsync(boxBase, boxCount * boxStride);
             for (int box = 0; box < boxCount; box++)
             {
@@ -240,7 +237,7 @@ namespace ShinyBotHunter.Service
                         {
                             await Task.Delay(100);
                             anchor = await bot.ReadUIntAsync(pointers.Anchor);
-                            byte[] boxData = await bot.ReadBytesAsync((uint)(anchor + pointers.BoxStorage) + (box * (uint)boxStride) + (slot * (uint)boxSlotSize), boxSlotSize);
+                            byte[] boxData = await bot.ReadBytesAsync((uint)(anchor + boxes.Storage) + (box * (uint)boxStride) + (slot * (uint)boxSlotSize), boxSlotSize);
                             boxPokemon = parser.Parse(boxData);
                         } while (boxPokemon is null || boxPokemon.IsCorrupt);
                         state.BoxPokemon[box][slot] = boxPokemon;

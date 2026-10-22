@@ -83,5 +83,11 @@ namespace ShinyBotHunter.Tests
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => BuildReader().GetPartyState(memory, GameFlavor.RS));
         }
+
+        [Fact]
+        public void HasNoBoxLayout()
+        {
+            Assert.Null(new RsPointerService().BoxLayout);
+        }
     }
 }
