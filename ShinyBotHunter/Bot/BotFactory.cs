@@ -28,7 +28,7 @@ namespace ShinyBotHunter.Bot
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
             IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);
-            IDataReader reader = CreateReader(context, memoryClient);
+            IDataReader reader = CreateReader(context, memoryClient, addresses);
             return new Bot(apiHawkLauncher, commandClient, memoryClient, reader, profile, addresses, context);
         }
 
@@ -73,10 +73,10 @@ namespace ShinyBotHunter.Bot
         /// flavor gets the HGSS reader rather than nothing, because a bot still has to be launchable
         /// for macro recording -- reads are what fail, and they fail loudly.
         /// </summary>
-        private static IDataReader CreateReader(GameContext context, IMemoryClient memoryClient) => context.GameFlavor switch
+        private static IDataReader CreateReader(GameContext context, IMemoryClient memoryClient, IPointerService addresses) => context.GameFlavor switch
         {
-            GameFlavor.RS => new RsDataReader(memoryClient),
-            _ => new HgssDataReader(memoryClient),
+            GameFlavor.RS => new RsDataReader(memoryClient, (RsPointerService)addresses),
+            _ => new HgssDataReader(memoryClient, (HgssPointerService)addresses),
         };
 
         private static int Setting(Dictionary<string, int> settings, string consoleKey)
