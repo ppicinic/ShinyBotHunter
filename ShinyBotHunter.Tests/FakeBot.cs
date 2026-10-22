@@ -3,6 +3,8 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -19,7 +21,7 @@ namespace ShinyBotHunter.Tests
         public FakeBot(Task launch, GameProfile? profile = null)
         {
             this.launch = launch;
-            Profile = profile ?? HgssProfile.Create(new PokemonMetadataService(null!));
+            Profile = profile ?? HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
         }
 
         public bool Disposed { get; private set; }

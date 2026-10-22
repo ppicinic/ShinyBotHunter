@@ -36,11 +36,9 @@ namespace ShinyBotHunter.Pathfinding
     }
     public class MapService
     {
-        public static readonly MapService Instance = new MapService();
-
-        private MapService()
+        public MapService(string directory)
         {
-            LoadMaps();
+            LoadMaps(directory);
         }
         internal MapService(Dictionary<int, Map> maps)
         {
@@ -50,10 +48,10 @@ namespace ShinyBotHunter.Pathfinding
         private Dictionary<int, List<MapLookup>> botMapLookup = new Dictionary<int, List<MapLookup>>();
         private Dictionary<int, List<int>> botMapGameIds = new Dictionary<int, List<int>>();
         private Dictionary<int, Map> Maps { get; set; } = new Dictionary<int, Map>();
-        public void LoadMaps()
+        public void LoadMaps(string directory)
         {
             Console.WriteLine("Load maps");
-            using (FileStream compressedFileStream = new FileStream(".\\data\\HGSS\\maps.bin", FileMode.Open))
+            using (FileStream compressedFileStream = new FileStream(Path.Combine(directory, "maps.bin"), FileMode.Open))
             using (GZipStream decompressor = new GZipStream(compressedFileStream, CompressionMode.Decompress))
             using (BinaryReader reader = new BinaryReader(decompressor))
             {
@@ -77,7 +75,7 @@ namespace ShinyBotHunter.Pathfinding
                 }
                 Console.WriteLine($"Loaded {Maps.Keys.Count()} into memory. Total memory size: {byteCount} bytes.");
             }
-            mapLookup = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText(".\\data\\HGSS\\mapreverselookup.json"))!;
+            mapLookup = JsonConvert.DeserializeObject<Dictionary<int, MapLookup>>(File.ReadAllText(Path.Combine(directory, "mapreverselookup.json")))!;
             foreach(var (key, lookup) in mapLookup)
             {
                 if (!botMapLookup.ContainsKey(lookup.BotMapId))
@@ -88,7 +86,7 @@ namespace ShinyBotHunter.Pathfinding
                 botMapLookup[lookup.BotMapId].Add(lookup);
                 botMapGameIds[lookup.BotMapId].Add(key);
             }
-            var boulders = JsonConvert.DeserializeObject<Dictionary<int, BoulderData[]>>(File.ReadAllText(".\\data\\HGSS\\boulders.json"))!;
+            var boulders = JsonConvert.DeserializeObject<Dictionary<int, BoulderData[]>>(File.ReadAllText(Path.Combine(directory, "boulders.json")))!;
             foreach(var (boulderKey, boulderData) in boulders)
             {
                 Maps[boulderKey].Boulders = boulderData;

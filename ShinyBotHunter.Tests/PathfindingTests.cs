@@ -1,6 +1,7 @@
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
@@ -12,7 +13,8 @@ namespace ShinyBotHunter.Tests
         private static PathfindingService ServiceFor(Map map)
         {
             // ASearch and Djitriska never touch GraphService.
-            return new PathfindingService(new MapService(new() { [1] = map }), graphService: null!);
+            var table = new HgssPointerService();
+            return new PathfindingService(new MapService(new Dictionary<int, Map> { [1] = map }), graphService: null!, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset);
         }
 
         private static List<(int X, int Y)> Chain(MapPoint end)
@@ -141,6 +143,20 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(result);
             Assert.Equal(10, result.Cost);
             Assert.Same(c, result.CameFrom!.Node);
+        }
+
+        [Fact]
+        public void CreateMacro_MoveStringsAreUnchanged()
+        {
+            PathfindingService service = ServiceFor(new Map(1, 1));
+            MapPoint[] right = [new(Direction.Right) { X = 0, Y = 0 }, new(Direction.Right) { X = 3, Y = 0 }];
+            MapPoint[] up = [new(Direction.Up) { X = 0, Y = 5 }, new(Direction.Up) { X = 0, Y = 2 }];
+
+            string? warpMove = service.CreateMacro(right, destGameMapIds: [7, 9]);
+            string? plainMove = service.CreateMacro(up);
+
+            Assert.Equal("M.Right.3.35497716.35471704.142756.7.9", warpMove);
+            Assert.Equal("M.Up.2.35497724", plainMove);
         }
     }
 }

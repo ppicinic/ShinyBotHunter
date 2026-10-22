@@ -245,18 +245,20 @@ namespace ShinyBotHunter.Pathfinding
     }
     public class PathfindingService
     {
-        public const int XAddrVal = 0x21DA6F4;
-        public const int YAddrVal = 0x21DA6FC;
-        public static readonly string XAddr = XAddrVal.ToString();
-        public static readonly string YAddr = YAddrVal.ToString();
-        public const uint MapAnchorAddr = 0x21D4158;
-        public const uint MapNegOffset = 0x22DA4;
+        private readonly string XAddr;
+        private readonly string YAddr;
+        private readonly uint MapAnchorAddr;
+        private readonly uint MapNegOffset;
         private MapService mapService;
         private GraphService graphService;
-        public PathfindingService(MapService mapService, GraphService graphService)
+        public PathfindingService(MapService mapService, GraphService graphService, uint trainerX, uint trainerY, uint fieldSystem, int mapIdOffset)
         {
             this.mapService = mapService;
             this.graphService = graphService;
+            XAddr = trainerX.ToString();
+            YAddr = trainerY.ToString();
+            MapAnchorAddr = fieldSystem;
+            MapNegOffset = (uint)-mapIdOffset;
         }
 
         public async Task<IEnumerable<NodePoint>?> FindClosestPokemonCenter(int mapId, int startX, int startY, Capability capability, byte facing)

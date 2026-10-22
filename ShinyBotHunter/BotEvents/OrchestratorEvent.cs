@@ -2,7 +2,6 @@
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -33,7 +32,6 @@ namespace ShinyBotHunter.BotEvents
         private NavigatorEvent navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
-        private MapService mapService;
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
 
@@ -44,7 +42,6 @@ namespace ShinyBotHunter.BotEvents
             navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
-            this.mapService = provider.GetRequiredService<MapService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
         }

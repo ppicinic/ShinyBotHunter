@@ -1,13 +1,15 @@
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
 {
     public class GameProfilesTests
     {
-        private static readonly GameProfile Hgss = HgssProfile.Create(new PokemonMetadataService(null!));
+        private static readonly GameProfile Hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
 
         [Fact]
         public void ReturnsTheProfileForItsFlavor()

@@ -32,13 +32,11 @@ namespace ShinyBotHunter.Service
     public class LocationService
     {
         private readonly BotService botService;
-        private readonly MapService mapService;
         private readonly ApplicationSettings settings;
 
-        public LocationService(BotService botService, MapService mapService, IOptions<ApplicationSettings> appSettings)
+        public LocationService(BotService botService, IOptions<ApplicationSettings> appSettings)
         {
             this.botService = botService;
-            this.mapService = mapService;
             this.settings = appSettings.Value;
         }
 
@@ -55,7 +53,7 @@ namespace ShinyBotHunter.Service
             (short x, short y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
             Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
 
-            (int? botMapId, string? internalName) = LookupMap(mapId);
+            (int? botMapId, string? internalName) = LookupMap(bot.Profile.Maps!, mapId);
 
             return new LocationInfo(mapId, botMapId, internalName, x, y, (byte)facing, DescribeFacing(facing));
         }
@@ -65,11 +63,11 @@ namespace ShinyBotHunter.Service
         /// A map the lookup table has never heard of is a normal thing to stand on while exploring,
         /// not a server error — report the raw id and leave the name fields empty.
         /// </summary>
-        private (int? BotMapId, string? InternalName) LookupMap(int mapId)
+        private (int? BotMapId, string? InternalName) LookupMap(MapService maps, int mapId)
         {
             try
             {
-                MapLookup lookup = mapService.GetMapLookup(mapId);
+                MapLookup lookup = maps.GetMapLookup(mapId);
                 return (lookup.BotMapId, lookup.InternalName);
             }
             catch (KeyNotFoundException)
