@@ -1,7 +1,6 @@
-using Microsoft.Extensions.DependencyInjection;
 using ShinyBotHunter.Emulators;
-using ShinyBotHunter.Macro;
-using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -18,16 +17,11 @@ namespace ShinyBotHunter.Tests
         private const uint PartyAddress = 0x03004360;      // gPlayerParty
         private const int PartySlotSize = 100;
 
-        private static PokemonStateReader BuildReader()
-        {
-            ServiceCollection services = new();
-            services.AddKeyedSingleton<IPointerService>(GameFlavor.RS, new RsPointerService());
-            // The DAO is only read by InitAsync; Parse uses the static gender table and an empty
-            // metadata lookup, so a null DAO is never touched.
-            services.AddKeyedSingleton<IPokemonParser>(GameFlavor.RS, new Gen3PokemonParser(new PokemonMetadataService(null!)));
-            services.AddSingleton<GameServices>();
-            return new PokemonStateReader(services.BuildServiceProvider().GetRequiredService<GameServices>());
-        }
+        // The DAO is only read by InitAsync; Parse uses the static gender table and an empty
+        // metadata lookup, so a null DAO is never touched.
+        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!));
+
+        private static PokemonStateReader BuildReader() => new();
 
         /// <summary>
         /// A party block with otId equal to pid and pid % 24 == 0: the XOR key is 0 and the
@@ -59,7 +53,7 @@ namespace ShinyBotHunter.Tests
         {
             FakeMemoryClient memory = PlaceParty(PartyAddress);
 
-            var state = await BuildReader().GetPartyState(memory, GameFlavor.RS);
+            var state = await BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2));
 
             Assert.Equal(2, state.PartySize);
             Assert.Equal(252, state.PartyPokemon[0]!.Species); // Treecko
@@ -81,7 +75,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = PlaceParty(PartyAddress + 4);
 
             await Assert.ThrowsAsync<InvalidOperationException>(
-                () => BuildReader().GetPartyState(memory, GameFlavor.RS));
+                () => BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2)));
         }
 
         [Fact]
