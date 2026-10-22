@@ -74,7 +74,8 @@ namespace ShinyBotHunter.Tests
         public Task<byte> GetBattleValue(CancellationToken ct = default) => Task.FromResult((byte)0);
         public Task<byte> GetBattleState() => Task.FromResult((byte)0);
 
-        // No test that uses FakeBot reads the overworld.
+        // No test that uses FakeBot reads the overworld or the game state.
         public IOverworldReader Overworld => throw new NotImplementedException();
+        public IGameStateReader State => throw new NotImplementedException();
     }
 }

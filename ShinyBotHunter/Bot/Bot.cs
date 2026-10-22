@@ -16,6 +16,7 @@ namespace ShinyBotHunter.Bot
         private IMemoryClient memoryClient;
         private IDataReader? dataReader;
         private readonly IOverworldReader? overworld;
+        private readonly IGameStateReader? state;
         private GameContext? context;
         public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader? reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
         {
@@ -27,6 +28,7 @@ namespace ShinyBotHunter.Bot
             this.Addresses = addresses;
             this.context = context;
             this.overworld = profile.CreateOverworldReader?.Invoke(memoryClient, addresses);
+            this.state = profile.CreateStateReader?.Invoke(memoryClient, addresses);
         }
 
         public GameProfile Profile { get; }
@@ -34,6 +36,8 @@ namespace ShinyBotHunter.Bot
         public IPointerService Addresses { get; }
 
         public IOverworldReader Overworld => overworld ?? throw new InvalidOperationException($"{Profile.Flavor} has no overworld reader.");
+
+        public IGameStateReader State => state ?? throw new InvalidOperationException($"{Profile.Flavor} has no state reader.");
 
         private IDataReader DataReader => dataReader ?? throw new InvalidOperationException($"{Profile.Flavor} has no battle reads.");
 

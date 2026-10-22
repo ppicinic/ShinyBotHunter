@@ -21,5 +21,8 @@ namespace ShinyBotHunter.Bot
 
         /// <summary>The overworld reads. Throws InvalidOperationException for a flavor without them.</summary>
         IOverworldReader Overworld { get; }
+
+        /// <summary>Where the game is right now. Throws InvalidOperationException for a flavor without a state reader.</summary>
+        IGameStateReader State { get; }
     }
 }

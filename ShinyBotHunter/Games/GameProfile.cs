@@ -35,6 +35,9 @@ namespace ShinyBotHunter.Games
 
         public PathfindingService? Pathfinding { get; }
 
+        /// <summary>Null when the flavor has no state reads.</summary>
+        public Func<IMemoryClient, IPointerService, IGameStateReader>? CreateStateReader { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -46,7 +49,8 @@ namespace ShinyBotHunter.Games
             Func<IMemoryClient, IPointerService, IOverworldReader>? createOverworldReader = null,
             MapService? maps = null,
             GraphService? graph = null,
-            PathfindingService? pathfinding = null)
+            PathfindingService? pathfinding = null,
+            Func<IMemoryClient, IPointerService, IGameStateReader>? createStateReader = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -68,6 +72,14 @@ namespace ShinyBotHunter.Games
             {
                 throw new ArgumentException($"{flavor} declares HasWildEncounters but has no battle parser.");
             }
+            if (capabilities.HasWildEncounters && createStateReader is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasWildEncounters but has no state reader.");
+            }
+            if (capabilities.HasWildEncounters && !capabilities.HasOverworldNavigation)
+            {
+                throw new ArgumentException($"{flavor} declares HasWildEncounters but not HasOverworldNavigation.");
+            }
             if (capabilities.CanReadBoxes)
             {
                 foreach (int revision in revisions)
@@ -87,6 +99,7 @@ namespace ShinyBotHunter.Games
             Maps = maps;
             Graph = graph;
             Pathfinding = pathfinding;
+            CreateStateReader = createStateReader;
         }
     }
 }

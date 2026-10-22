@@ -37,6 +37,7 @@ namespace ShinyBotHunter.Games.Hgss
             createOverworldReader: (memory, table) => new HgssOverworldReader(memory, (HgssPointerService)table),
             maps,
             graph,
-            new PathfindingService(maps, graph, Table.TrainerX, Table.TrainerY, Table.Anchor, Table.MapIdOffset));
+            new PathfindingService(maps, graph, Table.TrainerX, Table.TrainerY, Table.Anchor, Table.MapIdOffset),
+            createStateReader: (memory, table) => new HgssLegacyStateReader(memory, (HgssPointerService)table));
     }
 }
