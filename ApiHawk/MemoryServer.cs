@@ -27,13 +27,21 @@ namespace ApiHawk
     ///                  extra: [countOffset:i32][slotsOffset:i32][slotSize:i32][slotStride:i32]
     ///                         [maxSlots:1][maxRetryFrames:2]
     ///                  → response body: [count:1][count × slotSize raw bytes]
+    ///   cmd 0x05     : follow several pointer chains and read every block on one frame; aux is
+    ///                  retryFrames, addr is unused.
+    ///                  extra: [blockCount:1] then per block
+    ///                         [anchor:4 LE][hopCount:1][hops:i32 LE × hopCount][length:4 LE]
+    ///                  → response body, per block in request order: [status:1][hop:1][length:4 LE][bytes]
+    ///                    status 0 Ok, 1 NullPointer, 2 OutOfRange, 3 ShortRead
     ///
     /// Why 0x03 and 0x04 exist: a client that reads the anchor pointer and then reads through it is
     /// two HTTP round trips, so the pointer it uses is at least a frame stale. Doing both hops here
     /// keeps them on one frame. 0x04 goes further and validates each slot before answering, retrying
     /// on the next frame when a read lands mid-rewrite -- far tighter than the client noticing bad
     /// data and polling again, and it guarantees the whole party comes from one frame rather than
-    /// slot 1 from one frame and slot 6 from three frames later.
+    /// slot 1 from one frame and slot 6 from three frames later. 0x05 exists because the queue is
+    /// drained once per frame, so sequential reads cost a frame each; one 0x05 request is a whole
+    /// snapshot from one frame instead of one frame per read.
     ///
     /// Thread model:
     ///   Accept thread — blocks on HttpListener.GetContext, hands each request to the thread
@@ -65,6 +73,9 @@ namespace ApiHawk
             public byte MaxSlots;
             public int MaxRetryFrames;
             public int FramesTried;
+
+            // cmd 0x05. Aux carries retryFrames and FramesTried counts the retries.
+            public (uint Anchor, int[] Hops, int Length)[] Blocks = Array.Empty<(uint, int[], int)>();
 
             // How to reach the party, and which generation's structure to validate. Both default to
             // the Gen 4 behaviour so a client that does not send them behaves exactly as before.
@@ -107,6 +118,18 @@ namespace ApiHawk
         // Sanity bounds on request fields, so a malformed body can't allocate wildly or loop long.
         private const int MaxHops = 4;
         private const int MaxSlotSize = 0x1000;
+        private const int MaxChainBlocks = 16;
+        private const int MaxChainHops = 8;
+        private const int MaxBlockLength = 0x1000;
+
+        // cmd 0x05 retry budget: 300 frames is 5s at 60fps, the handler's whole wait.
+        private const int MaxChainRetryFrames = 300;
+
+        // cmd 0x05 per-block status bytes.
+        private const byte ChainOk = 0;
+        private const byte ChainNullPointer = 1;
+        private const byte ChainOutOfRange = 2;
+        private const byte ChainShortRead = 3;
 
         // cmd 0x04 addressing: Gen 4 reaches the party through an anchor pointer that moves, while
         // Gen 3 keeps it at a fixed address and has nothing to dereference.
@@ -199,6 +222,19 @@ namespace ApiHawk
                                 BotLog.WriteThrottled("party-retried", $"[MemoryServer] Party read succeeded after {req.FramesTried} retry frame(s).");
                             req.Result = party;
                         }
+                    }
+                    else if (req.Cmd == 0x05)
+                    {
+                        byte[] blocks = ReadChainBlocks(req, out bool anyOutOfRange);
+                        if (anyOutOfRange && req.FramesTried < req.Aux)
+                        {
+                            // Re-follow every chain from its anchor next frame; a pointer caught
+                            // mid-write is usually settled by then.
+                            req.FramesTried++;
+                            (retry ??= new List<MemoryRequest>()).Add(req);
+                            continue;
+                        }
+                        req.Result = blocks;
                     }
                     else
                     {
@@ -294,6 +330,59 @@ namespace ApiHawk
                 addr = (uint)(pointer + hops[i]);
             }
             return addr;
+        }
+
+        /// <summary>
+        /// One attempt at every block of a cmd 0x05 request, all within this frame. A pointer that is
+        /// zero or outside addressable RAM ends that block with a status instead of throwing, so one
+        /// unfollowable chain never fails the others.
+        /// </summary>
+        private byte[] ReadChainBlocks(MemoryRequest req, out bool anyOutOfRange)
+        {
+            anyOutOfRange = false;
+            var output = new MemoryStream();
+            foreach ((uint anchor, int[] hops, int length) in req.Blocks)
+            {
+                byte status = ChainOk;
+                byte stoppedAt = (byte)hops.Length;
+                byte[] bytes = Array.Empty<byte>();
+                uint addr = anchor;
+                for (int i = 0; i < hops.Length; i++)
+                {
+                    byte[] raw = ReadBytes(addr, 4);
+                    uint pointer = raw.Length < 4 ? 0 : ReadU32Le(raw, 0);
+                    if (raw.Length < 4)
+                        status = ChainShortRead;
+                    else if (pointer == 0)
+                        status = ChainNullPointer;
+                    else if (!IsAddressable(pointer))
+                        status = ChainOutOfRange;
+                    else
+                    {
+                        addr = (uint)(pointer + hops[i]);
+                        continue;
+                    }
+                    stoppedAt = (byte)i;
+                    break;
+                }
+                if (status == ChainOk)
+                {
+                    bytes = ReadBytes(addr, length);
+                    if (bytes.Length < length)
+                        status = ChainShortRead;
+                }
+                if (status == ChainOutOfRange)
+                    anyOutOfRange = true;
+
+                output.WriteByte(status);
+                output.WriteByte(stoppedAt);
+                output.WriteByte((byte)bytes.Length);
+                output.WriteByte((byte)(bytes.Length >> 8));
+                output.WriteByte((byte)(bytes.Length >> 16));
+                output.WriteByte((byte)(bytes.Length >> 24));
+                output.Write(bytes, 0, bytes.Length);
+            }
+            return output.ToArray();
         }
 
         /// <summary>
@@ -497,6 +586,36 @@ namespace ApiHawk
                     req.Addressing = tail[0];
                     req.Scheme = tail[1];
                 }
+                return true;
+            }
+
+            if (req.Cmd == 0x05)
+            {
+                if (req.Aux > MaxChainRetryFrames)
+                    return false;
+                byte[]? countRaw = ReadExact(stream, 1);
+                if (countRaw == null || countRaw[0] == 0 || countRaw[0] > MaxChainBlocks)
+                    return false;
+                var blocks = new (uint Anchor, int[] Hops, int Length)[countRaw[0]];
+                for (int b = 0; b < blocks.Length; b++)
+                {
+                    byte[]? head = ReadExact(stream, 5);
+                    if (head == null || head[4] > MaxChainHops)
+                        return false;
+                    int hopCount = head[4];
+                    byte[]? hopsRaw = ReadExact(stream, hopCount * 4);
+                    byte[]? lengthRaw = ReadExact(stream, 4);
+                    if (hopsRaw == null || lengthRaw == null)
+                        return false;
+                    var hops = new int[hopCount];
+                    for (int i = 0; i < hopCount; i++)
+                        hops[i] = (int)ReadU32Le(hopsRaw, i * 4);
+                    int length = (int)ReadU32Le(lengthRaw, 0);
+                    if (length < 1 || length > MaxBlockLength)
+                        return false;
+                    blocks[b] = (ReadU32Le(head, 0), hops, length);
+                }
+                req.Blocks = blocks;
                 return true;
             }
 
