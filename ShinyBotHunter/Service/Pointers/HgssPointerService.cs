@@ -91,7 +91,7 @@ namespace ShinyBotHunter.Service.Pointers
         public int AppOverlayIdOffset => 0x0C;
 
         // app.state, the battle application state, battle_022378C0.c:25-42 (app + 0x14); offset (revision-independent);
-        // QA: hgss-route33-evolve (13 and 14)
+        // QA: hgss-route33 (state 13 on a flee), hgss-route33-evolve (14)
         public int AppStateOffset => 0x14;
 
         // app.setup, BattleSetup (app + 0x18; replaces the heap coincidence EnemyAnchor); offset (revision-independent);
