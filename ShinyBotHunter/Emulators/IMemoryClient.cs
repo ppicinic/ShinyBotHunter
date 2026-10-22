@@ -9,7 +9,7 @@ namespace ShinyBotHunter.Emulators
         public Task<ushort> ReadUShortAsync(uint address);
         public Task<uint> ReadUIntAsync(uint address);
 
-        public Task<byte[]> ReadBytesAsync(uint address, int length);
+        public Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default);
 
         public Task WriteByteAsync(uint address, byte value);
 
@@ -19,10 +19,10 @@ namespace ShinyBotHunter.Emulators
         /// by the time it is used.
         ///
         /// Each hop reads a 4-byte pointer at the current address and adds that hop's offset, so
-        /// <c>ReadBytesViaPointerAsync(anchor, 0xEC, 0x6930, 0xC18)</c> is
+        /// <c>ReadBytesViaPointerAsync(anchor, 0xEC, ct, 0x6930, 0xC18)</c> is
         /// <c>anchor -> +0x6930 -> deref -> +0xC18 -> read</c>. Offsets are signed; most are negative.
         /// </summary>
-        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets);
+        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets);
 
         public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets);
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets);

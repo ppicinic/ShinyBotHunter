@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
+import * as api from '../services/apiClient'
 import { IpcSignalRService } from '../services/ipcSignalRService'
 import type {
   AppConfig,
@@ -44,11 +45,7 @@ async function fetchWrappedPhaseInfo(
   gameName?: string | null
 ): Promise<{ phaseInfo: PhaseInfo; encounterData: GameEncounterResponse } | null> {
   try {
-    const encodedPhase = encodeURIComponent(phase)
-    const url = gameName
-      ? `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
-      : `${apiUrl}/api/phaseinfo/${game}/${encodedPhase}`
-    const response = await fetch(url)
+    const response = await api.getSubscriptionPhaseInfo(apiUrl, game, phase, gameName)
     if (!response.ok) return null
     const wrapped = (await response.json()) as WrappedPokemonPhase
     return { phaseInfo: wrapped.phaseInfo, encounterData: wrapped.data }
@@ -147,10 +144,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
         ({ game, phase }) => !currentSubs.some((s) => s.game === game && s.phase === phase)
       )
 
-      // Subscribe to SignalR groups and fetch phase info for new subs
+      // Fetch phase info for new subs
       toAdd.forEach(async ({ game, phase, gameName }) => {
-        service.subscribeToGamePhase(game, phase).catch(console.error)
-
         // Fetch phase info + initial encounter data from REST API
         const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase, gameName)
         if (result) {

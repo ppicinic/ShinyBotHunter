@@ -39,194 +39,86 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             }
         }
 
-        public async Task<(long, long)> GetAllEncountersForGame(GameFlavor game)
+        public async Task<List<CountRow>> GetCountsAsync(GameFlavor game)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.IsShiny).LongCountAsync()
-            );
+            return await context.Database
+                .SqlQuery<CountRow>($@"
+            SELECT ""Milestone"" AS ""Milestone"",
+                   ""GameFileName"" AS ""GameFileName"",
+                   ""FormCode"" AS ""FormCode"",
+                   ""Species""::int AS ""Species"",
+                   COUNT(*) AS ""Encounters"",
+                   COUNT(*) FILTER (WHERE ""IsShiny"") AS ""ShinyEncounters""
+            FROM ""encounters""
+            WHERE ""Game"" = {(int)game}
+            GROUP BY 1, 2, 3, 4")
+                .ToListAsync();
         }
 
-        public async Task<(long, long)> GetAllEncountersForGameName(string gameFileName)
+        // One statement, two groupings: per ROM copy against that copy's last shiny, and per phase against the
+        // last shiny across all copies. GROUPING SETS cannot do it because the since-filter differs per grouping.
+        public async Task<List<ProgressRow>> GetPhaseProgressAsync(GameFlavor game)
         {
             using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.IsShiny).LongCountAsync()
-            );
+            return await context.Database
+                .SqlQuery<ProgressRow>($@"
+            WITH per_file AS (
+                SELECT ""Milestone"", ""GameFileName"", MAX(""Timestamp"") FILTER (WHERE ""IsShiny"") AS last_shiny_at
+                FROM ""encounters""
+                WHERE ""Game"" = {(int)game}
+                GROUP BY 1, 2
+            ), per_phase AS (
+                SELECT ""Milestone"", MAX(last_shiny_at) AS last_shiny_at
+                FROM per_file
+                GROUP BY 1
+            )
+            SELECT e.""Milestone"" AS ""Milestone"", e.""GameFileName"" AS ""GameFileName"", COUNT(*)::int AS ""SinceLastShiny""
+            FROM ""encounters"" e
+            JOIN per_file l ON l.""Milestone"" = e.""Milestone"" AND l.""GameFileName"" = e.""GameFileName""
+            WHERE e.""Game"" = {(int)game} AND (l.last_shiny_at IS NULL OR e.""Timestamp"" > l.last_shiny_at)
+            GROUP BY 1, 2
+            UNION ALL
+            SELECT e.""Milestone"", NULL, COUNT(*)::int
+            FROM ""encounters"" e
+            JOIN per_phase p ON p.""Milestone"" = e.""Milestone""
+            WHERE e.""Game"" = {(int)game} AND (p.last_shiny_at IS NULL OR e.""Timestamp"" > p.last_shiny_at)
+            GROUP BY 1")
+                .ToListAsync();
         }
 
-        public async Task<(long, long)> GetAllPhaseEncountersForGame(GameFlavor game, string phase)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllPhaseEncountersForGameName(string gameFileName, string phase)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllPhaseFormEncountersForGame(GameFlavor game, string phase, string formCode)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.FormCode == formCode).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.FormCode == formCode && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllPhaseFormEncountersForGameName(string gameFileName, string phase, string formCode)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.FormCode == formCode).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.FormCode == formCode && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllFormEncountersForGame(GameFlavor game, string formCode)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game && x.FormCode == formCode).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.FormCode == formCode && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllFormEncountersForGameName(string gameFileName, string formCode)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.FormCode == formCode).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.FormCode == formCode && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<int> GetCurrentPhaseCount(GameFlavor game, string phase)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            var lastShiny = await context.Encounters
-                .Where(x => x.Game == game && x.Milestone == phase && x.IsShiny)
-                .OrderByDescending(x => x.Timestamp)
-                .Select(x => (DateTime?)x.Timestamp)
-                .FirstOrDefaultAsync();
-
-            return await context.Encounters
-                .Where(x => x.Game == game && x.Milestone == phase && (lastShiny == null || x.Timestamp > lastShiny))
-                .CountAsync();
-        }
-
-        public async Task<int> GetCurrentPhaseCount(string gameFileName, string phase)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            var lastShiny = await context.Encounters
-                .Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.IsShiny)
-                .OrderByDescending(x => x.Timestamp)
-                .Select(x => (DateTime?)x.Timestamp)
-                .FirstOrDefaultAsync();
-
-            return await context.Encounters
-                .Where(x => x.GameFileName == gameFileName && x.Milestone == phase && (lastShiny == null || x.Timestamp > lastShiny))
-                .CountAsync();
-        }
-
-        public async Task<double> GetEncountersPerHour(GameFlavor game, string phase)
+        public async Task<double> GetEncountersPerHour(GameFlavor game, string phase, string? gameFileName)
         {
             using var _context = await _contextFactory.CreateDbContextAsync();
             // Define the 24-hour cutoff
             var cutoff = DateTime.UtcNow.AddHours(-24);
 
-            // 1. Get Hourly Bins using Raw SQL
-            // We project into a simple anonymous or DTO type
+            // Bins are ordered and disjoint, so the first bin's MIN and the last bin's MAX are the window bounds.
             var hourlyData = await _context.Database
                 .SqlQuery<EncounterBin>($@"
             SELECT 
                 DATE_BIN(INTERVAL '1 hour', ""Timestamp"", TIMESTAMP '1970-01-01') AS Time, 
-                COUNT(*)::int AS HourlyCount 
+                COUNT(*)::int AS HourlyCount, 
+                MIN(""Timestamp"") AS FirstTime, 
+                MAX(""Timestamp"") AS LastTime 
             FROM ""encounters"" 
             WHERE ""Timestamp"" >= {cutoff} 
               AND ""Game"" = {(int)game} 
               AND ""Milestone"" = {phase} 
+              AND ({gameFileName}::text IS NULL OR ""GameFileName"" = {gameFileName}) 
             GROUP BY 1 
             ORDER BY 1")
                 .ToListAsync();
 
-            if (!hourlyData.Any()) return 0.0;
+            if (hourlyData.Count == 0 || hourlyData[0].FirstTime == hourlyData[^1].LastTime) return 0.0;
 
-            // 2. Get First/Last timestamps using LINQ (Type-safe and efficient)
-            var stats = await _context.Encounters
-                .Where(e => e.Timestamp >= cutoff &&
-                            e.Game == game &&
-                            e.Milestone == phase)
-                .GroupBy(_ => 1)
-                .Select(g => new {
-                    FirstTime = g.Min(e => e.Timestamp),
-                    LastTime = g.Max(e => e.Timestamp)
-                })
-                .OrderBy(x => x.FirstTime)
-                .FirstOrDefaultAsync();
-
-            if (stats == null || stats.FirstTime == stats.LastTime) return 0.0;
-
-            return CalculateEncounters(hourlyData, stats.FirstTime, stats.LastTime);
-        }
-
-        public async Task<double> GetEncountersPerHour(GameFlavor game, string phase, string gameFileName)
-        {
-            using var _context = await _contextFactory.CreateDbContextAsync();
-            // Define the 24-hour cutoff
-            var cutoff = DateTime.UtcNow.AddHours(-24);
-
-            // 1. Get Hourly Bins using Raw SQL
-            // We project into a simple anonymous or DTO type
-            var hourlyData = await _context.Database
-                .SqlQuery<EncounterBin>($@"
-            SELECT 
-                DATE_BIN(INTERVAL '1 hour', ""Timestamp"", TIMESTAMP '1970-01-01') AS Time, 
-                COUNT(*)::int AS HourlyCount 
-            FROM ""encounters"" 
-            WHERE ""Timestamp"" >= {cutoff} 
-              AND ""Game"" = {(int)game} 
-              AND ""Milestone"" = {phase} 
-              AND ""GameFileName"" = {gameFileName} 
-            GROUP BY 1 
-            ORDER BY 1")
-                .ToListAsync();
-
-            if (!hourlyData.Any()) return 0.0;
-
-            // 2. Get First/Last timestamps using LINQ (Type-safe and efficient)
-            var stats = await _context.Encounters
-                .Where(e => e.Timestamp >= cutoff &&
-                            e.Game == game &&
-                            e.Milestone == phase &&
-                            e.GameFileName == gameFileName)
-                .GroupBy(_ => 1)
-                .Select(g => new {
-                    FirstTime = g.Min(e => e.Timestamp),
-                    LastTime = g.Max(e => e.Timestamp)
-                })
-                .OrderBy(x => x.FirstTime)
-                .FirstOrDefaultAsync();
-
-            if (stats == null || stats.FirstTime == stats.LastTime) return 0.0;
-
-            return CalculateEncounters(hourlyData, stats.FirstTime, stats.LastTime);
+            return CalculateEncounters(hourlyData, hourlyData[0].FirstTime, hourlyData[^1].LastTime);
         }
 
         // DTO for raw SQL results
-        public record EncounterBin(DateTime Time, int HourlyCount);
+        public record EncounterBin(DateTime Time, int HourlyCount, DateTime FirstTime, DateTime LastTime);
 
-        private double CalculateEncounters(List<EncounterBin> bins, DateTime firstTime, DateTime lastTime)
+        internal static double CalculateEncounters(List<EncounterBin> bins, DateTime firstTime, DateTime lastTime)
         {
             const double OneHourMs = 3600000.0;
 
@@ -289,42 +181,6 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
         {
             ProducerQueue.Writer.TryComplete();
             await ProducerQueue.Reader.Completion;
-        }
-
-        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGame(GameFlavor game, string phase, int species)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllPhaseSpeciesEncountersForGameName(string gameFileName, string phase, int species)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Milestone == phase && x.Species == species && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllSpeciesEncountersForGame(GameFlavor game, int species)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.Game == game && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.Game == game && x.Species == species && x.IsShiny).LongCountAsync()
-            );
-        }
-
-        public async Task<(long, long)> GetAllSpeciesEncountersForGameName(string gameFileName, int species)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            return (
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species).LongCountAsync(),
-                await context.Encounters.Where(x => x.GameFileName == gameFileName && x.Species == species && x.IsShiny).LongCountAsync()
-            );
         }
     }
 }

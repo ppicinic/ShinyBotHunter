@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import { getSpriteUrl } from '../utils/sprites'
 import { WindowCloseButton } from './WindowChrome'
 
@@ -74,11 +75,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
     const fetchRate = async (): Promise<void> => {
       try {
-        const encodedPhase = encodeURIComponent(phase)
-        const url = gameName
-          ? `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}/${encodeURIComponent(gameName)}`
-          : `${config.apiUrl}/api/phaseinfo/encounterRate/${game}/${encodedPhase}`
-        const res = await fetch(url)
+        const res = await api.getEncounterRate(config.apiUrl, game, phase, gameName)
         if (!res.ok) return
         const rate = await res.json() as number
         setEncounterRate(rate)
@@ -102,7 +99,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-400">
           <span>
-            Encounters: <span className="text-white font-semibold">{totalPhaseEncounters.toLocaleString()}</span>
+            Encounters: <span data-testid="phase-encounter-count" className="text-white font-semibold">{totalPhaseEncounters.toLocaleString()}</span>
           </span>
           {totalPhaseShiny > 0 && (
             <span className="shiny-glow font-semibold">✨ {totalPhaseShiny}</span>
@@ -160,7 +157,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                     : pkmn.hasFemaleForm
                       ? '♂'
                       : ''
-                const spritePath = getSpriteUrl(config?.spritesRootPath ?? '', pkmn.formCode, true)
+                const spritePath = getSpriteUrl(pkmn.formCode, true)
 
                 return (
                   <tr

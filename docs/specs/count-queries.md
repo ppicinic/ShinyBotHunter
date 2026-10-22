@@ -1,6 +1,6 @@
 # Count Queries Spec
 
-Status: Draft
+Status: Implemented 2026-10-21 (plan phase 3, epic #67) with the divergences in the Implementation section
 Last updated: 2026-10-21
 Related: [Code review 2026-10, section 1](../reviews/2026-10-code-review.md#1-query-performance-slow-first-load-of-counts), [Improvement plan, phase 3](../plans/2026-10-cleanup-and-hardening.md), [Decisions](../decisions/global.md)
 
@@ -120,7 +120,7 @@ CREATE INDEX encounters_game_milestone_file_time
     INCLUDE ("IsShiny", "FormCode", "Species");
 ```
 
-It covers the grouped query (index-only scan over the game's rows), the phase-progress query, the latest-20 query, and the encounter-rate query. On a Timescale hypertable the index is created per chunk; the `WHERE "Game" = @game` predicate still has to visit every chunk, since chunks are by time, which is why the grouped query is issued once per game and cached rather than per request.
+It can serve the grouped query as an index-only scan, but on the 2M-row QA measurement the planner kept per-chunk seq scans (see Implementation); the latest-20 query uses the existing `Timestamp` index. On a Timescale hypertable the index is created per chunk; the `WHERE "Game" = @game` predicate still has to visit every chunk, since chunks are by time, which is why the grouped query is issued once per game and cached rather than per request.
 
 ### Mongo: one aggregation per game for caught shinies
 
@@ -155,7 +155,7 @@ Task<double>              GetEncountersPerHour(GameFlavor game, string phase, st
 void Init(); Task WriteToQueueAsync(...)                            // unchanged
 ```
 
-`MongoCaughtPokemonDao` gets `GetCaughtCountsAsync(GameFlavor game)` and loses the eleven count methods.
+`MongoCaughtPokemonDao` loses the eleven count methods; the catches are counted from `GetAllCaughtShiniesAsync(game)` in the builder (see Implementation), so no `GetCaughtCountsAsync` was added.
 
 ## Test cases
 
@@ -178,5 +178,14 @@ void Init(); Task WriteToQueueAsync(...)                            // unchanged
 ## Open questions
 None. The dashboard's phase card (`PhaseCard.tsx:24-32`) reads the per-ROM-copy phase count when a copy is selected and the game-level count otherwise, so both values stay and the phase-progress query returns both groupings.
 
+## Implementation (2026-10-21)
+Shipped as plan rows 3.2 to 3.5 under epic #67 (PRs #94, #101, #104). Divergences from the design above:
+- No Mongo aggregation. The builder counts catches from the caught list the load already fetches, so a cold load is 3 Postgres queries plus that list (FR-1 is met with one fewer round trip) and no `CaughtCountRow` exists.
+- No `"Pokemon.IsShiny": true` filter. `IsShiny` is a computed getter the documents may not store, and the old loaders counted every caught document; FR-2 (identical numbers) wins.
+- Caught documents without a `GameFileName` (written before May 2026) count at the game, phase and form levels and create no per-ROM-copy node, as the old loaders did.
+- Phase progress is one statement with `UNION ALL` for the two groupings, because `GROUPING SETS` would apply one "since last shiny" filter to both.
+- Measurement on the local QA database (2M synthetic rows, 366 chunks): the grouped query ran in 850 ms before and after the index (planner kept seq scans; 353 ms index-only with `enable_seqscan = off`); a cold phase load went from 18.6 s to 5.2 s and a warm load is about 40 ms. FR-3 is measured by the owner on the real database.
+
 ## Changelog
 - 2026-10-21: first draft from the review findings and the owner's direction (query shape over indexes alone; no cache invalidation).
+- 2026-10-21: implemented; divergences recorded in the Implementation section.

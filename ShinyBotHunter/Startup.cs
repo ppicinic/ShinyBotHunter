@@ -18,6 +18,7 @@ using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Tools;
+using System.Text.Json.Serialization;
 
 namespace ShinyBotHunter
 {
@@ -30,8 +31,8 @@ namespace ShinyBotHunter
                 return;
             }
             var builder = WebApplication.CreateBuilder();
-            builder.Services.AddControllers();
-            builder.Services.AddSignalR();
+            builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+            builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
             CreateServices(builder.Services);
             var app = builder.Build();
             var services = app.Services;

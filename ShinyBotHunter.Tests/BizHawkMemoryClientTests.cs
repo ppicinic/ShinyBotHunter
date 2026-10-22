@@ -18,5 +18,15 @@ namespace ShinyBotHunter.Tests
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ReadValidatedPartyAsync(
                 anchorAddress: 0, countOffset: 0, slotsOffset: 0, slotSize: 1, slotStride: 1, maxSlots: 1, maxRetryFrames: 1, ct: cts.Token));
         }
+
+        [Fact]
+        public async Task ReadBytesViaPointer_PreCancelledToken_ThrowsWithoutRetrying()
+        {
+            var client = new BizHawkMemoryClient(port: UnusedPort);
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ReadBytesViaPointerAsync(0, 1, cts.Token, 0));
+        }
     }
 }

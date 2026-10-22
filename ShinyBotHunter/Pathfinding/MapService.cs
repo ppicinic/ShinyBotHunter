@@ -42,6 +42,10 @@ namespace ShinyBotHunter.Pathfinding
         {
             LoadMaps();
         }
+        internal MapService(Dictionary<int, Map> maps)
+        {
+            Maps = maps;
+        }
         private Dictionary<int, MapLookup> mapLookup = new Dictionary<int, MapLookup>();
         private Dictionary<int, List<MapLookup>> botMapLookup = new Dictionary<int, List<MapLookup>>();
         private Dictionary<int, List<int>> botMapGameIds = new Dictionary<int, List<int>>();

@@ -1,5 +1,4 @@
 import * as signalR from '@microsoft/signalr'
-import { normalizeGameFlavor } from '../shared/gameFlavor'
 import {
   IPC,
   type ConnectionState,
@@ -97,12 +96,12 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
   hub.on(
     'ReceiveDashboardConfig',
     (rawConfig: {
-      gamePhases: Array<{ game: number | string; phase: string; gameFileName?: string | null }>
+      gamePhases: Array<{ game: string; phase: string; gameFileName?: string | null }>
       recentEncounterCount: number
     }) => {
       const config: SharedDashboardConfig = {
         gamePhases: (rawConfig.gamePhases ?? []).map((gp) => ({
-          game: normalizeGameFlavor(gp.game),
+          game: gp.game,
           phase: gp.phase,
           gameName: gp.gameFileName ?? null
         })),

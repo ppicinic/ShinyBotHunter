@@ -52,17 +52,17 @@ namespace ShinyBotHunter.Tests
         public Task<byte> ReadByteAsync(uint address) => Task.FromResult((byte)0);
         public Task<ushort> ReadUShortAsync(uint address) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntAsync(uint address) => Task.FromResult(0u);
-        public Task<byte[]> ReadBytesAsync(uint address, int length) => Task.FromResult(new byte[length]);
+        public Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default) => Task.FromResult(new byte[length]);
         public Task WriteByteAsync(uint address, byte value) => Task.CompletedTask;
-        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets) => Task.FromResult(new byte[length]);
+        public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets) => Task.FromResult(new byte[length]);
         public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((byte)0);
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
             PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte[]>());
 
-        public Task<byte> GetBattleMenuState() => Task.FromResult((byte)0);
-        public Task<byte> GetBattleValue() => Task.FromResult((byte)0);
+        public Task<byte> GetBattleMenuState(CancellationToken ct = default) => Task.FromResult((byte)0);
+        public Task<byte> GetBattleValue(CancellationToken ct = default) => Task.FromResult((byte)0);
         public Task<byte> GetBattleState() => Task.FromResult((byte)0);
         public Task<ushort> GetMapId() => Task.FromResult((ushort)0);
         public Task<short> GetTrainerXPos() => Task.FromResult((short)0);

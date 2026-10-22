@@ -28,16 +28,10 @@ namespace ShinyBotHunter.Emulators
         public async Task<ushort> ReadUShortAsync(uint address) => BinaryPrimitives.ReadUInt16LittleEndian(await ReadBytesAsync(address, 2));
         public async Task<uint> ReadUIntAsync(uint address) => BinaryPrimitives.ReadUInt32LittleEndian(await ReadBytesAsync(address, 4));
 
-        public async Task<byte[]> ReadBytesAsync(uint address, int length)
+        public async Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default)
         {
             byte[] header = BuildHeader(0x01, address, (uint)length);
-            return await ExecuteWithRetryAsync(async () =>
-            {
-                using var content = new ByteArrayContent(header);
-                using var resp = await _http.PostAsync("", content).ConfigureAwait(false);
-                resp.EnsureSuccessStatusCode();
-                return await resp.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-            });
+            return await PostAsync(header, ct);
         }
 
         public async Task WriteByteAsync(uint address, byte value)
@@ -53,15 +47,15 @@ namespace ShinyBotHunter.Emulators
         }
 
         public async Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
-            => (await ReadBytesViaPointerAsync(anchorAddress, 1, hopOffsets))[0];
+            => (await ReadBytesViaPointerAsync(anchorAddress, 1, CancellationToken.None, hopOffsets))[0];
 
         public async Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
-            => BinaryPrimitives.ReadUInt16LittleEndian(await ReadBytesViaPointerAsync(anchorAddress, 2, hopOffsets));
+            => BinaryPrimitives.ReadUInt16LittleEndian(await ReadBytesViaPointerAsync(anchorAddress, 2, CancellationToken.None, hopOffsets));
 
         public async Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets)
-            => BinaryPrimitives.ReadUInt32LittleEndian(await ReadBytesViaPointerAsync(anchorAddress, 4, hopOffsets));
+            => BinaryPrimitives.ReadUInt32LittleEndian(await ReadBytesViaPointerAsync(anchorAddress, 4, CancellationToken.None, hopOffsets));
 
-        public async Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, params int[] hopOffsets)
+        public async Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets)
         {
             if (hopOffsets is null || hopOffsets.Length == 0)
             {
@@ -77,7 +71,7 @@ namespace ShinyBotHunter.Emulators
                 BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(10 + i * 4), hopOffsets[i]);
             }
 
-            byte[] result = await PostAsync(body);
+            byte[] result = await PostAsync(body, ct);
             EnsureOpcodeSupported(result, 0x03);
             return result;
         }

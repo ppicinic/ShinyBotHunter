@@ -15,6 +15,7 @@ declare global {
       getWindowList: () => Promise<WindowInfo[]>
       setWindowBounds: (name: string, bounds: Partial<WindowBounds>) => Promise<WindowInfo[]>
       getSignalRState: () => Promise<SignalRSnapshot>
+      request: (method: string, url: string, body?: string) => Promise<{ status: number; body: string }>
       onWindowBoundsChanged: (cb: (windows: WindowInfo[]) => void) => () => void
       onSignalRConnectionState: (cb: (state: ConnectionState) => void) => () => void
       onDashboardConfig: (cb: (config: SharedDashboardConfig) => void) => () => void

@@ -380,7 +380,7 @@ namespace ShinyBotHunter.Pathfinding
 
         private void AddEdge(Edge edge, Capability capability, Dictionary<int, NodePoint> edges, NodePoint point)
         {
-            if ((edge.CapabilityMask ^ capability.CapabilityMask) == capability.CapabilityMask)
+            if ((edge.CapabilityMask & ~capability.CapabilityMask) == 0)
             {
                 if (!edges.ContainsKey(edge.ToNodeId))
                 {

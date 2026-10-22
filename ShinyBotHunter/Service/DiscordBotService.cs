@@ -50,6 +50,13 @@ public sealed class DiscordBotService
 
     public async Task<int> SendNewMoveDecisionAndWaitAsync(PokemonData pokemon, PokemonLevelUpMoveMetadata newMove)
     {
+        // Without a login there is no guild to post to and nobody to answer, so decline the move as
+        // "Do Not Learn" would; LevelUpFlow then walks the game through the decline.
+        if (_client.LoginState != LoginState.LoggedIn)
+        {
+            Console.WriteLine($"Discord is not logged in; {pokemon.Name} will not learn {newMove.Name}.");
+            return -1;
+        }
         // 1. Create a TaskCompletionSource to return the CustomId string
         var tcs = new TaskCompletionSource<int>();
         EmbedBuilder eb = new EmbedBuilder();
@@ -229,6 +236,13 @@ public sealed class DiscordBotService
 
     public async Task SendMessageAsync(DiscordMessage message)
     {
+        // The queue's only reader starts after login, so a message queued without one is never read
+        // and StopAsync would wait on the drain forever.
+        if (_client.LoginState != LoginState.LoggedIn)
+        {
+            Console.WriteLine($"Discord is not logged in; dropping message: {message.StringMessage ?? message.EmbedMessage?.Title}");
+            return;
+        }
         await messageQueue.Writer.WriteAsync(message);
     }
 

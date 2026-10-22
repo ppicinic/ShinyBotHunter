@@ -1,5 +1,6 @@
-import { app, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import { app, ipcMain, dialog, net, protocol } from 'electron'
+import { isAbsolute, join, relative, resolve } from 'path'
+import { pathToFileURL } from 'url'
 import { readFileSync, existsSync } from 'fs'
 import { flushLayout, loadLayout } from './layoutStore'
 import { getSnapshot, startSignalR, stopSignalR } from './signalRClient'
@@ -7,6 +8,9 @@ import { bootstrapWindows, listWindows, setWindowBounds, type MainConfig } from 
 import { IPC, type WindowBounds } from '../shared/windowContracts'
 
 const isDev = process.env.NODE_ENV === 'development'
+
+// Sprites are served as sprite://local/<subdir>/<name>.png; must be registered before app ready.
+protocol.registerSchemesAsPrivileged([{ scheme: 'sprite', privileges: { standard: true, secure: true } }])
 
 function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base }
@@ -66,6 +70,15 @@ app.whenReady().then(() => {
 
   const config = loadConfig()
 
+  // Renderer-supplied URLs: only files under spritesRootPath are served.
+  const spriteRoot = resolve(config.spritesRootPath)
+  protocol.handle('sprite', (request) => {
+    const file = resolve(spriteRoot, '.' + decodeURIComponent(new URL(request.url).pathname))
+    const rel = relative(spriteRoot, file)
+    if (rel.startsWith('..') || isAbsolute(rel)) return new Response(null, { status: 403 })
+    return net.fetch(pathToFileURL(file).toString())
+  })
+
   // IPC: Load static config.json — fails the app if config is missing or invalid
   ipcMain.handle(IPC.loadConfig, () => config)
 
@@ -79,6 +92,18 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle(IPC.getSignalRState, () => getSnapshot())
+
+  // Every renderer request to the backend goes through here; any other origin is refused.
+  const apiOrigin = new URL(config.apiUrl).origin
+  ipcMain.handle(IPC.apiRequest, async (_event, method: string, url: string, body?: string) => {
+    if (new URL(url).origin !== apiOrigin) throw new Error(`Refusing request to ${url}`)
+    const res = await net.fetch(url, {
+      method,
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body
+    })
+    return { status: res.status, body: await res.text() }
+  })
 
   startSignalR(config.backendUrl)
   bootstrapWindows(config)

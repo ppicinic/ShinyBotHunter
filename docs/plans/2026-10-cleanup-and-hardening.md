@@ -1,6 +1,6 @@
 # Cleanup and Hardening Plan
 
-Status: Phases 0 to 2 implemented (2026-10-21, epic #30); phases 3 to 6 open
+Status: Phases 0 to 5 implemented except 5.3 (game profile and dependants), 5.6 and 5.9 (2026-10-21, epics #30 and #67); phases 4b and 6 open
 Last updated: 2026-10-21
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
@@ -86,7 +86,7 @@ Outcome: the parts that are testable without an emulator have tests, in value or
 | 4.3 | `RsPointerService` memory map | Mirror `PokemonStateReaderTests` for RS using `FakeMemoryClient`. | S |
 | 4.4 | Counts cache from rows | Table-driven test for 3.3's tree builder. | S |
 | 4.5 | `BizHawkReaderWriterLock` | Reader/writer exclusion and no self-deadlock. | S |
-| 4.6 | `StarterHuntStateStore` round-trip | Temp directory load/save of parked and retired copies. | S |
+| 4.6 | `StarterHuntStateStore` round-trip | BSON round trip of `StarterHuntGameState` (high-bit PID, Guid Id, retired and created copies, document without `CompletedFinds`); the store is Mongo-backed, so a real load/save is a QA concern. | S |
 | 4.7 | Pathfinding | Small hand-built graphs; shortest path, blocked tiles, capability gating. | M |
 | 4.8 | Fix the two found bugs with tests | `WillEvolve` braces; `GetLevelUp` bounds. | S |
 | 4.9 | Dashboard | Add vitest; test `actionSchema.ts` helpers once split out (5.2). Add eslint with the default TS config. | M |
@@ -101,7 +101,7 @@ Outcome: an agent can run the real app against real emulators, force a shiny, an
 | 4b.4 | RS cheats | Map the RS RNG state and wild generator from `pret/pokeruby` (6.1), then an RNG-freeze starter cheat. First scenario: `rs-starter-wave-shiny-park`. | 4b.3, 6.1 | M |
 | 4b.5 | Scenario selection | `qa-map.yaml` areas, `select --changed` against `main`, `ci-local.ps1 -Qa`. | 4b.1 | S |
 | 4b.6 | QA environment | `Scripts/qa-load-save.ps1` (copies a save from `../shinybothunterqasaves/` into the configured BizHawk Save RAM folder) plus its allow rule in `.claude/settings.json`; QA BizHawk install config (hotkey, cheat auto-save off, Lua off), user-secrets QA config with a localhost guard, migrations applied by the harness, save hash check, teardown that kills stray EmuHawk and backend. Setup is written down in the QA spec. | 4b.1 | S |
-| 4b.7 | Remaining initial scenarios | navigation, egg, double-find race, concurrent launch, cold-load timing, dashboard smoke (Playwright Electron). | 4b.3, 4b.4 | L |
+| 4b.7 | Remaining initial scenarios | navigation, egg, double-find race, concurrent launch, cold-load timing. The dashboard driver (Playwright Electron) landed early under #107 with the Route 33 UI scenario. | 4b.3, 4b.4 | L |
 | 4b.8 | External capture | `PrintWindow` with full-content rendering for screenshots and a 15 fps recording piped into ffmpeg (`gdigrab` records BizHawk blank); Playwright for dashboard screenshots. `qa-runs/` gitignored. | 4b.1 | S |
 
 ### Phase 6: Pointer discovery spike (research, no code)
@@ -127,7 +127,7 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 | 5.3d | Event registry | Each event type (`WildEncounter`, `ChainedEncounter`, `TogepiEgg`, `StarterHunt`, `HgssStarterHunt`, `LaunchBot`) becomes a registry entry: name, `EventArgumentOptions`, required capabilities, owns-emulators flag, factory. `BotService.ExecuteEvent`/`ExecuteNewBotOrSpecialEvent` become a lookup; `GetAvailableActions` filters the registry by the bot's profile; `SpecialEvents.json` either feeds the registry or is deleted. Do this after 5.1 so the registry lands in a small `BotService`. | L |
 | 5.3e | HGSS game-state reader | One small class on the game profile that reads the verified chain in one frame (ApiHawk pointer-chain opcode) and returns where the game is: field free, field task, battle at menu, move list, message waiting, script playing (which), experience or move-learn prompt, battle over (outcome), evolution, other app. Replace `0x021E76D2`, anchor `+0x230EC`, `+0x692C`, `+0x6930` reads with it; bound every wait loop by "state unchanged for N seconds"; confirm each button press by the state moving. Needs 6.2's input-ready flag for menu presses, or confirm-and-retry until then. | 5.3, 6.2 | M |
 | 5.4 | `BattleOrchestratorEvent` split | Extract move-learn/evolution flow and the Discord prompt into their own classes. | M |
-| 5.5 | `StarterHuntEvent` split | Extract save-file management (`EnsureSaveExists`, `WipeSaveSlot`, trainer-ID scan) into `SaveFileManager`. | M |
+| 5.5 | `StarterHuntEvent` split | Extract save-file management (`EnsureSaveExists`, `WipeSaveSlot`, trainer-ID scan) into `StarterSaveFiles`. | M |
 | 5.6 | Narrow `IBot` | Events receive `ICommandClient + IMemoryClient + GameFlavor`; launch/dispose stay with `BotService`. Drop `IDataReader` from `IBot` and resolve it by flavor where needed. | M |
 | 5.7 | Shared DTO shapes | Register `JsonStringEnumConverter` for controllers and SignalR; drop the int/string hedges in `types/api.ts`. Optionally generate `types/api.ts` from the OpenAPI document. | S/M |
 | 5.8 | Dashboard security tidy-up | REST through the main process via preload; sprites via a custom protocol; re-enable `webSecurity` and `sandbox`. | M |
@@ -159,7 +159,24 @@ Done on `feature/cleanup-hardening` under epic #30, one task issue per row or ro
 - 1.5: `ExtractMovePermissionsFile` was kept, not deleted; it is the only producer of the MovePermissions files the map generator reads, so the map command now runs it first.
 - 1.6: `IBotEvent.EventState` had overrides in five more files than the review table listed; all were removed.
 - 1.6b: the file in the plural `Services` namespace was `DiscordBotService`, not `ShinyAlertService`.
-- 2.2: readers of the bot registry stay lock-free on a `ConcurrentDictionary`; only writers take the `SemaphoreSlim`, because events call the readers from inside their own loops. Position allocation still ignores registry keys (a launch onto a taken key now throws instead of overwriting); fixing the allocation is a follow-up.
-- 2.7: the token reaches `ReadValidatedPartyAsync`, `FlushSave` and the battle-state read; `GetBattleValue`, `GetBattleMenuState` and `ReadBytesViaPointerAsync` still take none, so a cancel on a dead emulator can still take several seconds. Follow-up.
+- 2.2: readers of the bot registry stay lock-free on a `ConcurrentDictionary`; only writers take the `SemaphoreSlim`, because events call the readers from inside their own loops. Position allocation ignored registry keys until #72 (phases 3 to 5) made it skip keys as well as reported positions.
+- 2.7: the token reached `ReadValidatedPartyAsync`, `FlushSave` and the battle-state read in phase 2; `GetBattleValue`, `GetBattleMenuState` and `ReadBytesViaPointerAsync` followed in #83 (phases 3 to 5).
 - 4.8 was folded in; 1.6c was folded into 1.5.
 - The manual checks named in the testing strategy (one HGSS wild encounter, one RS starter wave, the map command on a real extraction) were not run by the agents and are for the owner before the merge to `main`.
+
+## Implementation notes, phases 3 to 5 (2026-10-21)
+Done on `feature/cleanup-phases-3-5` under epic #67, task issues #68 to #85 plus #91. Rows 5.3 (and 5.3b to 5.3e), 5.6 and 5.9 were out of scope and are open. Where the work diverged from the rows and the spec:
+- 3.1: measured on the local QA database with about 2,000,000 synthetic rows over 366 one-day chunks (the real numbers are the owner's, after the migration runs there). The grouped query took 850 ms before and after the index, because the planner keeps per-chunk seq scans at the synthetic data's 50% per-game selectivity; with `enable_seqscan = off` it ran as 366 index-only scans in 353 ms. The latest-20 query uses the existing `Timestamp` index. Planning across 366 chunks took 0.4 to 4 s, so the one-day chunk interval is worth revisiting on the real database. The index ships anyway; the cold-load win came from the query shape (3.3).
+- 3.3: the cold load is 3 Postgres queries plus the caught list, down from about 130 round trips; on the QA database a cold phase load went from 18.6 s to 5.2 s and a warm load is about 40 ms. FR-3 (under 1 s) was not met locally; the next step is `EXPLAIN ANALYZE` on the two new queries against real data. `PokemonPersistenceService` shrank from 667 to 488 lines, not by about 300, because the builder lives in the same file.
+- 3.5: no Mongo aggregation. Catches are counted from the caught list the load already fetches, which drops a round trip and a row type; and the spec's `"Pokemon.IsShiny": true` filter was not applied, because that property is a computed getter the documents may not store and today's loaders count every caught document (FR-2 wins). Caught documents written before `GameFileName` existed (May 2026) count at the game, phase and form levels but create no per-ROM-copy node.
+- 4.1 was done in phase 2 (#40); 4.4 is inside 3.3; 4.8 was done in phase 2 (#46).
+- 4.6: the store is Mongo-backed, not file-backed as the row said; the test is a BSON round trip of `StarterHuntGameState`.
+- 4.7: the planner found a latent bug in `PathfindingService.AddEdge` (the capability check reduced to "needs nothing"); fixed with tests in #91. Runtime behaviour was unchanged because every caller passes an empty capability.
+- 4.9: eslint's default TypeScript config needs `@eslint/js` and `typescript-eslint` beside `eslint`; with `vitest` those are the four dev packages added. `Scripts/ci-local.ps1` now runs 8 steps.
+- 5.1: `BotService` ends at about 570 lines, not 500; the remaining bulk is event dispatch that only 5.3d removes.
+- 5.4: one class, `LevelUpFlow`; the Discord prompt already lived in `DiscordBotService`.
+- 5.5: the class is `StarterSaveFiles`, not `SaveFileManager`.
+- 5.7: enums travel as names; integers still parse on input, which the QA harness relies on.
+- 5.8: sprites come through a `sprite://` scheme served from the configured folder only; REST goes through one preload call handled in the main process with an origin check; `webSecurity` and `sandbox` are back on.
+- 4b.7 (pulled forward, #107): a Playwright driver for the Electron dashboard under `ShinyBotHunter.Qa/dashboard/` with one scenario that hunts Route 33 through the real UI (subscribe in Dashboard Config, Launch Bot + Continue, Wild Encounter from the card, three counted encounters, the hotkey-armed shiny, Resume, two cancels) with video of the Admin window and the emulator. Its first run found a pre-existing bug: with no Discord token the backend never exited after a shiny alert, because the alert queue is drained only once Discord is ready (#108, fixed). The rerun on the merged tip passes end to end. A second scenario (#111) trains the lead one level through the UI; its first run found that the new-move prompt threw without a Discord login (#113, now declines the move) and that a crashed event kept its game state so the card stayed busy (#114, now cleared); it passes on the merged tip.
+- Owner checks before the merge to `main`: run the migration against the real database and re-measure 3.1; one wild encounter with a level-up; one RS starter wave. The dashboard click-through with both security flags on is covered by the #107 scenario, and the owner reports the real caught data already carries `GameFileName`.

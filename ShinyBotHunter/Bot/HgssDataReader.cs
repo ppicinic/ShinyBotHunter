@@ -32,14 +32,14 @@ namespace ShinyBotHunter.Bot
         // calls put a frame between them, so the pointer could already have moved; the ViaPointer
         // reads do both hops inside one emulator frame.
 
-        public async Task<byte> GetBattleMenuState()
+        public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
         {
-            return await bot.ReadByteViaPointerAsync(Anchor, (int)BattleMenuState);
+            return (await bot.ReadBytesViaPointerAsync(Anchor, 1, ct, (int)BattleMenuState))[0];
         }
 
-        public async Task<byte> GetBattleValue()
+        public async Task<byte> GetBattleValue(CancellationToken ct = default)
         {
-            return await bot.ReadByteAsync(0x21E76D2);
+            return (await bot.ReadBytesAsync(0x21E76D2, 1, ct))[0];
         }
 
         public async Task<byte> GetBattleState()
