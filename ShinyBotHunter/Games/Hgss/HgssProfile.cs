@@ -26,6 +26,7 @@ namespace ShinyBotHunter.Games.Hgss
             revisions: [0],
             Addresses,
             new HgssPokemonParser(metadata),
-            new HgssBattlePokemonParser());
+            new HgssBattlePokemonParser(),
+            createOverworldReader: (memory, table) => new HgssOverworldReader(memory, (HgssPointerService)table));
     }
 }

@@ -14,9 +14,10 @@ namespace ShinyBotHunter.Bot
         private ILauncher launcher;
         private ICommandClient commandClient;
         private IMemoryClient memoryClient;
-        private IDataReader dataReader;
+        private IDataReader? dataReader;
+        private readonly IOverworldReader? overworld;
         private GameContext? context;
-        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
+        public Bot(ILauncher launcher, ICommandClient commandClient, IMemoryClient memoryClient, IDataReader? reader, GameProfile profile, IPointerService addresses, GameContext? context = null)
         {
             this.launcher = launcher;
             this.commandClient = commandClient;
@@ -25,11 +26,16 @@ namespace ShinyBotHunter.Bot
             this.Profile = profile;
             this.Addresses = addresses;
             this.context = context;
+            this.overworld = profile.CreateOverworldReader?.Invoke(memoryClient, addresses);
         }
 
         public GameProfile Profile { get; }
 
         public IPointerService Addresses { get; }
+
+        public IOverworldReader Overworld => overworld ?? throw new InvalidOperationException($"{Profile.Flavor} has no overworld reader.");
+
+        private IDataReader DataReader => dataReader ?? throw new InvalidOperationException($"{Profile.Flavor} has no battle reads.");
 
         public void ClearMacro()
         {
@@ -245,36 +251,16 @@ namespace ShinyBotHunter.Bot
 
         public async Task<byte> GetBattleMenuState(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleMenuState(ct);
+            return await DataReader.GetBattleMenuState(ct);
         }
 
         public async Task<byte> GetBattleValue(CancellationToken ct = default)
         {
-            return await dataReader.GetBattleValue(ct);
+            return await DataReader.GetBattleValue(ct);
         }
         public async Task<byte> GetBattleState()
         {
-            return await dataReader.GetBattleState();
-        }
-
-        public async Task<ushort> GetMapId()
-        {
-            return await dataReader.GetMapId();
-        }
-
-        public async Task<short> GetTrainerXPos()
-        {
-            return await dataReader.GetTrainerXPos();
-        }
-
-        public async Task<short> GetTrainerYPos()
-        {
-            return await dataReader.GetTrainerYPos();
-        }
-
-        public async Task<byte> GetFacing()
-        {
-            return await dataReader.GetFacing();
+            return await DataReader.GetBattleState();
         }
     }
 }

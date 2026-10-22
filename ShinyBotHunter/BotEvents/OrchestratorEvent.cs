@@ -77,9 +77,8 @@ namespace ShinyBotHunter.BotEvents
                 if(state.StartX == -1 && state.StartY == -1 && state.StartMapId == -1)
                 {
                     // TODO set map start point.
-                    state.StartMapId = await state.Bot.GetMapId();
-                    state.StartX = await state.Bot.GetTrainerXPos();
-                    state.StartY = await state.Bot.GetTrainerYPos();
+                    state.StartMapId = await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+                    (state.StartX, state.StartY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
                     Console.WriteLine($"[Orchestrator] Start tile captured: map={state.StartMapId} ({state.StartX},{state.StartY})");
                 }
                 // Every Init, not just the first: a chained leg re-enters here with the start tile

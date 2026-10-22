@@ -1,4 +1,5 @@
-﻿using ShinyBotHunter.Scripts.Maps;
+﻿using ShinyBotHunter.Games;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Util;
 using System.Drawing;
 using System.Text;
@@ -98,15 +99,6 @@ namespace ShinyBotHunter.Pathfinding
     }
 
     
-
-    public enum Direction
-    {
-        None = 5,
-        Up = 0,
-        Down = 1,
-        Left = 2,
-        Right = 3
-    }
 
     public class PlayerState : IEquatable<PlayerState>
     {

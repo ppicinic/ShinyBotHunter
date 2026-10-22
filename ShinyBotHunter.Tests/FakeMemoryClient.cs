@@ -58,7 +58,7 @@ namespace ShinyBotHunter.Tests
         public Task<uint> ReadUIntAsync(uint address)
         {
             UIntReads.Add(address);
-            return Task.FromResult(0u);
+            return Task.FromResult(PlacedValue(address, 4));
         }
 
         public void Place(uint address, byte[] bytes)
@@ -71,9 +71,26 @@ namespace ShinyBotHunter.Tests
         public Task<ushort> ReadUShortAsync(uint address) => Task.FromResult((ushort)0);
         public Task WriteByteAsync(uint address, byte value) => Task.CompletedTask;
         public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets) => Task.FromResult(new byte[length]);
-        public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((byte)0);
-        public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
+        public Task<byte> ReadByteViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((byte)PlacedValue(Follow(anchorAddress, hopOffsets), 1));
+        public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)PlacedValue(Follow(anchorAddress, hopOffsets), 2));
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        // Little-endian, as the emulator reads it.
+        private uint PlacedValue(uint address, int length)
+        {
+            uint value = 0;
+            for (int i = length - 1; i >= 0; i--)
+                value = (value << 8) | (placed.TryGetValue((uint)(address + i), out byte b) ? b : 0u);
+            return value;
+        }
+
+        // Each hop reads a placed pointer and adds its offset, as IMemoryClient documents the chain.
+        private uint Follow(uint anchorAddress, int[] hopOffsets)
+        {
+            uint address = anchorAddress;
+            foreach (int offset in hopOffsets) address = (uint)(PlacedValue(address, 4) + offset);
+            return address;
+        }
     }
 }

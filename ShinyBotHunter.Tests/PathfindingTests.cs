@@ -1,3 +1,4 @@
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Util;

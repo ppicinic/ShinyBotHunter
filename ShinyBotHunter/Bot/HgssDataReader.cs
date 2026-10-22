@@ -14,7 +14,7 @@ namespace ShinyBotHunter.Bot
             this.addresses = addresses;
         }
 
-        // These four go through the anchor. Reading the anchor and then reading through it as two
+        // These two go through the anchor. Reading the anchor and then reading through it as two
         // calls put a frame between them, so the pointer could already have moved; the ViaPointer
         // reads do both hops inside one emulator frame.
 
@@ -31,31 +31,6 @@ namespace ShinyBotHunter.Bot
         public async Task<byte> GetBattleState()
         {
             return await bot.ReadByteViaPointerAsync(addresses.Anchor, addresses.BattleStateOffset);
-        }
-
-        public async Task<ushort> GetMapId()
-        {
-            return await bot.ReadUShortViaPointerAsync(addresses.Anchor, addresses.MapIdOffset);
-        }
-
-        private short to_s16(uint u32)
-        {
-            return (short)(((u32 / 65536) + 32768) % 65536 - 32768);
-        }
-
-        public async Task<short> GetTrainerXPos()
-        {
-            return to_s16(await bot.ReadUIntAsync(addresses.TrainerX));
-        }
-
-        public async Task<short> GetTrainerYPos()
-        {
-            return to_s16(await bot.ReadUIntAsync(addresses.TrainerY));
-        }
-
-        public async Task<byte> GetFacing()
-        {
-            return await bot.ReadByteViaPointerAsync(addresses.Anchor, addresses.FacingOffset);
         }
     }
 }

@@ -27,6 +27,7 @@ namespace ShinyBotHunter.Tests
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: true), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
+            Assert.NotNull(profile.CreateOverworldReader);
             Assert.Equal(new BoxLayout(-0x148D8, 18, 30, 4096), profile.Addresses(0).BoxLayout);
         }
 
@@ -44,6 +45,7 @@ namespace ShinyBotHunter.Tests
                 HasSoftResetStarterHunt: true,
                 HasShinyStarterHunt: false), profile.Capabilities);
             Assert.Null(profile.BattleParser);
+            Assert.Null(profile.CreateOverworldReader);
             Assert.Same(profile.Addresses(1), profile.Addresses(2));
             Assert.IsType<RsPointerService>(profile.Addresses(1));
             Assert.Null(profile.Addresses(1).BoxLayout);
@@ -64,19 +66,20 @@ namespace ShinyBotHunter.Tests
         }
 
         [Theory]
-        [InlineData(true, false)]
-        [InlineData(false, true)]
-        public void DeclaredCapabilityWithoutItsPartThrows(bool hasWildEncounters, bool canReadBoxes)
+        [InlineData(true, false, false)]
+        [InlineData(false, true, false)]
+        [InlineData(false, false, true)]
+        public void DeclaredCapabilityWithoutItsPartThrows(bool hasWildEncounters, bool canReadBoxes, bool hasOverworldNavigation)
         {
             GameCapabilities capabilities = new(
-                HasOverworldNavigation: false,
+                HasOverworldNavigation: hasOverworldNavigation,
                 HasWildEncounters: hasWildEncounters,
                 HasEggs: false,
                 CanReadBoxes: canReadBoxes,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: false);
 
-            // No battle parser, and a table whose BoxLayout is null: each case declares one missing part.
+            // No battle parser, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
             Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.RS,
                 capabilities,
