@@ -1,3 +1,4 @@
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Service.Pointers;
@@ -19,8 +20,8 @@ namespace ShinyBotHunter.Tests
 
         private const uint OutOfRange = 0x02400000;
 
-        // The pointer parameters say what each hop holds; the structs stay at the addresses above, so a bad
-        // pointer leads nowhere placed. The defaults are the free field.
+        // The pointer parameters say what each hop holds; the structs stay at the addresses above. The fake
+        // answers a zero pointer with NullPointer and OutOfRange with OutOfRange. The defaults are the free field.
         private static FakeMemoryClient Memory(
             uint fs = Fs, uint sub0 = Sub0, uint app = 0, uint paused = 0,
             uint taskman = 0, uint mapReady = 1, uint taskFunction = 0,
@@ -54,6 +55,9 @@ namespace ShinyBotHunter.Tests
         private static async Task<GameSnapshot> SnapshotOf(FakeMemoryClient memory)
         {
             GameSnapshot snapshot = await new HgssFieldSystemStateReader(memory, Table).ReadAsync(CancellationToken.None);
+            Assert.Equal(0, Assert.Single(memory.ChainReads).RetryFrames);
+            Assert.Empty(memory.ByteReads);
+            Assert.Empty(memory.UIntReads);
             Assert.Empty(memory.PointerReads);
             return snapshot;
         }
@@ -103,23 +107,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.BattleStarting, snapshot.Screen);
         }
 
-        [Theory]
-        [InlineData(13u)]
-        [InlineData(14u)]
-        public async Task Evolution(uint state)
+        [Fact]
+        public async Task Evolution()
         {
-            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: state));
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14));
 
             Assert.Equal(GameScreen.Evolution, snapshot.Screen);
         }
 
-        [Fact]
-        public async Task BattleOverAfterMainState()
+        // State 13 is the evolution check every battle end passes through, seen on a flee.
+        [Theory]
+        [InlineData(10u, 1, BattleOutcome.Won)]
+        [InlineData(13u, 5, BattleOutcome.Fled)]
+        public async Task BattleOverAfterMainState(uint state, byte outcome, BattleOutcome expected)
         {
-            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 10, outcome: 1));
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: state, outcome: outcome));
 
             Assert.Equal(GameScreen.BattleOver, snapshot.Screen);
-            Assert.Equal(BattleOutcome.Won, snapshot.Outcome);
+            Assert.Equal(expected, snapshot.Outcome);
         }
 
         [Fact]
@@ -242,17 +247,16 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.BattleMoveLearnPrompt, snapshot.Screen);
         }
 
-        // The amended NFR-1 counts with the roots cached; the first snapshot adds the two root reads.
         [Theory]
-        [InlineData("FieldFree", 3)]
-        [InlineData("FieldTask", 4)]
-        [InlineData("BattleMenu", 5)]
-        [InlineData("BattleMoveList", 5)]
-        [InlineData("BattleExpPrompt", 6)]
-        [InlineData("BattleMoveLearnPrompt", 6)]
-        [InlineData("BattleOverOnCommand45", 6)]
-        [InlineData("BattleOverAfterMainState", 4)]
-        public async Task RequestCountsPerScreen(string screen, int requests)
+        [InlineData("FieldFree", GameScreen.FieldFree)]
+        [InlineData("FieldTask", GameScreen.FieldTask)]
+        [InlineData("BattleMenu", GameScreen.BattleMenu)]
+        [InlineData("BattleMoveList", GameScreen.BattleMoveList)]
+        [InlineData("BattleExpPrompt", GameScreen.BattleExpPrompt)]
+        [InlineData("BattleOverOnCommand45", GameScreen.BattleOver)]
+        [InlineData("BattleOverAfterMainState", GameScreen.BattleOver)]
+        [InlineData("Evolution", GameScreen.Evolution)]
+        public async Task OneRequestOnEveryScreen(string screen, GameScreen expected)
         {
             FakeMemoryClient memory = screen switch
             {
@@ -261,51 +265,51 @@ namespace ShinyBotHunter.Tests
                 "BattleMenu" => Memory(app: App, command: 5, sel: 1),
                 "BattleMoveList" => Memory(app: App, command: 5, sel: 4),
                 "BattleExpPrompt" => Memory(app: App, command: 8, getter: Getter, getterState: 11),
-                "BattleMoveLearnPrompt" => Memory(app: App, command: 8, getter: Getter, getterState: 21),
                 "BattleOverOnCommand45" => Memory(app: App, command: 45, outcome: 5),
-                _ => Memory(app: App, state: 10, outcome: 1),
-            };
-            HgssFieldSystemStateReader reader = new(memory, Table);
-
-            await reader.ReadAsync(CancellationToken.None);
-            int first = memory.ByteReads.Count;
-            await reader.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(requests + 2, first);
-            Assert.Equal(requests, memory.ByteReads.Count - first);
-            Assert.Empty(memory.PointerReads);
-        }
-
-        [Fact]
-        public async Task ChangedAppBetweenReadsIsTransitioning()
-        {
-            FakeMemoryClient memory = Memory();
-            // Read 3 is the first read of the app slots (after the two root reads).
-            memory.AfterRead = n =>
-            {
-                if (n == 3) memory.Place(At(Sub0, Table.SubAppOffset), BitConverter.GetBytes(App));
+                "BattleOverAfterMainState" => Memory(app: App, state: 10, outcome: 1),
+                _ => Memory(app: App, state: 14),
             };
 
             GameSnapshot snapshot = await SnapshotOf(memory);
 
-            Assert.Equal(GameScreen.Transitioning, snapshot.Screen);
+            Assert.Equal(expected, snapshot.Screen);
         }
 
-        // Zero is a bad pointer only where the chain cannot hold NULL; app, taskman and getter are NULL
-        // when nothing runs, so they are checked with the out-of-range value only.
+        // The spec's block table, written out as literals so a mixed-up member shows here.
+        [Fact]
+        public async Task RequestIsTheSevenBlocksOfTheWalk()
+        {
+            FakeMemoryClient memory = Memory();
+
+            await SnapshotOf(memory);
+
+            IReadOnlyList<ChainBlockRequest> blocks = memory.ChainReads[0].Blocks;
+            Assert.All(blocks, block => Assert.Equal(0x021D4158u, block.Anchor));
+            Assert.Equal(
+                new int[][] { [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420] },
+                blocks.Select(block => block.Hops));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1], blocks.Select(block => block.Length));
+        }
+
+        // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
+        // else, and for every out-of-range pointer, the snapshot is Transitioning.
         [Theory]
-        [InlineData("fs", 0u)]
-        [InlineData("fs", OutOfRange)]
-        [InlineData("sub0", 0u)]
-        [InlineData("sub0", OutOfRange)]
-        [InlineData("app", OutOfRange)]
-        [InlineData("bs", 0u)]
-        [InlineData("bs", OutOfRange)]
-        [InlineData("ctx", 0u)]
-        [InlineData("ctx", OutOfRange)]
-        [InlineData("taskman", OutOfRange)]
-        [InlineData("getter", OutOfRange)]
-        public async Task OutOfRangePointerIsTransitioning(string hop, uint pointer)
+        [InlineData("fs", 0u, GameScreen.Transitioning)]
+        [InlineData("fs", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("sub0", 0u, GameScreen.Transitioning)]
+        [InlineData("sub0", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("app", 0u, GameScreen.FieldFree)]
+        [InlineData("app", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("bs", 0u, GameScreen.Transitioning)]
+        [InlineData("bs", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("bsAfterMainState", OutOfRange, GameScreen.BattleOver)]
+        [InlineData("ctx", 0u, GameScreen.Transitioning)]
+        [InlineData("ctx", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("taskman", 0u, GameScreen.FieldFree)]
+        [InlineData("taskman", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("getter", 0u, GameScreen.BattleMenu)]
+        [InlineData("getter", OutOfRange, GameScreen.Transitioning)]
+        public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
             FakeMemoryClient memory = hop switch
             {
@@ -313,6 +317,7 @@ namespace ShinyBotHunter.Tests
                 "sub0" => Memory(sub0: pointer),
                 "app" => Memory(app: pointer),
                 "bs" => Memory(app: App, command: 5, sel: 1, bs: pointer),
+                "bsAfterMainState" => Memory(app: App, state: 10, outcome: 1, bs: pointer),
                 "ctx" => Memory(app: App, ctx: pointer),
                 "taskman" => Memory(taskman: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
@@ -320,36 +325,8 @@ namespace ShinyBotHunter.Tests
 
             GameSnapshot snapshot = await SnapshotOf(memory);
 
-            Assert.Equal(GameScreen.Transitioning, snapshot.Screen);
-            Assert.All(memory.ByteReads, read => Assert.InRange(read.Address, 0x02000000u, 0x023FFFFFu));
-        }
-
-        [Fact]
-        public async Task RootsReReadAfterThreeTransitioning()
-        {
-            const uint movedFs = 0x02180000;
-            const uint movedSub0 = 0x02190000;
-            FakeMemoryClient memory = Memory();
-            HgssFieldSystemStateReader reader = new(memory, Table);
-            int AnchorReads() => memory.ByteReads.Count(read => read.Address == Table.Anchor);
-            Assert.Equal(GameScreen.FieldFree, (await reader.ReadAsync(CancellationToken.None)).Screen);
-
-            // The roots move: the cached app slots now hold garbage, and the anchor leads to a free field.
-            memory.Place(At(Sub0, Table.SubAppOffset), BitConverter.GetBytes(0x01000000u));
-            memory.Place(Table.Anchor, BitConverter.GetBytes(movedFs));
-            memory.Place(At(movedFs, Table.AppSlotsOffset), BitConverter.GetBytes(movedSub0));
-            memory.Place(At(movedFs, Table.MapReadyOffset), BitConverter.GetBytes(1u));
-            for (int i = 0; i < 3; i++)
-            {
-                Assert.Equal(GameScreen.Transitioning, (await reader.ReadAsync(CancellationToken.None)).Screen);
-            }
-            Assert.Equal(1, AnchorReads());
-
-            GameSnapshot snapshot = await reader.ReadAsync(CancellationToken.None);
-
-            Assert.Equal(GameScreen.FieldFree, snapshot.Screen);
-            Assert.Equal(2, AnchorReads());
-            Assert.Empty(memory.PointerReads);
+            Assert.Equal(expected, snapshot.Screen);
+            Assert.Null(snapshot.Outcome);
         }
     }
 }

@@ -16,10 +16,6 @@ namespace ShinyBotHunter.Tests
         public List<(uint Anchor, int[] Hops)> PointerReads { get; } = new();
         public List<(IReadOnlyList<ChainBlockRequest> Blocks, int RetryFrames)> ChainReads { get; } = new();
 
-        // Runs after each plain read with the number of plain reads so far, so a test can change memory
-        // between two reads of one snapshot. Only touched from the test's own thread, like placed.
-        public Action<int>? AfterRead { get; set; }
-
         private readonly int partySize;
         private readonly int slotSize;
 
@@ -58,9 +54,7 @@ namespace ShinyBotHunter.Tests
         public Task<byte[]> ReadBytesAsync(uint address, int length, CancellationToken ct = default)
         {
             ByteReads.Add((address, length));
-            byte[] bytes = PlacedBytes(address, length);
-            AfterRead?.Invoke(ByteReads.Count);
-            return Task.FromResult(bytes);
+            return Task.FromResult(PlacedBytes(address, length));
         }
 
         public Task<uint> ReadUIntAsync(uint address)

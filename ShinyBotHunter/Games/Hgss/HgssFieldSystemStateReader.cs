@@ -5,13 +5,8 @@ namespace ShinyBotHunter.Games.Hgss
 {
     public class HgssFieldSystemStateReader : IGameStateReader
     {
-        // DS main RAM (hgss-state-reader.md FR-3); a pointer outside it is a snapshot taken mid-transition.
-        private const uint MainRamStart = 0x02000000;
-        private const uint MainRamEnd = 0x02400000;
-
         // app.state, battle_022378C0.c:25-42 (pointer-discovery.md, "Where the game is").
         private const uint BattleMain = 9;
-        private const uint EvolutionStart = 13;
         private const uint EvolutionMain = 14;
 
         // ctx.command, constants/battle.h:594-642 (pointer-discovery.md, "Server command").
@@ -31,113 +26,85 @@ namespace ShinyBotHunter.Games.Hgss
         private const uint ChooseMoveToForget = 23;
         private const uint GiveUpLearning = 34;
 
-        private const int StrikesBeforeRootReread = 3;
+        // The trailing hop of a block that starts at the struct its last pointer names.
+        private const int StructStart = 0;
+
+        // Positions in blocks, as in the spec's block table ("The walk").
+        private const int FsBlock = 0;
+        private const int Sub0Block = 1;
+        private const int TaskBlock = 2;
+        private const int AppBlock = 3;
+        private const int CtxBlock = 4;
+        private const int GetterBlock = 5;
+        private const int OutcomeBlock = 6;
 
         private readonly IMemoryClient memory;
         private readonly HgssPointerService addresses;
-
-        // Held for the whole walk; protects roots and transitioningInARow. Once the profile selects
-        // this reader, WaitForMoveEnd's PollBattleEnded and PollMenuUp call ReadAsync concurrently.
-        private readonly SemaphoreSlim walk = new(1, 1);
-        private (uint FieldSystem, uint AppSlots)? roots;
-        private int transitioningInARow;
+        private readonly ChainBlockRequest[] blocks;
 
         public HgssFieldSystemStateReader(IMemoryClient memory, HgssPointerService addresses)
         {
             this.memory = memory;
             this.addresses = addresses;
+            HgssPointerService a = addresses;
+            blocks =
+            [
+                new(a.Anchor, [StructStart], a.MapReadyOffset + 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.MapAppOffset], a.PausedOffset + 4),
+                new(a.Anchor, [a.TaskManagerOffset, StructStart], a.TaskFunctionOffset + 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, StructStart], a.BattleSystemOffset + 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.MenuStateOffset], a.GetterOffset + 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.GetterOffset, a.GetterStateOffset], 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.OutcomeOffset], 1),
+            ];
         }
 
+        // One request, every block from one frame (FR-2); no retry count (NFR-3).
         public async Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            => Classify(await memory.ReadChainBlocksAsync(blocks, ct: ct));
+
+        private GameSnapshot Classify(ChainBlockResult[] r)
         {
-            await walk.WaitAsync(ct);
-            try
+            if (!Ok(r[FsBlock]) || !Ok(r[Sub0Block])) return Snapshot(GameScreen.Transitioning);
+            byte[] fs = r[FsBlock].Bytes;
+            byte[] sub0 = r[Sub0Block].Bytes;
+
+            if (U32(sub0, addresses.SubAppOffset) == 0)
             {
-                GameSnapshot snapshot = await WalkAsync(ct);
-                if (snapshot.Screen != GameScreen.Transitioning)
+                uint taskman = U32(fs, addresses.TaskManagerOffset);
+                bool mapReady = U32(fs, addresses.MapReadyOffset) == 1;
+                if (mapReady && taskman != 0)
                 {
-                    transitioningInARow = 0;
+                    return Ok(r[TaskBlock])
+                        ? Snapshot(GameScreen.FieldTask) with { TaskFunction = U32(r[TaskBlock].Bytes, addresses.TaskFunctionOffset) }
+                        : Snapshot(GameScreen.Transitioning);
                 }
-                else if (++transitioningInARow == StrikesBeforeRootReread)
-                {
-                    // The only recovery path: the next snapshot reads both roots again.
-                    roots = null;
-                    transitioningInARow = 0;
-                }
-                return snapshot;
+                return mapReady && taskman == 0 && U32(sub0, addresses.PausedOffset) == 0
+                    ? Snapshot(GameScreen.FieldFree)
+                    : Snapshot(GameScreen.Transitioning);
             }
-            finally
-            {
-                walk.Release();
-            }
-        }
 
-        private async Task<GameSnapshot> WalkAsync(CancellationToken ct)
-        {
-            if (roots is null)
-            {
-                uint fieldSystem = await ReadU32Async(addresses.Anchor, ct);
-                if (!InMainRam(fieldSystem)) return Snapshot(GameScreen.Transitioning);
-                uint appSlots = await ReadU32Async(Add(fieldSystem, addresses.AppSlotsOffset), ct);
-                if (!InMainRam(appSlots)) return Snapshot(GameScreen.Transitioning);
-                roots = (fieldSystem, appSlots);
-            }
-            (uint fs, uint sub0) = roots.Value;
-
-            byte[] slots = await memory.ReadBytesAsync(sub0, addresses.PausedOffset + 4, ct);
-            uint app = U32(slots, addresses.SubAppOffset);
-            GameSnapshot snapshot = app == 0
-                ? await FieldAsync(fs, U32(slots, addresses.PausedOffset), ct)
-                : await AppAsync(app, ct);
-            if (snapshot.Screen == GameScreen.Transitioning) return snapshot;
-
-            // FR-2: the app slots moved while the walk ran, so the fields above may mix two screens.
-            byte[] again = await memory.ReadBytesAsync(sub0, slots.Length, ct);
-            return again.AsSpan().SequenceEqual(slots) ? snapshot : Snapshot(GameScreen.Transitioning);
-        }
-
-        private async Task<GameSnapshot> FieldAsync(uint fs, uint paused, CancellationToken ct)
-        {
-            byte[] block = await memory.ReadBytesAsync(fs, addresses.MapReadyOffset + 4, ct);
-            uint taskman = U32(block, addresses.TaskManagerOffset);
-            bool mapReady = U32(block, addresses.MapReadyOffset) == 1;
-            if (mapReady && taskman != 0)
-            {
-                if (!InMainRam(taskman)) return Snapshot(GameScreen.Transitioning);
-                byte[] task = await memory.ReadBytesAsync(taskman, addresses.TaskFunctionOffset + 4, ct);
-                return Snapshot(GameScreen.FieldTask) with { TaskFunction = U32(task, addresses.TaskFunctionOffset) };
-            }
-            return mapReady && taskman == 0 && paused == 0
-                ? Snapshot(GameScreen.FieldFree)
-                : Snapshot(GameScreen.Transitioning);
-        }
-
-        private async Task<GameSnapshot> AppAsync(uint app, CancellationToken ct)
-        {
-            if (!InMainRam(app)) return Snapshot(GameScreen.Transitioning);
-            byte[] block = await memory.ReadBytesAsync(app, addresses.BattleSystemOffset + 4, ct);
-            if (U32(block, addresses.AppOverlayIdOffset) != addresses.BattleOverlayId) return Snapshot(GameScreen.OtherApp);
-            uint state = U32(block, addresses.AppStateOffset);
-            uint bs = U32(block, addresses.BattleSystemOffset);
+            if (!Ok(r[AppBlock])) return Snapshot(GameScreen.Transitioning);
+            byte[] app = r[AppBlock].Bytes;
+            if (U32(app, addresses.AppOverlayIdOffset) != addresses.BattleOverlayId) return Snapshot(GameScreen.OtherApp);
+            uint state = U32(app, addresses.AppStateOffset);
             if (state < BattleMain) return Snapshot(GameScreen.BattleStarting);
-            if (state is EvolutionStart or EvolutionMain) return Snapshot(GameScreen.Evolution);
-            if (state > BattleMain) return await BattleOverAsync(bs, ct);
+            if (state == EvolutionMain) return Snapshot(GameScreen.Evolution);
+            // 13 included: every battle end passes through the evolution check.
+            if (state > BattleMain) return BattleOver(r[OutcomeBlock]);
 
-            if (!InMainRam(bs)) return Snapshot(GameScreen.Transitioning);
-            uint ctxPointer = await ReadU32Async(Add(bs, addresses.BattleContextOffset), ct);
-            if (!InMainRam(ctxPointer)) return Snapshot(GameScreen.Transitioning);
-            byte[] ctx = await memory.ReadBytesAsync(ctxPointer, addresses.GetterOffset + 4, ct);
+            if (!Ok(r[CtxBlock])) return Snapshot(GameScreen.Transitioning);
+            byte[] ctx = r[CtxBlock].Bytes;
 
             // Precedence from the state table: battle done, then a script, then the getter prompts
             // (the stat boxes appear while the command is not 5), then the menu.
             uint command = U32(ctx, addresses.ServerCommandOffset);
-            if (command == BattleDone) return await BattleOverAsync(bs, ct);
+            if (command == BattleDone) return BattleOver(r[OutcomeBlock]);
             if (command == ScriptRunning) return Snapshot(GameScreen.BattleScript) with { Script = (int)U32(ctx, addresses.ScriptFileOffset) };
-            uint getter = U32(ctx, addresses.GetterOffset);
-            if (getter != 0)
+            if (U32(ctx, addresses.GetterOffset) != 0)
             {
-                if (!InMainRam(getter)) return Snapshot(GameScreen.Transitioning);
-                uint getterState = await ReadU32Async(Add(getter, addresses.GetterStateOffset), ct);
+                if (!Ok(r[GetterBlock])) return Snapshot(GameScreen.Transitioning);
+                uint getterState = U32(r[GetterBlock].Bytes, 0);
                 if (getterState is StatBoxes or StatBoxesTotals)
                     return Snapshot(GameScreen.BattleExpPrompt) with { Prompt = (int)getterState };
                 if (getterState is ForgetAMove or ChooseMoveToForget or GiveUpLearning)
@@ -155,25 +122,19 @@ namespace ShinyBotHunter.Games.Hgss
             return Snapshot(GameScreen.BattleTurn);
         }
 
-        // The outcome byte is read only while BS is in range; past that the snapshot is still BattleOver.
-        private async Task<GameSnapshot> BattleOverAsync(uint bs, CancellationToken ct)
+        // Outcome is null when its block failed or the byte is outside 1 to 5 (the 0x40 and 0x80
+        // flee-in-progress bits included).
+        private static GameSnapshot BattleOver(ChainBlockResult outcome)
         {
-            BattleOutcome? outcome = null;
-            if (InMainRam(bs))
+            BattleOutcome? value = null;
+            if (Ok(outcome) && outcome.Bytes[0] is >= (byte)BattleOutcome.Won and <= (byte)BattleOutcome.Fled)
             {
-                byte value = (await memory.ReadBytesAsync(Add(bs, addresses.OutcomeOffset), 1, ct))[0];
-                // 1 to 5 only; the 0x40 and 0x80 flee-in-progress bits make it null.
-                if (value is >= (byte)BattleOutcome.Won and <= (byte)BattleOutcome.Fled) outcome = (BattleOutcome)value;
+                value = (BattleOutcome)outcome.Bytes[0];
             }
-            return Snapshot(GameScreen.BattleOver) with { Outcome = outcome };
+            return Snapshot(GameScreen.BattleOver) with { Outcome = value };
         }
 
-        private async Task<uint> ReadU32Async(uint address, CancellationToken ct)
-            => U32(await memory.ReadBytesAsync(address, 4, ct), 0);
-
-        private static bool InMainRam(uint pointer) => pointer >= MainRamStart && pointer < MainRamEnd;
-
-        private static uint Add(uint pointer, int offset) => (uint)(pointer + offset);
+        private static bool Ok(ChainBlockResult block) => block.Status == ChainBlockStatus.Ok;
 
         private static uint U32(byte[] bytes, int offset) => BitConverter.ToUInt32(bytes, offset);
 
