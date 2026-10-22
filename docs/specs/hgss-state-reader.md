@@ -108,13 +108,15 @@ One `ReadChainBlocksAsync` request per snapshot, every block from the same frame
 
 | Block | Chain from `0x021D4158` | Length | Used for |
 |---|---|---|---|
-| `fs` | `[+0]` | 0x70 | taskman `+0x10`, mapReady `+0x6C` |
-| `sub0` | `[+0] [+0]` | 12 | mapApp, app, paused |
-| `task` | `[+0] [+0x10]` | 8 | task function `+4` |
-| `app` | `[+0] [+0] [+4]` | 0x20 | ovyId, state, setup, BS |
-| `ctx` | `[+0] [+0] [+4] [+0x1C] [+0x30]` | 0x17C | sel, command, script, getter |
-| `getter` | `[+0] [+0] [+4] [+0x1C] [+0x30] [+0x178] +0x28` | 4 | getter state |
-| `outcome` | `[+0] [+0] [+4] [+0x1C] +0x2420` | 1 | outcome |
+| `fs` | `0` | 0x70 | taskman `+0x10`, mapReady `+0x6C` |
+| `sub0` | `0, 0` | 12 | mapApp, app, paused |
+| `task` | `0x10, 0` | 8 | task function `+4` |
+| `app` | `0, 4, 0` | 0x20 | ovyId, state, setup, BS |
+| `ctx` | `0, 4, 0x1C, 0x30, 0` | 0x17C | sel, command, script, getter |
+| `getter` | `0, 4, 0x1C, 0x30, 0x178, 0x28` | 4 | getter state |
+| `outcome` | `0, 4, 0x1C, 0x2420` | 1 | outcome |
+
+Hop lists are written as the opcode takes them: hop *n* reads the pointer at the current address and adds its offset, so `0, 4, 0` is "read `FS` at the anchor, read `sub0` at `FS` and step to `sub0 + 4`, read `app` there and step to `app + 0`".
 
 Classification, in this order, each step using only blocks whose status is `Ok`:
 
