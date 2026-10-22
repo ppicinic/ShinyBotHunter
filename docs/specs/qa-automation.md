@@ -160,7 +160,7 @@ On the dev PC, from the October 2026 setup:
 Capture is done from outside the emulator; nothing is added to ApiHawk or the fork, and nothing from a run is committed.
 
 - **Screenshots and video use `PrintWindow` with `PW_RENDERFULLCONTENT`.** It sees BizHawk's OpenGL surface even when the window is partly covered. `ffmpeg -f gdigrab` records a blank white window and cannot be used.
-- **Recording**: a background thread captures the window at 15 fps and pipes raw BGRA frames into `ffmpeg -f rawvideo ... -c:v libx264`. ffmpeg is a dev-machine prerequisite, not a repo dependency.
+- **Recording**: a background thread captures the window at 15 fps and pipes raw BGRA frames into `ffmpeg -f rawvideo ... -c:v libx264`, scaled 2x with nearest-neighbour so the 272-pixel-wide window is readable. ffmpeg is a dev-machine prerequisite, not a repo dependency.
 - **Nothing is committed.** `qa-runs/` is gitignored.
 
 Run folder layout:
@@ -209,9 +209,12 @@ Run it:
 cd ShinyBotHunter.Qa/dashboard
 npm ci
 npx playwright install ffmpeg    # once per machine; Playwright's own ffmpeg, needed for its videos
-npx playwright test
+npx playwright test hgss-route33.spec     # one spec at a time: both write to the same run folder name
+npx playwright test hgss-route33-train
 ```
-Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`.
+Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
+
+A second scenario, `hgss-route33-train.spec.ts`, trains the lead one level through the same UI. It launches `Pokemon HeartGold2` (lead Bulbasaur Lv 14, one experience point short of Lv 15, which offers Take Down), moves into the grass, checks the lead with `GET /api/bot/getParty/0`, and starts Wild Encounter with Route 33, NoTarget, Run, xRange 3, TrainType Standard and TargetLevel 15. It does not read the party while the event runs, because reads fail in the move-learn and evolution menus. It waits up to 10 minutes for the card to go idle (training complete), show Resume, or for a `crashed` line in `backend.log` (a crashed event keeps its game state, so its card still looks busy), then asserts that the event did not crash (`[BotService] Event ... crashed` in `backend.log`), that it did not park, that the lead is Lv 15, and that the encounter count rose. On a timeout it logs the last `[LevelUp]` and `[Orchestrator] State:` lines, cancels the event and fails if the cancel does not complete within 60 s. Teardown is the same as the first scenario's. It needs no cheat, and it needs `Pokemon HeartGold2.SaveRAM.bak` beside the save. Until the Discord-absent move prompt is fixed it fails at the crash assert: Bulbasaur knows four moves, so `LevelUpFlow` asks Discord, and `DiscordBotService.SendNewMoveDecisionAndWaitAsync` throws `NullReferenceException` with no Discord login (#111).
 
 Preconditions:
 - Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost, with the Discord token blank.
@@ -234,6 +237,7 @@ Preconditions:
 | `api-concurrent-launch` | bot-engine (plan task 2.2) | none; two launches at once |
 | `counts-cold-load` | persistence (plan phase 3) | none; first-load time against a seeded 1M-row database |
 | `hgss-route33-dashboard` (exists, #107) | dashboard, bot-engine, encounter | `hgss-usa-rev0/wild-shiny` |
+| `hgss-route33-train` (#111) | dashboard, bot-engine, encounter | none |
 
 ## Spike results (2026-10-20)
 
@@ -295,6 +299,7 @@ The harness calls the script before launch and keeps its own before-and-after ha
 |---|---|---|---|---|
 | `hgss.qa-route33` | `Pokemon HeartGold` | Route 33 path tile above the grass, lead Slowpoke Lv 25, full party | 15613 / 35374 | the `hgss-route33-*` scenarios |
 | `hgss.qa-starter` | `Pokemon HeartGold1` | Elm's lab at starter selection, no starter yet | 3591 / 51910 | `hgss-starter-shiny` (seed `1234695E` gives PID `D1DC151F`) |
+| `hgss.qa-route33-movelearn` | `Pokemon HeartGold2` | Route 33 path tile, lead Bulbasaur Lv 14, one EXP short of Lv 15 (Take Down); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-train` |
 | `hgss.qa-heal` | to make | A few tiles outside a Pokemon Center, lead at low HP | | `hgss-navigate-heal-return` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
 | `rs.qa-starter` | to make | Whatever the RS starter hunt expects | | the `rs-starter-*` scenarios |
@@ -304,6 +309,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-22: `hgss-route33-train` scenario and the `Pokemon HeartGold2` save row; recorder scales 2x and strips the stdin BOM that turned the video red.
 - 2026-10-21: Dashboard driver section rewritten for the Playwright driver in `ShinyBotHunter.Qa/dashboard/`; `data-testid` attributes allowed in `PokemonDashboard/`.
 - 2026-10-17: first draft.
 - 2026-10-20: saves loaded by `Scripts/qa-load-save.ps1` with an agent allow rule, instead of copy logic inside the harness.
