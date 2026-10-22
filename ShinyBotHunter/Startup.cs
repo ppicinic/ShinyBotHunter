@@ -44,7 +44,6 @@ namespace ShinyBotHunter
             services.GetRequiredService<NotificationService>().Init();
             services.GetRequiredService<MongoCaughtPokemonDao>().Init();
             services.GetRequiredService<PokemonPersistenceService>().Init();
-            services.GetRequiredService<BotService>().Init();
             Console.WriteLine(string.Join(", ", args));
             await MainRunnerAsync(app, services);
 

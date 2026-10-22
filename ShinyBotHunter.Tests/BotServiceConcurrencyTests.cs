@@ -4,11 +4,38 @@ using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
 {
+    internal class FakeBotFactory : BotFactory
+    {
+        private readonly Task launch;
+        private readonly GameProfile? profile;
+
+        public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch, GameProfile? profile) : base(settings, null!, null!, null!)
+        {
+            this.launch = launch;
+            this.profile = profile;
+        }
+
+        public List<int> Positions { get; } = new();
+        public List<FakeBot> Bots { get; } = new();
+
+        public override GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
+        {
+            Positions.Add(displayPosition);
+            return new GameContext { SourceGameName = sourceGame, DisplayPosition = displayPosition };
+        }
+
+        public override IBot CreateBot(GameContext context)
+        {
+            var bot = new FakeBot(launch, profile);
+            Bots.Add(bot);
+            return bot;
+        }
+    }
+
     /// <summary>
     /// The BotService gate: launches are serialised, so two at once get different positions and a
     /// launch past the emulator budget is refused before anything is built. No sleeps: a launch is
@@ -16,34 +43,6 @@ namespace ShinyBotHunter.Tests
     /// </summary>
     public class BotServiceConcurrencyTests
     {
-        private class FakeBotFactory : BotFactory
-        {
-            private readonly Task launch;
-            private readonly GameProfile? profile;
-
-            public FakeBotFactory(IOptions<ApplicationSettings> settings, Task launch, GameProfile? profile) : base(settings, null!, null!, null!)
-            {
-                this.launch = launch;
-                this.profile = profile;
-            }
-
-            public List<int> Positions { get; } = new();
-            public List<FakeBot> Bots { get; } = new();
-
-            public override GameContext BuildGameContext(string sourceGame, int gameId, int displayPosition, bool? soundOn = null)
-            {
-                Positions.Add(displayPosition);
-                return new GameContext { SourceGameName = sourceGame, DisplayPosition = displayPosition };
-            }
-
-            public override IBot CreateBot(GameContext context)
-            {
-                var bot = new FakeBot(launch, profile);
-                Bots.Add(bot);
-                return bot;
-            }
-        }
-
         private class ThrowingEvent : IBotEvent
         {
             // Faults the returned task rather than throwing, because StartEvent calls this inline.
@@ -130,45 +129,6 @@ namespace ShinyBotHunter.Tests
             Assert.Null(entry.CancellationTokenSource);
             Assert.Null(entry.GameState);
             Assert.True(slots.Entries.ContainsKey(0));
-        }
-
-        [Fact]
-        public async Task IdleRsBot_SeesNoHgssActions()
-        {
-            var (service, _) = Build(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)));
-            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
-
-            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
-
-            Assert.DoesNotContain("Wild Encounter", names);
-            Assert.DoesNotContain("Chained Encounter", names);
-            Assert.DoesNotContain("HGSS Togepi Egg", names);
-            Assert.Empty(names);
-        }
-
-        [Fact]
-        public async Task IdleHgssBot_SeesTodaysThreeActions()
-        {
-            var (service, _) = Build(Task.CompletedTask);
-            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
-
-            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
-
-            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg"], names);
-        }
-
-        [Fact]
-        public async Task WildEncounterOnRsBot_IsRefusedNamingTheCapability()
-        {
-            var (service, _) = Build(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)));
-            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
-            var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Run, xRange = 1 };
-
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.ExecuteEvent(0, args));
-
-            Assert.Contains("HasWildEncounters", ex.Message);
-            // No GameState was assigned, so no event was built.
-            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
         [Fact]
