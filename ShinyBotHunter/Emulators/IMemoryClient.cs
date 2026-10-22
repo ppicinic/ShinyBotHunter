@@ -47,5 +47,17 @@ namespace ShinyBotHunter.Emulators
             PartyAddressing addressing = PartyAddressing.Anchor,
             PokemonScheme scheme = PokemonScheme.Gen4,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// Follows every chain in <paramref name="blocks"/> and reads where each lands, all on one
+        /// emulator frame, so the blocks are one consistent snapshot instead of one frame per read.
+        ///
+        /// A block that cannot be followed does not fail the request: each result carries its own
+        /// status, in request order. <c>NullPointer</c> is the game saying "nothing here";
+        /// <c>OutOfRange</c> is a pointer caught mid-write. With <paramref name="retryFrames"/> above 0
+        /// the emulator re-follows every chain on up to that many further frames while any block is
+        /// <c>OutOfRange</c>, and returns the last attempt as it is.
+        /// </summary>
+        public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default);
     }
 }
