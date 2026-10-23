@@ -394,6 +394,9 @@ namespace ShinyBotHunter.BotEvents
             {
                 state.Bot.ClearMacro();
                 await state.Bot.WaitForMacroAsync(cancellationToken);
+                // A faulted racer (a stale-timeout or a read failure) rethrows here rather than being
+                // read as its outcome.
+                await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
                 return SegmentOutcome.Blocked;
@@ -404,9 +407,10 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>
         /// Completes when the trainer has stopped moving for <see cref="StallTimeoutMs"/> while a walk
-        /// macro is still running. The macro holds a direction until the coordinate reaches its target,
-        /// so anything that blocks movement -- most often a signpost message opened by pressing into
-        /// it from the tile alongside -- holds that direction forever with nothing else noticing.
+        /// macro is still running and the field is free. The macro holds a direction until the
+        /// coordinate reaches its target, so anything that blocks movement holds that direction forever
+        /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
+        /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait.
         /// </summary>
         private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -415,6 +419,15 @@ namespace ShinyBotHunter.BotEvents
             while (true)
             {
                 await Task.Delay(StallPollIntervalMs, cancellationToken);
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                if (snapshot.Screen != GameScreen.FieldFree)
+                {
+                    Console.WriteLine($"[Navigator] Stall timer held: {snapshot}");
+                    await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
+                    (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    still.Restart();
+                    continue;
+                }
                 (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != lastX || y != lastY)
                 {
@@ -624,6 +637,7 @@ namespace ShinyBotHunter.BotEvents
         // window, so an unconfirmed candidate costs nothing but a log line.
         private async Task WaitForPoisonEventAsync(IBot bot, PartySnapshot partyAtStart, CancellationToken cancellationToken)
         {
+            // Bounded by the segment's stall racer (R12), which ends or times out the race.
             while (true)
             {
                 // Cancels out of the loop once another racer wins, so a losing poll can never
