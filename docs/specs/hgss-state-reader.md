@@ -197,6 +197,7 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | Run press | the screen leaving `BattleMenu` | `confirm` 500 ms, 3 attempts | a tap sent before input-ready was ignored; the second landed |
 | move selection | the screen leaving `BattleMenu`, then `BattleMoveList` | `confirm` 500 ms, 3 attempts | as above |
 | exp and move-learn prompts | the next prompt or `BattleMenu`/`BattleOver` | 15 s | prompt chain observed within 5 s |
+| exp and move-learn prompt presses | the prompt to close | `confirm` 1000 ms, 3 attempts | the prompt leaves within frames; the longer confirm halves the chance of a retry landing on the next prompt |
 | evolution | `app == 0` (`FieldFree` or `FieldTask`) | 30 s | evolving animation observed at 7 s |
 | overworld ready | `FieldFree` | 10 s | fade-in under 3 s today |
 | warp (`WaitForWarpAsync`) | map id equals destination | 15 s on `(Screen, mapId)` | loading screens under 5 s |
@@ -276,4 +277,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-22: S1's measurement (PR #142) showed every sequential read costs one emulator frame, so the plain-read walk cannot meet NFR-1 (79 ms median at the battle menu). Owner's decision: ApiHawk opcode `0x05`, a multi-block chain read with a retry count defaulting to 0, as row S0; "The walk" is one request of seven blocks; FR-2, FR-3, NFR-1 reworded, NFR-3 added; `Evolution` narrowed to state 14 after state 13 was seen on a fled battle.
 - 2026-10-22: S1 reworked onto the single-frame read (#137): the `Transitioning` condition, R4 and the test-case rows follow the one-request reader; the opcode's limits include `retryFrames` up to 300.
 - 2026-10-23: S2b (#139): the getter prompts now precede command 22, because script 276 runs while the getter waits at a prompt (S1's QA, PR #142).
-- 2026-10-23: S2b (#139): the Run and move presses are confirmed by the screen leaving the menu (R8's cell and the press rows of the timeout table); R6 and the turn-end row wait for the app to go, not `BattleOver`, since `BattleOver` comes later than the confirm and `BattleMessage` is decomp-only.
+- 2026-10-23: S2b (#139): the Run and move presses are confirmed by the screen leaving the menu (R8's cell and the press rows of the timeout table), since `BattleOver` comes later than the confirm and `BattleMessage` is decomp-only; R6 and the turn-end row wait for the app to go, not `BattleOver`; prompt presses confirm in 1000 ms, 3 attempts (new timeout row).
