@@ -26,10 +26,7 @@ namespace ShinyBotHunter.BotEvents
             // Spinning resumes straight after a battle, when the field is still fading in and the
             // facing byte has not settled. Reading it early picks a rotation that starts from the
             // wrong direction, so wait for the overworld the same way navigation does.
-            if (!await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken))
-            {
-                Console.WriteLine("[Spin] Overworld coordinates never settled; spinning from the current facing anyway.");
-            }
+            await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
             Direction facing = await bot.Overworld.GetFacingAsync(cancellationToken);
             string macro = GetSpinMacro(facing);

@@ -676,10 +676,9 @@ namespace ShinyBotHunter.BotEvents
             await bot.WaitForMacroAsync(cancellationToken);
         }
 
-        // After a battle the overworld coordinates read (0,0) for a moment while the field
-        // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
+        // Wait until the field is free: no app, no task, map up, so we don't pathfind from a bogus origin.
         private static Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
-            => Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            => Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
