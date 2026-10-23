@@ -17,6 +17,8 @@ namespace ShinyBotHunter.Tests
         private const uint Ctx = 0x02140000;
         private const uint Taskman = 0x02150000;
         private const uint Getter = 0x02160000;
+        private const uint Setup = 0x02170000;
+        private const uint Evo = 0x02180000;
 
         private const uint OutOfRange = 0x02400000;
 
@@ -27,7 +29,8 @@ namespace ShinyBotHunter.Tests
             uint taskman = 0, uint mapReady = 1, uint taskFunction = 0,
             uint ovyId = 12, uint state = 9, uint bs = Bs, byte outcome = 0,
             uint ctx = Ctx, uint command = 0, byte sel = 0, uint script = 0,
-            uint getter = 0, uint getterState = 0)
+            uint getter = 0, uint getterState = 0,
+            uint setup = Setup, uint evo = Evo, byte evoState = 0)
         {
             FakeMemoryClient memory = new();
             memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
@@ -39,7 +42,10 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(Taskman, Table.TaskFunctionOffset), BitConverter.GetBytes(taskFunction));
             memory.Place(At(App, Table.AppOverlayIdOffset), BitConverter.GetBytes(ovyId));
             memory.Place(At(App, Table.AppStateOffset), BitConverter.GetBytes(state));
+            memory.Place(At(App, Table.AppSetupOffset), BitConverter.GetBytes(setup));
             memory.Place(At(App, Table.BattleSystemOffset), BitConverter.GetBytes(bs));
+            memory.Place(At(Setup, Table.EvolutionTaskOffset), BitConverter.GetBytes(evo));
+            memory.Place(At(Evo, Table.EvolutionStateOffset), [evoState]);
             memory.Place(At(Bs, Table.BattleContextOffset), BitConverter.GetBytes(ctx));
             memory.Place(At(Bs, Table.OutcomeOffset), [outcome]);
             memory.Place(At(Ctx, Table.MenuStateOffset), [sel]);
@@ -107,12 +113,15 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.BattleStarting, snapshot.Screen);
         }
 
-        [Fact]
-        public async Task Evolution()
+        [Theory]
+        [InlineData(3)]
+        [InlineData(21)]
+        public async Task Evolution(byte evoState)
         {
-            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14));
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: evoState));
 
             Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal((int)evoState, snapshot.Prompt);
         }
 
         // State 13 is the evolution check every battle end passes through, seen on a flee.
@@ -291,7 +300,7 @@ namespace ShinyBotHunter.Tests
 
         // The spec's block table, written out as literals so a mixed-up member shows here.
         [Fact]
-        public async Task RequestIsTheSevenBlocksOfTheWalk()
+        public async Task RequestIsTheEightBlocksOfTheWalk()
         {
             FakeMemoryClient memory = Memory();
 
@@ -300,9 +309,9 @@ namespace ShinyBotHunter.Tests
             IReadOnlyList<ChainBlockRequest> blocks = memory.ChainReads[0].Blocks;
             Assert.All(blocks, block => Assert.Equal(0x021D4158u, block.Anchor));
             Assert.Equal(
-                new int[][] { [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420] },
+                new int[][] { [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0] },
                 blocks.Select(block => block.Hops));
-            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1], blocks.Select(block => block.Length));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65], blocks.Select(block => block.Length));
         }
 
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
@@ -323,6 +332,11 @@ namespace ShinyBotHunter.Tests
         [InlineData("taskman", OutOfRange, GameScreen.Transitioning)]
         [InlineData("getter", 0u, GameScreen.BattleMenu)]
         [InlineData("getter", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("setup", 0u, GameScreen.Transitioning)]
+        [InlineData("evo", 0u, GameScreen.Transitioning)]
+        [InlineData("evo", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("evoAfterEvolution", OutOfRange, GameScreen.BattleOver)]
+        [InlineData("evoInBattle", OutOfRange, GameScreen.BattleMenu)]
         public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
             FakeMemoryClient memory = hop switch
@@ -334,6 +348,10 @@ namespace ShinyBotHunter.Tests
                 "bsAfterMainState" => Memory(app: App, state: 10, outcome: 1, bs: pointer),
                 "ctx" => Memory(app: App, ctx: pointer),
                 "taskman" => Memory(taskman: pointer),
+                "setup" => Memory(app: App, state: 14, setup: pointer),
+                "evo" => Memory(app: App, state: 14, evo: pointer),
+                "evoAfterEvolution" => Memory(app: App, state: 13, evo: pointer),
+                "evoInBattle" => Memory(app: App, command: 5, sel: 1, evo: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
             };
 
