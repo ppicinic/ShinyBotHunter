@@ -100,7 +100,7 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 | `BattleMoveLearnPrompt` | `state == 9 && getter != 0 && getterState ∈ {21, 23, 34}` | `Prompt = getterState` | 21 and 34 observed; 23 decomp only |
 | `BattleTurn` | `state == 9`, none of the above | | observed (commands 8, 23, 28, 34, 39, 40; sel 14) |
 
-Precedence inside `state == 9`: command 45, then command 22, then getter prompts, then command 5 with `sel`, then `BattleTurn`. The getter is checked before the menu because the stat boxes appear while the command is not 5.
+Precedence inside `state == 9`: command 45, then the getter prompts (11/13, 21, 23, 34), then command 22, then command 5 with `sel`, then `BattleTurn`. The getter is checked before the script because the experience script 276 runs while the stat boxes and move-learn prompts wait for input (S1's QA, PR #142), and before the menu because the stat boxes appear while the command is not 5.
 
 ### The walk
 
@@ -275,3 +275,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-22: S2a planning found the enemy read in `PokemonStateReader` on the R5 coincidence (moved from R16 to R5) and `EnemyAnchor` / `BattleMenuState` on the shared interface and RS; R5 and that cleanup are S2a-0 (#145) ahead of the swap. FR-4's grep uses the as-built member names.
 - 2026-10-22: S1's measurement (PR #142) showed every sequential read costs one emulator frame, so the plain-read walk cannot meet NFR-1 (79 ms median at the battle menu). Owner's decision: ApiHawk opcode `0x05`, a multi-block chain read with a retry count defaulting to 0, as row S0; "The walk" is one request of seven blocks; FR-2, FR-3, NFR-1 reworded, NFR-3 added; `Evolution` narrowed to state 14 after state 13 was seen on a fled battle.
 - 2026-10-22: S1 reworked onto the single-frame read (#137): the `Transitioning` condition, R4 and the test-case rows follow the one-request reader; the opcode's limits include `retryFrames` up to 300.
+- 2026-10-23: S2b (#139): the getter prompts now precede command 22, because script 276 runs while the getter waits at a prompt (S1's QA, PR #142).
