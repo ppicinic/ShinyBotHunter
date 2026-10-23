@@ -104,7 +104,7 @@ steps:
 - `ShinyBotHunter.Qa/Cheats/` holds the cheat definitions, one folder per game and ROM revision (see below). This is the only place cheats exist in the repo.
 - `ShinyBotHunter/`, `ApiHawk/`, `PokemonDashboard/`, the fork: no changes, no QA code, no cheats. Decided 2026-10-20. The one allowance is `data-testid` attributes in `PokemonDashboard/` where the dashboard driver has no stable selector; they are a test seam, not QA code.
 - Saves are not in the repo. They live in a sibling folder, `../shinybothunterqasaves/` relative to the repo root, and `Scripts/qa-load-save.ps1` copies one into the configured BizHawk install (see [QA save files](#qa-save-files)).
-- QA configuration lives in the dev PC's user secrets for the backend (connection string, blank Discord token, sprite and BizHawk folders). `Startup` reads only `appsettings.json` and user secrets, so an `appsettings.Qa.json` would need a code change; the dev PC is not the streaming PC, so its user secrets are the QA configuration and no code change is needed.
+- QA configuration lives in the dev PC's user secrets for the backend (connection string, Discord token, sprite and BizHawk folders). `Startup` reads only `appsettings.json` and user secrets, so an `appsettings.Qa.json` would need a code change; the dev PC is not the streaming PC, so its user secrets are the QA configuration and no code change is needed.
 
 ### Shiny injection
 A cheat is a short file of RAM writes that BizHawk re-applies every frame. The harness writes the file for the ROM under test before launch, loaded **disabled**, and arms it with the hotkey when the scenario says. Two kinds:
@@ -211,16 +211,19 @@ npm ci
 npx playwright install ffmpeg    # once per machine; Playwright's own ffmpeg, needed for its videos
 npx playwright test hgss-route33.spec     # one spec at a time: both write to the same run folder name
 npx playwright test hgss-route33-train
-npx playwright test hgss-route33-evolve
+npx playwright test hgss-route33-evolve.spec
+npx playwright test hgss-route33-evolve-learn
 ```
 Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
 
-A second scenario, `hgss-route33-train.spec.ts`, trains the lead one level through the same UI. It launches `Pokemon HeartGold2` (lead Bulbasaur Lv 14, one experience point short of Lv 15, which offers Take Down), moves into the grass, checks the lead with `GET /api/bot/getParty/0`, and starts Wild Encounter with Route 33, NoTarget, Run, xRange 3, TrainType Standard and TargetLevel 15. It does not read the party while the event runs, because reads fail in the move-learn and evolution menus. It waits up to 10 minutes for the card to go idle (training complete), show Resume, or for a `crashed` line in `backend.log` (a crashed event keeps its game state, so its card still looks busy), then asserts that the event did not crash (`[BotService] Event ... crashed` in `backend.log`), that it did not park, that the lead is Lv 15, and that the encounter count rose. On a timeout it logs the last `[LevelUp]` and `[Orchestrator] State:` lines, cancels the event and fails if the cancel does not complete within 60 s. Teardown is the same as the first scenario's. It needs no cheat, and it needs `Pokemon HeartGold2.SaveRAM.bak` beside the save. Until the Discord-absent move prompt is fixed it fails at the crash assert: Bulbasaur knows four moves, so `LevelUpFlow` asks Discord, and `DiscordBotService.SendNewMoveDecisionAndWaitAsync` throws `NullReferenceException` with no Discord login (#111).
+A second scenario, `hgss-route33-train.spec.ts`, trains the lead one level through the same UI. It launches `Pokemon HeartGold2` (lead Bulbasaur Lv 14, one experience point short of Lv 15, which offers Take Down), moves into the grass, checks the lead with `GET /api/bot/getParty/0`, and starts Wild Encounter with Route 33, NoTarget, Run, xRange 3, TrainType Standard and TargetLevel 15. It does not read the party while the event runs, because reads fail in the move-learn and evolution menus. It waits up to 10 minutes for the card to go idle (training complete), show Resume, or for a `crashed` line in `backend.log` (a crashed event keeps its game state, so its card still looks busy), then asserts that the event did not crash (`[BotService] Event ... crashed` in `backend.log`), that it did not park, that the lead is Lv 15, and that the encounter count rose. On a timeout it logs the last `[LevelUp]` and `[Orchestrator] State:` lines, cancels the event and fails if the cancel does not complete within 60 s. Teardown is the same as the first scenario's. It needs no cheat, and it needs `Pokemon HeartGold2.SaveRAM.bak` beside the save. Bulbasaur knows four moves, so `LevelUpFlow` asks Discord whether it learns Take Down; the backend is logged into Discord, and the operator clicks **Do Not Learn** in the Discord app by hand. A click that misses the 10 minutes is a rerun, not a pass.
 
 A third scenario, `hgss-route33-evolve.spec.ts`, is the train scenario's flow on `Pokemon HeartGold3`, whose lead is one experience point short of an evolution level with no new move on that level. The save's species and level are not recorded, so the scenario reads the lead with `GET /api/bot/getParty/0`, logs it, and trains to its level plus one. It waits the same 10 minutes, then asserts what the train scenario does plus that the lead's name changed (it evolved) and that `backend.log` holds both `start evolution` and `end evolution`, which `LevelUpFlow.EvolutionInit` logs only when the state reader reported `Evolution`. A nicknamed lead would fail the name assert even after evolving; the logged party shows it. It needs no cheat, and it needs `Pokemon HeartGold3.SaveRAM.bak` beside the save.
 
+A fourth scenario, `hgss-route33-evolve-learn.spec.ts`, is the evolve scenario's flow on `Pokemon HeartGold4`, whose lead is Totodile Lv 20, kept unevolved, one experience point short of Lv 21, with four moves. It checks the lead like the train scenario and trains to Lv 21, where Totodile evolves to Croconaw and Croconaw then offers Ice Fang inside the evolution app. `LevelUpFlow` asks Discord, and the operator clicks **Do Not Learn** in the Discord app by hand; no hook or config answers it, and a click that misses the 10 minutes is a rerun, not a pass. It asserts what the evolve scenario does plus a `will not learn Ice Fang` line in `backend.log`. On a timeout it also logs the last `[GameState]` lines. It needs no cheat, and it needs `Pokemon HeartGold4.SaveRAM.bak` beside the save.
+
 Preconditions:
-- Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost, with the Discord token blank.
+- Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost and hold the Discord token. The train and evolve-learn scenarios need someone to answer the move prompt in Discord.
 - `PokemonDashboard/override-config.json` sets `spritesRootPath`.
 - The QA BizHawk install is in `C:\BizHawk-2.11` with the Route 33 save and its `.bak` in `NDS\SaveRAM`.
 - Playwright's ffmpeg is installed (`npx playwright install ffmpeg`). Without it, launching with video recording leaves every window unanswered and the scenario hangs until its timeout.
@@ -244,6 +247,7 @@ Preconditions:
 | `hgss-route33-dashboard` (exists, #107) | dashboard, bot-engine, encounter | `hgss-usa-rev0/wild-shiny` |
 | `hgss-route33-train` (#111) | dashboard, bot-engine, encounter | none |
 | `hgss-route33-evolve` (#137) | dashboard, bot-engine, encounter | none |
+| `hgss-route33-evolve-learn` (#139) | dashboard, bot-engine, encounter | none; the move prompt is declined in Discord by hand |
 
 ## Spike results (2026-10-20)
 
@@ -307,6 +311,7 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-starter` | `Pokemon HeartGold1` | Elm's lab at starter selection, no starter yet | 3591 / 51910 | `hgss-starter-shiny` (seed `1234695E` gives PID `D1DC151F`) |
 | `hgss.qa-route33-movelearn` | `Pokemon HeartGold2` | Route 33 path tile, lead Bulbasaur Lv 14, one EXP short of Lv 15 (Take Down); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-train` |
 | `hgss.qa-route33-evolve` | `Pokemon HeartGold3` | Route 33 path tile; lead one EXP short of an evolution level, no new move on the level (pointer spike); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve` |
+| `hgss.qa-route33-evolve-learn` | `Pokemon HeartGold4` | Route 33 path tile; lead Totodile Lv 20 unevolved, one EXP short of 21, four moves without Ice Fang; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve-learn` |
 | `hgss.qa-poison` | `Pokemon HeartGold5` | Route 33 path tile; lead Slowpoke poisoned at 6 HP; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-poison-walk` |
 | `hgss.qa-heal-lead-fainted` | `Pokemon HeartGold6` | Route 33 path tile; lead at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-heal-slot2-fainted` | `Pokemon HeartGold7` | Route 33 path tile; lead at 15 HP, slot 2 at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
@@ -319,6 +324,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-23: `hgss-route33-evolve-learn` scenario and the `Pokemon HeartGold4` save row (`hgss.qa-route33-evolve-learn`), for S2b (#139); the QA backend is logged into Discord and move prompts are answered by hand.
 - 2026-10-22: `hgss-route33-evolve` scenario and the `Pokemon HeartGold3` save row (`hgss.qa-route33-evolve`), for the state reader's QA gate (#137).
 - 2026-10-22: `hgss-route33-train` scenario and the `Pokemon HeartGold2` save row; recorder scales 2x and strips the stdin BOM that turned the video red.
 - 2026-10-21: Dashboard driver section rewritten for the Playwright driver in `ShinyBotHunter.Qa/dashboard/`; `data-testid` attributes allowed in `PokemonDashboard/`.
