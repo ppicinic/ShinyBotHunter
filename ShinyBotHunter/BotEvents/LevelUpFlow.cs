@@ -407,7 +407,6 @@ namespace ShinyBotHunter.BotEvents
 
         public async Task WaitForLevelUpOrField(GameState state, CancellationToken ct)
         {
-            Console.WriteLine("hit");
             GameSnapshot next = await GameStateWait.UntilAsync(state.Bot.State, "level-up or field",
                 s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.FieldFree or GameScreen.FieldTask
                     || (s.Screen == GameScreen.Evolution && state.PendingEvolutions.Count > 0), PromptStale, ct);
