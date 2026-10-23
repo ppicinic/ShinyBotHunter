@@ -13,19 +13,11 @@ namespace ShinyBotHunter.Service.Pointers
         // no symbol in pointer-discovery.md; root (revision-dependent); QA: hgss-route33, hgss-route33-train (Run macro)
         public uint TrainerY => 0x21DA6FC;
 
-        // no symbol in pointer-discovery.md (byte inside the overlay loaded at 0x021E5900); root (revision-dependent);
-        // QA: hgss-route33, hgss-route33-train; legacy; replaced by docs/specs/hgss-state-reader.md
-        public uint BattleIndicator => 0x21E76D2;
-
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33, hgss-route33-train (start tile)
         public int MapIdOffset => -0x22DA4;
 
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: none yet: spin encounter, navigation, Togepi egg
         public int FacingOffset => 0x1DC4;
-
-        // OverlayManager.proc_state via a heap coincidence; offset (revision-independent); QA: none yet: evolution;
-        // legacy; replaced by docs/specs/hgss-state-reader.md
-        public int BattleStateOffset => 0x692C;
 
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: none yet: HGSS starter hunt
         public uint StarterPreviewOffset => 0x1BC00;
@@ -45,10 +37,6 @@ namespace ShinyBotHunter.Service.Pointers
 
         // no symbol in pointer-discovery.md (the spec's EnemyOffset); offset (revision-independent); QA: hgss-route33, hgss-route33-train
         public uint Enemy => 0xC18;
-
-        // BattleContext.unk_0[0] via a heap coincidence (the spec's BattleMenuStateOffset); offset (revision-independent);
-        // QA: hgss-route33, hgss-route33-train; legacy; replaced by docs/specs/hgss-state-reader.md
-        public uint BattleMenuState => 0x230EC;
 
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33, hgss-route33-train
         public int PartySlots => -0x23F40;
