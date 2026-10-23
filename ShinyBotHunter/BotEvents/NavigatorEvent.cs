@@ -668,23 +668,33 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        // Waits until the field is free on the destination map (and, when given, within a tile of
+        // the destination). Throws after 15 s with neither the screen nor the map id changing (R11).
         private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            (GameScreen Screen, int MapId)? last = null;
+            var unchanged = Stopwatch.StartNew();
+            while (true)
             {
-                if ((int)await bot.Overworld.GetMapIdAsync(cancellationToken) == destMapId)
-                    break;
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-            }
-            if (destX.HasValue && destY.HasValue)
-            {
-                while (!cancellationToken.IsCancellationRequested)
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                int mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+                if (last != (snapshot.Screen, mapId))
                 {
+                    Console.WriteLine($"[Navigator] Warp to map {destMapId}: on map {mapId}, {snapshot}");
+                    last = (snapshot.Screen, mapId);
+                    unchanged.Restart();
+                }
+                if (mapId == destMapId && snapshot.Screen == GameScreen.FieldFree)
+                {
+                    if (!destX.HasValue || !destY.HasValue)
+                        break;
                     var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
-                    await Task.Delay(Constant.PollIntervalMs, cancellationToken);
                 }
+                if (unchanged.Elapsed >= TimeSpan.FromSeconds(15))
+                    throw new GameStateTimeoutException($"the warp to map {destMapId} (still on map {mapId})", snapshot);
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
             bot.RunMacroString("W.60");
             await bot.WaitForMacroAsync(cancellationToken);
