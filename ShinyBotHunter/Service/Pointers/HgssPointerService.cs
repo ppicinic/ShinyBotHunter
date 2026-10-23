@@ -40,10 +40,6 @@ namespace ShinyBotHunter.Service.Pointers
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33, hgss-route33-train
         public int PartySize => -0x23F44;
 
-        // BattleSetup via a heap coincidence (the spec's EnemySetupOffset); offset (revision-independent);
-        // QA: hgss-route33, hgss-route33-train; legacy; replaced by docs/specs/hgss-state-reader.md
-        public uint EnemyAnchor => 0x6930;
-
         // no symbol in pointer-discovery.md (the spec's EnemyCountOffset); offset (revision-independent); QA: hgss-route33, hgss-route33-train
         public uint EnemyCount => 0xC14;
 
