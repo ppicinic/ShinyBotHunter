@@ -1,7 +1,7 @@
 # Research Spike: Better Pointers From the ROMs
 
 Status: HGSS battle and field state mapped and verified; RS not started
-Last updated: 2026-10-20
+Last updated: 2026-10-23
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [QA automation](../specs/qa-automation.md), [System architecture](../architecture/system-overview.md), [Improvement plan](../plans/2026-10-cleanup-and-hardening.md)
 
 ## Summary
@@ -203,6 +203,114 @@ Not observed: a bare `WaitButton` native; every message seen waits inside the te
 
 Saves used (PKHeX copies of the Route 33 save, made with the spike's `savetool edit`): `Pokemon HeartGold5` lead poisoned at 6 HP; `HeartGold6` lead at 0 HP; `HeartGold7` lead at 15 HP and slot 2 at 0 HP; `HeartGold8` lead at 15 HP with Pokérus strain 1 and event flag `0x65` cleared. PKHeX's Gen 4 event-flag index matched the decomp's `FLAG_WAS_TOLD_ABOUT_POKERUS` (the flag read true on a save whose party carries cured Pokérus, and clearing it brought the dialogue back).
 
+## Post-evolution move learning (2026-10-23)
+
+When a Pokémon evolves after a battle and the new species learns a move at its current level (Croconaw, Ice Fang at Lv 21, right after Totodile evolves), the prompt is **not** the battle's. By then the battle heap has been destroyed (`Heap_Destroy(HEAP_ID_BATTLE)` in `BSTATE_END_INIT`, `battle_022378C0.c`), so `BS`, `ctx` and `ctx.getter` are gone and the reader only sees `app.state == 14`. The evolution scene has its **own** state machine and its own learn flow in `asm/unk_020755E8.s`. That file is undecompiled, so everything below is read from the assembly. The only code it shares with the battle's getter is `MonTryLearnMoveOnLevelUp` (`pokemon.c:3142`), which finds the move. The messages, the Yes/No menu and the hand-off to the forget-move screen are separate. The same module runs the field evolution (`start_menu.c:1472`) and the trade evolution (`launch_application.c:959`), with different flags.
+
+```
+app.setup    = u32 [app + 0x18]          BattleSetup
+evo          = u32 [app.setup + 0x198]   EvolutionTaskData (BattleSetup.evolutionTaskData, battle_setup.h:63), 0xBC bytes,
+                                         allocated by sub_02075A7C in BSTATE_EVOLUTION_INIT; valid only while app.state == 14
+evo.state    = u8  [evo + 0x64]          scene state, table below (jump table at 0x02075F40, 46 cases)
+evo.printer  = u8  [evo + 0x65]          text printer id of the current message
+evo.timer    = u8  [evo + 0x66]          frame countdown used by several states
+evo.done     = u8  [evo + 0x67]          set to 1 in states 40 and 45; sub_02075D3C returns it, and the battle app then frees evo
+evo.learnIdx = s32 [evo + 0x68]          cursor into the new species' level-up learnset (MonTryLearnMoveOnLevelUp)
+evo.move     = u16 [evo + 0x6C]          the move being offered
+evo.slot     = u8  [evo + 0x6E]          the slot chosen to forget (from the summary app)
+evo.flags    = u32 [evo + 0x7C]          3 after a battle: bit 0 lets B cancel the evolution in state 8, bit 1 adds the "What?" box
+evo.species  = u16 [evo + 0x60] -> u16 [evo + 0x62]   old and new species
+evo.mon      = u32 [evo + 0x28]          the party Pokémon (its species is written in state 11)
+evo.yn       = u8  [evo + 0x8A]          Yes/No sub-state: 0 waiting for input, 1 confirm animation playing
+evo.cursor   = u8  [evo + 0x8B]          Yes/No cursor: 1 Yes (top button, the default), 2 No (bottom button)
+evo.summary  = u32 [evo + 0x38]          OverlayManager of the Pokémon summary app (gOverlayTemplate_PokemonSummary) while state is 23; NULL otherwise
+evo.sumArgs  = u32 [evo + 0x3C]          PokemonSummaryArgs (unk_02088288.h), 0x3C bytes: +0x12 mode (2 = move learn),
+                                         +0x18 moveToLearn, +0x16 the result (forgotten slot 0-3; 4 = the new move itself, i.e. cancel)
+```
+
+The offsets come from these routines:
+- `sub_02075A7C`, the constructor
+- `sub_02075E14`, the state machine
+- `sub_0207584C`, `sub_020758D0` and `sub_02075A04`, the Yes/No menu
+- state 22, which fills the summary args
+
+Message ids are in `msg_0197.gmm` (narc 27 file 197, the battle text bank). A message that ends in `\r` keeps its printer active until A or B is pressed. So when a state waits on `TextPrinterCheckActive` for such a message, it is waiting for input.
+
+The Yes/No menu (`sub_020758D0`) is two touch buttons on the bottom screen, with hitboxes at `_020FFECC`:
+- **Yes** is the top button, y 50-92, x 3-251.
+- **No** is the bottom button, y 99-140.
+
+On the keys, Up and Down move the cursor, A confirms it (the cursor starts on Yes), and **B answers No**. The bot's existing `EvolutionDoNotLearnMacro` taps (125,125) and then (125,75), which are these two buttons.
+
+| `evo.state` | Meaning | Waits for | Status |
+|---|---|---|---|
+| 0, 1 | Init countdown; picks the "What?" path from `flags` bit 1 | | decomp only (gone before the first read) |
+| 2 | Prints 916 "What?" | | observed |
+| **3** | **"What?" waiting at the arrow** | A | observed: held 10 s until A |
+| 4 | Prints 917 "X is evolving!" (no `\r`) | | decomp only (skipped between reads) |
+| 5, 6, 7 | Cry, old sprite's animation, particles start | | observed |
+| **8** | **The evolving animation.** With `flags` bit 0 set, **B here cancels the evolution** (state 41) | nothing; never press B | observed, 6.7 s |
+| 9, 10, 11 | Flash, new sprite and its cry; species written | | observed |
+| **12** | **"Congratulations! Your X evolved into Y!" (918)** | A, then a 40-frame countdown | observed: held 10 s until A |
+| 13 | Calls `MonTryLearnMoveOnLevelUp`. Nothing left to learn: 39. Free slot: 37. Four moves known: 14 | | observed passing through (13 → 14, and 36 → 13 → 39) |
+| 14 | Prints 1193 "X wants to learn the move Y." | | observed |
+| **15** | **1193 waiting at the arrow** | A | observed |
+| 16 | Prints 1194 "However, X already knows four moves." | | decomp only (skipped) |
+| **17** | **1194 waiting at the arrow** | A | observed |
+| 18, 19 | Prints 1195 "Should a move be deleted?" (no `\r`) | | 19 observed |
+| 20 | Opens the Yes/No ("Forget a move!" / "Keep old moves!") | | observed |
+| **21** | **"Should a move be deleted?" Yes/No** | Yes: 22. No: 32 | observed: touching (125,125) for No gave `yn` 1, `cursor` 2, then 32 |
+| 22 | Fade, fill `sumArgs`, create the summary app | | decomp only |
+| **23** | **The forget-move list.** The summary app runs (`evo.summary` non-null) until it exits | the summary app's own input | decomp only |
+| 24 | Reads `sumArgs + 0x16`. Value 4: 32. Otherwise the slot, then 25 | | decomp only |
+| 25-31 | Prints 1199 "1, 2, and... Poof!", 1200 "X forgot Y.", 1201 "And..." and 1202 "X learned Y!". After each of the first three, a wait state (26, 28, 30) holds at the arrow | A on 26, 28, 30 | decomp only |
+| 32, 33 | Prints 1197 "Stop trying to teach Y?" (no `\r`) | | observed |
+| 34 | Opens the Yes/No ("Give up on Y!" / "Don't give up on Y!") | | observed |
+| **35** | **"Stop trying to teach Y?" Yes/No** | Yes: 36. No: back to 14 | observed: A on the default cursor (Yes) gave `yn` 1, `cursor` 1, then 36 |
+| **36** | **1198 "X did not learn the move Y." waiting at the arrow** | A, then a 30-frame countdown and back to 13 | observed |
+| 37, 38 | "X learned Y!" (message 4) and its fanfare, then back to 13 | A on 37 | decomp only |
+| 39, 40 | Fade out; `done = 1` | | 40 observed with `done` 1 |
+| 41-45 | Evolution cancelled: 919 "Huh? X stopped evolving!", then `done = 1` | A on 44 | decomp only |
+
+### Sequence observed
+
+The save was `Pokemon HeartGold4`, the Totodile save: Lv 20, one EXP short of 21, four moves, none of them Ice Fang. I fought one wild battle on Route 33 with move 1 and sent every press by hand over ApiHawk's command port, while the probe read the chain every 80 ms and logged each change:
+
+```
+battle: getter 1 → … → 11 (A) → 12 → 13 (A) → 14 → 3 → 4 → 37   (level-up stat boxes; Totodile learns nothing at 21)
+→ cmd 40 → app.state 13 → 14, evo = 0x022C0604, flags 3, species 158 → 159
+→ evo 2 → 3 (waits; A) → 5 → 6 → 7 → 8 (6.7 s) → 9 → 10 → 11 → 12 (waits; A)
+→ 14, learnIdx 8, move 423 (Ice Fang) → 15 (waits; A) → 17 (waits; A) → 19 → 20 → 21 (waits, yn 0 cursor 1)
+→ touch (125,125) "Keep old moves!" → yn 1 cursor 2 → 32 → 33 → 34 → 35 (waits, yn 0 cursor 1)
+→ A "Give up on Ice Fang!" → yn 1 cursor 1 → 36 (waits; A) → 40, learnIdx 16 → done 1 while app.state went back to 13
+→ app.state 0 → app NULL → tasks 02050C19, 0205528D, 020552D5 → field free
+```
+
+- **Every waiting state is a real input wait.** Each one held for 3 to 13 s with no press, so none of them is timing.
+- **`evo` is freed memory once `done` is set.** The battle app frees `evo` but does not clear `app.setup + 0x198`. In the same read that showed `app.state` 13, the pointer still read `0x022C0604` with `done` 1. A reader must use `evo` only while `app.state == 14`.
+- **This corrects the "Evolution after battle" paragraph above.** `+0x67` is the done byte. It is set in state 40 (or 45), and the earlier trace missed it because the app frees the task in the next frame.
+- **The save was not changed.** Its sha256 was `18e10c7b…4f25c87` before and after. EmuHawk was closed with `taskkill /F`.
+
+Not observed:
+- the forget-move list (states 22-31), because the trace answered No
+- learning into a free slot (37, 38)
+- a cancelled evolution (41-45)
+- a second move offered in the same evolution (the loop back through 13 handles it)
+
+### What this changes for the bot
+
+The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x90 bytes (through `evo.cursor`). It is read only while `app.state == 14`, and the `Evolution` snapshot exposes `evo.state` and `evo.move`. The evolution macros (`EvolutionMacro`, `EvolutionLearnMoveInit`, `EvolutionDoNotLearnMacro`, `EvolutionFreeSlotMacro`) become reads and presses:
+
+| `evo.state` | The bot presses |
+|---|---|
+| 3, 12, 15, 17, 36 | A (also 26, 28, 30, 37 and 44, once observed) |
+| 8 | nothing; never B |
+| 21 | the bottom button (125,125) or B to keep the old moves; the top button (125,75) to forget one |
+| 23 | the slot in the summary app. Its inner state is not mapped, so the press is confirmed by `evo.state` leaving 23 |
+| 35 | the top button (125,75) or A to give up; the bottom button to try again |
+
+Each press is confirmed by `evo.state` changing. The evolution is finished when `app == 0`.
+
 ## Suspected issues, not confirmed
 
 Spotted while reading the code for this spike. None has been reproduced, and none is planned work; each needs a demonstration before it is treated as a bug.
@@ -272,6 +380,7 @@ Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunt
 - **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
+- 2026-10-23: post-evolution move learning mapped: the evolution scene's own state machine at `[app.setup + 0x198] + 0x64` (undecompiled `unk_020755E8.s`), its Yes/No menu and the summary-app hand-off; traced live through the evolution, "forget a move?" No and "give up?" Yes on the Totodile save; `+0x67` confirmed as the done byte.
 - 2026-10-22: field script chain (task manager → script environment → script contexts → native) mapped and verified live through the poison message and the Pokémon Center heal on four PKHeX copies; the heal macro's fainted rule shown wrong for a non-lead faint; Pokérus dialogue reproduced.
 - 2026-10-17: first draft.
 - 2026-10-20: level-up, move-learn and evolution states observed on PKHeX save copies; every value now marked observed or decomp only.
