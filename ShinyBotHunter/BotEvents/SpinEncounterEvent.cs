@@ -36,27 +36,26 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
 
-            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution) && !cancellationToken.IsCancellationRequested)
+            try
             {
-                await Task.Delay(Constant.PollIntervalMs);
-                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+                await GameStateWait.UntilAsync(bot.State, "a battle",
+                    s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp),
+                    stale: null, cancellationToken);
             }
-            bot.ClearMacro();
+            finally
+            {
+                bot.ClearMacro();
+            }
             await bot.WaitForMacroAsync();
 
-            bool inBattle = screen is GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution;
-            if (inBattle)
-            {
-                Console.WriteLine("Found battle");
-                // The orchestrator expects the encounter event to advance the state itself, the same
-                // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
-                // the stack, so the next loop spun again on top of the battle instead of fighting it.
-                state.State.Pop();
-                // TODO we should go into Waiting if its a non wild battle
-                state.State.Push(EventState.BattleStart);
-            }
-            return inBattle;
+            Console.WriteLine("Found battle");
+            // The orchestrator expects the encounter event to advance the state itself, the same
+            // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
+            // the stack, so the next loop spun again on top of the battle instead of fighting it.
+            state.State.Pop();
+            // TODO we should go into Waiting if its a non wild battle
+            state.State.Push(EventState.BattleStart);
+            return true;
         }
 
         private string GetSpinMacro(Direction facing)

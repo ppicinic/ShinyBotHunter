@@ -147,7 +147,7 @@ namespace ShinyBotHunter.Tests
                 _ => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),
                 new HgssBattlePokemonParser(),
-                createStateReader: (memory, t) => new HgssLegacyStateReader(memory, (HgssPointerService)t)));
+                createStateReader: (memory, t) => new HgssFieldSystemStateReader(memory, (HgssPointerService)t)));
 
             Assert.Contains("not HasOverworldNavigation", error.Message);
         }

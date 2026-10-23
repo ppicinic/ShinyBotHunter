@@ -23,6 +23,7 @@ namespace ShinyBotHunter.Games
                 GameSnapshot next = await reader.ReadAsync(ct);
                 if (next != last)
                 {
+                    Console.WriteLine($"[GameState] {waitingFor}: {next}");
                     unchanged.Restart();
                 }
                 last = next;
