@@ -683,13 +683,9 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
-            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution)
-                   && !cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            }
+            await GameStateWait.UntilAsync(bot.State, "a battle",
+                s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp),
+                stale: null, cancellationToken);
         }
     }
 }

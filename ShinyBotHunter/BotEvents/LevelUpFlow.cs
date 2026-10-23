@@ -377,21 +377,34 @@ namespace ShinyBotHunter.BotEvents
             
 
             Console.WriteLine("hit");
+            GameSnapshot? last = null;
             while (!endWait)
             {
                 await Task.Delay(Constant.PollIntervalMs, ct);
                 try
                 {
                     GameSnapshot snapshot = await state.Bot.State.ReadAsync(ct);
+                    if (snapshot != last)
+                    {
+                        Console.WriteLine($"[GameState] level-up or field: {snapshot}");
+                        last = snapshot;
+                    }
                     if(state.PendingEvolutions.Count() > 0 && snapshot.Screen == GameScreen.Evolution)
                     {
                         state.SwapState(EventState.EvolutionInit);
                         endWait = true;
                     }
-                    else if (snapshot.Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
+                    else if (snapshot.Screen is GameScreen.FieldFree or GameScreen.FieldTask)
                     {
                         state.SwapState(EventState.BattleComplete);
                         endWait = true;
+                    }
+                    else if (snapshot.Screen is not (GameScreen.BattleMenu or GameScreen.BattleMoveList or GameScreen.BattleMessage
+                                 or GameScreen.BattleScript or GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt or GameScreen.BattleTurn))
+                    {
+                        // The battle system is not up (teardown, or the evolution app), so app.setup can be
+                        // null. The foe read through opcode 0x05 then returns a not-Ok status and the
+                        // battle-state read spends its 2 s corrupt-retry on every poll; skip it here.
                     }
                     else if (await reader.GetPokemonBattleState(state.Bot, ct: ct) is var battleState
                                 && battleState is not null

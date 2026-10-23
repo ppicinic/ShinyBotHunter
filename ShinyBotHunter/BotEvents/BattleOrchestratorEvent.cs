@@ -175,12 +175,9 @@ namespace ShinyBotHunter.BotEvents
             {
                 try
                 {
-                    while (!token.IsCancellationRequested)
-                    {
-                        if ((await state.Bot.State.ReadAsync(token)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
-                            return (EventState.BattleComplete, null);
-                        await Task.Delay(Constant.PollIntervalMs, token);
-                    }
+                    await GameStateWait.UntilAsync(state.Bot.State, "the battle app gone",
+                        s => s.Screen is GameScreen.FieldFree or GameScreen.FieldTask, stale: null, token);
+                    return (EventState.BattleComplete, null);
                 }
                 catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
                 return null;
@@ -368,7 +365,7 @@ namespace ShinyBotHunter.BotEvents
             var sw = Stopwatch.StartNew();
             while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
             {
-                if ((await state.Bot.State.ReadAsync(ct)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
+                if ((await state.Bot.State.ReadAsync(ct)).Screen is GameScreen.FieldFree or GameScreen.FieldTask)
                 {
                     return SwitchOutcome.BattleOver;
                 }
@@ -414,13 +411,14 @@ namespace ShinyBotHunter.BotEvents
 
             // this code is repeated but it's unique cause we need to progress through the first pokemon.
             bot.RunRepeatMacro("T.B;W.5");
-            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            while (screen != GameScreen.BattleMenu)
+            try
             {
-                await Task.Delay(Constant.PollIntervalMs);
-                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
+                await GameStateWait.UntilAsync(bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu, stale: null, ct);
             }
-            bot.ClearMacro();
+            finally
+            {
+                bot.ClearMacro();
+            }
             try
             {
                 await bot.WaitForMacroAsync(ct);
