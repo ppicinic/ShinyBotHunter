@@ -19,8 +19,8 @@ namespace ShinyBotHunter.Emulators
         /// by the time it is used.
         ///
         /// Each hop reads a 4-byte pointer at the current address and adds that hop's offset, so
-        /// <c>ReadBytesViaPointerAsync(anchor, 0xEC, ct, 0x6930, 0xC18)</c> is
-        /// <c>anchor -> +0x6930 -> deref -> +0xC18 -> read</c>. Offsets are signed; most are negative.
+        /// <c>ReadBytesViaPointerAsync(anchor, 0xEC, ct, 0x25EEC)</c> (the HGSS enemy battle mirror) is
+        /// <c>anchor -> deref -> +0x25EEC -> read</c>; a second offset would deref again before adding it. Offsets are signed; most are negative.
         /// </summary>
         public Task<byte[]> ReadBytesViaPointerAsync(uint anchorAddress, int length, CancellationToken ct, params int[] hopOffsets);
 
