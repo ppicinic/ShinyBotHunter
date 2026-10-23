@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -385,28 +386,27 @@ namespace ShinyBotHunter.BotEvents
         private async Task PokemonDataPending(GameState state, CancellationToken ct)
         {
             IBot bot = state.Bot;
-            uint anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-            uint foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
-            uint foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-            uint foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
-            var foeCount = await bot.ReadByteAsync(foeCountPtr);
-            while (foeCount == 0)
+            // The foe count and the foe block from app.setup (BattleSetup), both in one request. A
+            // block that is not Ok (no battle app yet, or mid-write) is polled like a zero count.
+            var hgss = (HgssPointerService)bot.Addresses;
+            ChainBlockRequest[] foeBlocks =
+            [
+                new(bot.Addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)bot.Addresses.EnemyCount], 1),
+                new(bot.Addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)bot.Addresses.Enemy], bot.Addresses.PartyPokemonSize),
+            ];
+            ChainBlockResult[] foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
+            while (foe[0].Status != ChainBlockStatus.Ok || foe[0].Bytes[0] == 0)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-                foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
-                foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-                foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
-                foeCount = await bot.ReadByteAsync(foeCountPtr);
+                foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
             }
 
-            PokemonData? pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
+            PokemonData? pokemon = foe[1].Status == ChainBlockStatus.Ok ? bot.Profile.Parser.Parse(foe[1].Bytes) : null;
             while (pokemon is null || pokemon.IsCorrupt)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-                foeAnchor = await bot.ReadUIntAsync(anchor + bot.Addresses.EnemyAnchor);
-                pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
+                foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
+                pokemon = foe[1].Status == ChainBlockStatus.Ok ? bot.Profile.Parser.Parse(foe[1].Bytes) : null;
             }
 
 

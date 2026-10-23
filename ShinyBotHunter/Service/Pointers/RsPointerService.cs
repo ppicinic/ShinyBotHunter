@@ -42,9 +42,6 @@ namespace ShinyBotHunter.Service.Pointers
         public PokemonScheme PokemonScheme => PokemonScheme.Gen3;
 
         // gEnemyPartyCount = 0x030045B8, gEnemyParty = 0x030045C0.
-        // gEnemyPartyCount; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
-        public uint EnemyAnchor => 0x030045B8;
-
         // gEnemyPartyCount; offset; QA: none yet: RS starter hunt
         public uint EnemyCount => 0;
 
@@ -60,11 +57,6 @@ namespace ShinyBotHunter.Service.Pointers
 
         // gPlayerParty; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
         public uint BattlePartyPokemon => 0x03004360;
-
-        // gBattleTypeFlags. Non-zero once a battle is under way, which is what the starter hunt waits
-        // on before the chosen pokemon can be read.
-        // gBattleTypeFlags; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
-        public uint BattleMenuState => 0x020239F8;
 
         // gBattleCommunication; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
         public uint BattleCommunication => 0x02024D1E;

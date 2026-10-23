@@ -4,6 +4,7 @@ using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -23,6 +24,12 @@ namespace ShinyBotHunter.Tests
             public PokemonData? Parse(byte[] raw) => new PokemonData();
         }
 
+        private sealed class StubBattleParser : IBattlePokemonParser
+        {
+            public BattlePokemon ParseBattlePokemon(byte[] data, PokemonData pokemon) => new BattlePokemon();
+            public BattlePokemon? ParseBattlePokemon(byte[] data, List<PokemonData> pokemonState) => new BattlePokemon();
+        }
+
         private static readonly HgssPointerService Addresses = new();
 
         private static readonly GameProfile Profile = new(
@@ -31,7 +38,7 @@ namespace ShinyBotHunter.Tests
             [0],
             _ => Addresses,
             new StubParser(),
-            battleParser: null);
+            battleParser: new StubBattleParser());
 
         private static PokemonStateReader BuildReader() => new();
 
@@ -65,6 +72,32 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(3, state.PartySize);
             Assert.NotNull(state.PartyPokemon[0]);
             Assert.NotNull(state.PartyPokemon[2]);
+        }
+
+        [Fact]
+        public async Task BattleRead_ReadsTheFoeThroughAppSetup()
+        {
+            FakeMemoryClient memory = new(partySize: 1);
+            // FieldSystem -> sub0 -> battle app -> BattleSetup, so every block of the chain read is Ok.
+            memory.Place(0x21D4158, BitConverter.GetBytes(0x02100000u));
+            memory.Place(0x02100000, BitConverter.GetBytes(0x02110000u));
+            memory.Place(0x02110004, BitConverter.GetBytes(0x02120000u));
+            memory.Place(0x02120018, BitConverter.GetBytes(0x02130000u));
+
+            await BuildReader().GetPokemonBattleState(memory, Profile, Addresses);
+
+            var read = Assert.Single(memory.ChainReads);
+            Assert.Equal(0, read.RetryFrames);
+            Assert.Equal(2, read.Blocks.Count);
+            // Foe count, then the foe block, both from app.setup: AppSlots, SubApp, AppSetup, then the field.
+            Assert.Equal(0x21D4158u, read.Blocks[0].Anchor);
+            Assert.Equal([0x00, 0x04, 0x18, 0xC14], read.Blocks[0].Hops);
+            Assert.Equal(1, read.Blocks[0].Length);
+            Assert.Equal(0x21D4158u, read.Blocks[1].Anchor);
+            Assert.Equal([0x00, 0x04, 0x18, 0xC18], read.Blocks[1].Hops);
+            Assert.Equal(0xEC, read.Blocks[1].Length);
+            // Nothing reads through the old heap coincidence at FS + 0x6930.
+            Assert.DoesNotContain(memory.PointerReads, r => r.Hops.Contains(0x6930));
         }
 
         [Fact]
