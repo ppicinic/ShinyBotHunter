@@ -16,8 +16,8 @@ namespace ShinyBotHunter.BotEvents
         private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
         private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
 
-        // Clones of the above two for the post-evolution move-learn prompt. Kept as separate
-        // constants (rather than reused) because the evolution flow's screen sequence does not
+        // A clone of the above template for the post-evolution move-learn prompt. Kept as a separate
+        // constant (rather than reused) because the evolution flow's screen sequence does not
         // necessarily match the post-level-up one -- tune these independently.
         private const string EvolutionLearnMoveMacroTemplate = "S.125.75.5;W.240;S.Evo{0}.5;W.15;S.60.165.5;W.320;T.A;W.150;T.A;W.90;T.A;W.150;T.A;W.15";
 
@@ -32,6 +32,11 @@ namespace ShinyBotHunter.BotEvents
         private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan PromptPressConfirm = TimeSpan.FromMilliseconds(1000);
         private const int PromptPressAttempts = 3;
+
+        // The evolution scene states' presses: 1500 ms, 6 attempts (9 s, under the 15 s stale). A press while the
+        // message still prints only speeds the text, and "evolved into" prints for over 3 s.
+        private static readonly TimeSpan EvolutionPressConfirm = TimeSpan.FromMilliseconds(1500);
+        private const int EvolutionPressAttempts = 6;
 
         // The getter's prompt states (docs/specs/hgss-state-reader.md, state table). The evolution scene's states
         // share numbers with these (11, 13, 21), so every wait for one of them names the battle screens too.
@@ -300,14 +305,18 @@ namespace ShinyBotHunter.BotEvents
         private static async Task PressAtEvolutionStateAsync(IGameStateReader game, Func<string, Task> tap, string macro, int state, CancellationToken ct)
         {
             await GameStateWait.UntilAsync(game, $"evolution state {state}", s => s.Screen == GameScreen.Evolution && s.Prompt == state, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, macro, state, ct);
+            await PressAtPromptAsync(game, tap, macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
         }
 
-        private static async Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+        private static Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+            => PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct);
+
+        private static async Task PressAtPromptAsync(
+            IGameStateReader game, Func<string, Task> tap, string macro, int prompt, TimeSpan confirm, int attempts, CancellationToken ct)
         {
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
-                $"prompt {prompt} to close", s => s.Prompt != prompt, PromptPressConfirm, PromptPressAttempts, ct);
+                $"prompt {prompt} to close", s => s.Prompt != prompt, confirm, attempts, ct);
             Console.WriteLine($"[LevelUp] {macro} at prompt {prompt} after {presses} press(es): {left}");
         }
 
