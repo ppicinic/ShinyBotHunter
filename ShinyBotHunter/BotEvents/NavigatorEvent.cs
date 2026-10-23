@@ -72,12 +72,21 @@ namespace ShinyBotHunter.BotEvents
         {
             EventState topState = state.State.Peek();
 
-            if (topState == EventState.GoToPokemonCenter)
-                await GoToPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.HealAtPokemonCenter)
-                await HealAtPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.ReturnToStart)
-                await ReturnToStartAsync(state, cancellationToken);
+            try
+            {
+                if (topState == EventState.GoToPokemonCenter)
+                    await GoToPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.HealAtPokemonCenter)
+                    await HealAtPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.ReturnToStart)
+                    await ReturnToStartAsync(state, cancellationToken);
+            }
+            catch (GameStateTimeoutException ex)
+            {
+                // A stale-timeout parks the bot for the operator rather than crashing the event.
+                Console.WriteLine($"[Navigator] {ex}");
+                state.SwapState(EventState.Waiting);
+            }
 
             return state;
         }
