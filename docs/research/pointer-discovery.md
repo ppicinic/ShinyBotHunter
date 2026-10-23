@@ -299,7 +299,7 @@ Not observed:
 
 ### What this changes for the bot
 
-The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x90 bytes (through `evo.cursor`). It is read only while `app.state == 14`, and the `Evolution` snapshot exposes `evo.state` and `evo.move`. The evolution macros (`EvolutionMacro`, `EvolutionLearnMoveInit`, `EvolutionDoNotLearnMacro`, `EvolutionFreeSlotMacro`) become reads and presses:
+The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x65 bytes (through `evo.state`; as built in #150, which reads neither `evo.move` nor the Yes/No fields and keeps `EvolutionFreeSlotMacro` for the decomp-only free-slot path). It is read only while `app.state == 14`, and the `Evolution` snapshot exposes `evo.state` in `Prompt`. The evolution macros (`EvolutionMacro`, `EvolutionLearnMoveInit`, `EvolutionDoNotLearnMacro`, `EvolutionFreeSlotMacro`) become reads and presses:
 
 | `evo.state` | The bot presses |
 |---|---|
