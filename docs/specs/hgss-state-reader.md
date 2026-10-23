@@ -188,6 +188,10 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | getter 23, 24-30 | `[getter + 0x28]` | choosing the move to forget; the "learned" path | `hgss-route33-train` answering yes |
 | `FieldTask` for the start menu | `[taskman + 4]` | the task function address is unknown until seen | a navigation scenario that opens the menu |
 | `WaitButton` natives `0x02041075`, `0x02041041`, `0x020410F1` | `[ctx + 4]` | a script waiting for A/B outside a message; every message seen so far waits inside the printer instead | any script with a bare `WaitButton` |
+| `evo.state` 22-31 | `[[app.setup + 0x198] + 0x64]` | the forget-move list (summary app) and the "forgot / learned" texts on the yes path; `EvolutionLearnMoveMacroTemplate` still drives it from 21 | an evolution with a move pending, answering yes |
+| `evo.state` 37, 38 | as above | the move learned into a free slot; `EvolutionFreeSlotMacro` still drives it | an evolution with a free move slot and a move pending |
+| `evo.state` 41-45 | as above | evolution cancelled (B at state 8); the bot never presses at 8 | none planned |
+| `evo.state` 0, 1, 4, 16 | as above | passing states, skipped between reads | any evolution scenario, with a faster poll |
 
 ### Stale-timeouts
 
@@ -202,6 +206,7 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | move selection | `BattleMoveList` after the Fight press, then the screen leaving `BattleMoveList` after the move press | `confirm` 1000 ms, 3 attempts | the first press is confirmed by the move list being up, because the Fight press passes through `BattleTurn` (sel 14) before the list (sel 4) appears (S2b QA, `hgss-route33-evolve`) |
 | exp and move-learn prompts | the next prompt or `BattleMenu`/`BattleOver` | 15 s | prompt chain observed within 5 s |
 | exp and move-learn prompt presses | the prompt to close | `confirm` 1000 ms, 3 attempts | the prompt leaves within frames; the longer confirm halves the chance of a retry landing on the next prompt |
+| evolution scene states | the next waiting `evo.state` (3, 12, 15, 17, 21, 35, 36); each press confirmed by `evo.state` changing | 15 s; presses `confirm` 1000 ms, 3 attempts | state 8 (the evolving animation) observed at 6.7 s; every waiting state held 3 to 13 s until pressed (research doc, post-evolution move learning) |
 | evolution | `app == 0` (`FieldFree` or `FieldTask`) | 30 s | evolving animation observed at 7 s |
 | overworld ready | `FieldFree` | 10 s | fade-in under 3 s today |
 | warp (`WaitForWarpAsync`) | map id equals destination | 15 s on `(Screen, mapId)` | loading screens under 5 s |
@@ -248,7 +253,7 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 | `HgssFieldSystemStateReaderTests.BadPointerAtEachHop` (each hop) | FR-3 |
 | `HgssFieldSystemStateReaderTests.RequestIsTheEightBlocksOfTheWalk` | FR-2, the block table |
 | `GameStateWaitTests.UntilReturnsOnMatch`, `.UntilThrowsWhenStale`, `.StaleCountsSameScriptAsUnchanged`, `.PressRetriesThenThrows` | FR-5, FR-6 |
-| `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu | FR-7 |
+| `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu, and the evolution scene 2 → 3 → … → 8 → … → 12 → 13 → 14 → 15 → 17 → 19 → 20 → 21 → 32 … 36 → 13 → 40 | FR-7 |
 
 ## Rollout
 
@@ -283,3 +288,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-23: S2b (#139): the getter prompts now precede command 22, because script 276 runs while the getter waits at a prompt (S1's QA, PR #142).
 - 2026-10-23: S2b (#139): the Run and move presses are confirmed by the screen leaving the menu (R8's cell and the press rows of the timeout table), since `BattleOver` comes later than the confirm and `BattleMessage` is decomp-only; R6 and the turn-end row wait for the app to go, not `BattleOver`; prompt presses confirm in 1000 ms, 3 attempts (new timeout row).
 - 2026-10-23: S2b QA (#139): the move selection's first press is confirmed by `BattleMoveList`, not by leaving the menu, after a transient `BattleTurn` skipped the move press; both move presses confirm in 1000 ms.
+- 2026-10-23: S2c (#149): the eighth block `evo` (`[app.setup + 0x198]`, 0x65 bytes) read only at app state 14; `Evolution` carries `evo.state` in `Prompt` (R20); `EvolutionMacro`, `EvolutionLearnMoveInit` and `EvolutionDoNotLearnMacro` replaced by presses at the waiting scene states (new timeout row); the yes path (22-31), the free slot (37, 38) and a cancelled evolution (41-45) are decomp-only rows; the in-battle prompt waits now also require `BattleExpPrompt` or `BattleMoveLearnPrompt`, because the scene states share numbers (11, 13, 21) with the getter's.

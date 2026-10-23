@@ -6,10 +6,11 @@ namespace ShinyBotHunter.Tests
     // The prompt presses run in real time against a scripted game; the asserts check the taps, never durations.
     public class LevelUpFlowTests
     {
-        // A prompt step holds until a tap closes it; any other step is seen once, then the game moves on.
-        // swallowed taps are ignored, as when a press lands before the prompt takes input.
-        private sealed class ScriptedGame(GameSnapshot[] steps, int swallowed = 0) : IGameStateReader
+        // A waiting step (by default, one with a prompt) holds until a tap closes it; any other step is seen once,
+        // then the game moves on. swallowed taps are ignored, as when a press lands before the prompt takes input.
+        private sealed class ScriptedGame(GameSnapshot[] steps, int swallowed = 0, Func<GameSnapshot, bool>? waits = null) : IGameStateReader
         {
+            private readonly Func<GameSnapshot, bool> holds = waits ?? (s => s.Prompt is not null);
             private int index;
 
             public List<string> Taps { get; } = [];
@@ -17,7 +18,7 @@ namespace ShinyBotHunter.Tests
             public Task<GameSnapshot> ReadAsync(CancellationToken ct)
             {
                 GameSnapshot current = steps[index];
-                if (current.Prompt is null && index < steps.Length - 1) index++;
+                if (!holds(current) && index < steps.Length - 1) index++;
                 return Task.FromResult(current);
             }
 
@@ -25,7 +26,7 @@ namespace ShinyBotHunter.Tests
             {
                 Taps.Add(macro);
                 if (swallowed > 0) swallowed--;
-                else if (steps[index].Prompt is not null) index++;
+                else if (holds(steps[index])) index++;
                 return Task.CompletedTask;
             }
         }
@@ -35,6 +36,15 @@ namespace ShinyBotHunter.Tests
         private static readonly GameSnapshot Script276 = new(GameScreen.BattleScript, null, 276, null, null);
 
         private static readonly GameSnapshot Menu = new(GameScreen.BattleMenu, null, null, null, null);
+
+        private static readonly GameSnapshot BattleOver = new(GameScreen.BattleOver, null, null, null, null);
+
+        private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
+
+        // Every Evolution snapshot has a Prompt (evo.state); the scene holds only at these.
+        private static bool EvolutionWaits(GameSnapshot s) => s.Prompt is 3 or 12 or 15 or 17 or 21 or 35 or 36;
+
+        private static GameSnapshot[] Evolution(params int[] states) => [.. states.Select(state => Prompt(GameScreen.Evolution, state)), BattleOver, FieldFree];
 
         [Fact]
         public async Task StatBoxesThenDeclineFollowThePrompts()
@@ -71,6 +81,28 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("prompt 21 to close", e.WaitingFor);
             Assert.Equal(["S.DoNotLearn", "S.DoNotLearn", "S.DoNotLearn"], game.Taps);
+        }
+
+        [Fact]
+        public async Task EvolutionDeclineFollowsTheSceneStates()
+        {
+            ScriptedGame game = new(Evolution(2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 20, 21, 32, 33, 34, 35, 36, 13, 40), waits: EvolutionWaits);
+
+            await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
+            await LevelUpFlow.ReachEvolutionForgetPromptAsync(game, game.Tap, CancellationToken.None);
+            await LevelUpFlow.DeclineEvolutionMoveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "S.125.125.5", "T.A", "T.A"], game.Taps);
+        }
+
+        [Fact]
+        public async Task EvolutionWithoutAMoveTapsTwice()
+        {
+            ScriptedGame game = new(Evolution(2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 39, 40), waits: EvolutionWaits);
+
+            await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["T.A", "T.A"], game.Taps);
         }
     }
 }
