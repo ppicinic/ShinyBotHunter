@@ -247,13 +247,11 @@ namespace ShinyBotHunter.BotEvents
                     state.Bot.RunMacroString($"S.{moveStr}");
                     await state.Bot.WaitForMacroAsync(ct);
                 };
-                GameSnapshot chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to leave the battle menu",
-                    s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
-                if (chosen.Screen == GameScreen.BattleMoveList)
-                {
-                    chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, $"the {moveStr} press to leave the move list",
-                        s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(500), 3, ct);
-                }
+                // The Fight press passes through BattleTurn before the move list is up, so only the list confirms it.
+                await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to open the move list",
+                    s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
+                GameSnapshot chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, $"the {moveStr} press to leave the move list",
+                    s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
                 Console.WriteLine($"[Battle] {moveStr} chosen after {presses} press(es): {chosen}");
                 state.State.Pop();
                 state.State.Push(EventState.WaitForMovesEnd);

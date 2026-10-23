@@ -195,7 +195,7 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | battle start (`PokemonDataPending`, then menu) | `BattleMenu` with the foe readable | 30 s | encounter intro observed under 10 s |
 | turn end (`WaitForMoveEnd`) | `BattleMenu`, app gone, script 6, a prompt | 20 s | longest move animation observed under 6 s; `BattleScript` with the same id counts as unchanged |
 | Run press | the screen leaving `BattleMenu` | `confirm` 500 ms, 3 attempts | a tap sent before input-ready was ignored; the second landed |
-| move selection | the screen leaving `BattleMenu`, then `BattleMoveList` | `confirm` 500 ms, 3 attempts | as above |
+| move selection | `BattleMoveList` after the Fight press, then the screen leaving `BattleMoveList` after the move press | `confirm` 1000 ms, 3 attempts | the first press is confirmed by the move list being up, because the Fight press passes through `BattleTurn` (sel 14) before the list (sel 4) appears (S2b QA, `hgss-route33-evolve`) |
 | exp and move-learn prompts | the next prompt or `BattleMenu`/`BattleOver` | 15 s | prompt chain observed within 5 s |
 | exp and move-learn prompt presses | the prompt to close | `confirm` 1000 ms, 3 attempts | the prompt leaves within frames; the longer confirm halves the chance of a retry landing on the next prompt |
 | evolution | `app == 0` (`FieldFree` or `FieldTask`) | 30 s | evolving animation observed at 7 s |
@@ -278,3 +278,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-22: S1 reworked onto the single-frame read (#137): the `Transitioning` condition, R4 and the test-case rows follow the one-request reader; the opcode's limits include `retryFrames` up to 300.
 - 2026-10-23: S2b (#139): the getter prompts now precede command 22, because script 276 runs while the getter waits at a prompt (S1's QA, PR #142).
 - 2026-10-23: S2b (#139): the Run and move presses are confirmed by the screen leaving the menu (R8's cell and the press rows of the timeout table), since `BattleOver` comes later than the confirm and `BattleMessage` is decomp-only; R6 and the turn-end row wait for the app to go, not `BattleOver`; prompt presses confirm in 1000 ms, 3 attempts (new timeout row).
+- 2026-10-23: S2b QA (#139): the move selection's first press is confirmed by `BattleMoveList`, not by leaving the menu, after a transient `BattleTurn` skipped the move press; both move presses confirm in 1000 ms.
