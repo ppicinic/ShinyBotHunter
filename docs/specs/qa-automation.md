@@ -213,6 +213,7 @@ npx playwright test hgss-route33.spec     # one spec at a time: both write to th
 npx playwright test hgss-route33-train
 npx playwright test hgss-route33-evolve.spec
 npx playwright test hgss-route33-evolve-learn
+npx playwright test hgss-navigate-heal-return
 ```
 Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
 
@@ -221,6 +222,8 @@ A second scenario, `hgss-route33-train.spec.ts`, trains the lead one level throu
 A third scenario, `hgss-route33-evolve.spec.ts`, is the train scenario's flow on `Pokemon HeartGold3`, whose lead is one experience point short of an evolution level with no new move on that level. The save's species and level are not recorded, so the scenario reads the lead with `GET /api/bot/getParty/0`, logs it, and trains to its level plus one. It waits the same 10 minutes, then asserts what the train scenario does plus that the lead's name changed (it evolved) and that `backend.log` holds both `start evolution` and `end evolution`, which `LevelUpFlow.EvolutionInit` logs only when the state reader reported `Evolution`. A nicknamed lead would fail the name assert even after evolving; the logged party shows it. It needs no cheat, and it needs `Pokemon HeartGold3.SaveRAM.bak` beside the save.
 
 A fourth scenario, `hgss-route33-evolve-learn.spec.ts`, is the evolve scenario's flow on `Pokemon HeartGold4`, whose lead is Totodile Lv 20, kept unevolved, one experience point short of Lv 21, with four moves. It checks the lead like the train scenario and trains to Lv 21, where Totodile evolves to Croconaw and Croconaw then offers Ice Fang inside the evolution app. `LevelUpFlow` asks Discord, and the operator clicks **Do Not Learn** in the Discord app by hand; no hook or config answers it, and a click that misses the 10 minutes is a rerun, not a pass. It asserts what the evolve scenario does plus a `will not learn Ice Fang` line in `backend.log`. On a timeout it also logs the last `[GameState]` lines. It needs no cheat, and it needs `Pokemon HeartGold4.SaveRAM.bak` beside the save.
+
+A fifth scenario, `hgss-navigate-heal-return.spec.ts`, follows the train scenario's flow on `Pokemon HeartGold6` (`hgss.qa-heal-lead-fainted`), whose lead Slowpoke is at 0 HP on the Route 33 path tile, so the first decision is the walk to the Azalea Pokémon Center. It records the live map id and tile, checks the lead with `GET /api/bot/getParty/0`, and starts Wild Encounter with Route 33, NoTarget, **Spin**, TrainType Standard and TargetLevel the lead's level plus one, with no grass step; Spin turns in place after the return, so the tile can be read without a race. It waits up to 10 minutes for `Clearing navigation path (arrived back at start)`, a `crashed` line, or Resume, and on a timeout logs the last `[Navigator]`, `[GameState]` and `[Orchestrator] State:` lines. It asserts no crash, no `GameStateTimeoutException`, no park, exactly one `Healing with`, no `Movement blocked` or `abandoning the route`, at least two `[Navigator] Warp to map` lines with `Screen = FieldTask`, that each warp wait's last line is on its destination map with `Screen = FieldFree`, that the live map and tile after the return equal the ones before the run and the `Start tile captured` line, and that every party member is at full HP. It then cancels twice (event, then bot). The reviewer watches `emulator.mp4` for one Yes/No and one heal jingle. It needs no cheat and no Discord click, and it needs `Pokemon HeartGold6.SaveRAM.bak` beside the save.
 
 Preconditions:
 - Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost and hold the Discord token. The train and evolve-learn scenarios need someone to answer the move prompt in Discord.
@@ -236,7 +239,7 @@ Preconditions:
 | `hgss-route33-shiny-resume` | encounter, persistence | wild patch; Resume records the catch and counts move |
 | `hgss-route33-phase-count` | encounter, persistence | none; counts after N encounters |
 | `hgss-starter-shiny` | starter-hunt | RNG freeze (proven by spike, harness not yet built) |
-| `hgss-navigate-heal-return` | navigation | none |
+| `hgss-navigate-heal-return` (#140) | navigation | none |
 | `hgss-heal-variants` | navigation | none; the three heal saves in turn (fainted lead, fainted slot 2, Pokérus), each must end with the bot back on Route 33 and no second nurse conversation (spike 2026-10-22 saw one on the slot-2 save) |
 | `hgss-poison-walk` | navigation | none; pace the path row on the poison save until the "survived the poisoning" message, which must be cleared and the walk resumed |
 | `hgss-togepi-egg-hatch` | egg | none, or an egg PID patch once mapped |
@@ -313,7 +316,7 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-route33-evolve` | `Pokemon HeartGold3` | Route 33 path tile; lead one EXP short of an evolution level, no new move on the level (pointer spike); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve` |
 | `hgss.qa-route33-evolve-learn` | `Pokemon HeartGold4` | Route 33 path tile; lead Totodile Lv 20 unevolved, one EXP short of 21, four moves without Ice Fang; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve-learn` |
 | `hgss.qa-poison` | `Pokemon HeartGold5` | Route 33 path tile; lead Slowpoke poisoned at 6 HP; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-poison-walk` |
-| `hgss.qa-heal-lead-fainted` | `Pokemon HeartGold6` | Route 33 path tile; lead at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
+| `hgss.qa-heal-lead-fainted` | `Pokemon HeartGold6` | Route 33 path tile; lead at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants`, `hgss-navigate-heal-return` |
 | `hgss.qa-heal-slot2-fainted` | `Pokemon HeartGold7` | Route 33 path tile; lead at 15 HP, slot 2 at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-heal-pokerus` | `Pokemon HeartGold8` | Route 33 path tile; lead at 15 HP with Pokérus, event flag `0x65` cleared so the nurse explains it; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
@@ -324,6 +327,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-23: `hgss-navigate-heal-return` scenario on `Pokemon HeartGold6` (`hgss.qa-heal-lead-fainted`), for S3 (#140).
 - 2026-10-23: `hgss-route33-evolve-learn` scenario and the `Pokemon HeartGold4` save row (`hgss.qa-route33-evolve-learn`), for S2b (#139); the QA backend is logged into Discord and move prompts are answered by hand.
 - 2026-10-22: `hgss-route33-evolve` scenario and the `Pokemon HeartGold3` save row (`hgss.qa-route33-evolve`), for the state reader's QA gate (#137).
 - 2026-10-22: `hgss-route33-train` scenario and the `Pokemon HeartGold2` save row; recorder scales 2x and strips the stdin BOM that turned the video red.
