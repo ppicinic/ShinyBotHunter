@@ -230,7 +230,7 @@ S2 opens only when every scenario below passes on the legacy reader (so the harn
 | `hgss-route33-train` (exists, #111; one level-up through the UI, new move declined) | `hgss.qa-route33` | R6, R7: scripts, turn, exp prompts 11/13, move-learn 21 and 34 on the decline path |
 | `hgss-route33-fight-learn` (new) | `Pokemon HeartGold2` clone (lead one EXP short, move pending), answering yes | R7: getter 23 and the learned path, moving them from decomp-only to observed |
 | `hgss-route33-evolve` (new) | `Pokemon HeartGold3` clone | R4, R13 |
-| `hgss-navigate-heal-return` (planned in the QA spec) | `hgss.qa-route33` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
+| `hgss-navigate-heal-return` (planned in the QA spec) | `hgss.qa-heal-lead-fainted` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
 | `hgss-togepi-egg-hatch` (planned) | an egg save, to make | the egg loop unchanged under the new field signals |
 
 The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are added to the QA spec's initial set in S1's PR, as Playwright specs beside the two that exist. The two PKHeX clones are already in `C:\BizHawk-2.11\NDS\SaveRAM` on the dev machine and move to `../shinybothunterqasaves/` with README rows per the QA decision.
@@ -279,3 +279,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-23: S2b (#139): the getter prompts now precede command 22, because script 276 runs while the getter waits at a prompt (S1's QA, PR #142).
 - 2026-10-23: S2b (#139): the Run and move presses are confirmed by the screen leaving the menu (R8's cell and the press rows of the timeout table), since `BattleOver` comes later than the confirm and `BattleMessage` is decomp-only; R6 and the turn-end row wait for the app to go, not `BattleOver`; prompt presses confirm in 1000 ms, 3 attempts (new timeout row).
 - 2026-10-23: S2b QA (#139): the move selection's first press is confirmed by `BattleMoveList`, not by leaving the menu, after a transient `BattleTurn` skipped the move press; both move presses confirm in 1000 ms.
+- 2026-10-23: S3 (#140): `hgss-navigate-heal-return` runs on `hgss.qa-heal-lead-fainted` (`Pokemon HeartGold6`), whose fainted lead takes the heal leg on the first decision.
