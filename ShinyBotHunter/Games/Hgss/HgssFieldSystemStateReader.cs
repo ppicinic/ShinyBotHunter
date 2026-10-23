@@ -37,6 +37,7 @@ namespace ShinyBotHunter.Games.Hgss
         private const int CtxBlock = 4;
         private const int GetterBlock = 5;
         private const int OutcomeBlock = 6;
+        private const int EvoBlock = 7;
 
         private readonly IMemoryClient memory;
         private readonly HgssPointerService addresses;
@@ -56,6 +57,7 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.MenuStateOffset], a.GetterOffset + 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.GetterOffset, a.GetterStateOffset], 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.OutcomeOffset], 1),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, StructStart], a.EvolutionStateOffset + 1),
             ];
         }
 
@@ -89,7 +91,12 @@ namespace ShinyBotHunter.Games.Hgss
             if (U32(app, addresses.AppOverlayIdOffset) != addresses.BattleOverlayId) return Snapshot(GameScreen.OtherApp);
             uint state = U32(app, addresses.AppStateOffset);
             if (state < BattleMain) return Snapshot(GameScreen.BattleStarting);
-            if (state == EvolutionMain) return Snapshot(GameScreen.Evolution);
+            if (state == EvolutionMain)
+            {
+                return Ok(r[EvoBlock])
+                    ? Snapshot(GameScreen.Evolution) with { Prompt = r[EvoBlock].Bytes[addresses.EvolutionStateOffset] }
+                    : Snapshot(GameScreen.Transitioning);
+            }
             // 13 included: every battle end passes through the evolution check.
             if (state > BattleMain) return BattleOver(r[OutcomeBlock]);
 

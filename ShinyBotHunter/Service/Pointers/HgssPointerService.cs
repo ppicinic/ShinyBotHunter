@@ -82,6 +82,14 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-route33 (foe read), hgss-route33-evolve
         public int AppSetupOffset => 0x18;
 
+        // BattleSetup.evolutionTaskData, EvolutionTaskData *, battle_setup.h:63, valid only while app.state is 14 (app.setup + 0x198);
+        // offset (revision-independent); QA: hgss-route33-evolve, hgss-route33-evolve-learn
+        public int EvolutionTaskOffset => 0x198;
+
+        // evo.state (u8), the evolution scene state, jump table 0x02075F40 in asm/unk_020755E8.s (evo + 0x64); offset (revision-independent);
+        // QA: hgss-route33-evolve, hgss-route33-evolve-learn
+        public int EvolutionStateOffset => 0x64;
+
         // BS, the BattleSystem, valid while app.state is 4..9 (app + 0x1C); offset (revision-independent); QA: hgss-route33
         public int BattleSystemOffset => 0x1C;
 

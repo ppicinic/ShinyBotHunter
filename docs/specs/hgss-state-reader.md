@@ -67,6 +67,8 @@ Members added to `HgssPointerService` in S1 (kind per the profile spec's FR-9; a
 | `AppOverlayIdOffset` | `app + 0x0C` | offset | 12 = battle |
 | `AppStateOffset` | `app + 0x14` | offset | `battle_022378C0.c:25-42` |
 | `AppSetupOffset` | `app + 0x18` | offset | `BattleSetup`; replaces the heap coincidence at `FS + 0x6930` |
+| `EvolutionTaskOffset` | `app.setup + 0x198` | offset | `BattleSetup.evolutionTaskData` (`battle_setup.h:63`); valid only while app state 14. Added in S2c (#149) |
+| `EvolutionStateOffset` | `evo + 0x64` (u8) | offset | `evo.state`, the evolution scene state (jump table `0x02075F40`, `asm/unk_020755E8.s`). Added in S2c (#149) |
 | `BattleSystemOffset` | `app + 0x1C` | offset | valid while app state 4..9 |
 | `BattleContextOffset` | `BS + 0x30` | offset | |
 | `MenuStateOffset` | `ctx + 0x00` (u8) | offset | `battle_controller_player.c:243-262` |
@@ -90,7 +92,7 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 | `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]` | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5` |
 | `OtherApp` | `app != 0 && ovyId != 12` | | decomp only |
 | `BattleStarting` | `ovyId == 12 && state < 9` | | observed (3, 8) |
-| `Evolution` | `ovyId == 12 && state == 14` | | 14 observed; 13 is the evolution check every battle end passes through (seen on a flee, 2026-10-22) |
+| `Evolution` | `ovyId == 12 && state == 14` | `Prompt = [[app.setup + 0x198] + 0x64]` (`evo.state`, every value) | 14 observed; 13 is the evolution check every battle end passes through (seen on a flee, 2026-10-22); `Prompt` observed 2026-10-23 (research) |
 | `BattleOver` | `ovyId == 12 && (state > 9 && state != 14)`, or `state == 9 && command == 45` | `Outcome` from `[BS + 0x2420]` | 45 observed; outcome 1 and 5 observed |
 | `BattleScript` | `state == 9 && command == 22` | `Script = [ctx + 0xB0]` | observed: 0, 1, 3, 4, 6, 276 and twelve unnamed |
 | `BattleMenu` | `state == 9 && command == 5 && sel == 1` | | observed |
@@ -104,7 +106,7 @@ Precedence inside `state == 9`: command 45, then the getter prompts (11/13, 21, 
 
 ### The walk
 
-One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these seven blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset):
+One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these eight blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset):
 
 | Block | Chain from `0x021D4158` | Length | Used for |
 |---|---|---|---|
@@ -115,6 +117,7 @@ One `ReadChainBlocksAsync` request per snapshot, every block from the same frame
 | `ctx` | `0, 4, 0x1C, 0x30, 0` | 0x17C | sel, command, script, getter |
 | `getter` | `0, 4, 0x1C, 0x30, 0x178, 0x28` | 4 | getter state |
 | `outcome` | `0, 4, 0x1C, 0x2420` | 1 | outcome |
+| `evo` | `0, 4, 0x18, 0x198, 0` | 0x65 | evo.state `+0x64` |
 
 Hop lists are written as the opcode takes them: hop *n* reads the pointer at the current address and adds its offset, so `0, 4, 0` is "read `FS` at the anchor, read `sub0` at `FS` and step to `sub0 + 4`, read `app` there and step to `app + 0`".
 
@@ -122,7 +125,7 @@ Classification, in this order, each step using only blocks whose status is `Ok`:
 
 1. `fs` or `sub0` not `Ok`: `Transitioning` (the roots are mid-write or the game is not in the field system yet).
 2. `app == 0`: the field rows of the state table from `fs`, `sub0` and `task`. A `task` block that is `NullPointer` is "no task running"; any other failed status with `taskman != 0` is `Transitioning`. A field state matching no row (for example `mapReady 0` with a task, seen on every battle entry and exit) is `Transitioning`.
-3. `app != 0` and `app` not `Ok`: `Transitioning`. Otherwise `OtherApp`, `BattleStarting`, `Evolution` and the `state > 9` form of `BattleOver` decide from `app`; `Outcome` comes from `outcome` when that block is `Ok`, else null.
+3. `app != 0` and `app` not `Ok`: `Transitioning`. Otherwise `OtherApp`, `BattleStarting`, `Evolution` and the `state > 9` form of `BattleOver` decide from `app`; `Outcome` comes from `outcome` when that block is `Ok`, else null. `Evolution` needs `evo` `Ok`, else `Transitioning`; `evo` is ignored at any other state because it is freed after `done`.
 4. `state == 9` and `ctx` not `Ok`: `Transitioning`. Otherwise the precedence inside `state == 9` from the state table, with the getter prompts read from `getter` when `ctx.getter != 0` and `getter` is `Ok` (a failed `getter` block with a non-null getter pointer is `Transitioning`).
 
 Blocks the snapshot does not need (for example `ctx` on the field, where it comes back `NullPointer` at the app hop) are ignored whatever their status. `Evolution` is `app.state == 14` only: the app passes through state 13 on every battle end (seen on a fled battle, 2026-10-22), so 13 is `BattleOver`.
@@ -166,6 +169,7 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R17 | `M.` macro coordinate and map-guard reads inside ApiHawk | `CommandServer` | correct | keep | n/a | all |
 | R18 | heal at the Pokémon Center: blind macro, `HealPokemonFainted` when any member is fainted | `NavigatorEvent` heal step, `heal_pokemon*.yaml` | the nurse script's extra box depends on the **lead** changing, not on any faint; Pokérus and trainer-card stars add boxes the macros do not know (research doc, field scripts) | face the nurse, then loop on the script chain: `[FS+0x10]` → task `0x0203FF45` or its children → env `[taskman+0xC]` (magic 222271) → contexts `[env+0x38+4i]`; press A while a context waits in `0x021EF349` (printing) or `0x02041075` (wait button) until the menu native `0x020477C1` appears, one A there (Yes), then B for every later wait so a stray press can never start a second conversation or a second heal; nothing during movement natives; done when the environment is gone and `FieldFree`; stale-timeout 20 s | observed on fainted lead, fainted non-lead and Pokérus copies | `hgss-heal-variants` |
 | R19 | poison on the field: party diff every second, then the `ClearFaintText` macro | `NavigatorEvent.WaitForPoisonEventAsync`, `clear_faint_text.yaml` | `std_survive_poisoning` (script 2003) as a field script; poison stops at 1 HP, nothing faints on the field | `FieldTask` with the script task and `env.script == 2003`; same press loop as R18 (two A presses observed) | observed | `hgss-poison-walk` |
+| R20 | evo.state `[[app.setup + 0x198] + 0x64]` | `HgssFieldSystemStateReader` (`Evolution`'s `Prompt`); `LevelUpFlow` evolution presses | replaces `EvolutionMacro`, `EvolutionLearnMoveInit` and `EvolutionDoNotLearnMacro` | press at the waiting `evo.state` values per the research doc's press table; nothing at 8 | observed | `hgss-route33-evolve`, `hgss-route33-evolve-learn` |
 
 Rows R1 to R10 are the whole of what changes. R11 and R12 only gain a timeout. R13 is a non-read recorded so nobody re-derives it. R14 to R17 are listed so the table is the complete inventory FR-9 demands.
 
@@ -242,7 +246,7 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 | `HgssFieldSystemStateReaderTests.<Screen>` one per state-table row, scripted memory | FR-1 |
 | `HgssFieldSystemStateReaderTests.OneRequestOnEveryScreen` | FR-2 |
 | `HgssFieldSystemStateReaderTests.BadPointerAtEachHop` (each hop) | FR-3 |
-| `HgssFieldSystemStateReaderTests.RequestIsTheSevenBlocksOfTheWalk` | FR-2, the block table |
+| `HgssFieldSystemStateReaderTests.RequestIsTheEightBlocksOfTheWalk` | FR-2, the block table |
 | `GameStateWaitTests.UntilReturnsOnMatch`, `.UntilThrowsWhenStale`, `.StaleCountsSameScriptAsUnchanged`, `.PressRetriesThenThrows` | FR-5, FR-6 |
 | `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu | FR-7 |
 
