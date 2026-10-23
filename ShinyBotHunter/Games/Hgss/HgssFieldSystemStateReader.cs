@@ -96,11 +96,12 @@ namespace ShinyBotHunter.Games.Hgss
             if (!Ok(r[CtxBlock])) return Snapshot(GameScreen.Transitioning);
             byte[] ctx = r[CtxBlock].Bytes;
 
-            // Precedence from the state table: battle done, then a script, then the getter prompts
-            // (the stat boxes appear while the command is not 5), then the menu.
+            // Precedence from the state table: battle done, then the getter prompts, then a script, then the menu.
+            // The getter goes before the script because the experience script 276 runs while the stat boxes and
+            // move-learn prompts wait for input, and before the menu because the stat boxes appear while the
+            // command is not 5.
             uint command = U32(ctx, addresses.ServerCommandOffset);
             if (command == BattleDone) return BattleOver(r[OutcomeBlock]);
-            if (command == ScriptRunning) return Snapshot(GameScreen.BattleScript) with { Script = (int)U32(ctx, addresses.ScriptFileOffset) };
             if (U32(ctx, addresses.GetterOffset) != 0)
             {
                 if (!Ok(r[GetterBlock])) return Snapshot(GameScreen.Transitioning);
@@ -110,6 +111,7 @@ namespace ShinyBotHunter.Games.Hgss
                 if (getterState is ForgetAMove or ChooseMoveToForget or GiveUpLearning)
                     return Snapshot(GameScreen.BattleMoveLearnPrompt) with { Prompt = (int)getterState };
             }
+            if (command == ScriptRunning) return Snapshot(GameScreen.BattleScript) with { Script = (int)U32(ctx, addresses.ScriptFileOffset) };
             if (command == WaitingForChoice)
             {
                 switch (ctx[addresses.MenuStateOffset])

@@ -1,8 +1,8 @@
-﻿using ShinyBotHunter.Games;
+﻿using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
-using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -17,22 +17,11 @@ namespace ShinyBotHunter.BotEvents
         // lands, while an early one is simply lost.
         private const string EvolutionMacro = "W.45;T.A;W.1245;T.A;W.15";
 
-        // Settles through the level-up fanfare, then pages past the stat panel with two A presses.
-        //
-        // The leading wait carries ~1s of deliberate margin. It is measured from whenever this macro
-        // starts, and that moment moved earlier when the battle-state read got faster: ProcessLevelUp's
-        // own read shortened, and WaitForLevelUpOrField now polls on a much finer grain, so the level
-        // field is seen updating before the panel accepts input. The margin is safe to overshoot --
-        // the stat panel waits for a button, so waiting too long only costs time, while waiting too
-        // little drops the press and desyncs every macro after it.
-        private const string LevelUpAdvanceMacro = "W.325;T.A;W.5;T.A";
-
         // Advances dialogue from right after the level-up fanfare to the point where the
         // move-learn decision (or auto-learn text) is ready to act on.
         private const string LevelUpPrePromptMacro = "W.340";
 
         // Macros driving the "do you want to learn a new move?" flow, post level-up.
-        private const string DoNotLearnMacro = "S.DoNotLearn;W.225;S.DoNotLearnComplete;W.5";
         private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
         private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
 
@@ -48,6 +37,18 @@ namespace ShinyBotHunter.BotEvents
         // Deliberately not built on EvolutionLearnMoveInit -- there is no prompt to walk into here.
         // The level-up equivalent is FreeSlotMacro.
         private const string EvolutionFreeSlotMacro = "W.160;T.A;W.15";
+
+        // The stale-timeout table's rows for the exp and move-learn prompts: 15 s between prompts, and a
+        // press at a prompt confirmed within 1000 ms, 3 attempts.
+        private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan PromptPressConfirm = TimeSpan.FromMilliseconds(1000);
+        private const int PromptPressAttempts = 3;
+
+        // The getter's prompt states (docs/specs/hgss-state-reader.md, state table).
+        private const int StatBoxesPrompt = 11;
+        private const int StatBoxesTotalsPrompt = 13;
+        private const int ForgetAMovePrompt = 21;
+        private const int GiveUpLearningPrompt = 34;
 
         private readonly PokemonStateReader reader;
         private readonly PokemonMetadataService metadataService;
@@ -103,6 +104,8 @@ namespace ShinyBotHunter.BotEvents
                 var freshParty = await reader.GetPartyState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
             }
+            await GameStateWait.UntilAsync(state.Bot.State, "the evolution app to close",
+                s => s.Screen is GameScreen.FieldFree or GameScreen.FieldTask, TimeSpan.FromSeconds(30), ct);
             Console.WriteLine("end evolution");
             state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
             state.SwapState(EventState.EnemyFainted);
@@ -114,8 +117,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
-            state.Bot.RunMacroString(LevelUpAdvanceMacro);
-            await state.Bot.WaitForMacroAsync(ct);
+            await PassStatBoxesAsync(state.Bot.State, Tap(state.Bot, ct), ct);
             if (levelUp is not null)
             {
                 Console.WriteLine($"[LevelUp] {levelUp.Name} reached level {levelUp.Level}");
@@ -171,13 +173,13 @@ namespace ShinyBotHunter.BotEvents
                 if (hasFourMoves)
                 {
                     // replace move.
-                    state.Bot.RunMacroString(LevelUpPrePromptMacro);
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await GameStateWait.UntilAsync(state.Bot.State, "the forget-a-move prompt", s => s.Prompt == ForgetAMovePrompt, PromptStale, ct);
+                    Console.WriteLine($"[LevelUp] asking Discord whether {pokemon.Name} learns {newMove.Name}");
                     int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                     if(moveId == -1)
                     {
-                        state.Bot.RunMacroString($"W.5;{DoNotLearnMacro}");
-                        await state.Bot.WaitForMacroAsync(ct);
+                        await DeclineMoveAsync(state.Bot.State, Tap(state.Bot, ct), ct);
+                        Console.WriteLine($"[LevelUp] {pokemon.Name} will not learn {newMove.Name}");
                     }
                     else
                     {
@@ -236,11 +238,13 @@ namespace ShinyBotHunter.BotEvents
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                     continue;
                 }
+                Console.WriteLine($"[LevelUp] asking Discord whether {pokemon.Name} learns {newMove.Name}");
                 int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                 if(moveId == -1)
                 {
                     state.Bot.RunMacroString($"W.5;{EvolutionDoNotLearnMacro}");
                     await state.Bot.WaitForMacroAsync(ct);
+                    Console.WriteLine($"[LevelUp] {pokemon.Name} will not learn {newMove.Name}");
                 }
                 else
                 {
@@ -252,6 +256,36 @@ namespace ShinyBotHunter.BotEvents
             }
             return pokemon;
         }
+
+        // A at the stat gains, then A at the totals.
+        internal static async Task PassStatBoxesAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, "T.A", StatBoxesPrompt, ct);
+            await GameStateWait.UntilAsync(game, $"prompt {StatBoxesTotalsPrompt}", s => s.Prompt == StatBoxesTotalsPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, "T.A", StatBoxesTotalsPrompt, ct);
+        }
+
+        // No at "forget a move?", then yes at "give up learning it?".
+        internal static async Task DeclineMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, "S.DoNotLearn", ForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, $"prompt {GiveUpLearningPrompt}", s => s.Prompt == GiveUpLearningPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, "S.DoNotLearnComplete", GiveUpLearningPrompt, ct);
+        }
+
+        private static async Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+        {
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
+                $"prompt {prompt} to close", s => s.Prompt != prompt, PromptPressConfirm, PromptPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] {macro} at prompt {prompt} after {presses} press(es): {left}");
+        }
+
+        private static Func<string, Task> Tap(IBot bot, CancellationToken ct) => async macro =>
+        {
+            bot.RunMacroString(macro);
+            await bot.WaitForMacroAsync(ct);
+        };
 
         // We can't read memory to confirm a learn (dialogue still playing / evolution screen
         // up), but we know the decision's outcome exactly, so record it on our in-memory
@@ -373,57 +407,20 @@ namespace ShinyBotHunter.BotEvents
 
         public async Task WaitForLevelUpOrField(GameState state, CancellationToken ct)
         {
-            bool endWait = false;
-            
-
-            Console.WriteLine("hit");
-            GameSnapshot? last = null;
-            while (!endWait)
+            GameSnapshot next = await GameStateWait.UntilAsync(state.Bot.State, "level-up or field",
+                s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.FieldFree or GameScreen.FieldTask
+                    || (s.Screen == GameScreen.Evolution && state.PendingEvolutions.Count > 0), PromptStale, ct);
+            if (next.Screen == GameScreen.BattleExpPrompt)
             {
-                await Task.Delay(Constant.PollIntervalMs, ct);
-                try
-                {
-                    GameSnapshot snapshot = await state.Bot.State.ReadAsync(ct);
-                    if (snapshot != last)
-                    {
-                        Console.WriteLine($"[GameState] level-up or field: {snapshot}");
-                        last = snapshot;
-                    }
-                    if(state.PendingEvolutions.Count() > 0 && snapshot.Screen == GameScreen.Evolution)
-                    {
-                        state.SwapState(EventState.EvolutionInit);
-                        endWait = true;
-                    }
-                    else if (snapshot.Screen is GameScreen.FieldFree or GameScreen.FieldTask)
-                    {
-                        state.SwapState(EventState.BattleComplete);
-                        endWait = true;
-                    }
-                    else if (snapshot.Screen is not (GameScreen.BattleMenu or GameScreen.BattleMoveList or GameScreen.BattleMessage
-                                 or GameScreen.BattleScript or GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt or GameScreen.BattleTurn))
-                    {
-                        // The battle system is not up (teardown, or the evolution app), so app.setup can be
-                        // null. The foe read through opcode 0x05 then returns a not-Ok status and the
-                        // battle-state read spends its 2 s corrupt-retry on every poll; skip it here.
-                    }
-                    else if (await reader.GetPokemonBattleState(state.Bot, ct: ct) is var battleState
-                                && battleState is not null
-                                && battleState.ActivePokemon.HP == 0)
-                    {
-                        state.SwapState(EventState.BothPokemonFainted);
-                        endWait = true;
-                    }
-                    else if (GetLevelUp(state.BattleState!, battleState) is var levelUp && levelUp is not null)
-                    {
-                        state.SwapState(EventState.LevelUp);
-                        endWait = true;
-                    }
-                }
-                catch (Exception ex) when (!ct.IsCancellationRequested)
-                {
-                    Console.WriteLine(ex.ToString());
-                    throw;
-                }
+                state.SwapState(EventState.LevelUp);
+            }
+            else if (next.Screen == GameScreen.Evolution)
+            {
+                state.SwapState(EventState.EvolutionInit);
+            }
+            else
+            {
+                state.SwapState(EventState.BattleComplete);
             }
             Console.WriteLine(state.State.Peek().ToString());
         }

@@ -231,12 +231,26 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.BattleOver, snapshot.Screen);
         }
 
-        [Fact]
-        public async Task ScriptBeatsGetter()
+        [Theory]
+        [InlineData(11u, GameScreen.BattleExpPrompt)]
+        [InlineData(13u, GameScreen.BattleExpPrompt)]
+        [InlineData(21u, GameScreen.BattleMoveLearnPrompt)]
+        [InlineData(34u, GameScreen.BattleMoveLearnPrompt)]
+        public async Task GetterPromptBeatsScript(uint getterState, GameScreen expected)
         {
-            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, command: 22, script: 276, getter: Getter, getterState: 11));
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, command: 22, script: 276, getter: Getter, getterState: getterState));
+
+            Assert.Equal(expected, snapshot.Screen);
+            Assert.Equal((int)getterState, snapshot.Prompt);
+        }
+
+        [Fact]
+        public async Task ScriptWhenGetterIsNotAtAPrompt()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, command: 22, script: 276, getter: Getter, getterState: 4));
 
             Assert.Equal(GameScreen.BattleScript, snapshot.Screen);
+            Assert.Equal(276, snapshot.Script);
         }
 
         [Fact]
