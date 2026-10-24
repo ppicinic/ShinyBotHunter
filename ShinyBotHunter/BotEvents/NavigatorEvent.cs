@@ -170,7 +170,7 @@ namespace ShinyBotHunter.BotEvents
             // Retried rather than settled first: an A eaten by the last step's animation is pressed again.
             await GameStateWait.PressUntilAsync(state.Bot.State, () => press(StartNurseScriptMacro), "the nurse's script to start",
                 s => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask,
-                ScriptPressConfirm, ScriptPressAttempts, cancellationToken);
+                ScriptPressConfirm, ScriptPressAttempts, cancellationToken, settleMs: 0);
             await PressThroughScriptAsync(state.Bot.State, addresses, press, "the nurse's script", ScriptStale, cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }

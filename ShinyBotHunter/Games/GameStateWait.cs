@@ -31,11 +31,20 @@ namespace ShinyBotHunter.Games
             return last;
         }
 
-        // Presses, then polls up to confirm for the expected snapshot; repeats up to attempts times.
+        // About 5 frames: the battle UI clears isTouchDisabled about 0.08 s after it builds a menu, so a press at the first
+        // snapshot that shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").
+        private const int MenuSettleMs = 85;
+
+        // Waits settleMs once (none when 0), then presses and polls up to confirm for the expected snapshot; repeats up to
+        // attempts times.
         public static async Task<GameSnapshot> PressUntilAsync(
             IGameStateReader reader, Func<Task> press, string waitingFor, Func<GameSnapshot, bool> expect,
-            TimeSpan confirm, int attempts, CancellationToken ct)
+            TimeSpan confirm, int attempts, CancellationToken ct, int settleMs = MenuSettleMs)
         {
+            if (settleMs > 0)
+            {
+                await Task.Delay(settleMs, ct);
+            }
             GameSnapshot last = default;
             for (int attempt = 0; attempt < attempts; attempt++)
             {

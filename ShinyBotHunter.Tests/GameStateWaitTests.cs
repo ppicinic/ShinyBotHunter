@@ -90,5 +90,35 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Screen(GameScreen.BattleOver), snapshot);
             Assert.Equal(2, presses);
         }
+
+        [Fact]
+        public async Task PressWaitsForTheSettleBeforeTheFirstPress()
+        {
+            int presses = 0;
+            ScriptedReader reader = new(() => Screen(GameScreen.BattleOver));
+            using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(200));
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => GameStateWait.PressUntilAsync(
+                reader, () => { presses++; return Task.CompletedTask; }, "the battle to end",
+                s => s.Screen == GameScreen.BattleOver, TimeSpan.FromMilliseconds(100), 3, cts.Token, settleMs: 10_000));
+
+            Assert.Equal(0, presses);
+        }
+
+        [Fact]
+        public async Task PressWithoutSettlePressesAtOnce()
+        {
+            int presses = 0;
+            ScriptedReader reader = new(() => Screen(GameScreen.BattleOver));
+            using CancellationTokenSource cts = new();
+            cts.Cancel();
+
+            GameSnapshot snapshot = await GameStateWait.PressUntilAsync(
+                reader, () => { presses++; return Task.CompletedTask; }, "the battle to end",
+                s => s.Screen == GameScreen.BattleOver, TimeSpan.FromMilliseconds(100), 3, cts.Token, settleMs: 0);
+
+            Assert.Equal(Screen(GameScreen.BattleOver), snapshot);
+            Assert.Equal(1, presses);
+        }
     }
 }
