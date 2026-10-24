@@ -49,6 +49,10 @@ namespace ShinyBotHunter.Games.Hgss
         private const int EnvBlock = 8;
         private const int FirstScriptContextBlock = 9;
         private const int SummaryBlock = 12;
+        private const int PrinterBlock = 13;
+
+        // The one sTextPrinterTasks slot read; every message observed used it (pointer-discovery.md, "Text printer state").
+        private const byte ReadPrinterSlot = 0;
 
         private readonly IMemoryClient memory;
         private readonly HgssPointerService addresses;
@@ -68,12 +72,13 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.MenuStateOffset], a.GetterOffset + 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.GetterOffset, a.GetterStateOffset], 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.OutcomeOffset], 1),
-                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, StructStart], a.EvolutionStateOffset + 1),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, StructStart], a.EvolutionPrinterOffset + 1),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, StructStart], a.ScriptIdOffset + 2),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + 2 * ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, a.EvolutionSummaryOffset, a.OverlayProcStateOffset], 4),
+                new(a.TextPrinterTasks, [a.TextPrinterTaskDataOffset, a.TextPrinterStateOffset], 1),
             ];
         }
 
@@ -113,8 +118,11 @@ namespace ShinyBotHunter.Games.Hgss
             if (state == EvolutionMain)
             {
                 if (!Ok(r[EvoBlock])) return Snapshot(GameScreen.Transitioning);
-                byte evoState = r[EvoBlock].Bytes[addresses.EvolutionStateOffset];
-                GameSnapshot evolution = Snapshot(GameScreen.Evolution) with { Prompt = evoState };
+                byte[] evo = r[EvoBlock].Bytes;
+                if (!TryTextPrinter(r[PrinterBlock], evo[addresses.EvolutionPrinterOffset], out int? printer))
+                    return Snapshot(GameScreen.Transitioning);
+                byte evoState = evo[addresses.EvolutionStateOffset];
+                GameSnapshot evolution = Snapshot(GameScreen.Evolution) with { Prompt = evoState, TextPrinter = printer };
                 // The summary app runs only at 23; elsewhere evo.summary is NULL.
                 if (evoState != ForgetMoveList) return evolution;
                 return Ok(r[SummaryBlock])
@@ -162,10 +170,13 @@ namespace ShinyBotHunter.Games.Hgss
             ChainBlockResult env = r[EnvBlock];
             if (!Ok(env) || U32(env.Bytes, addresses.ScriptEnvironmentCheckOffset) != addresses.ScriptEnvironmentMagic)
                 return Snapshot(GameScreen.Transitioning);
+            if (!TryTextPrinter(r[PrinterBlock], env.Bytes[addresses.ScriptPrinterOffset], out int? printer))
+                return Snapshot(GameScreen.Transitioning);
             GameSnapshot script = Snapshot(GameScreen.FieldTask) with
             {
                 TaskFunction = function,
                 Script = BitConverter.ToUInt16(env.Bytes, addresses.ScriptIdOffset),
+                TextPrinter = printer,
             };
             for (int i = ScriptContexts - 1; i >= 0; i--)
             {
@@ -177,6 +188,17 @@ namespace ShinyBotHunter.Games.Hgss
                     : script;
             }
             return script;
+        }
+
+        // printer is pr.state of the screen's slot, null when that slot is not the one read or holds no printer; false when
+        // the printer block failed otherwise (FR-3).
+        private static bool TryTextPrinter(ChainBlockResult block, byte slot, out int? printer)
+        {
+            printer = null;
+            if (slot != ReadPrinterSlot || block.Status == ChainBlockStatus.NullPointer) return true;
+            if (!Ok(block)) return false;
+            printer = block.Bytes[0];
+            return true;
         }
 
         // Outcome is null when its block failed or the byte is outside 1 to 5 (the 0x40 and 0x80

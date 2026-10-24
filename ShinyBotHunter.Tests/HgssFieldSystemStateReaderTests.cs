@@ -23,6 +23,8 @@ namespace ShinyBotHunter.Tests
         private const uint ScriptCtx0 = 0x021A0000;
         private const uint ScriptCtx1 = 0x021B0000;
         private const uint Summary = 0x021C0000;
+        private const uint PrinterTask = 0x021D0000;
+        private const uint Printer = 0x021E0000;
 
         private const uint OutOfRange = 0x02400000;
 
@@ -45,7 +47,8 @@ namespace ShinyBotHunter.Tests
             uint setup = Setup, uint evo = Evo, byte evoState = 0, uint summary = 0, uint summaryState = 0,
             uint env = Env, uint envCheck = Magic, ushort scriptId = 0,
             uint scriptCtx0 = 0, byte mode0 = 0, uint native0 = 0,
-            uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0)
+            uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0,
+            uint printerTask = 0, byte printerState = 0, byte evoPrinter = 0, byte envPrinter = 0)
         {
             FakeMemoryClient memory = new();
             memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
@@ -79,6 +82,11 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(ScriptCtx0, Table.ScriptContextNativeOffset), BitConverter.GetBytes(native0));
             memory.Place(At(ScriptCtx1, Table.ScriptContextModeOffset), [mode1]);
             memory.Place(At(ScriptCtx1, Table.ScriptContextNativeOffset), BitConverter.GetBytes(native1));
+            memory.Place(Table.TextPrinterTasks, BitConverter.GetBytes(printerTask));
+            memory.Place(At(PrinterTask, Table.TextPrinterTaskDataOffset), BitConverter.GetBytes(Printer));
+            memory.Place(At(Printer, Table.TextPrinterStateOffset), [printerState]);
+            memory.Place(At(Evo, Table.EvolutionPrinterOffset), [evoPrinter]);
+            memory.Place(At(Env, Table.ScriptPrinterOffset), [envPrinter]);
             return memory;
         }
 
@@ -207,6 +215,61 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.Evolution, snapshot.Screen);
             Assert.Equal(23, snapshot.Prompt);
             Assert.Equal((int)proc, snapshot.SummaryState);
+        }
+
+        [Theory]
+        [InlineData(0, false)]
+        [InlineData(6, false)]
+        [InlineData(2, true)]
+        public async Task EvolutionTextPrinter(byte printerState, bool atArrow)
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: 12, printerTask: PrinterTask, printerState: printerState));
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal((int)printerState, snapshot.TextPrinter);
+            Assert.Equal(atArrow, snapshot.AtTextArrow());
+        }
+
+        [Fact]
+        public async Task EvolutionPrinterSlotNullIsNoPrinter()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: 12));
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Null(snapshot.TextPrinter);
+        }
+
+        [Fact]
+        public async Task EvolutionPrinterInAnotherSlotIsNotReported()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: 12, printerTask: PrinterTask, printerState: 2, evoPrinter: 1));
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Null(snapshot.TextPrinter);
+        }
+
+        [Fact]
+        public async Task FieldScriptTextPrinter()
+        {
+            GameSnapshot slotZero = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 2003,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing, printerTask: PrinterTask, printerState: 2));
+            GameSnapshot otherSlot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 2003,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing, printerTask: PrinterTask, printerState: 2, envPrinter: 1));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 2003, null, RunScripts, Printing, TextPrinter: 2), slotZero);
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 2003, null, RunScripts, Printing), otherSlot);
+        }
+
+        [Fact]
+        public async Task TextPrinterOnlyOnItsScreens()
+        {
+            GameSnapshot menu = await SnapshotOf(Memory(app: App, command: 5, sel: 1, printerTask: PrinterTask, printerState: 2));
+            GameSnapshot free = await SnapshotOf(Memory(printerTask: PrinterTask, printerState: 2));
+
+            Assert.Equal(GameScreen.BattleMenu, menu.Screen);
+            Assert.Null(menu.TextPrinter);
+            Assert.Equal(GameScreen.FieldFree, free.Screen);
+            Assert.Null(free.TextPrinter);
         }
 
         // State 13 is the evolution check every battle end passes through, seen on a flee.
@@ -387,22 +450,23 @@ namespace ShinyBotHunter.Tests
 
         // The spec's block table, written out as literals so a mixed-up member shows here.
         [Fact]
-        public async Task RequestIsTheThirteenBlocksOfTheWalk()
+        public async Task RequestIsTheFourteenBlocksOfTheWalk()
         {
             FakeMemoryClient memory = Memory();
 
             await SnapshotOf(memory);
 
             IReadOnlyList<ChainBlockRequest> blocks = memory.ChainReads[0].Blocks;
-            Assert.All(blocks, block => Assert.Equal(0x021D4158u, block.Anchor));
+            Assert.Equal([.. Enumerable.Repeat(0x021D4158u, 13), 0x021D1F74u], blocks.Select(block => block.Anchor));
             Assert.Equal(
                 new int[][]
                 {
                     [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0],
                     [0x10, 0x0C, 0], [0x10, 0x0C, 0x38, 0], [0x10, 0x0C, 0x3C, 0], [0x10, 0x0C, 0x40, 0], [0, 4, 0x18, 0x198, 0x38, 0x14],
+                    [0x10, 0x28],
                 },
                 blocks.Select(block => block.Hops));
-            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65, 0x0C, 8, 8, 8, 4], blocks.Select(block => block.Length));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x66, 0x0C, 8, 8, 8, 4, 1], blocks.Select(block => block.Length));
         }
 
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
@@ -435,6 +499,9 @@ namespace ShinyBotHunter.Tests
         [InlineData("env", OutOfRange, GameScreen.Transitioning)]
         [InlineData("scriptCtx", 0u, GameScreen.FieldTask)]
         [InlineData("scriptCtx1", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("printer", 0u, GameScreen.Evolution)]
+        [InlineData("printer", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("printerInBattle", OutOfRange, GameScreen.BattleMenu)]
         public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
             FakeMemoryClient memory = hop switch
@@ -456,6 +523,8 @@ namespace ShinyBotHunter.Tests
                 // With 0, all three context pointers are NULL (ctx 2 is never placed).
                 "scriptCtx" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: pointer, scriptCtx1: pointer),
                 "scriptCtx1" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: pointer),
+                "printer" => Memory(app: App, state: 14, evoState: 12, printerTask: pointer),
+                "printerInBattle" => Memory(app: App, command: 5, sel: 1, printerTask: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
             };
 
