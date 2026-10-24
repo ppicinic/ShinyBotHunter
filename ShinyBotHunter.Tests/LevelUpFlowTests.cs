@@ -41,12 +41,20 @@ namespace ShinyBotHunter.Tests
 
         private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
 
-        // Every Evolution snapshot has a Prompt (evo.state); the scene holds only at these, and in the summary app's
-        // move list (8) and confirm (9).
+        // Every Evolution snapshot has a Prompt (evo.state); the scene holds only at a printer's arrow, at the Yes/No states
+        // (21, 35), and in the summary app's move list (8) and confirm (9).
         private static bool EvolutionWaits(GameSnapshot s)
-            => s.Prompt is 3 or 12 or 15 or 17 or 21 or 26 or 28 or 30 or 35 or 36 or 37 || s.SummaryState is 8 or 9;
+            => s.AtTextArrow() || s.Prompt is 21 or 35 || s.SummaryState is 8 or 9;
 
-        private static GameSnapshot[] Evolution(params int[] states) => [.. states.Select(state => Prompt(GameScreen.Evolution, state)), BattleOver, FieldFree];
+        private static readonly int[] MessageStates = [3, 12, 15, 17, 26, 28, 30, 36, 37];
+
+        private static GameSnapshot Printing(int state, int? printer) => new(GameScreen.Evolution, null, null, state, null, TextPrinter: printer);
+
+        // A message state is drawing, then at the arrow, then its slot NULL while the countdown runs.
+        private static IEnumerable<GameSnapshot> Scene(int state)
+            => MessageStates.Contains(state) ? [Printing(state, 0), Printing(state, 2), Printing(state, null)] : [Prompt(GameScreen.Evolution, state)];
+
+        private static GameSnapshot[] Evolution(params int[] states) => [.. states.SelectMany(Scene), BattleOver, FieldFree];
 
         [Fact]
         public async Task StatBoxesThenDeclineFollowThePrompts()
@@ -119,7 +127,7 @@ namespace ShinyBotHunter.Tests
             int[] summary = [0, 1, 8, 9];
             ScriptedGame game = new(
             [
-                .. scene.Select(state => Prompt(GameScreen.Evolution, state)),
+                .. scene.SelectMany(Scene),
                 .. summary.Select(proc => new GameSnapshot(GameScreen.Evolution, null, null, 23, null, null, proc)),
                 .. Evolution(24, 26, 27, 28, 29, 30, 31, 37, 38, 13, 40),
             ], waits: EvolutionWaits);
@@ -139,6 +147,36 @@ namespace ShinyBotHunter.Tests
             await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
 
             Assert.Equal(["T.A", "T.A"], game.Taps);
+        }
+
+        // The drawing reads at 12 (one of them a state-6 pause) get no tap; the one tap at 12 lands at the arrow.
+        [Fact]
+        public async Task NoTapWhileTheEvolutionTextDraws()
+        {
+            ScriptedGame game = new(
+            [
+                .. Scene(3), Prompt(GameScreen.Evolution, 5),
+                Printing(12, 0), Printing(12, 6), Printing(12, 0), Printing(12, 0), Printing(12, 2), Printing(12, null),
+                Prompt(GameScreen.Evolution, 13), Prompt(GameScreen.Evolution, 39), BattleOver, FieldFree,
+            ], waits: EvolutionWaits);
+
+            await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["T.A", "T.A"], game.Taps);
+        }
+
+        // evo.printer is one slot for the whole scene; outside slot 0 every message state reads no printer and holds
+        // until a tap, as before the printer read. The swallowed tap at 3 is retried.
+        [Fact]
+        public async Task EvolutionPrinterOutsideSlotZeroFallsBackToTheRetry()
+        {
+            int[] states = [2, 3, 5, 12, 13, 39, 40];
+            ScriptedGame game = new([.. states.Select(state => Prompt(GameScreen.Evolution, state)), BattleOver, FieldFree],
+                swallowed: 1, waits: s => s.Prompt is 3 or 12);
+
+            await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["T.A", "T.A", "T.A"], game.Taps);
         }
     }
 }

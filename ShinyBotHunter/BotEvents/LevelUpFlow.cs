@@ -322,7 +322,9 @@ namespace ShinyBotHunter.BotEvents
         internal static async Task DeclineEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
         {
             await PressAtPromptAsync(game, tap, "S.125.125.5", EvolutionForgetAMovePrompt, ct);
-            await PressAtEvolutionStateAsync(game, tap, "T.A", StopTeachingPrompt, ct);
+            await GameStateWait.UntilAsync(game, $"evolution state {StopTeachingPrompt}",
+                s => s.Screen == GameScreen.Evolution && s.Prompt == StopTeachingPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, "T.A", StopTeachingPrompt, EvolutionPressConfirm, EvolutionPressAttempts, ct);
             await PressAtEvolutionStateAsync(game, tap, "T.A", DidNotLearnPrompt, ct);
         }
 
@@ -356,11 +358,26 @@ namespace ShinyBotHunter.BotEvents
             await PressAtEvolutionStateAsync(game, tap, "T.A", EvolutionLearnedPrompt, ct);
         }
 
-        // Only the named states are pressed at; the evolving animation (state 8) never is, since B there cancels it.
+        // Only the named states are pressed at; the evolving animation (state 8) never is, since B there cancels it. A message
+        // state presses once, when its printer waits at the arrow, and is confirmed by the slot going NULL or the state
+        // leaving; a press while the text draws would be lost. With no printer readable (evo.printer is not slot 0) it falls
+        // back to the retried press. Returns once the state has left, after the 30 or 40 frames' countdown that follows the
+        // slot going NULL (pointer-discovery.md, "Text printer state (2026-10-24)").
         private static async Task PressAtEvolutionStateAsync(IGameStateReader game, Func<string, Task> tap, string macro, int state, CancellationToken ct)
         {
-            await GameStateWait.UntilAsync(game, $"evolution state {state}", s => s.Screen == GameScreen.Evolution && s.Prompt == state, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+            GameSnapshot ready = await GameStateWait.UntilAsync(game, $"evolution state {state} at the arrow",
+                s => s.Screen == GameScreen.Evolution && s.Prompt == state && (s.TextPrinter is null || s.AtTextArrow()), PromptStale, ct);
+            if (ready.TextPrinter is null)
+            {
+                await PressAtPromptAsync(game, tap, macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+                return;
+            }
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
+                $"evolution state {state}'s printer to close", s => s.Prompt != state || s.TextPrinter is null,
+                PromptPressConfirm, PromptPressAttempts, ct, settleMs: 0);
+            Console.WriteLine($"[LevelUp] {macro} at prompt {state} (printer {ready.TextPrinter}) after {presses} press(es): {left}");
+            await GameStateWait.UntilAsync(game, $"evolution state {state} to end", s => s.Prompt != state, PromptStale, ct);
         }
 
         private static Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
