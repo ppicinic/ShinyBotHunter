@@ -368,6 +368,14 @@ namespace ShinyBotHunter.BotEvents
                 {
                     var warpDest = path[state.NavigationPathIndex + 2].Node;
                     await WaitForWarpAsync(state.Bot, mapIdAfter, warpDest.X, warpDest.Y, cancellationToken);
+                    // The warp wait accepts a landing within one tile of the spawn node, and walking
+                    // back onto the spawn node can step onto the door again, so the next segment goes
+                    // from where we landed to the node after it. When the spawn node is the last
+                    // node, this ends the walk.
+                    var (landX, landY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+                    Console.WriteLine($"[Navigator] Portal crossed: at ({landX},{landY}) on map {mapIdAfter}, skipping the spawn node ({warpDest.X},{warpDest.Y})");
+                    state.NavigationPathIndex += 2;
+                    continue;
                 }
                 else if (mapIdAfter != mapId)
                 {
