@@ -1,7 +1,6 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
@@ -389,7 +388,7 @@ namespace ShinyBotHunter.BotEvents
                         return true;
                     if (outcome == SegmentOutcome.PoisonEvent)
                     {
-                        await ClearFaintTextAsync(state, cancellationToken);
+                        await ClearPoisonScriptAsync(state, cancellationToken);
                         // The mon that just resolved is now fainted or no longer poisoned, so
                         // re-snapshotting stops it from tripping the poll again -- each event is
                         // handled exactly once.
@@ -533,13 +532,15 @@ namespace ShinyBotHunter.BotEvents
             return state.TilePenalties.TryGetValue(mapId, out var penalties) ? penalties : null;
         }
 
-        // Pushes past the field poison dialogue so the overworld accepts input again.
-        private async Task ClearFaintTextAsync(GameState state, CancellationToken cancellationToken)
+        // Presses through std_survive_poisoning so the overworld accepts input again (R19). Seeing the script first
+        // means the party diff saw the real message, not a garbage read.
+        private static async Task ClearPoisonScriptAsync(GameState state, CancellationToken cancellationToken)
         {
-            Console.WriteLine("[Navigator] Running ClearFaintText macro");
-            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, "ClearFaintText");
-            state.Bot.RunMacroString(macro);
-            await state.Bot.WaitForMacroAsync(cancellationToken);
+            var addresses = (HgssPointerService)state.Bot.Addresses;
+            await GameStateWait.UntilAsync(state.Bot.State, "the survive-poisoning script",
+                s => s.Screen == GameScreen.FieldTask && s.Script == addresses.SurvivePoisoningScript, ScriptStale, cancellationToken);
+            await PressThroughScriptAsync(state.Bot.State, addresses, Press(state.Bot, cancellationToken), "the survive-poisoning script",
+                ScriptStale, cancellationToken);
         }
 
         // Party members that could still produce a field poison message, keyed by PID rather than
