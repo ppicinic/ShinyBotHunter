@@ -260,15 +260,15 @@ On the keys, Up and Down move the cursor, A confirms it (the cursor starts on Ye
 | 18, 19 | Prints 1195 "Should a move be deleted?" (no `\r`) | | 19 observed |
 | 20 | Opens the Yes/No ("Forget a move!" / "Keep old moves!") | | observed |
 | **21** | **"Should a move be deleted?" Yes/No** | Yes: 22. No: 32 | observed: touching (125,125) for No gave `yn` 1, `cursor` 2, then 32 |
-| 22 | Fade, fill `sumArgs`, create the summary app | | decomp only |
-| **23** | **The forget-move list.** The summary app runs (`evo.summary` non-null) until it exits | the summary app's own input | decomp only |
-| 24 | Reads `sumArgs + 0x16`. Value 4: 32. Otherwise the slot, then 25 | | decomp only |
-| 25-31 | Prints 1199 "1, 2, and... Poof!", 1200 "X forgot Y.", 1201 "And..." and 1202 "X learned Y!". After each of the first three, a wait state (26, 28, 30) holds at the arrow | A on 26, 28, 30 | decomp only |
+| 22 | Waits for the fade 21 started, fills `sumArgs`, creates the summary app | | observed (0.5 s) |
+| **23** | **The forget-move list.** The summary app runs (`evo.summary` non-null) until it exits | the summary app's own input (next subsection) | observed |
+| 24 | Waits for the fade in, reads `sumArgs + 0x16`. Value 4: 32. Otherwise the slot into `evo.slot`, then 25 | | observed (slot 0 → 25) |
+| 25-31 | Prints 1199 "1, 2, and... Poof!", 1200 "X forgot Y.", 1201 "And..." and 1202 "X learned Y!". After each of the first three, a wait state (**26, 28, 30**) holds at the arrow, then a 30-frame countdown. 31 prints 1202, writes the move into the slot and goes to **37** | A on 26, 28, 30 | observed: 26, 27, 28, 29, 30, 31 (25 skipped between reads); each wait held until A |
 | 32, 33 | Prints 1197 "Stop trying to teach Y?" (no `\r`) | | observed |
 | 34 | Opens the Yes/No ("Give up on Y!" / "Don't give up on Y!") | | observed |
 | **35** | **"Stop trying to teach Y?" Yes/No** | Yes: 36. No: back to 14 | observed: A on the default cursor (Yes) gave `yn` 1, `cursor` 1, then 36 |
 | **36** | **1198 "X did not learn the move Y." waiting at the arrow** | A, then a 30-frame countdown and back to 13 | observed |
-| 37, 38 | "X learned Y!" (message 4) and its fanfare, then back to 13 | A on 37 | decomp only |
+| 37, 38 | "X learned Y!" (message 4 from the free-slot path, 1202 from 31) waiting at the arrow, then its fanfare and back to 13 | A on 37 | observed from 31: 37 held 12 s until A, 38 1.0 s, then 39 |
 | 39, 40 | Fade out; `done = 1` | | 40 observed with `done` 1 |
 | 41-45 | Evolution cancelled: 919 "Huh? X stopped evolving!", then `done = 1` | A on 44 | decomp only |
 
@@ -292,7 +292,7 @@ battle: getter 1 → … → 11 (A) → 12 → 13 (A) → 14 → 3 → 4 → 37 
 - **The save was not changed.** Its sha256 was `18e10c7b…4f25c87` before and after. EmuHawk was closed with `taskkill /F`.
 
 Not observed:
-- the forget-move list (states 22-31), because the trace answered No
+- the forget-move list (states 22-31), because the trace answered No (traced separately, next subsection)
 - learning into a free slot (37, 38)
 - a cancelled evolution (41-45)
 - a second move offered in the same evolution (the loop back through 13 handles it)
@@ -303,13 +303,86 @@ The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x65 bytes
 
 | `evo.state` | The bot presses |
 |---|---|
-| 3, 12, 15, 17, 36 | A (also 26, 28, 30, 37 and 44, once observed) |
+| 3, 12, 15, 17, 26, 28, 30, 36, 37 | A (also 44, once observed) |
 | 8 | nothing; never B |
 | 21 | the bottom button (125,125) or B to keep the old moves; the top button (125,75) to forget one |
-| 23 | the slot in the summary app. Its inner state is not mapped, so the press is confirmed by `evo.state` leaving 23 |
+| 23 | the slot in the summary app: its row, then the confirm button, read from the summary app's own state (next subsection) |
 | 35 | the top button (125,75) or A to give up; the bottom button to try again |
 
 Each press is confirmed by `evo.state` changing. The evolution is finished when `app == 0`.
+
+### The forget-move list (yes path), 2026-10-23
+
+Answering Yes at state 21 starts a fade and goes to 22. State 22 waits for the fade, fills `sumArgs` and creates the summary app's `OverlayManager` (`sub_02077394`). State 23 calls `OverlayManager_Run` on it every frame until it returns TRUE, then deletes it, writes NULL to `evo.summary`, rebuilds the evolution scene's graphics and fades in. The summary app is undecompiled too: `asm/unk_02088288.s`, with `PokemonSummary_Init`, `_Main` and `_Exit` at `gOverlayTemplate_PokemonSummary`. Only `PokemonSummaryArgs` (`unk_02088288.h`) and `OverlayManager` (`overlay_manager.h`) are C structs. Every offset into the app's own data comes from the assembly.
+
+```
+evo.summary  = u32 [evo + 0x38]           OverlayManager (overlay_manager.h), non-NULL only while evo.state is 23
+sum.exec     = u32 [evo.summary + 0x10]   exec_state: 1 Init running, 2 Main running, 3 Exit (one frame, not seen)
+sum.proc     = u32 [evo.summary + 0x14]   proc_state: Main's own state (table below); 0 again during Init and Exit
+sum.args     = u32 [evo.summary + 0x18]   == evo.sumArgs
+sum.data     = u32 [evo.summary + 0x1C]   the app's data, 0x7D8 bytes on heap 0x13 (OverlayManager_CreateAndGetData in Init)
+data.args    = u32 [sum.data + 0x22C]     == evo.sumArgs again
+data.moves   = u16 [sum.data + 0x264 + 2*i], i 0..3   the Pokémon's four moves as the list shows them
+data.cursor  = u8  [sum.data + 0x7BD] & 0x0F          the list cursor: 0-3 a known move, 4 the move to learn; starts at 0
+data.flashTo = u8  [sum.data + 0x7CF]     the state that proc 15 (button flash) goes to when it ends
+evo.sumArgs  = u32 [evo + 0x3C]           PokemonSummaryArgs; allocated before state 22 (mode, slot, result and move read 0 at 21)
+  +0x00 the party Pokémon (state 22 writes evo.mon there, not a Party), +0x04 Options,
+  +0x11 0, +0x12 mode 2, +0x13 partyCount 1, +0x14 partySlot 0, +0x18 moveToLearn (= evo.move),
+  +0x16 the result: the chosen slot 0-3, or 4 for "keep the old moves",
+  +0x17 1 when the app was left with B, 0 otherwise (the evolution scene does not read it)
+```
+
+Live chain on the trace (one run): `evo 0x022C053C → summary 0x022C4630 → data 0x022F0304`, `sumArgs 0x022D7564` (also at `data + 0x22C`), `data.moves` = 55, 99, 44, 184 (Water Gun, Rage, Bite, Scary Face). As one ApiHawk block: `[0, 4, 0x18, 0x198, 0x38, 0]` for 0x20 bytes reads the `OverlayManager`. `[0, 4, 0x18, 0x198, 0x38, 0x1C, 0x7B8]` for 0x20 bytes reads the cursor. Both fail at the `0x38` hop whenever `evo.summary` is NULL.
+
+`PokemonSummary_Main` switches on `sum.proc` through a 23-case jump table at `0x02088442`. In mode 2, state 1 jumps straight to the move list (8). The flow is:
+
+| `sum.proc` | Routine | Meaning | Waits for | Status |
+|---|---|---|---|---|
+| 0 | inline | Starts the fade in, then 1 | | observed (and during Init, `exec` 1) |
+| 1 | `sub_02088B08` | Waits for the fade. Mode 2: 8; mode 4: 16; else 2 (the normal summary pages) | | observed |
+| **8** | `sub_02089028` | **The move list**: four moves plus the new one, cursor on slot 0 | **Up/Down** moves the cursor over 0-4 (wraps, skips empty slots). **A** on 0-3 goes to 9. A on 4 sets result 4 and leaves (21). **B** sets result 4 and +0x17 1, then flashes and leaves (15 → 21). **Touch** on a move row picks that slot and goes to 9. Touch on the new move's row only moves the cursor to 4. Touch on the back button sets result 4 and leaves. An HM in the slot, while a move is offered, shows a "can't forget" note and stays in 8 | observed: held 14 s, touch (64,24) → 9 |
+| **9** | `sub_02089208` | **Confirm**: the chosen move's details and a "Forget" button | **A** or touch on the button at y 152-183: result = cursor, +0x17 0, flash, leave (15 → 21). **B** or touch on the back button: flash, back to 8 | observed: held 14 s, touch (64,168) → 15 |
+| 15 | `sub_02089698` | Button flash: palette swap, 4 frames, swap back, 2 frames, then `data.flashTo` | | observed (one read) |
+| 21 | `sub_02089670` | Starts the fade out, then 22 | | decomp only (one frame) |
+| 22 | `sub_02089680` | Waits for the fade, then Main returns TRUE: Exit runs and the app is freed | | observed |
+
+Touch hitboxes, bottom screen, `TouchscreenHitbox` rects `{top, bottom, left, right}`:
+- Move rows, `_021038D4` (`TouchscreenHitbox_FindRectAtTouchNew`): slot 0 y 8-39, slot 1 y 40-71, slot 2 y 72-103, slot 3 y 104-135, all x 8-127. Centres: (64,24), (64,56), (64,88), (64,120).
+- `_021038B4`, y 152-183, x 8-127, centre (64,168): the new move's row in 8, the "Forget" confirm in 9.
+- `_021038AC`, y 165-188, x 190-249, centre (220,176): the back button. Cancel in 8, back to the list in 9.
+
+On keys, slot *n* from the list (cursor 0) is Down *n* times, A, A. B in 8 is "keep the old moves". B in 9 returns to the list. Every key the routines read is a new press (`gSystem + 0x48`), apart from the d-pad repeat in state 2, which mode 2 never enters.
+
+#### Sequence observed
+
+Same save and battle as above. At state 21 the top button was touched, then the first move (Water Gun) was picked by touch:
+
+```
+evo 21 (yn 0 cursor 1) → touch (125,75) "Forget a move!" → yn 1 cursor 1 → 22 (0.27 s) → 23, summary 022C4630
+  sum exec 1 proc 0 (Init; sumArgs now mode 2, move18 423) → exec 2 proc 0 → proc 1 → proc 8, cursor 0 (held 14 s)
+  → touch (64,24) → proc 9 (held 14 s) → touch (64,168) → proc 15 → proc 22 → summary NULL (0.55 s after the touch)
+→ evo 24 (sumArgs+0x16 = 0) → 26 (held 18 s; A) → 27 → 28 (held 4 s; A) → 29 → 30 (held 4 s; A) → 31 → 37 (held 12 s; A)
+→ 38 (1.0 s fanfare) → 39, learnIdx 16 → 40 → done 1 → app.state 15 → app NULL → tasks 02050C19, 0205528D, 020552D5 → field free
+```
+
+- **25 was skipped between reads.** It only prints 1199 and moves on. 1199 ends in `\r`, so 26 is a real input wait, as are 28 (1200) and 30 (1201). Each one moved about 1.1 s after its A: the printer finishes, then the 30-frame `evo.timer` counts down.
+- **State 31 goes to 37, not 32.** It prints 1202 "X learned Y!" (which ends in `\r`), zeroes the slot's PP-ups (`MON_DATA_MOVE1_PP_UPS + slot`), writes the move with `MonSetMoveInSlot`, and sets state 37. From there the yes path shares 37 (printer, A) and 38 (fanfare and timer, then 13) with the free-slot path. The 13 → 39 step was too quick to read.
+- **`sumArgs + 0x16` read 0 after the app closed.** That is also its value before the app ran, so this trace alone cannot tell a written 0 from an untouched byte. Two things do show it: the scene went 24 → 25 and not 32, and the decomp's confirm (`sub_02089208`) stores the cursor there. A slot other than 0 was not traced.
+- **Touch on a move row skips the cursor.** It writes the slot into `data.cursor` and goes to 9 in the same frame. `data.cursor` stayed 0 throughout because slot 0 was the pick.
+- After `done`, `app.state` read 15 (13 on the No trace). Both are the battle app's teardown. The rule "use `evo` only while `app.state == 14`" holds.
+- **The save was not changed.** Its sha256 (and the `.bak`'s) was `18e10c7b…4f25c87` before launch and after `taskkill /F`. The game was never saved.
+
+#### What this changes for the bot
+
+A task that forgets a move reads two more blocks while `evo.state == 23`: the `OverlayManager` (`[… 0x198, 0x38, 0]`, 0x20 bytes) and the cursor byte (`[… 0x198, 0x38, 0x1C, 0x7BD]`, 1 byte). It presses:
+- at 21, the top button (125,75), confirmed by `evo.state` reaching 22;
+- in 23, nothing until `sum.exec == 2 && sum.proc == 8`;
+- for slot *n*, the row centre (64, 24 + 32*n), confirmed by `sum.proc` reaching 9;
+- in 9, the confirm button (64,168) or A, confirmed by `evo.summary` going NULL and `evo.state` reaching 24 or later;
+- to keep the old moves from inside the list instead, B or the back button (220,176) in 8, which leads to 32 as the No path does;
+- A at 26, 28, 30 and 37, each confirmed by `evo.state` changing.
+
+The slot to forget is the task's decision: compare `data.moves` (or the party read) against what it wants to keep. Touch is simpler than keys because it does not depend on the cursor. The key path (Down *n*, A, A) needs `data.cursor` read back between presses.
 
 ## Suspected issues, not confirmed
 
@@ -380,6 +453,7 @@ Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunt
 - **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
+- 2026-10-23: forget-move list (yes path) mapped and traced live: `evo.summary` OverlayManager (`+0x14` proc state, `+0x1C` data, cursor at data `+0x7BD`), the summary app's mode-2 states 8 (list) and 9 (confirm) with their touch hitboxes and keys; evolution states 22-31 and 37-38 now observed; 31 goes to 37.
 - 2026-10-23: post-evolution move learning mapped: the evolution scene's own state machine at `[app.setup + 0x198] + 0x64` (undecompiled `unk_020755E8.s`), its Yes/No menu and the summary-app hand-off; traced live through the evolution, "forget a move?" No and "give up?" Yes on the Totodile save; `+0x67` confirmed as the done byte.
 - 2026-10-22: field script chain (task manager → script environment → script contexts → native) mapped and verified live through the poison message and the Pokémon Center heal on four PKHeX copies; the heal macro's fainted rule shown wrong for a non-lead faint; Pokérus dialogue reproduced.
 - 2026-10-17: first draft.
