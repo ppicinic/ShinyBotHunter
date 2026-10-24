@@ -173,7 +173,7 @@ Natives seen, by address (all `scrcmd_c.c` / `scrcmd_message.c` in the decomp, s
 | `ctx.native` | Decomp | Meaning | Status |
 |---|---|---|---|
 | `0x021EF349` | `ov01_021EF348` (from `ScrCmd_NPCMsg`) | a message is printing, **or finished and waiting at the ▼ arrow**; the text printer's own `state` (2 or 3) distinguishes those and was not read | observed in every message |
-| `0x02041075` | `sub_02041074` (`ScrCmd_WaitButton`) | waiting for A or B | decomp only: every message observed used `\r`, which waits inside the printer |
+| `0x02041075` | `sub_02041074` (`ScrCmd_WaitButton`) | waiting for A or B | observed 2026-10-24 in the nurse's Pokérus explanation (`hgss-heal-variants`, HeartGold8, run 20261024-004624); the earlier messages all used `\r`, which waits inside the printer |
 | `0x02041041`, `0x020410F1` | `WaitButtonOrDelay`, `WaitButtonOrDpad` | | decomp only |
 | `0x02040BCD` | `ScrNative_WaitStd` (from `ScrCmd_CallStd`) | this context called a standard script and waits for it; the work is in the next context | observed: the map's NPC script (ctx 0) calling the nurse (ctx 1) |
 | `0x020477C1` | `sub_020477C0` (`ScrCmd_GetMenuChoice`) | a Yes/No or list menu is open | observed: the nurse's "Heal?" |
