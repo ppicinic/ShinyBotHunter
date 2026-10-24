@@ -98,6 +98,10 @@ namespace ShinyBotHunter.Service.Pointers
         // (summary + 0x14); offset (revision-independent); observed; QA: hgss-route33-evolve-learn-replace
         public int OverlayProcStateOffset => 0x14;
 
+        // evo.printer (u8), the text printer slot of the scene's message, sub_020772F8's AddTextPrinterParameterized id
+        // (evo + 0x65); offset (revision-independent); observed; QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
+        public int EvolutionPrinterOffset => 0x65;
+
         // BS, the BattleSystem, valid while app.state is 4..9 (app + 0x1C); offset (revision-independent); QA: hgss-route33
         public int BattleSystemOffset => 0x1C;
 
@@ -150,6 +154,11 @@ namespace ShinyBotHunter.Service.Pointers
         // (revision-independent); observed; QA: hgss-heal-variants, hgss-poison-walk
         public int ScriptIdOffset => 0x0A;
 
+        // ScriptEnvironment.textPrinterNum (u8), script.h, the slot the printing native waits on; keeps its last value
+        // after the printer is gone (env + 0x05); offset (revision-independent); observed;
+        // QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
+        public int ScriptPrinterOffset => 0x05;
+
         // env.ctx[0], the first of three ScriptContext pointers, ctx[i] at + 4*i (env + 0x38); offset
         // (revision-independent); observed; QA: hgss-heal-variants (ctx 0 and 1), hgss-poison-walk (ctx 0)
         public int ScriptContextsOffset => 0x38;
@@ -197,6 +206,21 @@ namespace ShinyBotHunter.Service.Pointers
         // pressed like PrintingNative per R18, move to observed in the PR whose run logs one;
         // QA: hgss-heal-variants, hgss-poison-walk
         public uint WaitButtonOrDpadNative => 0x020410F1;
+
+        // The text printer, pointer-discovery.md "Text printer state (2026-10-24)".
+
+        // sTextPrinterTasks (SysTask *[8], text.c), a slot NULL when no printer runs in it; root (revision-dependent;
+        // static ARM9, rev 0); observed; QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
+        public uint TextPrinterTasks => 0x021D1F74;
+
+        // SysTask.data (sys_task.h), the task's TextPrinter (task + 0x10); offset (revision-independent); observed;
+        // QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
+        public int TextPrinterTaskDataOffset => 0x10;
+
+        // TextPrinter.state (u8), RenderText's state (render_text.c): 0, 4, 5, 6 drawing, 2, 3, 7, 8 waiting at the arrow
+        // (printer + 0x28); offset (revision-independent); observed (0, 2, 6); QA: hgss-route33-evolve-learn-replace,
+        // hgss-heal-variants
+        public int TextPrinterStateOffset => 0x28;
 
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;

@@ -182,11 +182,13 @@ namespace ShinyBotHunter.BotEvents
         };
 
         /// <summary>
-        /// Presses through a field script until the field is free (R18, R19): A while a context waits in the
-        /// printing or wait-button natives, one A at the menu native (Yes), then B for every later wait, since B
-        /// closes a message as well as A and cannot start a second conversation or answer a second menu. Nothing
-        /// is pressed during movement, WaitStd, the touch menu, bytecode, child tasks or a transition. The Yes also
-        /// counts as given once the heal animation task is seen, because it only runs after Yes, so an A that
+        /// Presses through a field script until the field is free (R18, R19): A once per arrow of the printing
+        /// native's printer and at every poll in the wait-button natives, one A at the menu native (Yes), then B for
+        /// every later wait, since B closes a message as well as A and cannot start a second conversation or answer a
+        /// second menu. The printing native's press is confirmed by the printer leaving the arrow, and none is sent while
+        /// the text draws or no printer is read (env.printer is not slot 0: the stale-timeout then names the script
+        /// and its snapshot). Nothing is pressed during movement, WaitStd, the touch menu, bytecode, child tasks or a
+        /// transition. The Yes also counts as given once the heal animation task is seen, because it only runs after Yes, so an A that
         /// landed on the menu by race is never followed by another A. Throws when the snapshot has not changed for
         /// stale; the clock is not restarted by a press, so a box that never closes under presses still times out.
         /// </summary>
@@ -222,13 +224,22 @@ namespace ShinyBotHunter.BotEvents
                 bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
                 if (native == addresses.MenuChoiceNative && !yesGiven)
                 {
-                    await GameStateWait.PressUntilAsync(game, () => press(PressA), $"{waitingFor} Yes",
+                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + PressA), $"{waitingFor} Yes",
                         s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
                     Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
                     yesGiven = true;
                 }
-                else if (native == addresses.PrintingNative || native == addresses.WaitButtonNative || decompOnly
-                    || native == addresses.MenuChoiceNative)
+                else if (native == addresses.PrintingNative)
+                {
+                    if (snapshot.AtTextArrow())
+                    {
+                        int presses = 0;
+                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? PressB : PressA); }, $"{waitingFor} box",
+                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct);
+                        Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8} (printer {snapshot.TextPrinter}) after {presses} press(es)");
+                    }
+                }
+                else if (native == addresses.WaitButtonNative || decompOnly || native == addresses.MenuChoiceNative)
                 {
                     await press(yesGiven ? PressB : PressA);
                     Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");

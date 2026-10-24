@@ -168,7 +168,7 @@ test('HGSS Route 33 through the dashboard: train the lead one level so it evolve
     // LevelUpFlow.ProcessEvolutionMoveLearning logs the free-slot learn and the A at evo.state 37; EvolutionInit logs the
     // moves read back from memory. No Discord question, so nothing forgotten or declined.
     expect(backendLines(/learned Ice Fang in an open move slot/).length, 'no "learned Ice Fang in an open move slot" in backend.log').toBeGreaterThan(0)
-    expect(backendLines(/\[LevelUp\] T\.A at prompt 37 /).length, 'no A at evolution state 37').toBeGreaterThan(0)
+    expect(backendLines(/\[LevelUp\] (W\.\d+;)?T\.A at prompt 37 /).length, 'no A at evolution state 37').toBeGreaterThan(0)
     expect(backendLines(new RegExp(`moves after the evolution: ${MOVES_AFTER}$`)).length, `no "moves after the evolution: ${MOVES_AFTER}" in backend.log`).toBeGreaterThan(0)
     expect(backendLines(/forgot|will not learn|asking Discord/).length, 'a forget, decline or Discord line in backend.log').toBe(0)
     const encounters = await encounterCount()

@@ -52,6 +52,12 @@ namespace ShinyBotHunter.BotEvents
 
         private const int MaxSwitchAttempts = 3;
 
+        // "What will X do?" prints after ctx.sel turns 1 and before the player's controller builds the battle menu, so Run and
+        // Fight wait for its printer to be seen (within 1 s of the menu state; past it the wait falls through), then to
+        // clear; 15 s stale, as the prompt waits (battle_controller_player.c, SSI_STATE_1 after ov12_02262B80).
+        private static readonly TimeSpan MenuMessageSeenWithin = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan MenuMessageStale = TimeSpan.FromSeconds(15);
+
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
@@ -135,11 +141,13 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task Flee(GameState state, CancellationToken ct)
         {
+            await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
+                MenuMessageSeenWithin, MenuMessageStale, ct);
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(state.Bot.State, async () =>
             {
                 presses++;
-                state.Bot.RunMacroString("S.Run.3");
+                state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.Run.3");
                 await state.Bot.WaitForMacroAsync(ct);
             }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
             Console.WriteLine($"[Battle] Run left the menu after {presses} press(es): {left}");
@@ -244,9 +252,11 @@ namespace ShinyBotHunter.BotEvents
                 Func<Task> press = async () =>
                 {
                     presses++;
-                    state.Bot.RunMacroString($"S.{moveStr}");
+                    state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.{moveStr}");
                     await state.Bot.WaitForMacroAsync(ct);
                 };
+                await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
+                    MenuMessageSeenWithin, MenuMessageStale, ct);
                 // The Fight press passes through BattleTurn before the move list is up, so only the list confirms it.
                 await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to open the move list",
                     s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);

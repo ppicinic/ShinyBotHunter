@@ -159,9 +159,9 @@ test('HGSS Route 33 through the dashboard: train the lead one level, replace Tac
     step(`party after: ${JSON.stringify(after)}`)
     expect(after[0].level, 'lead did not gain the level').toBe(targetLevel)
     // LevelUpFlow.ReplaceMoveAsync: Yes at 21, then the slot and Forget as one press at the forget-move screen (23).
-    expect(backendLines(/\[LevelUp\] S\.NewMove at prompt 21 /).length, 'no Yes press at prompt 21').toBeGreaterThan(0)
+    expect(backendLines(/\[LevelUp\] (W\.\d+;)?S\.NewMove at prompt 21 /).length, 'no Yes press at prompt 21').toBeGreaterThan(0)
     expect(backendLines(/\[GameState\].*Prompt = 23,/).length, 'no [GameState] line at the forget-move screen (prompt 23)').toBeGreaterThan(0)
-    const pair = backendLines(/\[LevelUp\] S\.NewMoveOne;W\.20;S\.32\.172\.5 at prompt 23 after \d+ press\(es\)/)
+    const pair = backendLines(/\[LevelUp\] (W\.\d+;)?S\.NewMoveOne;W\.20;S\.32\.172\.5 at prompt 23 after \d+ press\(es\)/)
     expect(pair.length, 'no slot-and-Forget press at prompt 23').toBeGreaterThan(0)
     step(`forget-move screen: ${pair[0].match(/after (\d+) press/)![1]} press(es)`)
     // ProcessMoveLearning logs the replace from its cache, then the moves read back from memory.
