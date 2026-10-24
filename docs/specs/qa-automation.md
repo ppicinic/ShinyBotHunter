@@ -210,7 +210,9 @@ cd ShinyBotHunter.Qa/dashboard
 npm ci
 npx playwright install ffmpeg    # once per machine; Playwright's own ffmpeg, needed for its videos
 npx playwright test hgss-route33.spec     # one spec at a time: both write to the same run folder name
-npx playwright test hgss-route33-train
+npx playwright test hgss-route33-train.spec
+npx playwright test hgss-route33-train-replace
+npx playwright test hgss-route33-train-free
 npx playwright test hgss-route33-evolve.spec
 npx playwright test hgss-route33-evolve-learn.spec
 npx playwright test hgss-route33-evolve-learn-replace
@@ -237,8 +239,12 @@ An eighth scenario, `hgss-route33-evolve-learn-replace.spec.ts`, is the fourth s
 
 A ninth scenario, `hgss-route33-evolve-learn-free.spec.ts`, is the evolve scenario's flow on `Pokemon HeartGold10` (`hgss.qa-route33-evolve-learn-3`), whose Totodile Lv 20 knows three moves, so Croconaw learns Ice Fang into the free slot with no Discord prompt (`evo.state` 12 → 37 → 38 → 13 → 40). On top of the evolve scenario's asserts it checks that the lead is `Croconaw`, `learned Ice Fang in an open move slot`, `[LevelUp] T.A at prompt 37`, `moves after the evolution: 55, 99, 44, 423`, and no `forgot`, `will not learn` or `asking Discord` line. It needs no cheat and no Discord click, and it needs `Pokemon HeartGold10.SaveRAM.bak` beside the save.
 
+A tenth scenario, `hgss-route33-train-replace.spec.ts`, is the train scenario's flow on the same save, `Pokemon HeartGold2`, with the other answer: the operator clicks **Tackle** in the "Bulbasaur - New Move" message, then **Confirm Choice**. The bot touches Yes at getter 21, then Tackle's slot and Forget at (32,172) as one press on the battle's forget-move screen (getter 23), repeated only while the getter is still 23. On top of the train scenario's asserts it checks `[LevelUp] S.NewMove at prompt 21`, a `[GameState]` line with `Prompt = 23`, `[LevelUp] S.NewMoveOne;W.20;S.32.172.5 at prompt 23 after N press(es)` (N is written to `steps.log`), `forgot Tackle and learned Take Down`, `Bulbasaur moves now: 36, 45, 73, 22` (read from memory after the learn), and no `Prompt = 34` line, `will not learn` or `GameStateTimeoutException`. The reviewer checks `emulator.mp4` for "Bulbasaur forgot how to use Tackle." and "Bulbasaur learned Take Down!". It needs no cheat, and it needs `Pokemon HeartGold2.SaveRAM.bak` beside the save. Its name contains the train scenario's, so that one runs as `hgss-route33-train.spec`.
+
+An eleventh scenario, `hgss-route33-train-free.spec.ts`, is the train scenario's flow on `Pokemon HeartGold9` (`hgss.qa-route33-movelearn-3`), whose Bulbasaur knows three moves, so the game learns Take Down into the free slot in battle with no prompt (getter 15 → 36 → cleared). On top of the train scenario's asserts it checks that the only `[LevelUp] ... at prompt` lines are at 11 and 13, no `asking Discord` line, exactly one `Bulbasaur learned Take Down in an open move slot` or `Bulbasaur already knows Take Down` line (the loop's fresh read can see the move already written at 15), and `Bulbasaur moves now: 33, 45, 73, 36`. It needs no cheat and no Discord click, and it needs `Pokemon HeartGold9.SaveRAM.bak` beside the save.
+
 Preconditions:
-- Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost and hold the Discord token. The train, evolve-learn and evolve-learn-replace scenarios need someone to answer the move prompt in Discord.
+- Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost and hold the Discord token. The train, train-replace, evolve-learn and evolve-learn-replace scenarios need someone to answer the move prompt in Discord.
 - `PokemonDashboard/override-config.json` sets `spritesRootPath`.
 - The QA BizHawk install is in `C:\BizHawk-2.11` with the Route 33 save and its `.bak` in `NDS\SaveRAM`.
 - Playwright's ffmpeg is installed (`npx playwright install ffmpeg`). Without it, launching with video recording leaves every window unanswered and the scenario hangs until its timeout.
@@ -265,6 +271,8 @@ Preconditions:
 | `hgss-route33-evolve-learn` (#139) | dashboard, bot-engine, encounter | none; the move prompt is declined in Discord by hand |
 | `hgss-route33-evolve-learn-replace` (#152) | dashboard, bot-engine, encounter | none; Water Gun, then Confirm Choice, in Discord by hand |
 | `hgss-route33-evolve-learn-free` (#152) | dashboard, bot-engine, encounter | none; no Discord prompt |
+| `hgss-route33-train-replace` (#154) | dashboard, bot-engine, encounter | none; Tackle, then Confirm Choice, in Discord by hand |
+| `hgss-route33-train-free` (#154) | dashboard, bot-engine, encounter | none; no Discord prompt |
 
 ## Spike results (2026-10-20)
 
@@ -326,7 +334,7 @@ The harness calls the script before launch and keeps its own before-and-after ha
 |---|---|---|---|---|
 | `hgss.qa-route33` | `Pokemon HeartGold` | Route 33 path tile above the grass, lead Slowpoke Lv 25, full party | 15613 / 35374 | the `hgss-route33-*` scenarios |
 | `hgss.qa-starter` | `Pokemon HeartGold1` | Elm's lab at starter selection, no starter yet | 3591 / 51910 | `hgss-starter-shiny` (seed `1234695E` gives PID `D1DC151F`) |
-| `hgss.qa-route33-movelearn` | `Pokemon HeartGold2` | Route 33 path tile, lead Bulbasaur Lv 14, one EXP short of Lv 15 (Take Down); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-train` |
+| `hgss.qa-route33-movelearn` | `Pokemon HeartGold2` | Route 33 path tile, lead Bulbasaur Lv 14, one EXP short of Lv 15 (Take Down); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-train`, `hgss-route33-train-replace` |
 | `hgss.qa-route33-evolve` | `Pokemon HeartGold3` | Route 33 path tile; lead one EXP short of an evolution level, no new move on the level (pointer spike); PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve` |
 | `hgss.qa-route33-evolve-learn` | `Pokemon HeartGold4` | Route 33 path tile; lead Totodile Lv 20 unevolved, one EXP short of 21, four moves without Ice Fang; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-route33-evolve-learn`, `hgss-route33-evolve-learn-replace` |
 | `hgss.qa-poison` | `Pokemon HeartGold5` | Route 33 path tile; lead Slowpoke poisoned at 6 HP; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-poison-walk` |
@@ -343,6 +351,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-24: `hgss-route33-train-replace` (`Pokemon HeartGold2`, Tackle forgotten on the battle's forget-move screen) and `hgss-route33-train-free` (`Pokemon HeartGold9`) scenarios, for S2e (#154); the decline scenario's run line gains `.spec`.
 - 2026-10-23: `hgss-route33-evolve-learn-replace` (`Pokemon HeartGold4`, Water Gun forgotten) and `hgss-route33-evolve-learn-free` (`Pokemon HeartGold10`) scenarios, for S2d (#152); the decline scenario's run line gains `.spec`.
 - 2026-10-23: `hgss-heal-variants` (one spec, `QA_HEAL_ROM` picks `Pokemon HeartGold6`, `7` or `8`) and `hgss-poison-walk` (`Pokemon HeartGold5`) scenarios, for S4 (#141).
 - 2026-10-23: `Pokemon HeartGold9` (`hgss.qa-route33-movelearn-3`) and `Pokemon HeartGold10` (`hgss.qa-route33-evolve-learn-3`) save rows, three-move leads for the free-slot paths (traced in the pointer spike, "In-battle move replace and the free-slot paths").
