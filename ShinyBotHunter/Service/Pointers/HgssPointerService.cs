@@ -176,8 +176,8 @@ namespace ShinyBotHunter.Service.Pointers
         public uint MenuChoiceNative => 0x020477C1;
 
         // sub_02041074 (ScrCmd_WaitButton), waiting for A or B; root (revision-dependent; static ARM9, rev 0);
-        // decomp only; pressed like PrintingNative per R18, move to observed in the PR whose run logs one;
-        // QA: hgss-heal-variants, hgss-poison-walk
+        // observed (run 20261024-004624); pressed like PrintingNative per R18;
+        // QA: hgss-heal-variants (HeartGold8, the Pokérus explanation)
         public uint WaitButtonNative => 0x02041075;
 
         // WaitButtonOrDelay; root (revision-dependent; static ARM9, rev 0); decomp only;

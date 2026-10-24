@@ -219,8 +219,7 @@ namespace ShinyBotHunter.BotEvents
                 }
 
                 uint? native = snapshot.Native;
-                bool decompOnly = native == addresses.WaitButtonNative || native == addresses.WaitButtonOrDelayNative
-                    || native == addresses.WaitButtonOrDpadNative;
+                bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
                 if (native == addresses.MenuChoiceNative && !yesGiven)
                 {
                     await GameStateWait.PressUntilAsync(game, () => press(PressA), $"{waitingFor} Yes",
@@ -228,7 +227,8 @@ namespace ShinyBotHunter.BotEvents
                     Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
                     yesGiven = true;
                 }
-                else if (native == addresses.PrintingNative || decompOnly || native == addresses.MenuChoiceNative)
+                else if (native == addresses.PrintingNative || native == addresses.WaitButtonNative || decompOnly
+                    || native == addresses.MenuChoiceNative)
                 {
                     await press(yesGiven ? PressB : PressA);
                     Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");
