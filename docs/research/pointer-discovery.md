@@ -174,7 +174,7 @@ Natives seen, by address (all `scrcmd_c.c` / `scrcmd_message.c` in the decomp, s
 
 | `ctx.native` | Decomp | Meaning | Status |
 |---|---|---|---|
-| `0x021EF349` | `ov01_021EF348` (from `ScrCmd_NPCMsg`) | a message is printing, **or finished and waiting at the ▼ arrow**; the text printer's own `state` (2 or 3) distinguishes those and was not read | observed in every message |
+| `0x021EF349` | `ov01_021EF348` (from `ScrCmd_NPCMsg`) | a message is printing, **or finished and waiting at the ▼ arrow**; the text printer's own `state` (2 or 3) distinguishes those; read since 2026-10-24, [Text printer state](#text-printer-state-2026-10-24) | observed in every message |
 | `0x02041075` | `sub_02041074` (`ScrCmd_WaitButton`) | waiting for A or B | observed 2026-10-24 in the nurse's Pokérus explanation (`hgss-heal-variants`, HeartGold8, run 20261024-004624); the earlier messages all used `\r`, which waits inside the printer |
 | `0x02041041`, `0x020410F1` | `WaitButtonOrDelay`, `WaitButtonOrDpad` | | decomp only |
 | `0x02040BCD` | `ScrNative_WaitStd` (from `ScrCmd_CallStd`) | this context called a standard script and waits for it; the work is in the next context | observed: the map's NPC script (ctx 0) calling the nurse (ctx 1) |
@@ -201,7 +201,7 @@ What each party variant did to the bot's blind macro (`heal_pokemon.yaml`, `heal
 
 So the navigator's rule "any fainted member means the longer macro" is wrong in the direction the script shows: the extra box is tied to the **lead** changing, and a wrong guess either way presses A into the overworld or leaves a box up. The fix is not a third macro. With the chain above the heal is: walk to the tile, face the nurse, then **while the script task or its children are up: press A whenever a context waits in the printing or wait-button natives until the menu native appears, one A there to choose Yes, and B for every wait after that, stopping when the environment is gone and the field is free**, bounded by a stale-timeout. B dismisses a message as well as A does and cannot start a second conversation or answer a second Yes/No, which is what the stray A did on the slot-2 copy. Box count, Pokérus, trainer-card stars and the changed-lead fade stop mattering.
 
-Not observed: a bare `WaitButton` native; every message seen waits inside the text printer. The text printer's `state` byte (2 and 3 are "waiting at the arrow", `render_text.c`) would separate "still drawing" from "waiting for a press", but the printer lives in a static array whose address is not in the decomp tree; pressing while drawing is harmless, so it was not chased.
+Observed 2026-10-24 (S4 QA, the nurse's Pokérus explanation, run 20261024-004624): a bare `WaitButton` native (`0x02041075`); every other message seen waits inside the text printer. The text printer's `state` byte separates "still drawing" from "waiting for a press". The printer lives in a static task array that is not reachable from `sFieldSysPtr`; it was found and read on 2026-10-24, with the field script's printer slot at `env + 0x05`: see [Text printer state](#text-printer-state-2026-10-24).
 
 Saves used (PKHeX copies of the Route 33 save, made with the spike's `savetool edit`): `Pokemon HeartGold5` lead poisoned at 6 HP; `HeartGold6` lead at 0 HP; `HeartGold7` lead at 15 HP and slot 2 at 0 HP; `HeartGold8` lead at 15 HP with Pokérus strain 1 and event flag `0x65` cleared. PKHeX's Gen 4 event-flag index matched the decomp's `FLAG_WAS_TOLD_ABOUT_POKERUS` (the flag read true on a save whose party carries cured Pokérus, and clearing it brought the dialogue back).
 
@@ -513,6 +513,87 @@ A level-up move-learn task in battle reads `getter.state`, and `ctx.buffer` and 
 
 After the evolution, the free slot is 12 (A) → 37 (A) → 38 → 40. `EvolutionFreeSlotMacro` (`W.160;T.A;W.15`) becomes A at `evo.state == 37`, confirmed by 38, as on the yes path.
 
+## Text printer state (2026-10-24)
+
+The evolution scene's message states and the field's printing native both wait on `TextPrinterCheckActive(id)`. That only asks "is there a printer task in slot `id`". The printer's own `state` byte says whether it is still drawing or is waiting at the ▼ arrow for A or B. Read through the static task array below, it lets a task press **once**, after the text has finished, instead of pressing as soon as the state appears and retrying every 1.5 s. Traced live on `Pokemon HeartGold4` (two runs: the No path, then the yes path) and `Pokemon HeartGold5` (the poison message).
+
+```
+sTextPrinterTasks = 0x021D1F74           SysTask *[8] (text.c, static ARM9 .bss, US rev 0); MAX_TEXT_PRINTERS = 8 (text.h)
+task      = u32 [0x021D1F74 + 4*id]      NULL: no printer in that slot (TextPrinterCheckActive returns FALSE)
+printer   = u32 [task + 0x10]            SysTask.data (sys_task.h): the TextPrinter (font_types_def.h), 0x34 bytes
+pr.active = u8  [printer + 0x27]         1 for as long as the printer exists; not useful on its own
+pr.state  = u8  [printer + 0x28]         RenderText's state (render_text.c), values below
+pr.delay  = u8  [printer + 0x2A]         frames left before the next character (or of the pause, in state 6)
+pr.id     = u8  [printer + 0x2C]         its own slot; equals id
+evo.printer = u8 [evo + 0x65]            the slot of the evolution scene's message (sub_020772F8 returns AddTextPrinterParameterized's id)
+env.printer = u8 [env + 0x05]            ScriptEnvironment.textPrinterNum (script.h): the slot the printing native 0x021EF349 waits on
+```
+
+How it was found:
+- `text.c` keeps no printer structs, only `static SysTask *sTextPrinterTasks[MAX_TEXT_PRINTERS]`, declared just after the address-named `_021D1F6C`. The printer is the task's data.
+- A RAM dump on the field showed 32 zero bytes at `0x021D1F74`-`0x021D1F93`, between `_021D1F6C` and the font lookup table. During the next battle message, slot 0 held a task whose data read `id` 0, `active` 1, and `state` 0 then 2.
+- The word `0x021D1F74` appears in four literal pools at `0x0202001C`-`0x02020090`, the text.c functions (`0x021D1F6C` is in pools at `0x020202E4`-`0x02020408`).
+
+The array is not reachable from `sFieldSysPtr`. The probe reads its 32 bytes raw (opcode `0x01`), then the printer behind each non-NULL slot as a chain rooted at `0x021D1F74 + 4*id` with hops `[0x10, 0]`. A chain whose root holds NULL makes ApiHawk return an empty body for the whole request, so only non-NULL slots go in. Every message on the three traces used slot 0.
+
+`pr.state` values (`RenderText`, `render_text.c`):
+
+| `pr.state` | Meaning | Set by |
+|---|---|---|
+| 0 | Drawing characters, including the frames between them (`pr.delay`) | the start, and the end of every wait |
+| **2** | **Waiting at the arrow**, then clears the box | `\r` (`0x25BC`), or control `0xFE06` with field `0xFE01` |
+| **3** | **Waiting at the arrow**, then scrolls one line | `\f` (`0x25BD`), or control `0xFE06` with field `0xFE00` |
+| 4 | Scrolling, after 3 or 8 | |
+| 5 | One frame, then 0 | |
+| 6 | A timed pause of `pr.delay` frames; no input | control `0x201`; seen as the dots of 1199 "1, 2, and... ... Poof!" |
+| **7**, **8** | **Waiting at the arrow**, as 2 and 3 | controls `0x207`, `0x208` |
+| slot NULL | Finished: the string reached its end and the task destroyed itself | `RenderFont` returning `RENDER_FINISH` |
+
+- **2, 3, 7 and 8 wait for a new A or B** (`TextPrinter_WaitWithDownArrow`, `gSystem.newKeys`), or a touch where the scene enables touch. A message that ends in `\r` sits in 2 at its end. One A clears it, the next character is the end of the string, and the slot goes NULL. A message without `\r` goes from 0 to NULL with no press.
+- **An A while the printer is in 0 only speeds up the drawing** (`canABSpeedUpPrint`). It is not remembered for the arrow, so an early press is lost, and the 1.5 s retry is what makes today's presses work.
+- **The battle turns auto-scroll on** (`TextFlags_SetAutoScrollParam(1)` or `(3)`, `overlay_12_022378C0.s`). With it, the arrow waits return by themselves after 100 frames (`TextPrinter_WaitAutoMode`). That is why battle messages advance without a press: every battle message on these traces read 0, then 2 for 1.67 s, then NULL. It is also why the getter's message states need no press. The evolution scene and field scripts leave it off.
+
+**The evolution scene.** Every message state checks `TextPrinterCheckActive(evo.printer)`: 3, 12, 15, 17, 19, 26, 28, 30, 33, 36 and 37 (15, 17, 19, 26, 28, 30 and 33 share one routine, `_02076620`). In 3 and 37 the slot going NULL moves the state on at once. In 12, 15, 17, 26, 28, 30 and 36 it then counts `evo.timer` down, 40 frames in 12 and 30 in the others, so `evo.state` changes about 1.1 s after the press (1.5 s in 12), not at the press. 19 and 33 print messages without `\r` and pass by themselves.
+
+Observed, one A each, sent within 0.1 s of the printer reaching 2. Where there are two values, the first is the No run and the second the yes run:
+
+| `evo.state` | Message | State start → printer at 2 | Press → slot NULL | Press → next state | Presses |
+|---|---|---|---|---|---|
+| 3 | 916 "What?" | 0.08 s, 0.10 s | in the read that showed 4 | 0.13 s, 0.10 s (→ 4) | 1 |
+| 12 | 918 "Congratulations! …" | **4.09 s, 4.08 s** | 0.09 s, 0.08 s | 1.50 s, 1.48 s | 1 |
+| 15 | 1193 "X wants to learn the move Y." | 0.65 s, 0.57 s | 0.12 s, 0.13 s | 1.14 s, 1.15 s | 1 |
+| 17 | 1194 "However, X already knows four moves." | 0.73 s, 0.65 s | 0.08 s, 0.10 s | 1.14 s, 1.14 s | 1 |
+| 26 | 1199 "1, 2, and... ... Poof!" | 1.75 s (three state-6 pauses) | 0.13 s | 1.18 s | 1 |
+| 28 | 1200 "X forgot Y." | 0.55 s | 0.11 s | 1.16 s | 1 |
+| 30 | 1201 "And..." | 0.08 s | 0.11 s | 1.17 s | 1 |
+| 36 | 1198 "X did not learn the move Y." | 0.65 s | 0.09 s | 1.12 s | 1 |
+| 37 | 1202 "X learned Y!" | 1.39 s | in the read that showed 38 | 0.11 s (→ 38) | 1 |
+
+- **"State start" is the first 80 ms read that showed the state**, so each duration can be up to 0.1 s short. The print states before 26, 30 and 37 (25, 29, 31) and 14 were short or skipped between reads, so their text was already drawing when the wait state first read; 30's 0.08 s is mostly 29's.
+- **The durations depend on the save's text speed** (`Options_GetTextFrameDelay`). Why 918 takes 4.1 s when the longer 1194 takes 0.7 s was not chased: the printer read 0 throughout, with no pauses.
+- **No press was lost and none was repeated.** The driver's 3 s retry never fired on either run. The rest of each run matched the earlier traces: 21 No → 32 → 35 (A) → 36 → 39 → 40, and 21 Yes (125,75) → 22 → 23, list (64,24), confirm (64,168) → 24 → 25 → 26 … 37 → 38 → 39 → 40.
+
+**Field scripts.** `ov01_021EF348` is `IsPrintFinished(env.textPrinterNum)`, and `IsPrintFinished` is `!TextPrinterCheckActive` (`text_0205B4EC.s`): the same array. Observed on `Pokemon HeartGold5` (lead poisoned at 6 HP; walked in the grass, fled two battles): `std_survive_poisoning` started with `env.printer` 0; slot 0 read 0 for 0.93 s, then 2; one A; the slot was NULL in the next read (0.08 s), and the script task was gone and the field free 0.25 s after the press. One box, one arrow, one press. `env + 0x05` is meaningful while `task.func == 0x0203FF45` and `env.check == 0x3643F`. It keeps its last value after the printer is gone, so the slot, not the byte, says whether a message is up.
+
+### Battle menu input-ready gap
+
+`BattleInput_CheckTouch` (`battle_input.c`) returns no hit while `BattleInput.isTouchDisabled` is TRUE. `BattleInput_InitMenuSlideIn` sets it when a sliding menu (the main menu among them) is built. `Task_BattleMenuSlideIn` clears it when the slide ends: `x` starts at -25500 and adds 6375 a frame, so the slide takes 4 frames and the 5th clears the flag. `BattleInput_ChangeMenu` clears it for menus that do not slide. That is about 5 frames (0.08 s) after the menu is built. But `ctx.sel == 1` is the server's side and turns 1 before the player's controller has built the menu, and how long the build takes was not measured. `isTouchDisabled` sits at a decomp-named offset in `BattleInput` (`battle_input.h:200`), whose offsets the decomp marks unreliable, so it was not read live. The text printer does not help here: "What will X do?" is printed before the menu, and its printer is gone by then. So the bot keeps a short settle after `ctx.sel == 1` and confirms each menu press by `ctx.sel` changing.
+
+### What this changes for the bot
+
+- **One press per message in the evolution scene.** In each message state (3, 12, 15, 17, 26, 28, 30, 36, 37) the task reads slot `evo.printer`:
+  - non-NULL with `pr.state` 0, 4, 5 or 6: drawing; wait.
+  - 2, 3, 7 or 8: press A once.
+  - NULL while `evo.state` still reads the same: the timer is counting down; press nothing.
+
+  Confirm a press by the slot going NULL (within 0.15 s on every press here), not by `evo.state` changing, which waits for the timer in all but 3 and 37. Retry only if the printer is still at the arrow 0.5 s after the press.
+- **The same for field scripts.** While a context waits in `0x021EF349`, read slot `env.printer` and press once at 2, 3, 7 or 8. A message of several boxes goes back to 0 between boxes and needs one press per arrow. B works at the arrow as well as A, so the Pokémon Center rule (B after the Yes) is unchanged.
+- **Battle messages need nothing**: auto-scroll is on.
+- **Menu presses keep a short settle** (above) and the confirm-and-retry against `ctx.sel`.
+- **One more read for the profile**: the 32 bytes at `0x021D1F74`, and the 0x34-byte printer behind a slot in use. The address is static ARM9, so it is per revision, like `sFieldSysPtr`.
+
+**The saves were not changed.** `Pokemon HeartGold4` and its `.bak` hashed `18e10c7b…4f25c87` before launch and after each `taskkill /F`; `Pokemon HeartGold5` and its `.bak` hashed `b7658103…3745280`. The game was never saved.
+
 ## Suspected issues, not confirmed
 
 Spotted while reading the code for this spike. None has been reproduced, and none is planned work; each needs a demonstration before it is treated as a bug.
@@ -582,6 +663,7 @@ Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunt
 - **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
+- 2026-10-24: text printer state mapped and read live: the static task array `sTextPrinterTasks` at `0x021D1F74` (8 slots, printer at `[slot] + 0x10`, `state` at `+0x28`), the arrow-wait values 2, 3, 7, 8, `evo.printer` and the field script's `env + 0x05` indexing it; one A per message on the evolution scene (No and yes paths, `Pokemon HeartGold4`) and the poison message (`Pokemon HeartGold5`) with per-state text durations; battle messages shown to auto-scroll; the battle menu's `isTouchDisabled` slide-in gap described from the decomp.
 - 2026-10-23: in-battle move replace (yes path) and the free-slot paths traced on `Pokemon HeartGold2`, `9` and `10`: the getter's full state table with what each waits for (only the stat boxes and the Yes/No menus wait; messages advance by themselves), `getter.move`/`getter.slot` and `ctx.buffer` (`ctx + 0x2300`), the two-button menu rects, and the forget-move screen (overlay 8, assembly only, no pointer from the chain) with its touch hitboxes; getter 23 and 25-36 and the evolution free-slot entry 12 → 37 → 38 now observed.
 - 2026-10-23: forget-move list (yes path) mapped and traced live: `evo.summary` OverlayManager (`+0x14` proc state, `+0x1C` data, cursor at data `+0x7BD`), the summary app's mode-2 states 8 (list) and 9 (confirm) with their touch hitboxes and keys; evolution states 22-31 and 37-38 now observed; 31 goes to 37.
 - 2026-10-23: post-evolution move learning mapped: the evolution scene's own state machine at `[app.setup + 0x198] + 0x64` (undecompiled `unk_020755E8.s`), its Yes/No menu and the summary-app hand-off; traced live through the evolution, "forget a move?" No and "give up?" Yes on the Totodile save; `+0x67` confirmed as the done byte.
