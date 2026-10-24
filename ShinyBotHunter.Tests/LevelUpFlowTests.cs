@@ -41,8 +41,10 @@ namespace ShinyBotHunter.Tests
 
         private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
 
-        // Every Evolution snapshot has a Prompt (evo.state); the scene holds only at these.
-        private static bool EvolutionWaits(GameSnapshot s) => s.Prompt is 3 or 12 or 15 or 17 or 21 or 35 or 36;
+        // Every Evolution snapshot has a Prompt (evo.state); the scene holds only at these, and in the summary app's
+        // move list (8) and confirm (9).
+        private static bool EvolutionWaits(GameSnapshot s)
+            => s.Prompt is 3 or 12 or 15 or 17 or 21 or 26 or 28 or 30 or 35 or 36 or 37 || s.SummaryState is 8 or 9;
 
         private static GameSnapshot[] Evolution(params int[] states) => [.. states.Select(state => Prompt(GameScreen.Evolution, state)), BattleOver, FieldFree];
 
@@ -93,6 +95,26 @@ namespace ShinyBotHunter.Tests
             await LevelUpFlow.DeclineEvolutionMoveAsync(game, game.Tap, CancellationToken.None);
 
             Assert.Equal(["T.A", "T.A", "T.A", "T.A", "S.125.125.5", "T.A", "T.A"], game.Taps);
+        }
+
+        // Slot 2 proves the slot-to-row mapping.
+        [Fact]
+        public async Task EvolutionReplaceFollowsTheSceneAndSummaryStates()
+        {
+            int[] scene = [2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 19, 20, 21, 22];
+            int[] summary = [0, 1, 8, 9];
+            ScriptedGame game = new(
+            [
+                .. scene.Select(state => Prompt(GameScreen.Evolution, state)),
+                .. summary.Select(proc => new GameSnapshot(GameScreen.Evolution, null, null, 23, null, null, proc)),
+                .. Evolution(24, 26, 27, 28, 29, 30, 31, 37, 38, 13, 40),
+            ], waits: EvolutionWaits);
+
+            await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
+            await LevelUpFlow.ReachEvolutionForgetPromptAsync(game, game.Tap, CancellationToken.None);
+            await LevelUpFlow.ReplaceEvolutionMoveAsync(game, game.Tap, 2, CancellationToken.None);
+
+            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "S.125.75.5", "S.EvoMoveThree.5", "S.64.168.5", "T.A", "T.A", "T.A", "T.A"], game.Taps);
         }
 
         [Fact]

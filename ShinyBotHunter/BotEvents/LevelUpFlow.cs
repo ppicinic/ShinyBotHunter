@@ -16,11 +16,6 @@ namespace ShinyBotHunter.BotEvents
         private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
         private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
 
-        // A clone of the above template for the post-evolution move-learn prompt. Kept as a separate
-        // constant (rather than reused) because the evolution flow's screen sequence does not
-        // necessarily match the post-level-up one -- tune these independently.
-        private const string EvolutionLearnMoveMacroTemplate = "S.125.75.5;W.240;S.Evo{0}.5;W.15;S.60.165.5;W.320;T.A;W.150;T.A;W.90;T.A;W.150;T.A;W.15";
-
         // The post-evolution free-slot path: with an open move slot the game learns the move outright
         // and only shows "<Pokemon> learned <Move>!", so this just settles and advances that text.
         // There is no prompt to walk into here.
@@ -51,8 +46,17 @@ namespace ShinyBotHunter.BotEvents
         private const int WantsToLearnPrompt = 15;
         private const int KnowsFourMovesPrompt = 17;
         private const int EvolutionForgetAMovePrompt = 21;
+        private const int EvolutionForgetMoveList = 23;
+        private const int PoofPrompt = 26;
+        private const int ForgotPrompt = 28;
+        private const int AndPrompt = 30;
+        private const int EvolutionLearnedPrompt = 37;
         private const int StopTeachingPrompt = 35;
         private const int DidNotLearnPrompt = 36;
+
+        // The summary app's states at evo.state 23, sum.proc (pointer-discovery.md, "The forget-move list (yes path)").
+        private const int SummaryMoveList = 8;
+        private const int SummaryConfirm = 9;
 
         private readonly PokemonStateReader reader;
         private readonly PokemonMetadataService metadataService;
@@ -251,9 +255,8 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else
                 {
-                    string moveStr = BattleOrchestratorEvent.MoveShorthands[moveId];
-                    state.Bot.RunMacroString($"W.5;{string.Format(EvolutionLearnMoveMacroTemplate, moveStr)}");
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await ReplaceEvolutionMoveAsync(state.Bot.State, Tap(state.Bot, ct), moveId, ct);
+                    Console.WriteLine($"[LevelUp] {pokemon.Name} forgot {metadataService.GetPokemonMoveMetadata(pokemon.Moves[moveId].Id).Name} and learned {newMove.Name}");
                     ApplyLearnedMove(pokemon, moveId, newMove);
                 }
             }
@@ -299,6 +302,36 @@ namespace ShinyBotHunter.BotEvents
             await PressAtPromptAsync(game, tap, "S.125.125.5", EvolutionForgetAMovePrompt, ct);
             await PressAtEvolutionStateAsync(game, tap, "T.A", StopTeachingPrompt, ct);
             await PressAtEvolutionStateAsync(game, tap, "T.A", DidNotLearnPrompt, ct);
+        }
+
+        // The top button (forget a move) at "should a move be deleted?", the slot's row and Forget in the summary app,
+        // then A at "Poof!", "forgot", "And..." and "learned".
+        internal static async Task ReplaceEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, "S.125.75.5", EvolutionForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, "the forget-move list",
+                s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryMoveList }, PromptStale, ct);
+
+            // The row touch moves the app to the confirm in the same frame.
+            string row = $"S.Evo{BattleOrchestratorEvent.MoveShorthands[slot]}.5";
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(row); },
+                $"summary state {SummaryConfirm}", s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryConfirm },
+                PromptPressConfirm, PromptPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] {row} at summary state {SummaryMoveList} after {presses} press(es): {left}");
+
+            // The app fades out and frees itself (about 0.55 s) before evo.state leaves 23, so a retry lands only on the
+            // button or the fade.
+            presses = 0;
+            left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap("S.64.168.5"); },
+                $"evolution state {EvolutionForgetMoveList} to close", s => s is { Screen: GameScreen.Evolution, Prompt: not EvolutionForgetMoveList },
+                EvolutionPressConfirm, EvolutionPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] S.64.168.5 at summary state {SummaryConfirm} after {presses} press(es): {left}");
+
+            await PressAtEvolutionStateAsync(game, tap, "T.A", PoofPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", ForgotPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", AndPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", EvolutionLearnedPrompt, ct);
         }
 
         // Only the named states are pressed at; the evolving animation (state 8) never is, since B there cancels it.
