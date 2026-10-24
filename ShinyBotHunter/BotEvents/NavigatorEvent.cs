@@ -1,11 +1,11 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -54,6 +54,20 @@ namespace ShinyBotHunter.BotEvents
         // Dismisses whatever dialogue is up. B rather than A: A on a signpost just reopens it.
         private const string DismissTextMacro = "T.B;W.30;T.B;W.30";
 
+        // A field script whose snapshot has not changed for this long parks the bot (R18).
+        private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
+
+        // The prompt-press values of LevelUpFlow: a press that has not landed after a second is pressed again.
+        private static readonly TimeSpan ScriptPressConfirm = TimeSpan.FromMilliseconds(1000);
+        private const int ScriptPressAttempts = 3;
+
+        // The 20-frame settle means the next read already sees the press's effect.
+        private const string PressA = "T.A;W.20";
+        private const string PressB = "T.B;W.20";
+
+        // Faces the nurse and talks to her. The counter above the heal tile is a wall, so Up only turns.
+        private const string StartNurseScriptMacro = "T.Up;W.5;T.A";
+
         // How a walk macro ended.
         private enum SegmentOutcome
         {
@@ -72,12 +86,21 @@ namespace ShinyBotHunter.BotEvents
         {
             EventState topState = state.State.Peek();
 
-            if (topState == EventState.GoToPokemonCenter)
-                await GoToPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.HealAtPokemonCenter)
-                await HealAtPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.ReturnToStart)
-                await ReturnToStartAsync(state, cancellationToken);
+            try
+            {
+                if (topState == EventState.GoToPokemonCenter)
+                    await GoToPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.HealAtPokemonCenter)
+                    await HealAtPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.ReturnToStart)
+                    await ReturnToStartAsync(state, cancellationToken);
+            }
+            catch (GameStateTimeoutException ex)
+            {
+                // A stale-timeout parks the bot for the operator rather than crashing the event.
+                Console.WriteLine($"[Navigator] {ex}");
+                state.SwapState(EventState.Waiting);
+            }
 
             return state;
         }
@@ -138,44 +161,91 @@ namespace ShinyBotHunter.BotEvents
             };
         }
 
-        private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
+        private static async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
             // Navigation has already walked us onto the counter tile.
-            bool anyFainted = await HasFaintedPartyMemberAsync(state.Bot, cancellationToken);
-            string macroName = anyFainted ? "HealPokemonFainted" : "HealPokemon";
-            Console.WriteLine($"[Navigator] Healing with {macroName}");
-            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, macroName);
-            state.Bot.RunMacroString(macro);
-            await state.Bot.WaitForMacroAsync(cancellationToken);
+            Console.WriteLine("[Navigator] Healing with the script press loop");
+            var addresses = (HgssPointerService)state.Bot.Addresses;
+            Func<string, Task> press = Press(state.Bot, cancellationToken);
+            // Retried rather than settled first: an A eaten by the last step's animation is pressed again.
+            await GameStateWait.PressUntilAsync(state.Bot.State, () => press(StartNurseScriptMacro), "the nurse's script to start",
+                s => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask,
+                ScriptPressConfirm, ScriptPressAttempts, cancellationToken);
+            await PressThroughScriptAsync(state.Bot.State, addresses, press, "the nurse's script", ScriptStale, cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }
 
-        /// <summary>
-        /// A fainted party member adds a dialogue box to the nurse's closing text, which needs the
-        /// longer heal macro. Uses a validated read because HP lives in the unchecksummed battle
-        /// stats block -- guessing wrong either strands a box on screen or presses A into the
-        /// overworld.
-        /// </summary>
-        private async Task<bool> HasFaintedPartyMemberAsync(IBot bot, CancellationToken cancellationToken)
+        private static Func<string, Task> Press(IBot bot, CancellationToken cancellationToken) => async macro =>
         {
-            var party = await ReadValidatedPartyWithRetriesAsync(bot, cancellationToken);
-            if (party is null)
+            bot.RunMacroString(macro);
+            await bot.WaitForMacroAsync(cancellationToken);
+        };
+
+        /// <summary>
+        /// Presses through a field script until the field is free (R18, R19): A once per arrow of the printing
+        /// native's printer and at every poll in the wait-button natives, one A at the menu native (Yes), then B for
+        /// every later wait, since B closes a message as well as A and cannot start a second conversation or answer a
+        /// second menu. The printing native's press is confirmed by the printer leaving the arrow, and none is sent while
+        /// the text draws or no printer is read (env.printer is not slot 0: the stale-timeout then names the script
+        /// and its snapshot). Nothing is pressed during movement, WaitStd, the touch menu, bytecode, child tasks or a
+        /// transition. The Yes also counts as given once the heal animation task is seen, because it only runs after Yes, so an A that
+        /// landed on the menu by race is never followed by another A. Throws when the snapshot has not changed for
+        /// stale; the clock is not restarted by a press, so a box that never closes under presses still times out.
+        /// </summary>
+        internal static async Task PressThroughScriptAsync(
+            IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct)
+        {
+            GameSnapshot? last = null;
+            Stopwatch unchanged = Stopwatch.StartNew();
+            bool yesGiven = false;
+            while (true)
             {
-                // Assume nothing fainted: the plain macro is the long-standing behaviour, so an
-                // unreadable party degrades to what the bot did before rather than to a new risk.
-                Console.WriteLine("[Navigator] Could not read party before healing; assuming no fainted members");
-                return false;
-            }
-            for (int i = 0; i < party.PartySize; i++)
-            {
-                var pokemon = party.PartyPokemon[i];
-                if (pokemon is not null && pokemon.HP == 0)
+                GameSnapshot snapshot = await game.ReadAsync(ct);
+                if (snapshot != last)
                 {
-                    Console.WriteLine($"[Navigator] Fainted party member: slot {i + 1} {pokemon.Name}");
-                    return true;
+                    Console.WriteLine($"[GameState] {waitingFor}: {snapshot}");
+                    last = snapshot;
+                    unchanged.Restart();
                 }
+                if (snapshot.Screen == GameScreen.FieldFree)
+                {
+                    return;
+                }
+                if (unchanged.Elapsed >= stale)
+                {
+                    throw new GameStateTimeoutException(waitingFor, snapshot);
+                }
+                if (snapshot.TaskFunction == addresses.HealAnimationTask)
+                {
+                    yesGiven = true;
+                }
+
+                uint? native = snapshot.Native;
+                bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
+                if (native == addresses.MenuChoiceNative && !yesGiven)
+                {
+                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + PressA), $"{waitingFor} Yes",
+                        s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
+                    Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
+                    yesGiven = true;
+                }
+                else if (native == addresses.PrintingNative)
+                {
+                    if (snapshot.AtTextArrow())
+                    {
+                        int presses = 0;
+                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? PressB : PressA); }, $"{waitingFor} box",
+                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct);
+                        Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8} (printer {snapshot.TextPrinter}) after {presses} press(es)");
+                    }
+                }
+                else if (native == addresses.WaitButtonNative || decompOnly || native == addresses.MenuChoiceNative)
+                {
+                    await press(yesGiven ? PressB : PressA);
+                    Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");
+                }
+                await Task.Delay(Constant.PollIntervalMs, ct);
             }
-            return false;
         }
 
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
@@ -329,7 +399,7 @@ namespace ShinyBotHunter.BotEvents
                         return true;
                     if (outcome == SegmentOutcome.PoisonEvent)
                     {
-                        await ClearFaintTextAsync(state, cancellationToken);
+                        await ClearPoisonScriptAsync(state, cancellationToken);
                         // The mon that just resolved is now fainted or no longer poisoned, so
                         // re-snapshotting stops it from tripping the poll again -- each event is
                         // handled exactly once.
@@ -359,6 +429,14 @@ namespace ShinyBotHunter.BotEvents
                 {
                     var warpDest = path[state.NavigationPathIndex + 2].Node;
                     await WaitForWarpAsync(state.Bot, mapIdAfter, warpDest.X, warpDest.Y, cancellationToken);
+                    // The warp wait accepts a landing within one tile of the spawn node, and walking
+                    // back onto the spawn node can step onto the door again, so the next segment goes
+                    // from where we landed to the node after it. When the spawn node is the last
+                    // node, this ends the walk.
+                    var (landX, landY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+                    Console.WriteLine($"[Navigator] Portal crossed: at ({landX},{landY}) on map {mapIdAfter}, skipping the spawn node ({warpDest.X},{warpDest.Y})");
+                    state.NavigationPathIndex += 2;
+                    continue;
                 }
                 else if (mapIdAfter != mapId)
                 {
@@ -394,6 +472,9 @@ namespace ShinyBotHunter.BotEvents
             {
                 state.Bot.ClearMacro();
                 await state.Bot.WaitForMacroAsync(cancellationToken);
+                // A faulted racer (a stale-timeout or a read failure) rethrows here rather than being
+                // read as its outcome.
+                await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
                 return SegmentOutcome.Blocked;
@@ -404,9 +485,10 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>
         /// Completes when the trainer has stopped moving for <see cref="StallTimeoutMs"/> while a walk
-        /// macro is still running. The macro holds a direction until the coordinate reaches its target,
-        /// so anything that blocks movement -- most often a signpost message opened by pressing into
-        /// it from the tile alongside -- holds that direction forever with nothing else noticing.
+        /// macro is still running and the field is free. The macro holds a direction until the
+        /// coordinate reaches its target, so anything that blocks movement holds that direction forever
+        /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
+        /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait.
         /// </summary>
         private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -415,6 +497,15 @@ namespace ShinyBotHunter.BotEvents
             while (true)
             {
                 await Task.Delay(StallPollIntervalMs, cancellationToken);
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                if (snapshot.Screen != GameScreen.FieldFree)
+                {
+                    Console.WriteLine($"[Navigator] Stall timer held: {snapshot}");
+                    await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
+                    (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    still.Restart();
+                    continue;
+                }
                 (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != lastX || y != lastY)
                 {
@@ -460,13 +551,15 @@ namespace ShinyBotHunter.BotEvents
             return state.TilePenalties.TryGetValue(mapId, out var penalties) ? penalties : null;
         }
 
-        // Pushes past the field poison dialogue so the overworld accepts input again.
-        private async Task ClearFaintTextAsync(GameState state, CancellationToken cancellationToken)
+        // Presses through std_survive_poisoning so the overworld accepts input again (R19). Seeing the script first
+        // means the party diff saw the real message, not a garbage read.
+        private static async Task ClearPoisonScriptAsync(GameState state, CancellationToken cancellationToken)
         {
-            Console.WriteLine("[Navigator] Running ClearFaintText macro");
-            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, "ClearFaintText");
-            state.Bot.RunMacroString(macro);
-            await state.Bot.WaitForMacroAsync(cancellationToken);
+            var addresses = (HgssPointerService)state.Bot.Addresses;
+            await GameStateWait.UntilAsync(state.Bot.State, "the survive-poisoning script",
+                s => s.Screen == GameScreen.FieldTask && s.Script == addresses.SurvivePoisoningScript, ScriptStale, cancellationToken);
+            await PressThroughScriptAsync(state.Bot.State, addresses, Press(state.Bot, cancellationToken), "the survive-poisoning script",
+                ScriptStale, cancellationToken);
         }
 
         // Party members that could still produce a field poison message, keyed by PID rather than
@@ -624,6 +717,7 @@ namespace ShinyBotHunter.BotEvents
         // window, so an unconfirmed candidate costs nothing but a log line.
         private async Task WaitForPoisonEventAsync(IBot bot, PartySnapshot partyAtStart, CancellationToken cancellationToken)
         {
+            // Bounded by the segment's stall racer (R12), which ends or times out the race.
             while (true)
             {
                 // Cancels out of the loop once another racer wins, so a losing poll can never
@@ -654,42 +748,47 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        // Waits until the field is free on the destination map (and, when given, within a tile of
+        // the destination). Throws after 15 s with neither the screen nor the map id changing (R11).
         private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            (GameScreen Screen, int MapId)? last = null;
+            var unchanged = Stopwatch.StartNew();
+            while (true)
             {
-                if ((int)await bot.Overworld.GetMapIdAsync(cancellationToken) == destMapId)
-                    break;
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-            }
-            if (destX.HasValue && destY.HasValue)
-            {
-                while (!cancellationToken.IsCancellationRequested)
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                int mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+                if (last != (snapshot.Screen, mapId))
                 {
+                    Console.WriteLine($"[Navigator] Warp to map {destMapId}: on map {mapId}, {snapshot}");
+                    last = (snapshot.Screen, mapId);
+                    unchanged.Restart();
+                }
+                if (mapId == destMapId && snapshot.Screen == GameScreen.FieldFree)
+                {
+                    if (!destX.HasValue || !destY.HasValue)
+                        break;
                     var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
-                    await Task.Delay(Constant.PollIntervalMs, cancellationToken);
                 }
+                if (unchanged.Elapsed >= TimeSpan.FromSeconds(15))
+                    throw new GameStateTimeoutException($"the warp to map {destMapId} (still on map {mapId})", snapshot);
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
             bot.RunMacroString("W.60");
             await bot.WaitForMacroAsync(cancellationToken);
         }
 
-        // After a battle the overworld coordinates read (0,0) for a moment while the field
-        // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
+        // Wait until the field is free: no app, no task, map up, so we don't pathfind from a bogus origin.
         private static Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
-            => Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            => Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
-            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            while (screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution)
-                   && !cancellationToken.IsCancellationRequested)
-            {
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            }
+            await GameStateWait.UntilAsync(bot.State, "a battle",
+                s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp),
+                stale: null, cancellationToken);
         }
     }
 }

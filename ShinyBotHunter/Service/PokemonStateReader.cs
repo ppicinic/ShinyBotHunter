@@ -280,14 +280,17 @@ namespace ShinyBotHunter.Service
                 partyPokemon.Add(ParseValidated(block, $"battle party slot {partyPokemon.Count + 1}", profile));
             }
 
-            // anchor -> +EnemyAnchor -> deref -> +Enemy, all inside one frame.
-            var enemyData = await bot.ReadBytesViaPointerAsync(
-                addresses.Anchor,
-                PokemonBlockSize,
-                ct,
-                (int)addresses.EnemyAnchor,
-                (int)addresses.Enemy);
-            var enemyPokemon = parser.Parse(enemyData);
+            // The foe count and the foe block from app.setup (BattleSetup), anchor -> sub0 -> app ->
+            // setup, in one request. An enemy block that is not Ok (the app is gone or mid-write) is
+            // treated as a corrupt read.
+            var hgss = (HgssPointerService)addresses;
+            ChainBlockRequest[] foeBlocks =
+            [
+                new(addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)addresses.EnemyCount], 1),
+                new(addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)addresses.Enemy], PokemonBlockSize),
+            ];
+            ChainBlockResult enemyBlock = (await bot.ReadChainBlocksAsync(foeBlocks, ct: ct))[1];
+            var enemyPokemon = enemyBlock.Status == ChainBlockStatus.Ok ? parser.Parse(enemyBlock.Bytes) : null;
 
             var sw = new Stopwatch();
             sw.Start();
@@ -299,13 +302,8 @@ namespace ShinyBotHunter.Service
                     return null;
                 }
                 await Task.Delay(100, ct);
-                enemyData = await bot.ReadBytesViaPointerAsync(
-                    addresses.Anchor,
-                    PokemonBlockSize,
-                    ct,
-                    (int)addresses.EnemyAnchor,
-                    (int)addresses.Enemy);
-                enemyPokemon = parser.Parse(enemyData);
+                enemyBlock = (await bot.ReadChainBlocksAsync(foeBlocks, ct: ct))[1];
+                enemyPokemon = enemyBlock.Status == ChainBlockStatus.Ok ? parser.Parse(enemyBlock.Bytes) : null;
             }
             sw.Stop();
             var battleEnemyPokemonData = await bot.ReadBytesViaPointerAsync(addresses.Anchor, BattlePokemonBlockSize, ct, (int)addresses.BattleEnemyPokemon);

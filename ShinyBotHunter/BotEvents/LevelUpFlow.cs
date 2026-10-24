@@ -1,53 +1,64 @@
-﻿using ShinyBotHunter.Games;
+﻿using ShinyBotHunter.Bot;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
-using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.BotEvents
 {
     public class LevelUpFlow
     {
-        // Settle, advance the opening text, sit through the evolution animation, dismiss the result.
-        //
-        // The long wait has to outlast the animation, which varies by species -- it was about a
-        // second short for the slowest ones, so the final tap landed while the animation was still
-        // playing, got swallowed, and left the result screen up with nothing to dismiss it. Padded by
-        // 120 frames. Overshooting is safe: the result screen waits for a button, so a late tap still
-        // lands, while an early one is simply lost.
-        private const string EvolutionMacro = "W.45;T.A;W.1245;T.A;W.15";
+        // The stale-timeout table's rows for the exp and move-learn prompts: 15 s between prompts, and a
+        // press at a prompt confirmed within 1000 ms, 3 attempts.
+        private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
+        private static readonly TimeSpan PromptPressConfirm = TimeSpan.FromMilliseconds(1000);
+        private const int PromptPressAttempts = 3;
 
-        // Settles through the level-up fanfare, then pages past the stat panel with two A presses.
-        //
-        // The leading wait carries ~1s of deliberate margin. It is measured from whenever this macro
-        // starts, and that moment moved earlier when the battle-state read got faster: ProcessLevelUp's
-        // own read shortened, and WaitForLevelUpOrField now polls on a much finer grain, so the level
-        // field is seen updating before the panel accepts input. The margin is safe to overshoot --
-        // the stat panel waits for a button, so waiting too long only costs time, while waiting too
-        // little drops the press and desyncs every macro after it.
-        private const string LevelUpAdvanceMacro = "W.325;T.A;W.5;T.A";
+        // The forget-move screen's slot-and-Forget pair: 1500 ms, 8 attempts (about 15 s with the macro). 1500 ms is twice
+        // the 0.7 s observed from Forget to the getter leaving 23, so a pair that landed is not repeated; 8 attempts cover a
+        // screen load of over 4x the old macro's 165 frames.
+        private static readonly TimeSpan ForgetScreenPressConfirm = TimeSpan.FromMilliseconds(1500);
+        private const int ForgetScreenPressAttempts = 8;
 
-        // Advances dialogue from right after the level-up fanfare to the point where the
-        // move-learn decision (or auto-learn text) is ready to act on.
-        private const string LevelUpPrePromptMacro = "W.340";
+        // The learned messages after the forget-move screen (25 → 27 → 29 → 36, about 11 s observed) read as one unchanged
+        // BattleScript 276 snapshot; 30 s is about 3x.
+        private static readonly TimeSpan LearnedMessagesStale = TimeSpan.FromSeconds(30);
 
-        // Macros driving the "do you want to learn a new move?" flow, post level-up.
-        private const string DoNotLearnMacro = "S.DoNotLearn;W.225;S.DoNotLearnComplete;W.5";
-        private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
-        private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
+        // The evolution scene states' presses: 1500 ms, 6 attempts (9 s, under the 15 s stale). A press while the
+        // message still prints only speeds the text, and "evolved into" prints for over 3 s.
+        private static readonly TimeSpan EvolutionPressConfirm = TimeSpan.FromMilliseconds(1500);
+        private const int EvolutionPressAttempts = 6;
 
-        // Clones of the above two for the post-evolution move-learn prompt. Kept as separate
-        // constants (rather than reused) because the evolution flow's screen sequence does not
-        // necessarily match the post-level-up one -- tune these independently.
-        private const string EvolutionLearnMoveInit = "T.A;W.150;T.A;W.150;";
-        private const string EvolutionLearnMoveMacroTemplate = $"{EvolutionLearnMoveInit}S.125.75.5;W.240;S.Evo{{0}}.5;W.15;S.60.165.5;W.320;T.A;W.150;T.A;W.90;T.A;W.150;T.A;W.15";
-        private const string EvolutionDoNotLearnMacro = $"{EvolutionLearnMoveInit}S.125.125.5;W.240;S.125.75.5;W.180;T.A;W.15";
+        // How long a battle Yes/No prompt waits for its question's printer to appear: the getter state turns about 0.16 s
+        // before the printer exists (probe run 20261024-042051). Past it the wait falls through, so a question that printed
+        // between two polls does not hold the flow.
+        private static readonly TimeSpan QuestionPrintStart = TimeSpan.FromSeconds(1);
 
-        // The post-evolution free-slot path: with an open move slot the game learns the move outright
-        // and only shows "<Pokemon> learned <Move>!", so this just settles and advances that text.
-        // Deliberately not built on EvolutionLearnMoveInit -- there is no prompt to walk into here.
-        // The level-up equivalent is FreeSlotMacro.
-        private const string EvolutionFreeSlotMacro = "W.160;T.A;W.15";
+        // The getter's prompt states (docs/specs/hgss-state-reader.md, state table). The evolution scene's states
+        // share numbers with these (11, 13, 21), so every wait for one of them names the battle screens too.
+        private const int StatBoxesPrompt = 11;
+        private const int StatBoxesTotalsPrompt = 13;
+        private const int ForgetAMovePrompt = 21;
+        private const int ChooseMoveToForgetPrompt = 23;
+        private const int GiveUpLearningPrompt = 34;
+
+        // The evolution scene's waiting states, evo.state (docs/research/pointer-discovery.md, "Post-evolution move learning").
+        private const int EvolutionWhatPrompt = 3;
+        private const int EvolvedPrompt = 12;
+        private const int WantsToLearnPrompt = 15;
+        private const int KnowsFourMovesPrompt = 17;
+        private const int EvolutionForgetAMovePrompt = 21;
+        private const int EvolutionForgetMoveList = 23;
+        private const int PoofPrompt = 26;
+        private const int ForgotPrompt = 28;
+        private const int AndPrompt = 30;
+        private const int EvolutionLearnedPrompt = 37;
+        private const int StopTeachingPrompt = 35;
+        private const int DidNotLearnPrompt = 36;
+
+        // The summary app's states at evo.state 23, sum.proc (pointer-discovery.md, "The forget-move list (yes path)").
+        private const int SummaryMoveList = 8;
+        private const int SummaryConfirm = 9;
 
         private readonly PokemonStateReader reader;
         private readonly PokemonMetadataService metadataService;
@@ -78,8 +89,7 @@ namespace ShinyBotHunter.BotEvents
             }
             foreach(var evo in evolutions)
             {
-                state.Bot.RunMacroString(EvolutionMacro);
-                await state.Bot.WaitForMacroAsync(ct);
+                await EvolveAsync(state.Bot.State, Tap(state.Bot, ct), ct);
 
                 // Evolution changes species/stats but not level or known moves, so evo.Pokemon
                 // (captured before the evolution animation ran) still accurately reflects the
@@ -103,6 +113,16 @@ namespace ShinyBotHunter.BotEvents
                 var freshParty = await reader.GetPartyState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
             }
+            await GameStateWait.UntilAsync(state.Bot.State, "the evolution app to close",
+                s => s.Screen is GameScreen.FieldFree or GameScreen.FieldTask, TimeSpan.FromSeconds(30), ct);
+            // The read inside the loop can come before the scene has written the species and the learned move; once
+            // the app has closed, the party holds both. Ids, not names: an empty slot has no move metadata.
+            var closedParty = await reader.GetPartyState(state.Bot);
+            foreach (var evo in evolutions)
+            {
+                PokemonData evolved = closedParty.PartyPokemon.Take(closedParty.PartySize).Select(x => x!).First(x => x.PID == evo.Pokemon.PID);
+                Console.WriteLine($"[LevelUp] {evolved.Name} moves after the evolution: {string.Join(", ", evolved.Moves.Select(m => m.Id))}");
+            }
             Console.WriteLine("end evolution");
             state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
             state.SwapState(EventState.EnemyFainted);
@@ -114,8 +134,7 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[LevelUp] fresh read: {(newState is null ? "null" : $"party={newState.PartyPokemon.Count}")}, prev party={state.BattleState!.PartyPokemon.Count}");
             var levelUp = GetLevelUp(state.BattleState!, newState);
             state.BattleState = newState;
-            state.Bot.RunMacroString(LevelUpAdvanceMacro);
-            await state.Bot.WaitForMacroAsync(ct);
+            await PassStatBoxesAsync(state.Bot.State, Tap(state.Bot, ct), ct);
             if (levelUp is not null)
             {
                 Console.WriteLine($"[LevelUp] {levelUp.Name} reached level {levelUp.Level}");
@@ -171,38 +190,43 @@ namespace ShinyBotHunter.BotEvents
                 if (hasFourMoves)
                 {
                     // replace move.
-                    state.Bot.RunMacroString(LevelUpPrePromptMacro);
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await GameStateWait.UntilAsync(state.Bot.State, "the forget-a-move prompt", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == ForgetAMovePrompt, PromptStale, ct);
+                    Console.WriteLine($"[LevelUp] asking Discord whether {pokemon.Name} learns {newMove.Name}");
                     int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                     if(moveId == -1)
                     {
-                        state.Bot.RunMacroString($"W.5;{DoNotLearnMacro}");
-                        await state.Bot.WaitForMacroAsync(ct);
+                        await DeclineMoveAsync(state.Bot.State, Tap(state.Bot, ct), ct);
+                        Console.WriteLine($"[LevelUp] {pokemon.Name} will not learn {newMove.Name}");
                     }
                     else
                     {
-                        string moveStr = BattleOrchestratorEvent.MoveShorthands[moveId];
-                        state.Bot.RunMacroString($"W.5;{string.Format(LearnMoveMacroTemplate, moveStr)}");
-                        await state.Bot.WaitForMacroAsync(ct);
+                        await ReplaceMoveAsync(state.Bot.State, Tap(state.Bot, ct), moveId, ct);
+                        Console.WriteLine($"[LevelUp] {pokemon.Name} forgot {metadataService.GetPokemonMoveMetadata(pokemon.Moves[moveId].Id).Name} and learned {newMove.Name}");
                         ApplyLearnedMove(pokemon, moveId, newMove);
                     }
                 }
                 else
                 {
-                    // The mon has an open move slot, so the game auto-learns the move and just
-                    // needs the "Pokemon learned Move!" text advanced.
+                    // The game learns the move at getter 15 and prints it at 36, and neither waits for input in battle, so
+                    // nothing is pressed; WaitForLevelUpOrField is the next wait.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
-                    state.Bot.RunMacroString($"{LevelUpPrePromptMacro};{FreeSlotMacro}");
-                    await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                 }
+            }
+            // The moves from memory once the learns are done: the replace path has waited out its messages, and a free slot
+            // is written at getter 15, before the loop's next read. Ids, not names: an empty slot has no move metadata.
+            var learned = await reader.GetPokemonBattleState(state.Bot, ct: ct);
+            if (learned is not null)
+            {
+                PokemonData read = learned.PartyPokemon.First(x => x.PID == pokemon.PID);
+                Console.WriteLine($"[LevelUp] {read.Name} moves now: {string.Join(", ", read.Moves.Select(m => m.Id))}");
             }
             return pokemon;
         }
 
         private async Task<PokemonData> ProcessEvolutionMoveLearning(GameState state, PokemonData pokemon, List<PokemonLevelUpMoveMetadata> newMoves, CancellationToken ct)
         {
-            // No memory reads in here: we're inside the evolution menus, where party state is
+            // No party reads in here: we're inside the evolution menus, where party state is
             // not readable. ApplyLearnedMove keeps pokemon.Moves accurate across multiple moves
             // so each Discord decision shows the current moveset.
             foreach(var newMove in newMoves)
@@ -227,31 +251,169 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // An open slot means the game just learns the move -- there is no "forget which?"
                     // prompt at all. Asking Discord here answered a question nobody was asked, and the
-                    // replace macros below would then run against dialogue that isn't on screen. It
+                    // replace presses below would then run against dialogue that isn't on screen. It
                     // also crashed outright: the prompt builds a button per move slot, and an empty
                     // slot has no move metadata to name it.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
-                    state.Bot.RunMacroString(EvolutionFreeSlotMacro);
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await PressAtEvolutionStateAsync(state.Bot.State, Tap(state.Bot, ct), "T.A", EvolutionLearnedPrompt, ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                     continue;
                 }
+                await ReachEvolutionForgetPromptAsync(state.Bot.State, Tap(state.Bot, ct), ct);
+                Console.WriteLine($"[LevelUp] asking Discord whether {pokemon.Name} learns {newMove.Name}");
                 int moveId = await discordBotService.SendNewMoveDecisionAndWaitAsync(pokemon, newMove);
                 if(moveId == -1)
                 {
-                    state.Bot.RunMacroString($"W.5;{EvolutionDoNotLearnMacro}");
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await DeclineEvolutionMoveAsync(state.Bot.State, Tap(state.Bot, ct), ct);
+                    Console.WriteLine($"[LevelUp] {pokemon.Name} will not learn {newMove.Name}");
                 }
                 else
                 {
-                    string moveStr = BattleOrchestratorEvent.MoveShorthands[moveId];
-                    state.Bot.RunMacroString($"W.5;{string.Format(EvolutionLearnMoveMacroTemplate, moveStr)}");
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await ReplaceEvolutionMoveAsync(state.Bot.State, Tap(state.Bot, ct), moveId, ct);
+                    Console.WriteLine($"[LevelUp] {pokemon.Name} forgot {metadataService.GetPokemonMoveMetadata(pokemon.Moves[moveId].Id).Name} and learned {newMove.Name}");
                     ApplyLearnedMove(pokemon, moveId, newMove);
                 }
             }
             return pokemon;
         }
+
+        // A at the stat gains, then A at the totals.
+        internal static async Task PassStatBoxesAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StatBoxesPrompt, ct);
+            await GameStateWait.UntilAsync(game, $"prompt {StatBoxesTotalsPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == StatBoxesTotalsPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StatBoxesTotalsPrompt, ct);
+        }
+
+        // No at "forget a move?", then yes at "give up learning it?".
+        internal static async Task DeclineMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtYesNoAsync(game, tap, "S.DoNotLearn", ForgetAMovePrompt, ct);
+            await PressAtYesNoAsync(game, tap, "S.DoNotLearnComplete", GiveUpLearningPrompt, ct);
+        }
+
+        // The top button (Yes) at "forget a move?", then the slot and Forget as one press on the forget-move screen, then the
+        // learned messages, which need no press. The screen's state cannot be read, so the pair must be safe to repeat:
+        // Forget at (32,172) is inside the confirm page's Forget rect (y 152-191, x 0-207) and outside every list-page
+        // hitbox, where (104,172) would hit the new move's row (pointer-discovery.md, "The forget-move screen").
+        internal static async Task ReplaceMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
+        {
+            await PressAtYesNoAsync(game, tap, "S.NewMove", ForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, $"prompt {ChooseMoveToForgetPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == ChooseMoveToForgetPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, $"{GameStateWait.MenuWait}S.New{BattleOrchestratorEvent.MoveShorthands[slot]};W.20;S.32.172.5", ChooseMoveToForgetPrompt,
+                ForgetScreenPressConfirm, ForgetScreenPressAttempts, ct);
+            await GameStateWait.UntilAsync(game, "the learned messages", s => s is not { Screen: GameScreen.BattleScript, Script: 276 }, LearnedMessagesStale, ct);
+        }
+
+        // A at "What?", then A at "evolved into".
+        internal static async Task EvolveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtEvolutionStateAsync(game, tap, "T.A", EvolutionWhatPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", EvolvedPrompt, ct);
+        }
+
+        // A at "wants to learn", A at "already knows four moves", then hold at "should a move be deleted?".
+        internal static async Task ReachEvolutionForgetPromptAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtEvolutionStateAsync(game, tap, "T.A", WantsToLearnPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", KnowsFourMovesPrompt, ct);
+            await GameStateWait.UntilAsync(game, $"evolution state {EvolutionForgetAMovePrompt}",
+                s => s.Screen == GameScreen.Evolution && s.Prompt == EvolutionForgetAMovePrompt, PromptStale, ct);
+        }
+
+        // The bottom button (keep old moves) at "should a move be deleted?", A (Yes) at "stop trying to teach?",
+        // then A at "did not learn".
+        internal static async Task DeclineEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "S.125.125.5", EvolutionForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, $"evolution state {StopTeachingPrompt}",
+                s => s.Screen == GameScreen.Evolution && s.Prompt == StopTeachingPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StopTeachingPrompt, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", DidNotLearnPrompt, ct);
+        }
+
+        // The top button (forget a move) at "should a move be deleted?", the slot's row and Forget in the summary app,
+        // then A at "Poof!", "forgot", "And..." and "learned".
+        internal static async Task ReplaceEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "S.125.75.5", EvolutionForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, "the forget-move list",
+                s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryMoveList }, PromptStale, ct);
+
+            // The row touch moves the app to the confirm in the same frame.
+            string row = $"{GameStateWait.MenuWait}S.Evo{BattleOrchestratorEvent.MoveShorthands[slot]}.5";
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(row); },
+                $"summary state {SummaryConfirm}", s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryConfirm },
+                PromptPressConfirm, PromptPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] {row} at summary state {SummaryMoveList} after {presses} press(es): {left}");
+
+            // The app fades out and frees itself (about 0.55 s) before evo.state leaves 23, so a retry lands only on the
+            // button or the fade.
+            presses = 0;
+            string forget = GameStateWait.MenuWait + "S.64.168.5";
+            left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(forget); },
+                $"evolution state {EvolutionForgetMoveList} to close", s => s is { Screen: GameScreen.Evolution, Prompt: not EvolutionForgetMoveList },
+                EvolutionPressConfirm, EvolutionPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] {forget} at summary state {SummaryConfirm} after {presses} press(es): {left}");
+
+            await PressAtEvolutionStateAsync(game, tap, "T.A", PoofPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", ForgotPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", AndPrompt, ct);
+            await PressAtEvolutionStateAsync(game, tap, "T.A", EvolutionLearnedPrompt, ct);
+        }
+
+        // Only the named states are pressed at; the evolving animation (state 8) never is, since B there cancels it. A message
+        // state presses once, when its printer waits at the arrow, and is confirmed by the slot going NULL or the state
+        // leaving; a press while the text draws would be lost. With no printer readable (evo.printer is not slot 0) it falls
+        // back to the retried press. Returns once the state has left, after the 30 or 40 frames' countdown that follows the
+        // slot going NULL (pointer-discovery.md, "Text printer state (2026-10-24)").
+        private static async Task PressAtEvolutionStateAsync(IGameStateReader game, Func<string, Task> tap, string macro, int state, CancellationToken ct)
+        {
+            GameSnapshot ready = await GameStateWait.UntilAsync(game, $"evolution state {state} at the arrow",
+                s => s.Screen == GameScreen.Evolution && s.Prompt == state && (s.TextPrinter is null || s.AtTextArrow()), PromptStale, ct);
+            if (ready.TextPrinter is null)
+            {
+                await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+                return;
+            }
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
+                $"evolution state {state}'s printer to close", s => s.Prompt != state || s.TextPrinter is null,
+                PromptPressConfirm, PromptPressAttempts, ct);
+            Console.WriteLine($"[LevelUp] {macro} at prompt {state} (printer {ready.TextPrinter}) after {presses} press(es): {left}");
+            await GameStateWait.UntilAsync(game, $"evolution state {state} to end", s => s.Prompt != state, PromptStale, ct);
+        }
+
+        private static Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+            => PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct);
+
+        // The battle's Yes/No menus (21, 34) are built only once the question above them has printed: the player
+        // controller's Yes/No task (ov12_0225FA44) prints it, waits on TextPrinterCheckActive, then changes the menu. A touch
+        // while it draws only speeds the text (lost at both prompts in the probe run 20261024-042051), so the press waits
+        // for the printer to be seen and then to clear, then the macro waits out the built menu's input-ready gap; the retry
+        // stays as the safety net.
+        private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+        {
+            await GameStateWait.WaitForPrinterSeenThenClearedAsync(game, $"prompt {prompt}",
+                s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt, QuestionPrintStart, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.BattleMenuWait + macro, prompt, ct);
+        }
+
+        private static async Task PressAtPromptAsync(
+            IGameStateReader game, Func<string, Task> tap, string macro, int prompt, TimeSpan confirm, int attempts, CancellationToken ct)
+        {
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
+                $"prompt {prompt} to close", s => s.Prompt != prompt, confirm, attempts, ct);
+            Console.WriteLine($"[LevelUp] {macro} at prompt {prompt} after {presses} press(es): {left}");
+        }
+
+        private static Func<string, Task> Tap(IBot bot, CancellationToken ct) => async macro =>
+        {
+            bot.RunMacroString(macro);
+            await bot.WaitForMacroAsync(ct);
+        };
 
         // We can't read memory to confirm a learn (dialogue still playing / evolution screen
         // up), but we know the decision's outcome exactly, so record it on our in-memory
@@ -373,44 +535,20 @@ namespace ShinyBotHunter.BotEvents
 
         public async Task WaitForLevelUpOrField(GameState state, CancellationToken ct)
         {
-            bool endWait = false;
-            
-
-            Console.WriteLine("hit");
-            while (!endWait)
+            GameSnapshot next = await GameStateWait.UntilAsync(state.Bot.State, "level-up or field",
+                s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.FieldFree or GameScreen.FieldTask
+                    || (s.Screen == GameScreen.Evolution && state.PendingEvolutions.Count > 0), PromptStale, ct);
+            if (next.Screen == GameScreen.BattleExpPrompt)
             {
-                await Task.Delay(Constant.PollIntervalMs, ct);
-                try
-                {
-                    GameSnapshot snapshot = await state.Bot.State.ReadAsync(ct);
-                    if(state.PendingEvolutions.Count() > 0 && snapshot.Screen == GameScreen.Evolution)
-                    {
-                        state.SwapState(EventState.EvolutionInit);
-                        endWait = true;
-                    }
-                    else if (snapshot.Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
-                    {
-                        state.SwapState(EventState.BattleComplete);
-                        endWait = true;
-                    }
-                    else if (await reader.GetPokemonBattleState(state.Bot, ct: ct) is var battleState
-                                && battleState is not null
-                                && battleState.ActivePokemon.HP == 0)
-                    {
-                        state.SwapState(EventState.BothPokemonFainted);
-                        endWait = true;
-                    }
-                    else if (GetLevelUp(state.BattleState!, battleState) is var levelUp && levelUp is not null)
-                    {
-                        state.SwapState(EventState.LevelUp);
-                        endWait = true;
-                    }
-                }
-                catch (Exception ex) when (!ct.IsCancellationRequested)
-                {
-                    Console.WriteLine(ex.ToString());
-                    throw;
-                }
+                state.SwapState(EventState.LevelUp);
+            }
+            else if (next.Screen == GameScreen.Evolution)
+            {
+                state.SwapState(EventState.EvolutionInit);
+            }
+            else
+            {
+                state.SwapState(EventState.BattleComplete);
             }
             Console.WriteLine(state.State.Peek().ToString());
         }

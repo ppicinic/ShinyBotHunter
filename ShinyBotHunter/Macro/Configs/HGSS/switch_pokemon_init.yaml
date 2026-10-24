@@ -1,5 +1,5 @@
 # Switch-train: from the battle command menu, open the party screen.
-# Entry state:  battle command menu is up (BattleMenuState == 1).
+# Entry state:  battle command menu is up (Screen == BattleMenu).
 # Exit state:   party screen is showing all six slots, ready for a slot tap.
 #
 # TODO fill in:

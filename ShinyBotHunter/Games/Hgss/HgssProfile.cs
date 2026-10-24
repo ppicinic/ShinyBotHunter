@@ -38,6 +38,6 @@ namespace ShinyBotHunter.Games.Hgss
             maps,
             graph,
             new PathfindingService(maps, graph, Table.TrainerX, Table.TrainerY, Table.Anchor, Table.MapIdOffset),
-            createStateReader: (memory, table) => new HgssLegacyStateReader(memory, (HgssPointerService)table));
+            createStateReader: (memory, table) => new HgssFieldSystemStateReader(memory, (HgssPointerService)table));
     }
 }

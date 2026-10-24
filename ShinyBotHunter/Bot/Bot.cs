@@ -179,6 +179,11 @@ namespace ShinyBotHunter.Bot
             return await this.memoryClient.ReadValidatedPartyAsync(anchorAddress, countOffset, slotsOffset, slotSize, slotStride, maxSlots, maxRetryFrames, addressing, scheme, ct);
         }
 
+        public async Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default)
+        {
+            return await this.memoryClient.ReadChainBlocksAsync(blocks, retryFrames, ct);
+        }
+
         public void Release()
         {
             this.commandClient.Release();

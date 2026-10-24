@@ -14,6 +14,7 @@ namespace ShinyBotHunter.Tests
         public List<(uint Address, int Length)> ByteReads { get; } = new();
         public List<uint> UIntReads { get; } = new();
         public List<(uint Anchor, int[] Hops)> PointerReads { get; } = new();
+        public List<(IReadOnlyList<ChainBlockRequest> Blocks, int RetryFrames)> ChainReads { get; } = new();
 
         private readonly int partySize;
         private readonly int slotSize;
@@ -86,6 +87,29 @@ namespace ShinyBotHunter.Tests
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)PlacedValue(Follow(anchorAddress, hopOffsets), 2));
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        // The emulator's rules over placed bytes: a zero pointer is NullPointer, one outside DS main
+        // RAM is OutOfRange. Placed memory has no end and no frames, so never ShortRead and no retry.
+        public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default)
+        {
+            ChainReads.Add((blocks, retryFrames));
+            var results = new ChainBlockResult[blocks.Count];
+            for (int b = 0; b < blocks.Count; b++) results[b] = ReadChainBlock(blocks[b]);
+            return Task.FromResult(results);
+        }
+
+        private ChainBlockResult ReadChainBlock(ChainBlockRequest block)
+        {
+            uint address = block.Anchor;
+            for (int i = 0; i < block.Hops.Length; i++)
+            {
+                uint pointer = PlacedValue(address, 4);
+                if (pointer == 0) return new ChainBlockResult(ChainBlockStatus.NullPointer, (byte)i, Array.Empty<byte>());
+                if (pointer < 0x02000000 || pointer >= 0x02400000) return new ChainBlockResult(ChainBlockStatus.OutOfRange, (byte)i, Array.Empty<byte>());
+                address = (uint)(pointer + block.Hops[i]);
+            }
+            return new ChainBlockResult(ChainBlockStatus.Ok, (byte)block.Hops.Length, PlacedBytes(address, block.Length));
+        }
 
         private byte[] PlacedBytes(uint address, int length)
         {

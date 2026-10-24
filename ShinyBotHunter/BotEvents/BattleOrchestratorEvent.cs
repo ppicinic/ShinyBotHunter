@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Options;
 using Mono.TextTemplating;
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -51,6 +52,12 @@ namespace ShinyBotHunter.BotEvents
 
         private const int MaxSwitchAttempts = 3;
 
+        // "What will X do?" prints after ctx.sel turns 1 and before the player's controller builds the battle menu, so Run and
+        // Fight wait for its printer to be seen (within 1 s of the menu state; past it the wait falls through), then to
+        // clear; 15 s stale, as the prompt waits (battle_controller_player.c, SSI_STATE_1 after ov12_02262B80).
+        private static readonly TimeSpan MenuMessageSeenWithin = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan MenuMessageStale = TimeSpan.FromSeconds(15);
+
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
@@ -70,53 +77,62 @@ namespace ShinyBotHunter.BotEvents
         {
             while (state.State.Peek() != EventState.BattleComplete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
             {
-                EventState topState = state.State.Peek();
-                if (topState == EventState.BattleStart)
+                try
                 {
-                    state.State.Pop();
-                    state.State.Push(EventState.PokemonDataPending);
+                    EventState topState = state.State.Peek();
+                    if (topState == EventState.BattleStart)
+                    {
+                        state.State.Pop();
+                        state.State.Push(EventState.PokemonDataPending);
+                    }
+                    else if (topState == EventState.PokemonDataPending)
+                    {
+                        await PokemonDataPending(state, cancellationToken);
+                    }
+                    else if (topState == EventState.DecideAction)
+                    {
+                        DecideAction(state);
+                    }
+                    else if (topState == EventState.Fight)
+                    {
+                        await SelectMove(state, cancellationToken);
+                    }
+                    else if (topState == EventState.SwitchPokemon)
+                    {
+                        await SwitchPokemon(state, cancellationToken);
+                    }
+                    else if (topState == EventState.WaitForMovesEnd)
+                    {
+                        await WaitForMoveEnd(state, cancellationToken);
+                    }
+                    else if (topState == EventState.OurPokemonFainted || topState == EventState.BothPokemonFainted)
+                    {
+                        // TODO Implement losing our pokemon - for now we just defer to user to regain control
+                        state.State.Pop();
+                        state.State.Push(EventState.Waiting);
+                    }
+                    else if (topState == EventState.EnemyFainted)
+                    {
+                        await levelUpFlow.WaitForLevelUpOrField(state, cancellationToken);
+                    }
+                    else if (topState == EventState.LevelUp)
+                    {
+                        await levelUpFlow.ProcessLevelUp(state, cancellationToken);
+                    }
+                    else if (topState == EventState.EvolutionInit)
+                    {
+                        await levelUpFlow.EvolutionInit(state, cancellationToken);
+                    }
+                    else if(topState == EventState.Flee)
+                    {
+                        await Flee(state, cancellationToken);
+                    }
                 }
-                else if (topState == EventState.PokemonDataPending)
+                catch (GameStateTimeoutException ex)
                 {
-                    await PokemonDataPending(state, cancellationToken);
-                }
-                else if (topState == EventState.DecideAction)
-                {
-                    DecideAction(state);
-                }
-                else if (topState == EventState.Fight)
-                {
-                    await SelectMove(state, cancellationToken);
-                }
-                else if (topState == EventState.SwitchPokemon)
-                {
-                    await SwitchPokemon(state, cancellationToken);
-                }
-                else if (topState == EventState.WaitForMovesEnd)
-                {
-                    await WaitForMoveEnd(state, cancellationToken);
-                }
-                else if (topState == EventState.OurPokemonFainted || topState == EventState.BothPokemonFainted)
-                {
-                    // TODO Implement losing our pokemon - for now we just defer to user to regain control
-                    state.State.Pop();
-                    state.State.Push(EventState.Waiting);
-                }
-                else if (topState == EventState.EnemyFainted)
-                {
-                    await levelUpFlow.WaitForLevelUpOrField(state, cancellationToken);
-                }
-                else if (topState == EventState.LevelUp)
-                {
-                    await levelUpFlow.ProcessLevelUp(state, cancellationToken);
-                }
-                else if (topState == EventState.EvolutionInit)
-                {
-                    await levelUpFlow.EvolutionInit(state, cancellationToken);
-                }
-                else if(topState == EventState.Flee)
-                {
-                    await Flee(state, cancellationToken);
+                    // A stale-timeout parks the bot for the operator rather than crashing the event.
+                    Console.WriteLine($"[Battle] {ex}");
+                    state.SwapState(EventState.Waiting);
                 }
             }
             state.BattleState = null;
@@ -125,108 +141,53 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task Flee(GameState state, CancellationToken ct)
         {
-            state.Bot.RunMacroString("W.10;S.Run.3;W.5;");
-            await state.Bot.WaitForMacroAsync(ct);
+            await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
+                MenuMessageSeenWithin, MenuMessageStale, ct);
+            int presses = 0;
+            GameSnapshot left = await GameStateWait.PressUntilAsync(state.Bot.State, async () =>
+            {
+                presses++;
+                state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.Run.3");
+                await state.Bot.WaitForMacroAsync(ct);
+            }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
+            Console.WriteLine($"[Battle] Run left the menu after {presses} press(es): {left}");
             state.SwapState(EventState.WaitForMovesEnd);
         }
 
-        private async Task WaitForMoveEnd(GameState state, CancellationToken cancellationToken)
+        private async Task WaitForMoveEnd(GameState state, CancellationToken ct)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            CancellationToken ct = cts.Token;
-
-            // Poll each end-of-move condition concurrently and act on whichever trips first.
-            // The cheap battle-end check no longer waits behind the heavy battle-state read.
-            var tasks = new List<Task<(EventState next, PokemonBattleState? bs)?>>
+            // BattleOver is not awaited: the app going is the end, and the teardown passes through BattleStarting.
+            GameSnapshot end = await GameStateWait.UntilAsync(state.Bot.State, "the turn to end",
+                s => s.Screen is GameScreen.BattleMenu or GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt
+                    or GameScreen.FieldFree or GameScreen.FieldTask || s is { Screen: GameScreen.BattleScript, Script: 6 },
+                TimeSpan.FromSeconds(20), ct);
+            if (end.Screen is GameScreen.FieldFree or GameScreen.FieldTask)
             {
-                PollBattleEnded(ct),
-                PollMenuUp(ct),
-                PollFaints(ct),
-            };
-
-            (EventState next, PokemonBattleState? bs)? outcome = null;
-            try
-            {
-                while (outcome is null && tasks.Count > 0)
-                {
-                    var finished = await Task.WhenAny(tasks);
-                    tasks.Remove(finished);
-                    outcome = await finished; // non-null: this task detected its condition
-                }
-            }
-            finally
-            {
-                // Stop the losing polls and let them finish before the using disposes the source.
-                cts.Cancel();
-                await Task.WhenAll(tasks);
-            }
-
-            if (outcome is null)
+                state.SwapState(EventState.BattleComplete);
                 return;
-
-            state.SwapState(outcome.Value.next);
-            if (outcome.Value.bs is not null)
-                state.BattleState = outcome.Value.bs;
-
-            // ── Local poll tasks ────────────────────────────────────────────────────
-            // Battle ended (e.g. a successful escape). One cheap byte read, polled at full rate.
-            async Task<(EventState, PokemonBattleState?)?> PollBattleEnded(CancellationToken token)
-            {
-                try
-                {
-                    while (!token.IsCancellationRequested)
-                    {
-                        if ((await state.Bot.State.ReadAsync(token)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
-                            return (EventState.BattleComplete, null);
-                        await Task.Delay(Constant.PollIntervalMs, token);
-                    }
-                }
-                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
-                return null;
             }
 
-            // Command menu is back up → decide the next action. Guarded on a valid battle state
-            // so a stale post-battle read can't push DecideAction (the bug-2b invariant).
-            async Task<(EventState, PokemonBattleState?)?> PollMenuUp(CancellationToken token)
+            var battleState = await reader.GetPokemonBattleState(state.Bot, ct: ct);
+            if (end.Screen == GameScreen.BattleMenu)
             {
-                try
+                if (battleState is null)
                 {
-                    while (!token.IsCancellationRequested)
-                    {
-                        if ((await state.Bot.State.ReadAsync(token)).Screen == GameScreen.BattleMenu)
-                        {
-                            var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
-                            if (battleState is not null)
-                                return (EventState.DecideAction, battleState);
-                        }
-                        await Task.Delay(Constant.PollIntervalMs, token);
-                    }
+                    Console.WriteLine("[Battle] Battle state unreadable at the menu; fleeing.");
+                    state.SwapState(EventState.Flee);
+                    return;
                 }
-                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
-                return null;
+                state.BattleState = battleState;
+                state.SwapState(EventState.DecideAction);
+                return;
             }
 
-            // A combatant fainted. Both checks share one battle-state read.
-            async Task<(EventState, PokemonBattleState?)?> PollFaints(CancellationToken token)
-            {
-                try
-                {
-                    while (!token.IsCancellationRequested)
-                    {
-                        var battleState = await reader.GetPokemonBattleState(state.Bot, ct: token);
-                        if (battleState is not null)
-                        {
-                            if (battleState.ActivePokemon.HP == 0)
-                                return (EventState.OurPokemonFainted, null);
-                            if (battleState.EnemyPokemon.HP == 0)
-                                return (EventState.EnemyFainted, null);
-                        }
-                        await Task.Delay(Constant.PollIntervalMs, token);
-                    }
-                }
-                catch (Exception ex) when (ex is OperationCanceledException || token.IsCancellationRequested) { }
-                return null;
-            }
+            // Script 6 or a prompt: a combatant fainted. Not stored, so GetLevelUp compares against the pre-level state.
+            if (battleState is { ActivePokemon.HP: 0, EnemyPokemon.HP: 0 })
+                state.SwapState(EventState.BothPokemonFainted);
+            else if (battleState is { ActivePokemon.HP: 0 })
+                state.SwapState(EventState.OurPokemonFainted);
+            else
+                state.SwapState(EventState.EnemyFainted);
         }
 
         private void DecideAction(GameState state)
@@ -287,8 +248,21 @@ namespace ShinyBotHunter.BotEvents
             else
             {
                 string moveStr = MoveShorthands[move];
-                state.Bot.RunMacroString($"W.5;S.{moveStr};W.10;S.{moveStr}");
-                await state.Bot.WaitForMacroAsync(ct);
+                int presses = 0;
+                Func<Task> press = async () =>
+                {
+                    presses++;
+                    state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.{moveStr}");
+                    await state.Bot.WaitForMacroAsync(ct);
+                };
+                await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
+                    MenuMessageSeenWithin, MenuMessageStale, ct);
+                // The Fight press passes through BattleTurn before the move list is up, so only the list confirms it.
+                await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to open the move list",
+                    s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
+                GameSnapshot chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, $"the {moveStr} press to leave the move list",
+                    s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
+                Console.WriteLine($"[Battle] {moveStr} chosen after {presses} press(es): {chosen}");
                 state.State.Pop();
                 state.State.Push(EventState.WaitForMovesEnd);
             }
@@ -367,7 +341,7 @@ namespace ShinyBotHunter.BotEvents
             var sw = Stopwatch.StartNew();
             while (sw.ElapsedMilliseconds < SwitchConfirmTimeoutMs)
             {
-                if ((await state.Bot.State.ReadAsync(ct)).Screen is not (GameScreen.BattleMenu or GameScreen.BattleTurn or GameScreen.Evolution))
+                if ((await state.Bot.State.ReadAsync(ct)).Screen is GameScreen.FieldFree or GameScreen.FieldTask)
                 {
                     return SwitchOutcome.BattleOver;
                 }
@@ -385,28 +359,27 @@ namespace ShinyBotHunter.BotEvents
         private async Task PokemonDataPending(GameState state, CancellationToken ct)
         {
             IBot bot = state.Bot;
-            uint anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-            uint foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
-            uint foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-            uint foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
-            var foeCount = await bot.ReadByteAsync(foeCountPtr);
-            while (foeCount == 0)
+            // The foe count and the foe block from app.setup (BattleSetup), both in one request. A
+            // block that is not Ok (no battle app yet, or mid-write) is polled like a zero count.
+            var hgss = (HgssPointerService)bot.Addresses;
+            ChainBlockRequest[] foeBlocks =
+            [
+                new(bot.Addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)bot.Addresses.EnemyCount], 1),
+                new(bot.Addresses.Anchor, [hgss.AppSlotsOffset, hgss.SubAppOffset, hgss.AppSetupOffset, (int)bot.Addresses.Enemy], bot.Addresses.PartyPokemonSize),
+            ];
+            ChainBlockResult[] foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
+            while (foe[0].Status != ChainBlockStatus.Ok || foe[0].Bytes[0] == 0)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-                foeAnchorPtr = anchor + bot.Addresses.EnemyAnchor;
-                foeAnchor = await bot.ReadUIntAsync(foeAnchorPtr);
-                foeCountPtr = foeAnchor + bot.Addresses.EnemyCount;
-                foeCount = await bot.ReadByteAsync(foeCountPtr);
+                foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
             }
 
-            PokemonData? pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
+            PokemonData? pokemon = foe[1].Status == ChainBlockStatus.Ok ? bot.Profile.Parser.Parse(foe[1].Bytes) : null;
             while (pokemon is null || pokemon.IsCorrupt)
             {
                 await Task.Delay(Constant.PollIntervalMs);
-                anchor = await bot.ReadUIntAsync(bot.Addresses.Anchor);
-                foeAnchor = await bot.ReadUIntAsync(anchor + bot.Addresses.EnemyAnchor);
-                pokemon = pokemon = bot.Profile.Parser.Parse(await bot.ReadBytesAsync(foeAnchor + bot.Addresses.Enemy, bot.Addresses.PartyPokemonSize));
+                foe = await bot.ReadChainBlocksAsync(foeBlocks, ct: ct);
+                pokemon = foe[1].Status == ChainBlockStatus.Ok ? bot.Profile.Parser.Parse(foe[1].Bytes) : null;
             }
 
 
@@ -414,17 +387,16 @@ namespace ShinyBotHunter.BotEvents
 
             // this code is repeated but it's unique cause we need to progress through the first pokemon.
             bot.RunRepeatMacro("T.B;W.5");
-            GameScreen screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            while (screen != GameScreen.BattleMenu)
-            {
-                await Task.Delay(Constant.PollIntervalMs);
-                screen = (await bot.State.ReadAsync(CancellationToken.None)).Screen;
-            }
-            bot.ClearMacro();
             try
             {
-                await bot.WaitForMacroAsync(ct);
-                bot.RunMacroString("W.5"); // TODO tune this. the menu flag is available before we can actually press so we want to wait by frame not real time.
+                await GameStateWait.UntilAsync(bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromSeconds(30), ct);
+            }
+            finally
+            {
+                bot.ClearMacro();
+            }
+            try
+            {
                 await bot.WaitForMacroAsync(ct);
                 state.BattleState = await reader.GetPokemonBattleState(bot, ct: ct);
                 state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();

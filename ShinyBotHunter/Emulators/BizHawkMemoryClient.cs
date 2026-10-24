@@ -130,6 +130,75 @@ namespace ShinyBotHunter.Emulators
             return slots;
         }
 
+        public async Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default)
+        {
+            byte[] result = await PostAsync(EncodeChainBlocks(blocks, retryFrames), ct);
+            return DecodeChainBlocks(result, blocks.Count);
+        }
+
+        // [cmd][0:4][retryFrames:4][blockCount:1] then per block [anchor:4][hopCount:1][hops:4 each][length:4]
+        internal static byte[] EncodeChainBlocks(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames)
+        {
+            int size = 9 + 1;
+            foreach (ChainBlockRequest block in blocks)
+            {
+                size += 4 + 1 + block.Hops.Length * 4 + 4;
+            }
+
+            var body = new byte[size];
+            WriteHeader(body, 0x05, 0, (uint)retryFrames);
+            body[9] = (byte)blocks.Count;
+            int at = 10;
+            foreach (ChainBlockRequest block in blocks)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(body.AsSpan(at), block.Anchor);
+                body[at + 4] = (byte)block.Hops.Length;
+                at += 5;
+                foreach (int hop in block.Hops)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(at), hop);
+                    at += 4;
+                }
+                BinaryPrimitives.WriteInt32LittleEndian(body.AsSpan(at), block.Length);
+                at += 4;
+            }
+            return body;
+        }
+
+        // Per block, in request order: [status:1][hop:1][length:4][bytes].
+        internal static ChainBlockResult[] DecodeChainBlocks(byte[] result, int blockCount)
+        {
+            EnsureOpcodeSupported(result, 0x05);
+
+            var blocks = new ChainBlockResult[blockCount];
+            int at = 0;
+            for (int i = 0; i < blockCount; i++)
+            {
+                if (result.Length - at < 6)
+                {
+                    throw new InvalidOperationException(
+                        $"Chain read block {i} header runs past the end of the {result.Length}-byte body.");
+                }
+                var status = (ChainBlockStatus)result[at];
+                byte hop = result[at + 1];
+                int length = BinaryPrimitives.ReadInt32LittleEndian(result.AsSpan(at + 2));
+                at += 6;
+                if (length < 0 || result.Length - at < length)
+                {
+                    throw new InvalidOperationException(
+                        $"Chain read block {i} declares {length} bytes but the body has {result.Length - at} left.");
+                }
+                blocks[i] = new ChainBlockResult(status, hop, result.AsSpan(at, length).ToArray());
+                at += length;
+            }
+            if (at != result.Length)
+            {
+                throw new InvalidOperationException(
+                    $"Chain read body has {result.Length - at} bytes left over after its {blockCount} blocks.");
+            }
+            return blocks;
+        }
+
         private async Task<byte[]> PostAsync(byte[] body, CancellationToken ct = default)
         {
             return await ExecuteWithRetryAsync(async () =>
