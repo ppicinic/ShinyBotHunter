@@ -6,6 +6,7 @@ using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -53,6 +54,20 @@ namespace ShinyBotHunter.BotEvents
 
         // Dismisses whatever dialogue is up. B rather than A: A on a signpost just reopens it.
         private const string DismissTextMacro = "T.B;W.30;T.B;W.30";
+
+        // A field script whose snapshot has not changed for this long parks the bot (R18).
+        private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
+
+        // The prompt-press values of LevelUpFlow: a press that has not landed after a second is pressed again.
+        private static readonly TimeSpan ScriptPressConfirm = TimeSpan.FromMilliseconds(1000);
+        private const int ScriptPressAttempts = 3;
+
+        // The 20-frame settle means the next read already sees the press's effect.
+        private const string PressA = "T.A;W.20";
+        private const string PressB = "T.B;W.20";
+
+        // Faces the nurse and talks to her. The counter above the heal tile is a wall, so Up only turns.
+        private const string StartNurseScriptMacro = "T.Up;W.5;T.A";
 
         // How a walk macro ended.
         private enum SegmentOutcome
@@ -147,44 +162,80 @@ namespace ShinyBotHunter.BotEvents
             };
         }
 
-        private async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
+        private static async Task HealAtPokemonCenterAsync(GameState state, CancellationToken cancellationToken)
         {
             // Navigation has already walked us onto the counter tile.
-            bool anyFainted = await HasFaintedPartyMemberAsync(state.Bot, cancellationToken);
-            string macroName = anyFainted ? "HealPokemonFainted" : "HealPokemon";
-            Console.WriteLine($"[Navigator] Healing with {macroName}");
-            string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, macroName);
-            state.Bot.RunMacroString(macro);
-            await state.Bot.WaitForMacroAsync(cancellationToken);
+            Console.WriteLine("[Navigator] Healing with the script press loop");
+            var addresses = (HgssPointerService)state.Bot.Addresses;
+            Func<string, Task> press = Press(state.Bot, cancellationToken);
+            // Retried rather than settled first: an A eaten by the last step's animation is pressed again.
+            await GameStateWait.PressUntilAsync(state.Bot.State, () => press(StartNurseScriptMacro), "the nurse's script to start",
+                s => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask,
+                ScriptPressConfirm, ScriptPressAttempts, cancellationToken);
+            await PressThroughScriptAsync(state.Bot.State, addresses, press, "the nurse's script", ScriptStale, cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }
 
-        /// <summary>
-        /// A fainted party member adds a dialogue box to the nurse's closing text, which needs the
-        /// longer heal macro. Uses a validated read because HP lives in the unchecksummed battle
-        /// stats block -- guessing wrong either strands a box on screen or presses A into the
-        /// overworld.
-        /// </summary>
-        private async Task<bool> HasFaintedPartyMemberAsync(IBot bot, CancellationToken cancellationToken)
+        private static Func<string, Task> Press(IBot bot, CancellationToken cancellationToken) => async macro =>
         {
-            var party = await ReadValidatedPartyWithRetriesAsync(bot, cancellationToken);
-            if (party is null)
+            bot.RunMacroString(macro);
+            await bot.WaitForMacroAsync(cancellationToken);
+        };
+
+        /// <summary>
+        /// Presses through a field script until the field is free (R18, R19): A while a context waits in the
+        /// printing or wait-button natives, one A at the menu native (Yes), then B for every later wait, since B
+        /// closes a message as well as A and cannot start a second conversation or answer a second menu. Nothing
+        /// is pressed during movement, WaitStd, the touch menu, bytecode, child tasks or a transition. The Yes also
+        /// counts as given once the heal animation task is seen, because it only runs after Yes, so an A that
+        /// landed on the menu by race is never followed by another A. Throws when the snapshot has not changed for
+        /// stale; the clock is not restarted by a press, so a box that never closes under presses still times out.
+        /// </summary>
+        internal static async Task PressThroughScriptAsync(
+            IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct)
+        {
+            GameSnapshot? last = null;
+            Stopwatch unchanged = Stopwatch.StartNew();
+            bool yesGiven = false;
+            while (true)
             {
-                // Assume nothing fainted: the plain macro is the long-standing behaviour, so an
-                // unreadable party degrades to what the bot did before rather than to a new risk.
-                Console.WriteLine("[Navigator] Could not read party before healing; assuming no fainted members");
-                return false;
-            }
-            for (int i = 0; i < party.PartySize; i++)
-            {
-                var pokemon = party.PartyPokemon[i];
-                if (pokemon is not null && pokemon.HP == 0)
+                GameSnapshot snapshot = await game.ReadAsync(ct);
+                if (snapshot != last)
                 {
-                    Console.WriteLine($"[Navigator] Fainted party member: slot {i + 1} {pokemon.Name}");
-                    return true;
+                    Console.WriteLine($"[GameState] {waitingFor}: {snapshot}");
+                    last = snapshot;
+                    unchanged.Restart();
                 }
+                if (snapshot.Screen == GameScreen.FieldFree)
+                {
+                    return;
+                }
+                if (unchanged.Elapsed >= stale)
+                {
+                    throw new GameStateTimeoutException(waitingFor, snapshot);
+                }
+                if (snapshot.TaskFunction == addresses.HealAnimationTask)
+                {
+                    yesGiven = true;
+                }
+
+                uint? native = snapshot.Native;
+                bool decompOnly = native == addresses.WaitButtonNative || native == addresses.WaitButtonOrDelayNative
+                    || native == addresses.WaitButtonOrDpadNative;
+                if (native == addresses.MenuChoiceNative && !yesGiven)
+                {
+                    await GameStateWait.PressUntilAsync(game, () => press(PressA), $"{waitingFor} Yes",
+                        s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
+                    Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
+                    yesGiven = true;
+                }
+                else if (native == addresses.PrintingNative || decompOnly || native == addresses.MenuChoiceNative)
+                {
+                    await press(yesGiven ? PressB : PressA);
+                    Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");
+                }
+                await Task.Delay(Constant.PollIntervalMs, ct);
             }
-            return false;
         }
 
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
