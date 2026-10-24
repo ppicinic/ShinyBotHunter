@@ -12,8 +12,7 @@ namespace ShinyBotHunter.BotEvents
         // move-learn decision (or auto-learn text) is ready to act on.
         private const string LevelUpPrePromptMacro = "W.340";
 
-        // Macros driving the "do you want to learn a new move?" flow, post level-up.
-        private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
+        // Macro driving the free-slot learn, post level-up.
         private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
 
         // The stale-timeout table's rows for the exp and move-learn prompts: 15 s between prompts, and a
@@ -21,6 +20,16 @@ namespace ShinyBotHunter.BotEvents
         private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
         private static readonly TimeSpan PromptPressConfirm = TimeSpan.FromMilliseconds(1000);
         private const int PromptPressAttempts = 3;
+
+        // The forget-move screen's slot-and-Forget pair: 1500 ms, 8 attempts (about 15 s with the macro). 1500 ms is twice
+        // the 0.7 s observed from Forget to the getter leaving 23, so a pair that landed is not repeated; 8 attempts cover a
+        // screen load of over 4x the old macro's 165 frames.
+        private static readonly TimeSpan ForgetScreenPressConfirm = TimeSpan.FromMilliseconds(1500);
+        private const int ForgetScreenPressAttempts = 8;
+
+        // The learned messages after the forget-move screen (25 → 27 → 29 → 36, about 11 s observed) read as one unchanged
+        // BattleScript 276 snapshot; 30 s is about 3x.
+        private static readonly TimeSpan LearnedMessagesStale = TimeSpan.FromSeconds(30);
 
         // The evolution scene states' presses: 1500 ms, 6 attempts (9 s, under the 15 s stale). A press while the
         // message still prints only speeds the text, and "evolved into" prints for over 3 s.
@@ -32,6 +41,7 @@ namespace ShinyBotHunter.BotEvents
         private const int StatBoxesPrompt = 11;
         private const int StatBoxesTotalsPrompt = 13;
         private const int ForgetAMovePrompt = 21;
+        private const int ChooseMoveToForgetPrompt = 23;
         private const int GiveUpLearningPrompt = 34;
 
         // The evolution scene's waiting states, evo.state (docs/research/pointer-discovery.md, "Post-evolution move learning").
@@ -192,9 +202,8 @@ namespace ShinyBotHunter.BotEvents
                     }
                     else
                     {
-                        string moveStr = BattleOrchestratorEvent.MoveShorthands[moveId];
-                        state.Bot.RunMacroString($"W.5;{string.Format(LearnMoveMacroTemplate, moveStr)}");
-                        await state.Bot.WaitForMacroAsync(ct);
+                        await ReplaceMoveAsync(state.Bot.State, Tap(state.Bot, ct), moveId, ct);
+                        Console.WriteLine($"[LevelUp] {pokemon.Name} forgot {metadataService.GetPokemonMoveMetadata(pokemon.Moves[moveId].Id).Name} and learned {newMove.Name}");
                         ApplyLearnedMove(pokemon, moveId, newMove);
                     }
                 }
@@ -207,6 +216,14 @@ namespace ShinyBotHunter.BotEvents
                     await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                 }
+            }
+            // The moves from memory once the learns are done: the replace path has waited out its messages, and a free slot
+            // is written at getter 15, before the loop's next read. Ids, not names: an empty slot has no move metadata.
+            var learned = await reader.GetPokemonBattleState(state.Bot, ct: ct);
+            if (learned is not null)
+            {
+                PokemonData read = learned.PartyPokemon.First(x => x.PID == pokemon.PID);
+                Console.WriteLine($"[LevelUp] {read.Name} moves now: {string.Join(", ", read.Moves.Select(m => m.Id))}");
             }
             return pokemon;
         }
@@ -278,6 +295,19 @@ namespace ShinyBotHunter.BotEvents
             await PressAtPromptAsync(game, tap, "S.DoNotLearn", ForgetAMovePrompt, ct);
             await GameStateWait.UntilAsync(game, $"prompt {GiveUpLearningPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == GiveUpLearningPrompt, PromptStale, ct);
             await PressAtPromptAsync(game, tap, "S.DoNotLearnComplete", GiveUpLearningPrompt, ct);
+        }
+
+        // The top button (Yes) at "forget a move?", then the slot and Forget as one press on the forget-move screen, then the
+        // learned messages, which need no press. The screen's state cannot be read, so the pair must be safe to repeat:
+        // Forget at (32,172) is inside the confirm page's Forget rect (y 152-191, x 0-207) and outside every list-page
+        // hitbox, where (104,172) would hit the new move's row (pointer-discovery.md, "The forget-move screen").
+        internal static async Task ReplaceMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
+        {
+            await PressAtPromptAsync(game, tap, "S.NewMove", ForgetAMovePrompt, ct);
+            await GameStateWait.UntilAsync(game, $"prompt {ChooseMoveToForgetPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == ChooseMoveToForgetPrompt, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, $"S.New{BattleOrchestratorEvent.MoveShorthands[slot]};W.20;S.32.172.5", ChooseMoveToForgetPrompt,
+                ForgetScreenPressConfirm, ForgetScreenPressAttempts, ct);
+            await GameStateWait.UntilAsync(game, "the learned messages", s => s is not { Screen: GameScreen.BattleScript, Script: 276 }, LearnedMessagesStale, ct);
         }
 
         // A at "What?", then A at "evolved into".

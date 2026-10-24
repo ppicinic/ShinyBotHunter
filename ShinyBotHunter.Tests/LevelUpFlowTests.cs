@@ -85,6 +85,20 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["S.DoNotLearn", "S.DoNotLearn", "S.DoNotLearn"], game.Taps);
         }
 
+        // Slot 2 proves the slot-to-button mapping.
+        [Fact]
+        public async Task ReplaceTouchesYesThenTheSlotAndForget()
+        {
+            ScriptedGame game = new(
+            [
+                Prompt(GameScreen.BattleMoveLearnPrompt, 21), Script276, Prompt(GameScreen.BattleMoveLearnPrompt, 23), Script276, BattleOver, FieldFree,
+            ]);
+
+            await LevelUpFlow.ReplaceMoveAsync(game, game.Tap, 2, CancellationToken.None);
+
+            Assert.Equal(["S.NewMove", "S.NewMoveThree;W.20;S.32.172.5"], game.Taps);
+        }
+
         [Fact]
         public async Task EvolutionDeclineFollowsTheSceneStates()
         {
