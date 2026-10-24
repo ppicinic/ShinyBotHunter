@@ -172,7 +172,7 @@ test('HGSS Route 33 through the dashboard: train the lead one level so it evolve
     expect(backendLines(/\[LevelUp\].*Prompt = 23,.*SummaryState = 9,/).length, 'no [LevelUp] line at the confirm (summary state 9)').toBeGreaterThan(0)
     expect(backendLines(/Screen = Evolution,.*Prompt = 24,/).length, 'no line at evolution state 24').toBeGreaterThan(0)
     for (const prompt of [26, 28, 30, 37]) {
-      expect(backendLines(new RegExp(`\\[LevelUp\\] T\\.A at prompt ${prompt} `)).length, `no A at evolution state ${prompt}`).toBeGreaterThan(0)
+      expect(backendLines(new RegExp(`\\[LevelUp\\] (W\\.\\d+;)?T\\.A at prompt ${prompt} `)).length, `no A at evolution state ${prompt}`).toBeGreaterThan(0)
     }
     // LevelUpFlow.ProcessEvolutionMoveLearning logs the replace; EvolutionInit logs the moves read back from memory.
     expect(backendLines(/forgot Water Gun and learned Ice Fang/).length, 'no "forgot Water Gun and learned Ice Fang" in backend.log').toBeGreaterThan(0)
