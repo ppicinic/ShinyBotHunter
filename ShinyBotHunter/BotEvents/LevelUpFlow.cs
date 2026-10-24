@@ -281,9 +281,9 @@ namespace ShinyBotHunter.BotEvents
         // A at the stat gains, then A at the totals.
         internal static async Task PassStatBoxesAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
         {
-            await PressAtPromptAsync(game, tap, "T.A", StatBoxesPrompt, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StatBoxesPrompt, ct);
             await GameStateWait.UntilAsync(game, $"prompt {StatBoxesTotalsPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == StatBoxesTotalsPrompt, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, "T.A", StatBoxesTotalsPrompt, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StatBoxesTotalsPrompt, ct);
         }
 
         // No at "forget a move?", then yes at "give up learning it?".
@@ -301,7 +301,7 @@ namespace ShinyBotHunter.BotEvents
         {
             await PressAtYesNoAsync(game, tap, "S.NewMove", ForgetAMovePrompt, ct);
             await GameStateWait.UntilAsync(game, $"prompt {ChooseMoveToForgetPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == ChooseMoveToForgetPrompt, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, $"S.New{BattleOrchestratorEvent.MoveShorthands[slot]};W.20;S.32.172.5", ChooseMoveToForgetPrompt,
+            await PressAtPromptAsync(game, tap, $"{GameStateWait.MenuWait}S.New{BattleOrchestratorEvent.MoveShorthands[slot]};W.20;S.32.172.5", ChooseMoveToForgetPrompt,
                 ForgetScreenPressConfirm, ForgetScreenPressAttempts, ct);
             await GameStateWait.UntilAsync(game, "the learned messages", s => s is not { Screen: GameScreen.BattleScript, Script: 276 }, LearnedMessagesStale, ct);
         }
@@ -326,10 +326,10 @@ namespace ShinyBotHunter.BotEvents
         // then A at "did not learn".
         internal static async Task DeclineEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
         {
-            await PressAtPromptAsync(game, tap, "S.125.125.5", EvolutionForgetAMovePrompt, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "S.125.125.5", EvolutionForgetAMovePrompt, ct);
             await GameStateWait.UntilAsync(game, $"evolution state {StopTeachingPrompt}",
                 s => s.Screen == GameScreen.Evolution && s.Prompt == StopTeachingPrompt, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, "T.A", StopTeachingPrompt, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "T.A", StopTeachingPrompt, EvolutionPressConfirm, EvolutionPressAttempts, ct);
             await PressAtEvolutionStateAsync(game, tap, "T.A", DidNotLearnPrompt, ct);
         }
 
@@ -337,12 +337,12 @@ namespace ShinyBotHunter.BotEvents
         // then A at "Poof!", "forgot", "And..." and "learned".
         internal static async Task ReplaceEvolutionMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
         {
-            await PressAtPromptAsync(game, tap, "S.125.75.5", EvolutionForgetAMovePrompt, ct);
+            await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + "S.125.75.5", EvolutionForgetAMovePrompt, ct);
             await GameStateWait.UntilAsync(game, "the forget-move list",
                 s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryMoveList }, PromptStale, ct);
 
             // The row touch moves the app to the confirm in the same frame.
-            string row = $"S.Evo{BattleOrchestratorEvent.MoveShorthands[slot]}.5";
+            string row = $"{GameStateWait.MenuWait}S.Evo{BattleOrchestratorEvent.MoveShorthands[slot]}.5";
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(row); },
                 $"summary state {SummaryConfirm}", s => s is { Screen: GameScreen.Evolution, Prompt: EvolutionForgetMoveList, SummaryState: SummaryConfirm },
@@ -352,10 +352,11 @@ namespace ShinyBotHunter.BotEvents
             // The app fades out and frees itself (about 0.55 s) before evo.state leaves 23, so a retry lands only on the
             // button or the fade.
             presses = 0;
-            left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap("S.64.168.5"); },
+            string forget = GameStateWait.MenuWait + "S.64.168.5";
+            left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(forget); },
                 $"evolution state {EvolutionForgetMoveList} to close", s => s is { Screen: GameScreen.Evolution, Prompt: not EvolutionForgetMoveList },
                 EvolutionPressConfirm, EvolutionPressAttempts, ct);
-            Console.WriteLine($"[LevelUp] S.64.168.5 at summary state {SummaryConfirm} after {presses} press(es): {left}");
+            Console.WriteLine($"[LevelUp] {forget} at summary state {SummaryConfirm} after {presses} press(es): {left}");
 
             await PressAtEvolutionStateAsync(game, tap, "T.A", PoofPrompt, ct);
             await PressAtEvolutionStateAsync(game, tap, "T.A", ForgotPrompt, ct);
@@ -374,13 +375,13 @@ namespace ShinyBotHunter.BotEvents
                 s => s.Screen == GameScreen.Evolution && s.Prompt == state && (s.TextPrinter is null || s.AtTextArrow()), PromptStale, ct);
             if (ready.TextPrinter is null)
             {
-                await PressAtPromptAsync(game, tap, macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
+                await PressAtPromptAsync(game, tap, GameStateWait.MenuWait + macro, state, EvolutionPressConfirm, EvolutionPressAttempts, ct);
                 return;
             }
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
                 $"evolution state {state}'s printer to close", s => s.Prompt != state || s.TextPrinter is null,
-                PromptPressConfirm, PromptPressAttempts, ct, settleMs: 0);
+                PromptPressConfirm, PromptPressAttempts, ct);
             Console.WriteLine($"[LevelUp] {macro} at prompt {state} (printer {ready.TextPrinter}) after {presses} press(es): {left}");
             await GameStateWait.UntilAsync(game, $"evolution state {state} to end", s => s.Prompt != state, PromptStale, ct);
         }
@@ -391,8 +392,8 @@ namespace ShinyBotHunter.BotEvents
         // The battle's Yes/No menus (21, 34) are built only once the question above them has printed: the player
         // controller's Yes/No task (ov12_0225FA44) prints it, waits on TextPrinterCheckActive, then changes the menu. A touch
         // while it draws only speeds the text (lost at both prompts in the probe run 20261024-042051), so the press waits
-        // for the printer to be seen and then to clear, then settles for the built menu's input-ready gap; the retry stays as
-        // the safety net.
+        // for the printer to be seen and then to clear, then the macro waits out the built menu's input-ready gap; the retry
+        // stays as the safety net.
         private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
         {
             Stopwatch? atPrompt = null;
@@ -404,16 +405,15 @@ namespace ShinyBotHunter.BotEvents
             }, PromptStale, ct);
             await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to print",
                 s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt && s.TextPrinter is null, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
+            await PressAtPromptAsync(game, tap, GameStateWait.BattleMenuWait + macro, prompt, ct);
         }
 
         private static async Task PressAtPromptAsync(
-            IGameStateReader game, Func<string, Task> tap, string macro, int prompt, TimeSpan confirm, int attempts, CancellationToken ct,
-            int settleMs = GameStateWait.MenuSettleMs)
+            IGameStateReader game, Func<string, Task> tap, string macro, int prompt, TimeSpan confirm, int attempts, CancellationToken ct)
         {
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(game, () => { presses++; return tap(macro); },
-                $"prompt {prompt} to close", s => s.Prompt != prompt, confirm, attempts, ct, settleMs);
+                $"prompt {prompt} to close", s => s.Prompt != prompt, confirm, attempts, ct);
             Console.WriteLine($"[LevelUp] {macro} at prompt {prompt} after {presses} press(es): {left}");
         }
 

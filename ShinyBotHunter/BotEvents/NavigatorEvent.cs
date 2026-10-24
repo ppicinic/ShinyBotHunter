@@ -170,7 +170,7 @@ namespace ShinyBotHunter.BotEvents
             // Retried rather than settled first: an A eaten by the last step's animation is pressed again.
             await GameStateWait.PressUntilAsync(state.Bot.State, () => press(StartNurseScriptMacro), "the nurse's script to start",
                 s => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask,
-                ScriptPressConfirm, ScriptPressAttempts, cancellationToken, settleMs: 0);
+                ScriptPressConfirm, ScriptPressAttempts, cancellationToken);
             await PressThroughScriptAsync(state.Bot.State, addresses, press, "the nurse's script", ScriptStale, cancellationToken);
             state.SwapState(EventState.ReturnToStart);
         }
@@ -224,7 +224,7 @@ namespace ShinyBotHunter.BotEvents
                 bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
                 if (native == addresses.MenuChoiceNative && !yesGiven)
                 {
-                    await GameStateWait.PressUntilAsync(game, () => press(PressA), $"{waitingFor} Yes",
+                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + PressA), $"{waitingFor} Yes",
                         s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
                     Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
                     yesGiven = true;
@@ -235,7 +235,7 @@ namespace ShinyBotHunter.BotEvents
                     {
                         int presses = 0;
                         await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? PressB : PressA); }, $"{waitingFor} box",
-                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct, settleMs: 0);
+                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct);
                         Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8} (printer {snapshot.TextPrinter}) after {presses} press(es)");
                     }
                 }

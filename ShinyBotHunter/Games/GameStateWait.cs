@@ -31,28 +31,24 @@ namespace ShinyBotHunter.Games
             return last;
         }
 
-        // About 5 frames: the battle UI clears isTouchDisabled about 0.08 s after it builds a menu, so a press at the first
-        // snapshot that shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").
-        public const int MenuSettleMs = 85;
+        // Macro prefixes that wait before a press, in frames, so frame drops do not shift them as a wait in milliseconds
+        // would. The battle UI clears isTouchDisabled 5 frames after it builds a menu, so a press at the first snapshot that
+        // shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").
+        //
+        // BattleMenuWait: Run, Fight, the move slot, and the getter's Yes/No (21, 34) once its question's printer has
+        // cleared. ctx.sel turns 1 before the player's controller builds the menu, and the Yes/No menu is built only after
+        // its question prints, so 10 frames, double the gap, also covers the build.
+        public const string BattleMenuWait = "W.10;";
 
-        // The settle before a press on a battle menu: Run, Fight, the move slot, and the getter's Yes/No (21, 34) once its
-        // question's printer has cleared. ctx.sel turns 1 before the player's controller builds the menu, and the Yes/No
-        // menu is built only after its question prints; then isTouchDisabled clears about 80 ms after the build
-        // (pointer-discovery.md, "Battle menu input-ready gap"). 85 ms still lost the first Run press in hgss-route33 run
-        // 20261024-033056, and a press right after the question cleared was lost at 34 in hgss-route33-train run
-        // 20261024-044032.
-        public const int BattleMenuSettleMs = 300;
+        // MenuWait: the gap alone, for the stat boxes, the forget-move screen, the evolution scene's touches and 35, the
+        // summary app's touches and the field Yes.
+        public const string MenuWait = "W.5;";
 
-        // Waits settleMs once (none when 0), then presses and polls up to confirm for the expected snapshot; repeats up to
-        // attempts times.
+        // Presses, then polls up to confirm for the expected snapshot; repeats up to attempts times.
         public static async Task<GameSnapshot> PressUntilAsync(
             IGameStateReader reader, Func<Task> press, string waitingFor, Func<GameSnapshot, bool> expect,
-            TimeSpan confirm, int attempts, CancellationToken ct, int settleMs = MenuSettleMs)
+            TimeSpan confirm, int attempts, CancellationToken ct)
         {
-            if (settleMs > 0)
-            {
-                await Task.Delay(settleMs, ct);
-            }
             GameSnapshot last = default;
             for (int attempt = 0; attempt < attempts; attempt++)
             {

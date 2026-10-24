@@ -22,6 +22,7 @@ namespace ShinyBotHunter.Tests
 
         private const string A = "T.A;W.20";
         private const string B = "T.B;W.20";
+        private const string Yes = "W.5;T.A;W.20";
 
         // Each read takes the next snapshot; the last one repeats.
         private sealed class ScriptedReader(params GameSnapshot[] snapshots) : IGameStateReader
@@ -64,7 +65,7 @@ namespace ShinyBotHunter.Tests
             List<string> presses = [];
             await PressThrough(reader, presses);
 
-            Assert.Equal([A, A, B, B, B, B], presses);
+            Assert.Equal([A, Yes, B, B, B, B], presses);
         }
 
         [Fact]
@@ -149,7 +150,7 @@ namespace ShinyBotHunter.Tests
             List<string> presses = [];
             await PressThrough(reader, presses);
 
-            Assert.Equal([A, B], presses);
+            Assert.Equal([Yes, B], presses);
         }
 
         // An A pressed at the greeting lands on the menu between reads: the heal animation says Yes was given.
@@ -184,7 +185,7 @@ namespace ShinyBotHunter.Tests
 
             GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => PressThrough(reader, presses));
 
-            Assert.Equal([A, A, A], presses);
+            Assert.Equal([Yes, Yes, Yes], presses);
             Assert.Equal("the script Yes", e.WaitingFor);
         }
     }

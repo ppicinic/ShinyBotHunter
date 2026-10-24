@@ -68,7 +68,7 @@ namespace ShinyBotHunter.Tests
             await LevelUpFlow.PassStatBoxesAsync(game, game.Tap, CancellationToken.None);
             await LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["T.A", "T.A", "S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
+            Assert.Equal(["W.5;T.A", "W.5;T.A", "W.10;S.DoNotLearn", "W.10;S.DoNotLearnComplete"], game.Taps);
         }
 
         [Fact]
@@ -78,7 +78,7 @@ namespace ShinyBotHunter.Tests
 
             await LevelUpFlow.PassStatBoxesAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["T.A", "T.A", "T.A"], game.Taps);
+            Assert.Equal(["W.5;T.A", "W.5;T.A", "W.5;T.A"], game.Taps);
         }
 
         [Fact]
@@ -90,7 +90,7 @@ namespace ShinyBotHunter.Tests
                 () => LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None));
 
             Assert.Equal("prompt 21 to close", e.WaitingFor);
-            Assert.Equal(["S.DoNotLearn", "S.DoNotLearn", "S.DoNotLearn"], game.Taps);
+            Assert.Equal(["W.10;S.DoNotLearn", "W.10;S.DoNotLearn", "W.10;S.DoNotLearn"], game.Taps);
         }
 
         // The Yes/No menus are built once their question has printed; the drawing reads at 21 and 34 get no tap.
@@ -106,7 +106,7 @@ namespace ShinyBotHunter.Tests
 
             await LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
+            Assert.Equal(["W.10;S.DoNotLearn", "W.10;S.DoNotLearnComplete"], game.Taps);
         }
 
         // The first read at 34 comes before the question's printer exists; the tap waits for the printer to appear and clear.
@@ -124,7 +124,7 @@ namespace ShinyBotHunter.Tests
 
             await LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
+            Assert.Equal(["W.10;S.DoNotLearn", "W.10;S.DoNotLearnComplete"], game.Taps);
         }
 
         // Slot 2 proves the slot-to-button mapping.
@@ -138,7 +138,7 @@ namespace ShinyBotHunter.Tests
 
             await LevelUpFlow.ReplaceMoveAsync(game, game.Tap, 2, CancellationToken.None);
 
-            Assert.Equal(["S.NewMove", "S.NewMoveThree;W.20;S.32.172.5"], game.Taps);
+            Assert.Equal(["W.10;S.NewMove", "W.5;S.NewMoveThree;W.20;S.32.172.5"], game.Taps);
         }
 
         [Fact]
@@ -150,7 +150,7 @@ namespace ShinyBotHunter.Tests
             await LevelUpFlow.ReachEvolutionForgetPromptAsync(game, game.Tap, CancellationToken.None);
             await LevelUpFlow.DeclineEvolutionMoveAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "S.125.125.5", "T.A", "T.A"], game.Taps);
+            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "W.5;S.125.125.5", "W.5;T.A", "T.A"], game.Taps);
         }
 
         // Slot 2 proves the slot-to-row mapping.
@@ -170,7 +170,7 @@ namespace ShinyBotHunter.Tests
             await LevelUpFlow.ReachEvolutionForgetPromptAsync(game, game.Tap, CancellationToken.None);
             await LevelUpFlow.ReplaceEvolutionMoveAsync(game, game.Tap, 2, CancellationToken.None);
 
-            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "S.125.75.5", "S.EvoMoveThree.5", "S.64.168.5", "T.A", "T.A", "T.A", "T.A"], game.Taps);
+            Assert.Equal(["T.A", "T.A", "T.A", "T.A", "W.5;S.125.75.5", "W.5;S.EvoMoveThree.5", "W.5;S.64.168.5", "T.A", "T.A", "T.A", "T.A"], game.Taps);
         }
 
         [Fact]
@@ -210,7 +210,7 @@ namespace ShinyBotHunter.Tests
 
             await LevelUpFlow.EvolveAsync(game, game.Tap, CancellationToken.None);
 
-            Assert.Equal(["T.A", "T.A", "T.A"], game.Taps);
+            Assert.Equal(["W.5;T.A", "W.5;T.A", "W.5;T.A"], game.Taps);
         }
     }
 }

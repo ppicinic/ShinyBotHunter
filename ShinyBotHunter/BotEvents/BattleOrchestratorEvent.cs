@@ -139,10 +139,9 @@ namespace ShinyBotHunter.BotEvents
             GameSnapshot left = await GameStateWait.PressUntilAsync(state.Bot.State, async () =>
             {
                 presses++;
-                state.Bot.RunMacroString("S.Run.3");
+                state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.Run.3");
                 await state.Bot.WaitForMacroAsync(ct);
-            }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct,
-                GameStateWait.BattleMenuSettleMs);
+            }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
             Console.WriteLine($"[Battle] Run left the menu after {presses} press(es): {left}");
             state.SwapState(EventState.WaitForMovesEnd);
         }
@@ -245,14 +244,14 @@ namespace ShinyBotHunter.BotEvents
                 Func<Task> press = async () =>
                 {
                     presses++;
-                    state.Bot.RunMacroString($"S.{moveStr}");
+                    state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.{moveStr}");
                     await state.Bot.WaitForMacroAsync(ct);
                 };
                 // The Fight press passes through BattleTurn before the move list is up, so only the list confirms it.
                 await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to open the move list",
-                    s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct, GameStateWait.BattleMenuSettleMs);
+                    s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
                 GameSnapshot chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, $"the {moveStr} press to leave the move list",
-                    s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct, GameStateWait.BattleMenuSettleMs);
+                    s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
                 Console.WriteLine($"[Battle] {moveStr} chosen after {presses} press(es): {chosen}");
                 state.State.Pop();
                 state.State.Push(EventState.WaitForMovesEnd);
