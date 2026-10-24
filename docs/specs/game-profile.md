@@ -183,7 +183,7 @@ public interface IOverworldReader
 }
 ```
 
-`HgssOverworldReader` is `HgssDataReader` minus the battle members: the same four reads through the address table, the `to_s16` decode kept. `Direction` is the existing enum in `PathfindingService.cs:102-108`, moved to `Games/Direction.cs`; the duplicate facing switch in `SpinEncounterEvent.cs:92-107` and `LocationService.cs:81-84` use it. `Overworld.WaitForReadyAsync` keeps its coordinate heuristic; it takes the reader instead of the bot.
+`HgssOverworldReader` is `HgssDataReader` minus the battle members: the same four reads through the address table, the `to_s16` decode kept. `Direction` is the existing enum in `PathfindingService.cs:102-108`, moved to `Games/Direction.cs`; the duplicate facing switch in `SpinEncounterEvent.cs:92-107` and `LocationService.cs:81-84` use it. `Overworld.WaitForReadyAsync` keeps its coordinate heuristic; it takes the reader instead of the bot. (Superseded 2026-10-23 by the state reader spec's S3, #140: it now waits for `FieldFree` on `IGameStateReader` with a 10 s stale.)
 
 There is one implementation. The interface exists because RS has none and `Bot` needs a type for the member; it is the test seam for `NavigatorEvent` tests (plan row 4.7), named as such in the commit per principle 2's exception.
 
