@@ -260,6 +260,19 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 2003, null, RunScripts, Printing), otherSlot);
         }
 
+        // The question above the battle's Yes/No menu, drawing, then gone.
+        [Theory]
+        [InlineData(PrinterTask, 0)]
+        [InlineData(0u, null)]
+        public async Task BattleMoveLearnPromptTextPrinter(uint printerTask, int? expected)
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, command: 22, script: 276, getter: Getter, getterState: 34, printerTask: printerTask));
+
+            Assert.Equal(GameScreen.BattleMoveLearnPrompt, snapshot.Screen);
+            Assert.Equal(34, snapshot.Prompt);
+            Assert.Equal(expected, snapshot.TextPrinter);
+        }
+
         [Fact]
         public async Task TextPrinterOnlyOnItsScreens()
         {
@@ -502,6 +515,7 @@ namespace ShinyBotHunter.Tests
         [InlineData("printer", 0u, GameScreen.Evolution)]
         [InlineData("printer", OutOfRange, GameScreen.Transitioning)]
         [InlineData("printerInBattle", OutOfRange, GameScreen.BattleMenu)]
+        [InlineData("printerAtMoveLearnPrompt", OutOfRange, GameScreen.Transitioning)]
         public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
             FakeMemoryClient memory = hop switch
@@ -525,6 +539,7 @@ namespace ShinyBotHunter.Tests
                 "scriptCtx1" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: pointer),
                 "printer" => Memory(app: App, state: 14, evoState: 12, printerTask: pointer),
                 "printerInBattle" => Memory(app: App, command: 5, sel: 1, printerTask: pointer),
+                "printerAtMoveLearnPrompt" => Memory(app: App, command: 22, script: 276, getter: Getter, getterState: 34, printerTask: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
             };
 

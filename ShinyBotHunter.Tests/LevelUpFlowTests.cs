@@ -93,6 +93,22 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["S.DoNotLearn", "S.DoNotLearn", "S.DoNotLearn"], game.Taps);
         }
 
+        // The Yes/No menus are built once their question has printed; the drawing reads at 21 and 34 get no tap.
+        [Fact]
+        public async Task NoTapWhileTheQuestionDraws()
+        {
+            GameSnapshot Asking(int prompt) => Prompt(GameScreen.BattleMoveLearnPrompt, prompt) with { TextPrinter = 0 };
+            ScriptedGame game = new(
+            [
+                Asking(21), Asking(21), Prompt(GameScreen.BattleMoveLearnPrompt, 21), Script276,
+                Asking(34), Asking(34), Asking(34), Prompt(GameScreen.BattleMoveLearnPrompt, 34), Menu,
+            ], waits: s => s.Prompt is not null && s.TextPrinter is null);
+
+            await LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
+        }
+
         // Slot 2 proves the slot-to-button mapping.
         [Fact]
         public async Task ReplaceTouchesYesThenTheSlotAndForget()

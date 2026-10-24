@@ -13,5 +13,5 @@ namespace ShinyBotHunter.Games
     // runs (env.script); Prompt on the prompts and Evolution; TaskFunction on FieldTask; Native on FieldTask while the
     // field script's innermost live context waits in a native; SummaryState on Evolution at evo.state 23 (the summary
     // app's proc_state); TextPrinter on Evolution and on FieldTask while a field script runs, pr.state of the screen's
-    // printer when its slot (evo.printer, env.printer) is 0 and not NULL.
+    // printer when its slot (evo.printer, env.printer) is 0 and not NULL, and on BattleMoveLearnPrompt, pr.state of slot 0.
 }

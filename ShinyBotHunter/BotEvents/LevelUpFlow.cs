@@ -283,9 +283,8 @@ namespace ShinyBotHunter.BotEvents
         // No at "forget a move?", then yes at "give up learning it?".
         internal static async Task DeclineMoveAsync(IGameStateReader game, Func<string, Task> tap, CancellationToken ct)
         {
-            await PressAtPromptAsync(game, tap, "S.DoNotLearn", ForgetAMovePrompt, PromptPressConfirm, PromptPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
-            await GameStateWait.UntilAsync(game, $"prompt {GiveUpLearningPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == GiveUpLearningPrompt, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, "S.DoNotLearnComplete", GiveUpLearningPrompt, PromptPressConfirm, PromptPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
+            await PressAtYesNoAsync(game, tap, "S.DoNotLearn", ForgetAMovePrompt, ct);
+            await PressAtYesNoAsync(game, tap, "S.DoNotLearnComplete", GiveUpLearningPrompt, ct);
         }
 
         // The top button (Yes) at "forget a move?", then the slot and Forget as one press on the forget-move screen, then the
@@ -294,10 +293,10 @@ namespace ShinyBotHunter.BotEvents
         // hitbox, where (104,172) would hit the new move's row (pointer-discovery.md, "The forget-move screen").
         internal static async Task ReplaceMoveAsync(IGameStateReader game, Func<string, Task> tap, int slot, CancellationToken ct)
         {
-            await PressAtPromptAsync(game, tap, "S.NewMove", ForgetAMovePrompt, PromptPressConfirm, PromptPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
+            await PressAtYesNoAsync(game, tap, "S.NewMove", ForgetAMovePrompt, ct);
             await GameStateWait.UntilAsync(game, $"prompt {ChooseMoveToForgetPrompt}", s => s.Screen is GameScreen.BattleExpPrompt or GameScreen.BattleMoveLearnPrompt && s.Prompt == ChooseMoveToForgetPrompt, PromptStale, ct);
             await PressAtPromptAsync(game, tap, $"S.New{BattleOrchestratorEvent.MoveShorthands[slot]};W.20;S.32.172.5", ChooseMoveToForgetPrompt,
-                ForgetScreenPressConfirm, ForgetScreenPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
+                ForgetScreenPressConfirm, ForgetScreenPressAttempts, ct);
             await GameStateWait.UntilAsync(game, "the learned messages", s => s is not { Screen: GameScreen.BattleScript, Script: 276 }, LearnedMessagesStale, ct);
         }
 
@@ -382,6 +381,18 @@ namespace ShinyBotHunter.BotEvents
 
         private static Task PressAtPromptAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
             => PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct);
+
+        // The battle's Yes/No menus (21, 34) are built only once the question above them has printed: the player
+        // controller's Yes/No task (ov12_0225FA44) prints it, waits on TextPrinterCheckActive, then changes the menu. A touch
+        // while it draws only speeds the text (lost at both prompts in the probe run 20261024-042051), so the press waits
+        // for the printer slot to clear and needs no settle. The retry stays, because hgss-route33-train run 20261024-035549
+        // lost three presses at 34 for a reason not yet found.
+        private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
+        {
+            await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to print",
+                s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt && s.TextPrinter is null, PromptStale, ct);
+            await PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct, settleMs: 0);
+        }
 
         private static async Task PressAtPromptAsync(
             IGameStateReader game, Func<string, Task> tap, string macro, int prompt, TimeSpan confirm, int attempts, CancellationToken ct,

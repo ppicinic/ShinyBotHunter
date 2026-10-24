@@ -147,8 +147,11 @@ namespace ShinyBotHunter.Games.Hgss
                 uint getterState = U32(r[GetterBlock].Bytes, 0);
                 if (getterState is StatBoxes or StatBoxesTotals)
                     return Snapshot(GameScreen.BattleExpPrompt) with { Prompt = (int)getterState };
+                // The battle controller's printer slot is not read; every battle message observed used slot 0.
                 if (getterState is ForgetAMove or ChooseMoveToForget or GiveUpLearning)
-                    return Snapshot(GameScreen.BattleMoveLearnPrompt) with { Prompt = (int)getterState };
+                    return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer)
+                        ? Snapshot(GameScreen.BattleMoveLearnPrompt) with { Prompt = (int)getterState, TextPrinter = printer }
+                        : Snapshot(GameScreen.Transitioning);
             }
             if (command == ScriptRunning) return Snapshot(GameScreen.BattleScript) with { Script = (int)U32(ctx, addresses.ScriptFileOffset) };
             if (command == WaitingForChoice)

@@ -35,12 +35,6 @@ namespace ShinyBotHunter.Games
         // snapshot that shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").
         public const int MenuSettleMs = 85;
 
-        // The settle before a press on a battle-UI menu that slides in: Run, Fight, the move slot, the getter's Yes/No at 21
-        // and 34, and the forget screen at 23. ctx.sel and getter.state turn before the menu is built, and isTouchDisabled
-        // clears about 80 ms after the build (pointer-discovery.md, "Battle menu input-ready gap"), so 85 ms still lost the
-        // first Run press in hgss-route33 run 20261024-033056 and every press at 34 in hgss-route33-train run 20261024-034812.
-        public const int BattleMenuSettleMs = 300;
-
         // Waits settleMs once (none when 0), then presses and polls up to confirm for the expected snapshot; repeats up to
         // attempts times.
         public static async Task<GameSnapshot> PressUntilAsync(
