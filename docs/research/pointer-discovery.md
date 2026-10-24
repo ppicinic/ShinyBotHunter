@@ -130,6 +130,8 @@ Fled battle:
 
 ## What this changes for the bot
 
+Status 2026-10-24: every row below is implemented on `feature/hgss-state-reader` by the [state reader spec](../specs/hgss-state-reader.md), rows S0 to S4 (epic #136), with these differences from the table: `Evolution` is `app.state` 14 only (13 is the battle-end teardown every battle passes through); Run is confirmed by `ctx.sel` leaving the menu and the outcome read afterwards, because `sel == 15` ("Can't escape!") is still decomp-only; the navigator's stall stays position-based but counts only while the field is free, and the warp and poison waits keep their reads with stale-timeouts; the Pokémon Center heal and the poison message are driven by the field-script chain below.
+
 | Today | Replace with | Why |
 |---|---|---|
 | `0x021E76D2 ∈ {0x41,0x97,0xC0}` for "in battle" and "battle over" | `app != NULL && app.ovyId == 12`; battle over when `ctx.command == 45` or `app == NULL` | The current byte depends on which overlay the battle happens to load and reads garbage during the swap. |
