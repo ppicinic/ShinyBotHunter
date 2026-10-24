@@ -1,7 +1,7 @@
 # Spec: HGSS game-state reader (follow-up to the game profile)
 
-Status: Draft, blocked on the [game profile spec](game-profile.md) P1 to P7 and on the QA scenarios in the [gate](#qa-gate)
-Last updated: 2026-10-22
+Status: Implemented on `feature/hgss-state-reader` (epic #136, 2026-10-23 to 24): rows S0 to S4, plus S2c, S2d and S2e (the post-evolution and in-battle move-learn paths from the 2026-10-23 spikes) and S3b (the door re-entry fix); divergences are in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-hgss-state-reader-2026-10-24)
+Last updated: 2026-10-24
 Owner: Phil
 Related: [game profile spec](game-profile.md), [pointer discovery](../research/pointer-discovery.md) (the source for every value here), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md), plan rows [5.3e and 6.2](../plans/2026-10-cleanup-and-hardening.md)
 
@@ -176,7 +176,7 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R4 | `[FS] + 0x692C == 14` = "evolution" | `HgssLegacyStateReader`; `LevelUpFlow.cs:384` | `app.state` through the same coincidence | `Screen == Evolution` (`app.state` 14) | 14 observed | `hgss-route33-evolve` |
 | R5 | `[FS] + 0x6930` → `+0xC14` foe count, `+0xC18` enemy block | `BattleOrchestratorEvent.PokemonDataPending` through `bot.Addresses.EnemyAnchor`, and `PokemonStateReader.GetPokemonBattleState` (the enemy block through the pointer-chain opcode from the same root; wrongly listed under R16 until 2026-10-22) | `app.setup` (`BattleSetup`) through the same coincidence; the `+0xC14`/`+0xC18` offsets inside it are right | root changes to `app.setup = [app + 0x18]`; the enemy block keeps being read with the pointer-chain opcode and parsed by `IBattlePokemonParser` / validated as today | observed | `hgss-route33` |
 | R6 | three racing polls in `WaitForMoveEnd` (R2, R3, and party HP 0) | `BattleOrchestratorEvent.cs:140-237` | timing guesses | one `UntilAsync(Screen is BattleMenu or FieldFree or FieldTask or BattleScript{6} or BattleExpPrompt or BattleMoveLearnPrompt)`; the app going ends the battle, not `BattleOver`, because the teardown passes through `BattleStarting` (S2a); HP is then read once to decide, not polled | menu, over, script 6, prompts observed | `hgss-route33-train` |
-| R7 | blind macros `W.325`, `W.1245`, 120-frame padding for level-up and move-learn | `LevelUpFlow.cs:17-49` | "reads during that menu crash" was the old byte reading garbage | press at `Prompt` 11/13 (A), 21 (yes/no), 23 (slot, then Forget at (32,172), as one press confirmed by leaving 23), 34 (yes/no) via `PressUntilAsync`, and nothing on the free slot; replaces `LearnMoveMacroTemplate`, `FreeSlotMacro` and `LevelUpPrePromptMacro` (S2e) | observed | `hgss-route33-train`, `hgss-route33-train-replace`, `hgss-route33-train-free` |
+| R7 | blind macros `W.325`, `W.1245`, 120-frame padding for level-up and move-learn | `LevelUpFlow` (the macros, deleted in S2b, S2c, S2d and S2e) | "reads during that menu crash" was the old byte reading garbage | press at `Prompt` 11/13 (A), 21 (yes/no), 23 (slot, then Forget at (32,172), as one press confirmed by leaving 23), 34 (yes/no) via `PressUntilAsync`, and nothing on the free slot; replaces `LearnMoveMacroTemplate`, `FreeSlotMacro` and `LevelUpPrePromptMacro` (S2e) | observed | `hgss-route33-train`, `hgss-route33-train-replace`, `hgss-route33-train-free` |
 | R8 | Run spammed with `W.3` while R1 holds | `BattleOrchestratorEvent.cs:130` macro `"W.10;S.Run.3;W.5;"` and the flee loop | no outcome check; "it's possible we won't run" TODO | `PressUntilAsync(Run, expect Screen != BattleMenu)`: the press is confirmed by `sel` changing (research doc, input-ready gap), and the turn-end wait then sees `BattleOver` with `Fled`; a failed escape comes back to `BattleMenu` and `DecideAction` flees again; branching on `BattleMessage` (sel 15, "Can't escape!") waits for it to be observed | fled observed; sel 15 decomp only | `hgss-route33` |
 | R9 | coordinates non-zero = "overworld ready" | `Overworld.WaitForReadyAsync` | heuristic on the fade-in | `Screen == FieldFree` | observed around battles only | `hgss-route33`, `hgss-navigate-heal-return` |
 | R10 | position unchanged 2.5 s = "stalled / blocked" | `NavigatorEvent.WaitForStallAsync` | cannot tell a wall from a script or message | stall only while `Screen == FieldFree`; `FieldTask` means talking or warping, not blocked. The stall itself stays a timeout: the pointer that says "this step was refused" (the player's map object, see the decomp-only table) is deferred to a later spike with a save beside the Violet City phantom NPC | scripts and warps observed 2026-10-22 | `hgss-navigate-heal-return` |
@@ -261,7 +261,7 @@ S2 is over the size tripwire by design (one PR so the swap and the loops it chan
 
 ### QA gate
 
-S2 opens only when every scenario below passes on the legacy reader (so the harness is known good) and merges only when every one passes on the chain reader, with the run folders linked from the PR.
+Every task that touched a read, a wait or a press ran its scenarios on the real emulator, one at a time, with the run folders linked from its PR; S2a also ran its three on the legacy reader first. As run (2026-10-23 to 24):
 
 | Scenario | Save | Proves |
 |---|---|---|
@@ -269,11 +269,16 @@ S2 opens only when every scenario below passes on the legacy reader (so the harn
 | `hgss-route33-train` (exists, #111; one level-up through the UI, new move declined) | `hgss.qa-route33` | R6, R7: scripts, turn, exp prompts 11/13, move-learn 21 and 34 on the decline path |
 | `hgss-route33-train-replace` (#154) | `Pokemon HeartGold2` clone (lead one EXP short, move pending), answering yes with Tackle | R7: getter 23 and the learned path |
 | `hgss-route33-train-free` (#154) | `Pokemon HeartGold9` (the same lead with three moves) | R7: the in-battle free slot, no press after 13 |
-| `hgss-route33-evolve` (new) | `Pokemon HeartGold3` clone | R4, R13 |
-| `hgss-navigate-heal-return` (planned in the QA spec) | `hgss.qa-heal-lead-fainted` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
+| `hgss-route33-evolve` (#137) | `Pokemon HeartGold3` clone | R4, R13; the evolution scene states 3 and 12 |
+| `hgss-route33-evolve-learn` (#139, #149) | `Pokemon HeartGold4` (Totodile Lv 20, four moves; Ice Fang offered to Croconaw), declining | the post-evolution decline on the evolution scene states 15, 17, 21, 35, 36 |
+| `hgss-route33-evolve-learn-replace` (#152) | `Pokemon HeartGold4`, answering Water Gun | the post-evolution yes path: the summary app states 8 and 9, states 24 to 31, 37 |
+| `hgss-route33-evolve-learn-free` (#152) | `Pokemon HeartGold10` (the same lead with three moves) | the post-evolution free slot: 13 → 37 → 38 |
+| `hgss-heal-variants` (#141) | `Pokemon HeartGold6`, `7`, `8` in turn | R18: the script-chain heal with exactly one Yes on the fainted-lead, fainted-slot-2 and Pokérus copies |
+| `hgss-poison-walk` (#141) | `Pokemon HeartGold5` | R19: script 2003 cleared by the press loop and the walk resumed |
+| `hgss-navigate-heal-return` (#140) | `hgss.qa-heal-lead-fainted` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
 | `hgss-togepi-egg-hatch` (planned) | an egg save, to make | the egg loop unchanged under the new field signals |
 
-The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are added to the QA spec's initial set in S1's PR, as Playwright specs beside the two that exist. The two PKHeX clones are already in `C:\BizHawk-2.11\NDS\SaveRAM` on the dev machine and move to `../shinybothunterqasaves/` with README rows per the QA decision.
+`hgss-route33-fight-learn` (the yes path answered in battle) was superseded by `hgss-route33-train-replace` once Discord was live. The saves are PKHeX clones of the Route 33 save and live in `C:\BizHawk-2.11\NDS\SaveRAM` on the dev machine and move to `../shinybothunterqasaves/` with README rows per the QA decision.
 
 ## Test cases
 
@@ -306,7 +311,7 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 
 ## Open questions
 
-> **OPEN:** whether S2 ships as one PR over the size tripwire or as S2a/S2b. Owner's call when the task issue is opened (opened as S2a #138 and S2b #139 on 2026-10-22).
+None. (S2 shipped as S2a-0, S2a and S2b, then S2c to S2e for the move-learn paths; 2026-10-22 to 24.)
 
 ## Changelog
 
@@ -328,3 +333,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-24: S3b (#155): after a portal crossing the navigator skips the spawn node (R11), because a Center exit that lands one tile past it walked back onto the door and re-entered.
 - 2026-10-24: S2d (#152): the thirteenth block `summary` (`[evo + 0x38] + 0x14`, 4 bytes) read only at `evo.state` 23; `Evolution` carries the summary app's proc_state in `SummaryState` (R27); `EvolutionLearnMoveMacroTemplate` and `EvolutionFreeSlotMacro` replaced by presses at the scene and summary states (R20, new timeout row); the yes path (22-31) and the free slot (37, 38, entered from 12 on `Pokemon HeartGold10`) leave the decomp-only table.
 - 2026-10-24: S2e (#154): getter 23 observed (`BattleMoveLearnPrompt`, R7); `LearnMoveMacroTemplate`, `FreeSlotMacro` and `LevelUpPrePromptMacro` replaced by the Yes press at 21 and the slot-and-Forget pair at 23, and nothing on the free slot; two timeout rows (the forget-move screen, the learned messages at 30 s); the decomp-only getter row narrowed to the passing states; the QA gate's `hgss-route33-fight-learn` is `hgss-route33-train-replace`, with `hgss-route33-train-free` beside it.
+- 2026-10-24: closing pass: status Implemented; the QA gate table lists the scenarios as run (evolve-learn, -replace, -free, train-replace, train-free, heal variants, poison walk, navigate-heal-return); `hgss-route33-fight-learn` superseded by `hgss-route33-train-replace`; the open question closed; R7's stale line range removed.
