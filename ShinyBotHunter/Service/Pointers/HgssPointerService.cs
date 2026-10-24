@@ -159,7 +159,7 @@ namespace ShinyBotHunter.Service.Pointers
         public uint RunScriptsTask => 0x0203FF45;
 
         // The heal animation child task the nurse script pushes after Yes (taskman points at it, the script task is
-        // underneath); not named in pointer-discovery.md; root (revision-dependent; overlay, rev 0); observed;
+        // underneath), listed in pointer-discovery.md "Field scripts" without a decomp symbol; root (revision-dependent; overlay, rev 0); observed;
         // QA: hgss-heal-variants
         public uint HealAnimationTask => 0x0224BB91;
 
