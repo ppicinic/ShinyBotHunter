@@ -31,6 +31,22 @@ namespace ShinyBotHunter.Games
             return last;
         }
 
+        // For a menu the game builds only once the message above it has printed (the battle menu's "What will X do?", the
+        // getter's Yes/No questions): waits until the printer is seen at the screen, or seenWithin has passed there (a
+        // message that printed between two polls), then until the screen shows no printer. Returns that snapshot.
+        public static async Task<GameSnapshot> WaitForPrinterSeenThenClearedAsync(
+            IGameStateReader reader, string waitingFor, Func<GameSnapshot, bool> atScreen, TimeSpan seenWithin, TimeSpan stale, CancellationToken ct)
+        {
+            Stopwatch? sinceAtScreen = null;
+            await UntilAsync(reader, $"{waitingFor}'s message to start printing", s =>
+            {
+                if (!atScreen(s)) return false;
+                sinceAtScreen ??= Stopwatch.StartNew();
+                return s.TextPrinter is not null || sinceAtScreen.Elapsed >= seenWithin;
+            }, stale, ct);
+            return await UntilAsync(reader, $"{waitingFor}'s message to print", s => atScreen(s) && s.TextPrinter is null, stale, ct);
+        }
+
         // Macro prefixes that wait before a press, in frames, so frame drops do not shift them as a wait in milliseconds
         // would. The battle UI clears isTouchDisabled 5 frames after it builds a menu, so a press at the first snapshot that
         // shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").

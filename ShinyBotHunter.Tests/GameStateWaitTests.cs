@@ -64,6 +64,32 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Script(20), snapshot);
         }
 
+        // The menu's message is not up at the first read, then draws, then is gone; the wait returns at the gone read.
+        [Fact]
+        public async Task PrinterSeenThenClearedReturnsAfterTheDraw()
+        {
+            GameSnapshot menu = Screen(GameScreen.BattleMenu);
+            Queue<GameSnapshot> snapshots = new([menu, menu with { TextPrinter = 0 }, menu with { TextPrinter = 0 }, menu with { Script = 1 }]);
+            ScriptedReader reader = new(() => snapshots.Count > 1 ? snapshots.Dequeue() : snapshots.Peek());
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), CancellationToken.None);
+
+            Assert.Equal(menu with { Script = 1 }, snapshot);
+        }
+
+        // A message that printed between two polls is never seen; the wait falls through once the bound has passed.
+        [Fact]
+        public async Task PrinterNeverSeenFallsThroughAfterTheBound()
+        {
+            ScriptedReader reader = new(() => Screen(GameScreen.BattleMenu));
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(5), CancellationToken.None);
+
+            Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
+        }
+
         [Fact]
         public async Task PressRetriesThenThrows()
         {

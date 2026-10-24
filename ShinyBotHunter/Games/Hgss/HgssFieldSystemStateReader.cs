@@ -158,7 +158,11 @@ namespace ShinyBotHunter.Games.Hgss
             {
                 switch (ctx[addresses.MenuStateOffset])
                 {
-                    case MainMenu: return Snapshot(GameScreen.BattleMenu);
+                    // "What will X do?" prints at sel 1 before the menu is built; its printer slot is not read, slot 0 is.
+                    case MainMenu:
+                        return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer)
+                            ? Snapshot(GameScreen.BattleMenu) with { TextPrinter = printer }
+                            : Snapshot(GameScreen.Transitioning);
                     case MoveList: return Snapshot(GameScreen.BattleMoveList);
                     case MessageShown: return Snapshot(GameScreen.BattleMessage);
                 }

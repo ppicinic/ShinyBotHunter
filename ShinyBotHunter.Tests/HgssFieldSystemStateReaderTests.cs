@@ -273,14 +273,26 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(expected, snapshot.TextPrinter);
         }
 
+        // "What will X do?" above the battle menu, drawing, then gone.
+        [Theory]
+        [InlineData(PrinterTask, 0)]
+        [InlineData(0u, null)]
+        public async Task BattleMenuTextPrinter(uint printerTask, int? expected)
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, command: 5, sel: 1, printerTask: printerTask));
+
+            Assert.Equal(GameScreen.BattleMenu, snapshot.Screen);
+            Assert.Equal(expected, snapshot.TextPrinter);
+        }
+
         [Fact]
         public async Task TextPrinterOnlyOnItsScreens()
         {
-            GameSnapshot menu = await SnapshotOf(Memory(app: App, command: 5, sel: 1, printerTask: PrinterTask, printerState: 2));
+            GameSnapshot moveList = await SnapshotOf(Memory(app: App, command: 5, sel: 4, printerTask: PrinterTask, printerState: 2));
             GameSnapshot free = await SnapshotOf(Memory(printerTask: PrinterTask, printerState: 2));
 
-            Assert.Equal(GameScreen.BattleMenu, menu.Screen);
-            Assert.Null(menu.TextPrinter);
+            Assert.Equal(GameScreen.BattleMoveList, moveList.Screen);
+            Assert.Null(moveList.TextPrinter);
             Assert.Equal(GameScreen.FieldFree, free.Screen);
             Assert.Null(free.TextPrinter);
         }
@@ -514,7 +526,8 @@ namespace ShinyBotHunter.Tests
         [InlineData("scriptCtx1", OutOfRange, GameScreen.Transitioning)]
         [InlineData("printer", 0u, GameScreen.Evolution)]
         [InlineData("printer", OutOfRange, GameScreen.Transitioning)]
-        [InlineData("printerInBattle", OutOfRange, GameScreen.BattleMenu)]
+        [InlineData("printerInBattle", OutOfRange, GameScreen.BattleMoveList)]
+        [InlineData("printerAtBattleMenu", OutOfRange, GameScreen.Transitioning)]
         [InlineData("printerAtMoveLearnPrompt", OutOfRange, GameScreen.Transitioning)]
         public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
@@ -538,7 +551,8 @@ namespace ShinyBotHunter.Tests
                 "scriptCtx" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: pointer, scriptCtx1: pointer),
                 "scriptCtx1" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: pointer),
                 "printer" => Memory(app: App, state: 14, evoState: 12, printerTask: pointer),
-                "printerInBattle" => Memory(app: App, command: 5, sel: 1, printerTask: pointer),
+                "printerInBattle" => Memory(app: App, command: 5, sel: 4, printerTask: pointer),
+                "printerAtBattleMenu" => Memory(app: App, command: 5, sel: 1, printerTask: pointer),
                 "printerAtMoveLearnPrompt" => Memory(app: App, command: 22, script: 276, getter: Getter, getterState: 34, printerTask: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
             };

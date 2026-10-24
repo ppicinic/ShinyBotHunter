@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using ShinyBotHunter.Bot;
+﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -396,15 +395,8 @@ namespace ShinyBotHunter.BotEvents
         // stays as the safety net.
         private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
         {
-            Stopwatch? atPrompt = null;
-            await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to start printing", s =>
-            {
-                if (s.Screen != GameScreen.BattleMoveLearnPrompt || s.Prompt != prompt) return false;
-                atPrompt ??= Stopwatch.StartNew();
-                return s.TextPrinter is not null || atPrompt.Elapsed >= QuestionPrintStart;
-            }, PromptStale, ct);
-            await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to print",
-                s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt && s.TextPrinter is null, PromptStale, ct);
+            await GameStateWait.WaitForPrinterSeenThenClearedAsync(game, $"prompt {prompt}",
+                s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt, QuestionPrintStart, PromptStale, ct);
             await PressAtPromptAsync(game, tap, GameStateWait.BattleMenuWait + macro, prompt, ct);
         }
 
