@@ -8,13 +8,6 @@ namespace ShinyBotHunter.BotEvents
 {
     public class LevelUpFlow
     {
-        // Advances dialogue from right after the level-up fanfare to the point where the
-        // move-learn decision (or auto-learn text) is ready to act on.
-        private const string LevelUpPrePromptMacro = "W.340";
-
-        // Macro driving the free-slot learn, post level-up.
-        private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
-
         // The stale-timeout table's rows for the exp and move-learn prompts: 15 s between prompts, and a
         // press at a prompt confirmed within 1000 ms, 3 attempts.
         private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
@@ -209,11 +202,9 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else
                 {
-                    // The mon has an open move slot, so the game auto-learns the move and just
-                    // needs the "Pokemon learned Move!" text advanced.
+                    // The game learns the move at getter 15 and prints it at 36, and neither waits for input in battle, so
+                    // nothing is pressed; WaitForLevelUpOrField is the next wait.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
-                    state.Bot.RunMacroString($"{LevelUpPrePromptMacro};{FreeSlotMacro}");
-                    await state.Bot.WaitForMacroAsync(ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                 }
             }
