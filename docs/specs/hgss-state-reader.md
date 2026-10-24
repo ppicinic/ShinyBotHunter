@@ -78,6 +78,18 @@ Members added to `HgssPointerService` in S1 (kind per the profile spec's FR-9; a
 | `GetterStateOffset` | `getter + 0x28` | offset | `battle_command.c:5871-5911` |
 | `OutcomeOffset` | `BS + 0x2420` (u8) | offset | 1 won, 2 lost, 3 draw, 4 caught, 5 fled; bits `0x40`/`0x80` flee in progress |
 | `BattleOverlayId` | 12 | constant | |
+| `ScriptEnvironmentOffset` | `taskman + 0x0C` | offset | `task.env`, the `ScriptEnvironment` while the task function is `Task_RunScripts`. Added in S4 (#141), as are the rows below |
+| `ScriptEnvironmentCheckOffset`, `ScriptEnvironmentMagic` | `env + 0x00`, 222271 | offset, constant | `env.check`, the environment's magic |
+| `ScriptIdOffset` | `env + 0x0A` (u16) | offset | `env.script`: 1 the map's NPC script, 2003 `std_survive_poisoning` |
+| `ScriptContextsOffset` | `env + 0x38` | offset | `env.ctx[i]` at `+ 4*i`, i in 0..2 |
+| `ScriptContextModeOffset` | `ctx + 0x01` (u8) | offset | 0 stopped, 1 running bytecode, 2 waiting in a native |
+| `ScriptContextNativeOffset` | `ctx + 0x04` | offset | the native the context waits in while mode is 2 |
+| `RunScriptsTask` | `0x0203FF45` | root | `Task_RunScripts` |
+| `HealAnimationTask` | `0x0224BB91` | root | the heal animation child task the nurse script pushes after Yes |
+| `SurvivePoisoningScript` | 2003 | constant | `std_survive_poisoning` |
+| `PrintingNative` | `0x021EF349` | root | `ov01_021EF348` (from `ScrCmd_NPCMsg`): a message printing or waiting at the arrow |
+| `MenuChoiceNative` | `0x020477C1` | root | `sub_020477C0` (`ScrCmd_GetMenuChoice`): a Yes/No or list menu |
+| `WaitButtonNative`, `WaitButtonOrDelayNative`, `WaitButtonOrDpadNative` | `0x02041075`, `0x02041041`, `0x020410F1` | root | `sub_02041074` (`ScrCmd_WaitButton`), `WaitButtonOrDelay`, `WaitButtonOrDpad`; decomp only |
 
 Deleted in S2: `BattleIndicator`, `BattleMenuState`, `BattleStateOffset`, `EnemyAnchor` (the as-built names of the profile spec's `BattleMenuStateOffset` and `EnemySetupOffset`). `EnemyAnchor` and `BattleMenuState` are also declared on `IPointerService` and implemented with RS addresses in `RsPointerService`, which no RS code reads (no wild-encounter capability); they go from all three in S2a-0 (#145).
 
@@ -89,7 +101,7 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 |---|---|---|---|
 | `Transitioning` | a block the snapshot needs is not `Ok` (FR-3) | | by construction |
 | `FieldFree` | `app == 0 && taskman == 0 && mapReady == 1 && paused == 0` | | observed around battles; scripts, menus, warps not yet |
-| `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]` | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5` |
+| `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]`; while it is `Task_RunScripts` (`0x0203FF45`), also `Script = env.script` and `Native = ctx.native` of the innermost live context when its mode is 2 (S4) | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5`; scripts and their natives (research doc, field scripts) |
 | `OtherApp` | `app != 0 && ovyId != 12` | | decomp only |
 | `BattleStarting` | `ovyId == 12 && state < 9` | | observed (3, 8) |
 | `Evolution` | `ovyId == 12 && state == 14` | `Prompt = [[app.setup + 0x198] + 0x64]` (`evo.state`, every value) | 14 observed; 13 is the evolution check every battle end passes through (seen on a flee, 2026-10-22); `Prompt` observed 2026-10-23 (research) |
@@ -106,7 +118,7 @@ Precedence inside `state == 9`: command 45, then the getter prompts (11/13, 21, 
 
 ### The walk
 
-One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these eight blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset):
+One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these twelve blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset):
 
 | Block | Chain from `0x021D4158` | Length | Used for |
 |---|---|---|---|
@@ -118,13 +130,17 @@ One `ReadChainBlocksAsync` request per snapshot, every block from the same frame
 | `getter` | `0, 4, 0x1C, 0x30, 0x178, 0x28` | 4 | getter state |
 | `outcome` | `0, 4, 0x1C, 0x2420` | 1 | outcome |
 | `evo` | `0, 4, 0x18, 0x198, 0` | 0x65 | evo.state `+0x64` |
+| `env` | `0x10, 0x0C, 0` | 0x0C | env.check `+0`, env.script `+0x0A` |
+| `ctx0` | `0x10, 0x0C, 0x38, 0` | 8 | ctx.mode `+1`, ctx.native `+4` |
+| `ctx1` | `0x10, 0x0C, 0x3C, 0` | 8 | as `ctx0` |
+| `ctx2` | `0x10, 0x0C, 0x40, 0` | 8 | as `ctx0` |
 
 Hop lists are written as the opcode takes them: hop *n* reads the pointer at the current address and adds its offset, so `0, 4, 0` is "read `FS` at the anchor, read `sub0` at `FS` and step to `sub0 + 4`, read `app` there and step to `app + 0`".
 
 Classification, in this order, each step using only blocks whose status is `Ok`:
 
 1. `fs` or `sub0` not `Ok`: `Transitioning` (the roots are mid-write or the game is not in the field system yet).
-2. `app == 0`: the field rows of the state table from `fs`, `sub0` and `task`. A `task` block that is `NullPointer` is "no task running"; any other failed status with `taskman != 0` is `Transitioning`. A field state matching no row (for example `mapReady 0` with a task, seen on every battle entry and exit) is `Transitioning`.
+2. `app == 0`: the field rows of the state table from `fs`, `sub0` and `task`. A `task` block that is `NullPointer` is "no task running"; any other failed status with `taskman != 0` is `Transitioning`. A field state matching no row (for example `mapReady 0` with a task, seen on every battle entry and exit) is `Transitioning`. When the task function is `Task_RunScripts`, `env` not `Ok` or `env.check != 222271` is `Transitioning`; otherwise `Script` is `env.script`, and `Native` comes from the highest context whose block is not `NullPointer` (the map's NPC script waits in `WaitStd` in ctx 0 while the nurse works in ctx 1): that block not `Ok` is `Transitioning`, mode 2 gives its native, any other mode none. A child task on top of the script (the fade `0x02205B15`, the heal animation `0x0224BB91`) carries only its `TaskFunction`.
 3. `app != 0` and `app` not `Ok`: `Transitioning`. Otherwise `OtherApp`, `BattleStarting`, `Evolution` and the `state > 9` form of `BattleOver` decide from `app`; `Outcome` comes from `outcome` when that block is `Ok`, else null. `Evolution` needs `evo` `Ok`, else `Transitioning`; `evo` is ignored at any other state because it is freed after `done`.
 4. `state == 9` and `ctx` not `Ok`: `Transitioning`. Otherwise the precedence inside `state == 9` from the state table, with the getter prompts read from `getter` when `ctx.getter != 0` and `getter` is `Ok` (a failed `getter` block with a non-null getter pointer is `Transitioning`).
 
@@ -167,9 +183,15 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R15 | starter preview block `[FS] + 0x1BC00`, stride `0xEC` | `ShinyStarterEvent` | not traced | keep | n/a | `hgss-starter-shiny` |
 | R16 | validated party, boxes, battle mirrors (`+0x25E2C`, `+0x25EEC`, `+0x2AAB0`) | `PokemonStateReader` through ApiHawk opcodes 3 and 4 | correct; parsing and retry on the emulator side by decision | keep | n/a | all |
 | R17 | `M.` macro coordinate and map-guard reads inside ApiHawk | `CommandServer` | correct | keep | n/a | all |
-| R18 | heal at the Pokémon Center: blind macro, `HealPokemonFainted` when any member is fainted | `NavigatorEvent` heal step, `heal_pokemon*.yaml` | the nurse script's extra box depends on the **lead** changing, not on any faint; Pokérus and trainer-card stars add boxes the macros do not know (research doc, field scripts) | face the nurse, then loop on the script chain: `[FS+0x10]` → task `0x0203FF45` or its children → env `[taskman+0xC]` (magic 222271) → contexts `[env+0x38+4i]`; press A while a context waits in `0x021EF349` (printing) or `0x02041075` (wait button) until the menu native `0x020477C1` appears, one A there (Yes), then B for every later wait so a stray press can never start a second conversation or a second heal; nothing during movement natives; done when the environment is gone and `FieldFree`; stale-timeout 20 s | observed on fainted lead, fainted non-lead and Pokérus copies | `hgss-heal-variants` |
-| R19 | poison on the field: party diff every second, then the `ClearFaintText` macro | `NavigatorEvent.WaitForPoisonEventAsync`, `clear_faint_text.yaml` | `std_survive_poisoning` (script 2003) as a field script; poison stops at 1 HP, nothing faints on the field | `FieldTask` with the script task and `env.script == 2003`; same press loop as R18 (two A presses observed) | observed | `hgss-poison-walk` |
+| R18 | heal at the Pokémon Center: blind macro, `HealPokemonFainted` when any member is fainted | `NavigatorEvent` heal step, `heal_pokemon*.yaml` | the nurse script's extra box depends on the **lead** changing, not on any faint; Pokérus and trainer-card stars add boxes the macros do not know (research doc, field scripts) | face the nurse, then loop on the script chain: `[FS+0x10]` → task `0x0203FF45` or its children → env `[taskman+0xC]` (magic 222271) → contexts `[env+0x38+4i]`; press A while a context waits in `0x021EF349` (printing) or `0x02041075` (wait button) until the menu native `0x020477C1` appears, one A there (Yes), then B for every later wait so a stray press can never start a second conversation or a second heal; nothing during movement natives; done when the environment is gone and `FieldFree`; stale-timeout 20 s. Reads R21 to R26; the loop is `NavigatorEvent.PressThroughScriptAsync` (S4), which also counts the Yes as given once the heal animation task is seen | observed on fainted lead, fainted non-lead and Pokérus copies | `hgss-heal-variants` |
+| R19 | poison on the field: party diff every second, then the `ClearFaintText` macro | `NavigatorEvent.WaitForPoisonEventAsync`, `clear_faint_text.yaml` | `std_survive_poisoning` (script 2003) as a field script; poison stops at 1 HP, nothing faints on the field | `FieldTask` with the script task and `env.script == 2003` (R22); same press loop as R18 (two A presses observed). Detection stays the R12 party diff | observed | `hgss-poison-walk` |
 | R20 | evo.state `[[app.setup + 0x198] + 0x64]` | `HgssFieldSystemStateReader` (`Evolution`'s `Prompt`); `LevelUpFlow` evolution presses | replaces `EvolutionMacro`, `EvolutionLearnMoveInit` and `EvolutionDoNotLearnMacro` | press at the waiting `evo.state` values per the research doc's press table; nothing at 8 | observed | `hgss-route33-evolve`, `hgss-route33-evolve-learn` |
+| R21 | env.check `[[taskman + 0x0C] + 0x00] == 222271` | `HgssFieldSystemStateReader` (`env` block) | the script environment is live, not freed | new (S4): a script task without the magic is `Transitioning` | observed | `hgss-heal-variants`, `hgss-poison-walk` |
+| R22 | env.script `[[taskman + 0x0C] + 0x0A]` (u16) | `HgssFieldSystemStateReader` (`FieldTask`'s `Script`); `NavigatorEvent.ClearPoisonScriptAsync` | the running script's id | new (S4): 2003 confirms the poison message before the press loop | 1 and 2003 observed | `hgss-heal-variants`, `hgss-poison-walk` |
+| R23 | env.ctx[i] `[[taskman + 0x0C] + 0x38 + 4i]`, i in 0..2 | `HgssFieldSystemStateReader` (`ctx0` to `ctx2` blocks) | the script contexts; NULL when not live | new (S4): the highest live one gives `Native` | ctx 0 and 1 observed | `hgss-heal-variants`, `hgss-poison-walk` |
+| R24 | ctx.mode `[ctx + 0x01]` (u8) | `HgssFieldSystemStateReader` | 2 = waiting in a native | new (S4): `Native` only at mode 2 | observed | `hgss-heal-variants`, `hgss-poison-walk` |
+| R25 | ctx.native `[ctx + 0x04]` | `HgssFieldSystemStateReader` (`FieldTask`'s `Native`); `NavigatorEvent.PressThroughScriptAsync` | the native the context waits in | new (S4): A at printing and the wait-button natives, one A at the menu (Yes), then B; nothing at any other native | printing, menu, `WaitStd`, touch menu, `0x02041CA9` observed; wait-button natives decomp only | `hgss-heal-variants`, `hgss-poison-walk` |
+| R26 | task function `[taskman + 4]` against `0x0203FF45` and `0x0224BB91` | `HgssFieldSystemStateReader` (script qualifiers only under `Task_RunScripts`); `NavigatorEvent` (the nurse's script started; the heal animation means Yes was given) | the script task and the heal animation child | new (S4) on the existing `task` block | observed | `hgss-heal-variants` |
 
 Rows R1 to R10 are the whole of what changes. R11 and R12 only gain a timeout. R13 is a non-read recorded so nobody re-derives it. R14 to R17 are listed so the table is the complete inventory FR-9 demands.
 
@@ -187,7 +209,7 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | script 5, 8, 10, 11, 284 | | lost, escape failed, party list, throw ball, escape success | as above |
 | getter 23, 24-30 | `[getter + 0x28]` | choosing the move to forget; the "learned" path | `hgss-route33-train` answering yes |
 | `FieldTask` for the start menu | `[taskman + 4]` | the task function address is unknown until seen | a navigation scenario that opens the menu |
-| `WaitButton` natives `0x02041075`, `0x02041041`, `0x020410F1` | `[ctx + 4]` | a script waiting for A/B outside a message; every message seen so far waits inside the printer instead | any script with a bare `WaitButton` |
+| `WaitButton` natives `0x02041075`, `0x02041041`, `0x020410F1` | `[ctx + 4]` | a script waiting for A/B outside a message; every message seen so far waits inside the printer instead. S4's press loop presses at them like the printing native (R18, R25) and logs `(decomp-only)`; no decision depends on them alone | any script with a bare `WaitButton`; the first `(decomp-only)` press line in a run moves this row to observed |
 | `evo.state` 22-31 | `[[app.setup + 0x198] + 0x64]` | the forget-move list (summary app) and the "forgot / learned" texts on the yes path; `EvolutionLearnMoveMacroTemplate` still drives it from 21 | an evolution with a move pending, answering yes |
 | `evo.state` 37, 38 | as above | the move learned into a free slot; `EvolutionFreeSlotMacro` still drives it | an evolution with a free move slot and a move pending |
 | `evo.state` 41-45 | as above | evolution cancelled (B at state 8); the bot never presses at 8 | none planned |
@@ -210,6 +232,8 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 | evolution | `app == 0` (`FieldFree` or `FieldTask`) | 30 s | evolving animation observed at 7 s |
 | overworld ready | `FieldFree` | 10 s | fade-in under 3 s today |
 | warp (`WaitForWarpAsync`) | map id equals destination | 15 s on `(Screen, mapId)` | loading screens under 5 s |
+| field script press loop (`PressThroughScriptAsync`: the nurse's script, the survive-poisoning script), and the wait for script 2003 before it | `FieldFree` (the loop); `FieldTask` with `Script == 2003` (the wait) | 20 s, not restarted by a press | the longest unpressed stretch on one snapshot was the 6 s fade and heal animation; the Pokérus boxes held the printing native 10 s only because the old macro had not pressed yet (research doc, Pokémon Center) |
+| the nurse's script start and the Yes press | the script task (`0x0203FF45`) after `T.Up;W.5;T.A`; the menu native gone after A | `confirm` 1000 ms, 3 attempts | the prompt-press values; a start eaten by the last step's animation is pressed again |
 | navigation segment, poison watch | arrival or a battle | the segment's existing stall rule, only while `FieldFree` | |
 | switch confirm (`WaitForSwitchAsync`) | PID changed | keeps its 4 s | unchanged |
 
@@ -251,7 +275,8 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 | `HgssFieldSystemStateReaderTests.<Screen>` one per state-table row, scripted memory | FR-1 |
 | `HgssFieldSystemStateReaderTests.OneRequestOnEveryScreen` | FR-2 |
 | `HgssFieldSystemStateReaderTests.BadPointerAtEachHop` (each hop) | FR-3 |
-| `HgssFieldSystemStateReaderTests.RequestIsTheEightBlocksOfTheWalk` | FR-2, the block table |
+| `HgssFieldSystemStateReaderTests.RequestIsTheTwelveBlocksOfTheWalk` | FR-2, the block table |
+| `NavigatorEventTests` over a fake `IGameStateReader` sequence of natives (the Pokérus trace, poison, the wait-button natives, no-press natives, the menu after the Yes, the missed menu, stale, a Yes that does not land) | R18, R19 |
 | `GameStateWaitTests.UntilReturnsOnMatch`, `.UntilThrowsWhenStale`, `.StaleCountsSameScriptAsUnchanged`, `.PressRetriesThenThrows` | FR-5, FR-6 |
 | `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu, and the evolution scene 2 → 3 → … → 8 → … → 12 → 13 → 14 → 15 → 17 → 19 → 20 → 21 → 32 … 36 → 13 → 40 | FR-7 |
 
@@ -267,7 +292,7 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 |---|---|
 | `FS` or `sub0` move on a save reload or title-screen return (the HGSS starter hunt soft-resets) | nothing is cached; every snapshot walks from the static root. `hgss-starter-shiny` joins the gate if the starter hunt is moved onto the reader (it does not use it today) |
 | Stale-timeouts too short for an unobserved animation | each value above has a 3x margin over what was observed; a timeout is loud (exception, dashboard `Waiting`), not silent |
-| Eight chains per snapshot cost the frame thread about twenty pointer reads | each is a `ReadByteRange` of 4 bytes on the core, microseconds; the party read already does more per frame |
+| Twelve chains per snapshot cost the frame thread about thirty-five pointer reads | each is a `ReadByteRange` of 4 bytes on the core, microseconds; the party read already does more per frame |
 | The QA install and the hunting install run different `BotServer.dll` builds | the client's "predates this opcode" error names the fix; the owner redeploys the hunting install before using the reader there |
 | The read table drifts as features are added | FR-9 and the reviewer checklist; the profile spec's grep catches a literal, this table catches an undocumented member |
 | Decomp-only values turn out wrong when first observed | they are mapped, not branched on; the first scenario that reaches one updates the table before any event uses it |
@@ -291,3 +316,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-23: S2c (#149): the eighth block `evo` (`[app.setup + 0x198]`, 0x65 bytes) read only at app state 14; `Evolution` carries `evo.state` in `Prompt` (R20); `EvolutionMacro`, `EvolutionLearnMoveInit` and `EvolutionDoNotLearnMacro` replaced by presses at the waiting scene states (new timeout row); the yes path (22-31), the free slot (37, 38) and a cancelled evolution (41-45) are decomp-only rows; the in-battle prompt waits now also require `BattleExpPrompt` or `BattleMoveLearnPrompt`, because the scene states share numbers (11, 13, 21) with the getter's.
 - 2026-10-23: S2c QA (#149): the scene-state presses confirm in 1500 ms, 6 attempts, after the state-12 message outlasted 3 x 1000 ms on `hgss-route33-evolve`.
 - 2026-10-23: S3 (#140): `hgss-navigate-heal-return` runs on `hgss.qa-heal-lead-fainted` (`Pokemon HeartGold6`), whose fainted lead takes the heal leg on the first decision.
+- 2026-10-23: S4 (#141): blocks nine to twelve (`env`, `ctx0` to `ctx2`) and the script chain members; `FieldTask` carries `Script` and `Native` under `Task_RunScripts`; reads R21 to R26 (R20 was taken by S2c); the press loop's two timeout rows; the heal macros and `ClearFaintText` deleted; the wait-button natives are pressed but stay decomp-only.
