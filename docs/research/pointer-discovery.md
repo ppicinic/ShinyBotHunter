@@ -104,7 +104,7 @@ Battle application states (`battle_022378C0.c:25-42`): 0 init, 3 allocate, 8 bat
 **Experience, level-up and move learning** (`ctx.getter.state`, `battle_command.c:5871-5911`): 5 checking level-up, **11 and 13 stat boxes waiting for A/B**, 15 checking learn, **21 "forget a move?" waiting for yes/no**, **23 choosing the move to forget**, **34 "give up learning?" waiting for yes/no**, 38 done.
 - Observed on the move-learn save copy, pressing A on the stat boxes, B on "forget a move?" and A on "give up learning?": 1 → 4 → 6 → 7 → **11** → **13** → 17 → 19 → **21** → (B) → 32 → **34** → (A) → 35 → 4 → cleared. Exactly the decomp's order.
 - Observed on the evolution save copy (level-up, no new move): 1 → 4 → 6 → 7 → 11 → 13 → 4 → cleared.
-- Decomp only: 23 (choosing the move to forget) and the "learned" path 24-30, because the trace answered no.
+- Observed 2026-10-23 on the yes path and the free slot (traces and the full state table in [In-battle move replace and the free-slot paths](#in-battle-move-replace-and-the-free-slot-paths-2026-10-23)): 21 → (top button) → 22 → **23** (the forget-move screen) → 25 → 27 → 29 → 36 → cleared, and with a free slot 15 → 36 → cleared. The message states advance without a press. 24, 26, 28 and 30 only print and were skipped between reads.
 
 **Outcome** (`BS.outcome`): 1 won, 2 lost, 3 draw, 4 caught, 5 fled; bits `0x40`/`0x80` mark a flee attempt in progress. Observed: 1 after each win, 5 after each flee.
 
@@ -244,7 +244,7 @@ On the keys, Up and Down move the cursor, A confirms it (the cursor starts on Ye
 
 | `evo.state` | Meaning | Waits for | Status |
 |---|---|---|---|
-| 0, 1 | Init countdown; picks the "What?" path from `flags` bit 1 | | decomp only (gone before the first read) |
+| 0, 1 | Init countdown; picks the "What?" path from `flags` bit 1 | | 1 observed once (2026-10-23); 0 gone before the first read |
 | 2 | Prints 916 "What?" | | observed |
 | **3** | **"What?" waiting at the arrow** | A | observed: held 10 s until A |
 | 4 | Prints 917 "X is evolving!" (no `\r`) | | decomp only (skipped between reads) |
@@ -252,7 +252,7 @@ On the keys, Up and Down move the cursor, A confirms it (the cursor starts on Ye
 | **8** | **The evolving animation.** With `flags` bit 0 set, **B here cancels the evolution** (state 41) | nothing; never press B | observed, 6.7 s |
 | 9, 10, 11 | Flash, new sprite and its cry; species written | | observed |
 | **12** | **"Congratulations! Your X evolved into Y!" (918)** | A, then a 40-frame countdown | observed: held 10 s until A |
-| 13 | Calls `MonTryLearnMoveOnLevelUp`. Nothing left to learn: 39. Free slot: 37. Four moves known: 14 | | observed passing through (13 → 14, and 36 → 13 → 39) |
+| 13 | Calls `MonTryLearnMoveOnLevelUp`. Nothing left to learn: 39. Free slot: 37. Four moves known: 14 | | observed passing through (13 → 14, 36 → 13 → 39, and 12 → 37 on the free slot, 13 itself skipped) |
 | 14 | Prints 1193 "X wants to learn the move Y." | | observed |
 | **15** | **1193 waiting at the arrow** | A | observed |
 | 16 | Prints 1194 "However, X already knows four moves." | | decomp only (skipped) |
@@ -268,7 +268,7 @@ On the keys, Up and Down move the cursor, A confirms it (the cursor starts on Ye
 | 34 | Opens the Yes/No ("Give up on Y!" / "Don't give up on Y!") | | observed |
 | **35** | **"Stop trying to teach Y?" Yes/No** | Yes: 36. No: back to 14 | observed: A on the default cursor (Yes) gave `yn` 1, `cursor` 1, then 36 |
 | **36** | **1198 "X did not learn the move Y." waiting at the arrow** | A, then a 30-frame countdown and back to 13 | observed |
-| 37, 38 | "X learned Y!" (message 4 from the free-slot path, 1202 from 31) waiting at the arrow, then its fanfare and back to 13 | A on 37 | observed from 31: 37 held 12 s until A, 38 1.0 s, then 39 |
+| 37, 38 | "X learned Y!" (message 4 from the free-slot path, 1202 from 31) waiting at the arrow, then its fanfare and back to 13 | A on 37 | observed from 31: 37 held 12 s until A, 38 1.0 s, then 39. Observed on the free slot (2026-10-23, `Pokemon HeartGold10`): 12 → 37 held 8.4 s until A, 38 1.0 s, 13, 40 |
 | 39, 40 | Fade out; `done = 1` | | 40 observed with `done` 1 |
 | 41-45 | Evolution cancelled: 919 "Huh? X stopped evolving!", then `done = 1` | A on 44 | decomp only |
 
@@ -293,13 +293,13 @@ battle: getter 1 → … → 11 (A) → 12 → 13 (A) → 14 → 3 → 4 → 37 
 
 Not observed:
 - the forget-move list (states 22-31), because the trace answered No (traced separately, next subsection)
-- learning into a free slot (37, 38)
+- learning into a free slot (37, 38); traced 2026-10-23 in [In-battle move replace and the free-slot paths](#in-battle-move-replace-and-the-free-slot-paths-2026-10-23)
 - a cancelled evolution (41-45)
 - a second move offered in the same evolution (the loop back through 13 handles it)
 
 ### What this changes for the bot
 
-The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x65 bytes (through `evo.state`; as built in #150, which reads neither `evo.move` nor the Yes/No fields and keeps `EvolutionFreeSlotMacro` for the decomp-only free-slot path). It is read only while `app.state == 14`, and the `Evolution` snapshot exposes `evo.state` in `Prompt`. The evolution macros (`EvolutionMacro`, `EvolutionLearnMoveInit`, `EvolutionDoNotLearnMacro`, `EvolutionFreeSlotMacro`) become reads and presses:
+The bot (task S2c, #149) adds one block, `[0, 4, 0x18, 0x198, 0]` for 0x65 bytes (through `evo.state`; as built in #150, which reads neither `evo.move` nor the Yes/No fields and keeps `EvolutionFreeSlotMacro` for the free-slot path, decomp-only at the time and observed since). It is read only while `app.state == 14`, and the `Evolution` snapshot exposes `evo.state` in `Prompt`. The evolution macros (`EvolutionMacro`, `EvolutionLearnMoveInit`, `EvolutionDoNotLearnMacro`, `EvolutionFreeSlotMacro`) become reads and presses:
 
 | `evo.state` | The bot presses |
 |---|---|
@@ -384,6 +384,133 @@ A task that forgets a move reads two more blocks while `evo.state == 23`: the `O
 
 The slot to forget is the task's decision: compare `data.moves` (or the party read) against what it wants to keep. Touch is simpler than keys because it does not depend on the cursor. The key path (Down *n*, A, A) needs `data.cursor` read back between presses.
 
+## In-battle move replace and the free-slot paths (2026-10-23)
+
+Three traces, one wild battle each on Route 33, fought with move 1, every press sent by hand over ApiHawk's command port while the probe read the chain every 80 ms:
+- `Pokemon HeartGold2`: Bulbasaur Lv 14 with four moves learns Take Down at 15 and replaces Tackle (the yes path).
+- `Pokemon HeartGold9`: the same Bulbasaur with three moves learns Take Down into the free slot, in battle.
+- `Pokemon HeartGold10`: Totodile Lv 20 with three moves evolves at 21, and Croconaw learns Ice Fang into the free slot.
+
+### The getter's fields and states
+
+`GetterWork` (`battle.h:633`, 0x58 bytes) and the player's battle buffer are C structs, so these offsets come from the decomp, not the assembly. Each one was confirmed live.
+
+```
+getter          = u32 [ctx + 0x178]
+getter.state    = u32 [getter + 0x28]
+getter.learnIdx = s32 [getter + 0x38]    unk30[2], the cursor into the level-up learnset (0 → 7 → 14 on both Bulbasaur traces)
+getter.move     = u32 [getter + 0x40]    unk30[4], the move offered; written only on the four-move path (36, Take Down, from state 17); stale otherwise
+getter.slot     = u32 [getter + 0x44]    unk30[5], the slot to forget; written in state 23 (read 0 after Tackle was picked); stale before
+ctx.buffer      = u8  [ctx + 0x2300]     battleBuffer[0][0], the player battler's answer from its controller
+```
+
+`ctx.buffer` reads 1 after a move is chosen in the move list, 1 after "Forget a move!", and *slot + 1* after a move is picked on the forget-move screen. The No answer and a cancelled screen write `0xFF` (decomp only). The getter clears it before each question, and it read 0 on entry to 21 and to 23.
+
+The full state enum is in `battle_command.c:5871-5911`. The names below are the decomp's.
+
+| `getter.state` | Name | What it does | Waits for | Status |
+|---|---|---|---|---|
+| 11, 13 | `LEVEL_UP_SUMMARY_PRINT_DIFF_WAIT`, `_TRUE_WAIT` | The stat boxes | A, B, X, Y or a touch | observed |
+| 15 | `CHECK_LEARN_MOVE` | Calls `MonTryLearnMoveOnLevelUp`. Nothing to learn: 3 (back to the experience gauge). Four moves known: 16. Free slot: writes the move, prints 4 "X learned Y!" and goes to 36 | | observed on both paths (15 → 17, 15 → 36) |
+| 16, 17 | `WANTS_TO_LEARN_MOVE_PRINT`, `_WAIT` | 1178 "X wants to learn the move Y." | nothing; the text advances by itself (17 lasted 2.4 s) | 17 observed |
+| 18, 19 | `CANT_LEARN_MORE_MOVES_PRINT`, `_WAIT` | 1179 "But X can't learn more than four moves." | nothing (19 lasted 2.5 s) | observed |
+| 20 | `MAKE_IT_FORGET_PROMPT` | Opens the two-button menu ("Forget a move!" / "Keep old moves!") | | decomp only (skipped between reads) |
+| **21** | `MAKE_IT_FORGET_ANSWER` | **"Make it forget another move?"** `ctx.buffer` 1: 22. `0xFF`: 31 | **the top button (Yes) or the bottom one (No)** | observed: held 14.6 s, touch (128,68) → 22 |
+| 22 | `MAKE_IT_FORGET_WAIT` | Prints 1183 "Which move should be forgotten?" (no `\r`), then sends controller command `0x2B` (`ov12_02263D14`), which opens the forget-move screen | | observed (0.55 s) |
+| **23** | `MAKE_IT_FORGET_INPUT_TAKEN` | **The forget-move screen is up.** `ctx.buffer` `0xFF`: 31. *slot + 1*: `getter.slot` = slot, then 24 | the screen's own input (below) | observed: held 36 s until the confirm |
+| 24, 25 | `ONE_TWO_POOF`, `_WAIT` | 1189 "1, 2, and... ... Poof!" | nothing (25 lasted 3.6 s) | 25 observed |
+| 26, 27 | `FORGOT_HOW_TO_USE`, `_WAIT` | 1190 "X forgot how to use Y." | nothing (2.3 s) | 27 observed |
+| 28, 29 | `AND_DOTDOTDOT`, `_WAIT` | 1191 "And..." | nothing (1.9 s) | 29 observed |
+| 30 | `LEARNED_MOVE` | 1192 "X learned Y!"; zeroes the slot's PP Ups, `MonSetMoveInSlot`, then 36 | | decomp only (skipped) |
+| 31, 32 | `MAKE_IT_FORGET_CANCELLED`, `_WAIT` | 1184 "Well, then..." | nothing | 32 observed (No trace, 2026-10-20) |
+| 33 | `GIVE_UP_LEARNING_PROMPT` | Opens the two-button menu ("Give up on Y!" / "Don't give up on Y!") | | decomp only |
+| **34** | `GIVE_UP_LEARNING_ANSWER` | **"Should this Pokémon give up on learning this new move?"** Yes: prints 1188 and goes to 35. No: back to 16 | the top button (give up) or the bottom one | observed (2026-10-20) |
+| 35 | `GIVE_UP_LEARNING_WAIT` | 1188 "X did not learn Y.", then 15 | nothing | observed (2026-10-20) |
+| 36 | `LEARNED_MOVE_WAIT` | "X learned Y!" (1192 or 4), then 15 for the next move | nothing (3.3 s on the yes path, 3.2 s on the free slot) | observed on both paths |
+| 37, 38 | `CHECK_DONE`, `DONE` | Next Pokémon; the task ends | | decomp only |
+
+- **In battle, only the stat boxes and the two Yes/No menus wait for input.** Every message state (17, 19, 25, 27, 29, 36) advanced by itself, 1.9 to 3.6 s after it started, with no press, although the messages end in `\r`. This is unlike the evolution scene, whose message states hold until A.
+- **The two-button menus** are `BattleInput`'s `BATTLE_MENU_KEEP_FORGET_MOVE` and `BATTLE_MENU_GIVE_UP_ON_MOVE` (`battle_input.c`), with the touch rects `sTouchscreenRectTwoOptionsMenuButtons`, `{top, bottom, left, right}`:
+  - the top button, Yes, y 40-96, x 8-248, centre (128,68);
+  - the bottom button, No, y 112-168, centre (128,140).
+
+  `CommandPreprocessor`'s `NewMove` and `DoNotLearnComplete` (128,70) are the top button; `DoNotLearn` (128,140) is the bottom one.
+
+### The forget-move screen
+
+The forget-move screen is not the summary app that the evolution scene uses. It is overlay 8, the battle's own party and summary screen (`asm/overlay_08.s`, undecompiled). Everything in this subsection is read from the assembly, apart from the touch points that were tapped.
+
+How it is launched:
+1. Controller command `0x2B` is entry 43 of the battler's command table `ov12_0226D010`. That entry is `ov12_022593D4`, which calls `ov12_0225B028`.
+2. `ov12_0225B028` starts a SysTask, `ov12_022609F8`, with 0x10 bytes of data.
+3. The task fades out, then calls `ov12_02237B0C`. That frees `BattleInput`, unloads overlay 7 and loads overlay 8.
+4. It allocates a 0x38-byte args block and fills it: +0x00 the party, +0x08 the `BattleSystem`, +0x11 the party slot, +0x24 the move to learn, +0x28 the battler, +0x35 3.
+5. It calls the overlay's entry at `0x0221BE20`. The assembly's symbol `ov10_0221BE20` is a mislabel: overlays 8 and 10 share the address.
+6. When the screen sets args +0x36 (done), the task reads args +0x34. A slot 0-3 is sent back to the getter as *slot + 1*, and 4 is sent as `0xFF`. The task then restores `BattleInput`.
+
+The screen runs as a SysTask with 0x2090 bytes of data:
+- `+0x2078` is its state, a jump table of 27 cases.
+- `+0x2079` is the state it goes to after a button flash.
+- `+0x208D` is the chosen index.
+
+**No pointer reaches it from `sFieldSysPtr`.** The args and the task data are referenced only from the controller task's own data, and no struct points at that. So the bot cannot read the screen's cursor or state through the chain. It sees `getter.state == 23` while the screen is up, and `ctx.buffer` and `getter.slot` once it closes.
+
+| Screen state | Routine | Page | Touch hitboxes `{top-bottom, left-right}` and what they do |
+|---|---|---|---|
+| 19 | `ov08_0221C604`, rects `ov08_02224F3C` | **The move list**: four moves in a 2×2 grid, the new move below them | slot 0: y 48-95, x 0-127, centre (64,72). Slot 1: y 48-95, x 128-255, (192,72). Slot 2: y 96-143, x 0-127, (64,120). Slot 3: y 96-143, x 128-255, (192,120). Each sets the result to the slot, flashes, and moves on to the confirm page. The new move: y 144-191, x 64-191, (128,168); sets the result to 4 and also goes on to the confirm page. A toggle at y 0-39, x 184-255. Back: y 152-191, x 216-255, (236,172); sets the result to 4 and leaves straight away |
+| 20 | `ov08_0221C6F8`, rects `ov08_02224E44` | **Confirm** | Forget: y 152-191, x 0-207, centre (104,172); leaves the screen (state 25), unless a check in `ov08_0221DB54` (probably the HM rule) keeps it on the page. Back: y 152-191, x 216-255, (236,172); returns to the list. A toggle at y 0-39, x 184-255 |
+| 22 | | Button flash, then the state in `+0x2079` | |
+| 25 | | Fade out, exit | |
+
+`CommandPreprocessor`'s `NewMoveOne`-`NewMoveFour` (60,70), (190,70), (60,120), (190,120) and `Forget` (100,170) fall inside these rects. The keys (`ov08_02224C94`) were not traced.
+
+### Sequences observed
+
+The yes path, on `Pokemon HeartGold2`:
+```
+getter 4 → 6 → 7 → 8 → 9 → 10 → 11 (A) → 12 → 13 (A) → 15 → 17 (move 36) → 18 → 19 → 21 (held 14.6 s)
+→ touch (128,68) "Forget a move!" → buffer 01 → 22 (0.55 s) → 23 (buffer 00; the screen loads)
+→ 26 s later, touch (64,72) on Tackle → 10 s later, touch (104,172) "Forget" → 0.7 s later 25, buffer 01, getter.slot 0
+→ 27 → 29 → 36 → 3 → 4 → 5 → getter NULL → app.state 10 → 0 → app NULL → tasks 02050C19, 0205528D, 020552D5 → field free
+```
+No press was needed from the confirm to the field, 14 s in all. 24, 26, 28, 30 and 15 were skipped between reads. The screen's own states could not be read. The two taps are shown to have worked by the result: slot 0 sent back and the 24 path taken. A miss would have left 23 held, and a tap on the new move's row would have led to 31.
+
+The free slot in battle, on `Pokemon HeartGold9`:
+```
+getter … → 11 (A) → 12 → 13 (A) → 15 → 36 (3.2 s, "Bulbasaur learned Take Down!") → 3 → 4 → 5 → getter NULL → battle end → field free
+```
+No press after the stat boxes. `getter.move` stayed at its stale value, because the free-slot branch keeps the move in a local. That Take Down landed in slot 4 was not read back. The decomp writes it in 15 (`MonTryLearnMoveOnLevelUp` returns the move only after adding it).
+
+The free slot after evolution, on `Pokemon HeartGold10`:
+```
+battle: stat boxes 11 (A), 13 (A) → app.state 14, evo flags 3, species 158 → 159
+→ evo 1 → 2 → 3 (A) → 5 → 6 → 7 → 8 (6.7 s) → 9 → 10 → 11 → 12 (A) → 37 (learnIdx 8; held 8.4 s until A) → 38 (1.0 s) → 13 → 40
+→ done 1, app.state 15 → app NULL → tasks 02050C19, 0205528D, 020552D5 → field free
+```
+13 → 37 itself was too quick to read: the read after the A at 12 already showed 37. Likewise 39 between 13 and 40. `evo.move` read 0 throughout, because the free-slot branch, like the battle's, does not store the move.
+
+**The saves were not changed.** Before launch and after `taskkill /F`, each save and its `.bak` hashed the same:
+- `Pokemon HeartGold2`: `5a2a3a28…7c26cbd`
+- `Pokemon HeartGold9`: `b5707cc6…141c79`
+- `Pokemon HeartGold10`: `b3853a93…dc25a2a`
+
+The game was never saved.
+
+### What this changes for the bot
+
+A level-up move-learn task in battle reads `getter.state`, and `ctx.buffer` and `getter.slot` to confirm. It presses:
+- A at 11 and 13, as today.
+- **Nothing at 15, 17, 19, 36 or any message state.** A free slot is 15 → 36 → the getter clears, with no prompt, so the battle's `FreeSlotMacro` (`T.A;W.30;T.A;W.15`) presses into nothing the game waits for.
+- At 21, the top button (128,68) to replace a move, confirmed by 22 or 23; the bottom button (128,140) to keep the old moves, confirmed by 31 or 32.
+- In 23, after the screen has loaded, the slot's centre: (64,72), (192,72), (64,120) or (192,120). Then Forget (104,172). The screen's state cannot be read, so the task cannot see when it is ready. It retries the pair until `getter.state` leaves 23, which happened 0.7 s after the confirm.
+  - 24 or later, with `getter.slot` equal to the slot, means the move was replaced.
+  - 31 means the pair landed on "keep" (the back button, or the new move's row).
+
+  The existing macro (`S.NewMove;W.165;S.New{n};W.20;S.Forget`) waits 165 frames for the load. Nothing observed says that is enough or too much; the trace waited 26 s.
+- At 34, as today.
+
+After the evolution, the free slot is 12 (A) → 37 (A) → 38 → 40. `EvolutionFreeSlotMacro` (`W.160;T.A;W.15`) becomes A at `evo.state == 37`, confirmed by 38, as on the yes path.
+
 ## Suspected issues, not confirmed
 
 Spotted while reading the code for this spike. None has been reproduced, and none is planned work; each needs a demonstration before it is treated as a bug.
@@ -424,7 +551,7 @@ The Reverse Engineer Anything MCP was not needed for HGSS: the decomp plus RAM w
 ## Next steps
 
 1. **Find the battle UI's input-ready flag** (the remaining gap above), then confirm-and-retry presses against `ctx.sel`.
-2. **Exercise the decomp-only values** with more PKHeX save copies: a weak lead that faints (script 6 on our side, 231 "use next Pokémon?"), a lead that accepts the new move (getter 23, 24-30), a Poké Ball in the bag to catch (script 11, outcome 4), a trainer battle, and the field signals against scripts, warps and the start menu.
+2. **Exercise the decomp-only values** with more PKHeX save copies: a weak lead that faints (script 6 on our side, 231 "use next Pokémon?"), a lead that accepts the new move (getter 23, 24-30; done 2026-10-23), a Poké Ball in the bag to catch (script 11, outcome 4), a trainer battle, and the field signals against scripts, warps and the start menu.
 3. **Map RS** from `pret/pokeruby`: `gMain.inBattle`, `gBattleTypeFlags`, the battle controller state, `gRngValue`, for the RS profile and QA cheats.
 4. **RS addresses per revision.** RS is hunted on 1.1 and 1.2, so the RS mapping needs both revisions' static addresses; HGSS has only 1.0.
 5. **Feed into plan 5.3**: the game profile holds this chain; a small HGSS state reader classifies "where the game is" and the battle and navigation events use it.
@@ -453,6 +580,7 @@ Grouped by phase, from the code inventory (`file:line` relative to `ShinyBotHunt
 - **Party and boxes**: validated party read with 120-frame retry; box corrupt-slot re-read with no limit.
 
 ## Changelog
+- 2026-10-23: in-battle move replace (yes path) and the free-slot paths traced on `Pokemon HeartGold2`, `9` and `10`: the getter's full state table with what each waits for (only the stat boxes and the Yes/No menus wait; messages advance by themselves), `getter.move`/`getter.slot` and `ctx.buffer` (`ctx + 0x2300`), the two-button menu rects, and the forget-move screen (overlay 8, assembly only, no pointer from the chain) with its touch hitboxes; getter 23 and 25-36 and the evolution free-slot entry 12 → 37 → 38 now observed.
 - 2026-10-23: forget-move list (yes path) mapped and traced live: `evo.summary` OverlayManager (`+0x14` proc state, `+0x1C` data, cursor at data `+0x7BD`), the summary app's mode-2 states 8 (list) and 9 (confirm) with their touch hitboxes and keys; evolution states 22-31 and 37-38 now observed; 31 goes to 37.
 - 2026-10-23: post-evolution move learning mapped: the evolution scene's own state machine at `[app.setup + 0x198] + 0x64` (undecompiled `unk_020755E8.s`), its Yes/No menu and the summary-app hand-off; traced live through the evolution, "forget a move?" No and "give up?" Yes on the Totodile save; `+0x67` confirmed as the done byte.
 - 2026-10-22: field script chain (task manager → script environment → script contexts → native) mapped and verified live through the poison message and the Pokémon Center heal on four PKHeX copies; the heal macro's fainted rule shown wrong for a non-lead faint; Pokérus dialogue reproduced.

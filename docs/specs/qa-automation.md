@@ -318,6 +318,8 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-poison` | `Pokemon HeartGold5` | Route 33 path tile; lead Slowpoke poisoned at 6 HP; PKHeX copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-poison-walk` |
 | `hgss.qa-heal-lead-fainted` | `Pokemon HeartGold6` | Route 33 path tile; lead at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants`, `hgss-navigate-heal-return` |
 | `hgss.qa-heal-slot2-fainted` | `Pokemon HeartGold7` | Route 33 path tile; lead at 15 HP, slot 2 at 0 HP; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
+| `hgss.qa-route33-movelearn-3` | `Pokemon HeartGold9` | Route 33 path tile; lead Bulbasaur Lv 14, one EXP short of 15, three moves (no Vine Whip, no Take Down); PKHeX copy of `hgss.qa-route33-movelearn` | 15613 / 35374 | `hgss-route33-train-free` |
+| `hgss.qa-route33-evolve-learn-3` | `Pokemon HeartGold10` | Route 33 path tile; lead Totodile Lv 20 unevolved, one EXP short of 21, three moves (no Scary Face, no Ice Fang); PKHeX copy of `hgss.qa-route33-evolve-learn` | 15613 / 35374 | `hgss-route33-evolve-learn-free` |
 | `hgss.qa-heal-pokerus` | `Pokemon HeartGold8` | Route 33 path tile; lead at 15 HP with Pokérus, event flag `0x65` cleared so the nurse explains it; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
 | `rs.qa-starter` | to make | Whatever the RS starter hunt expects | | the `rs-starter-*` scenarios |
@@ -327,6 +329,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed.
 
 ## Changelog
+- 2026-10-23: `Pokemon HeartGold9` (`hgss.qa-route33-movelearn-3`) and `Pokemon HeartGold10` (`hgss.qa-route33-evolve-learn-3`) save rows, three-move leads for the free-slot paths (traced in the pointer spike, "In-battle move replace and the free-slot paths").
 - 2026-10-23: `hgss-navigate-heal-return` scenario on `Pokemon HeartGold6` (`hgss.qa-heal-lead-fainted`), for S3 (#140).
 - 2026-10-23: `hgss-route33-evolve-learn` scenario and the `Pokemon HeartGold4` save row (`hgss.qa-route33-evolve-learn`), for S2b (#139); the QA backend is logged into Discord and move prompts are answered by hand.
 - 2026-10-22: `hgss-route33-evolve` scenario and the `Pokemon HeartGold3` save row (`hgss.qa-route33-evolve`), for the state reader's QA gate (#137).
