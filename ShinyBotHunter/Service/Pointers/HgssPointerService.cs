@@ -124,6 +124,72 @@ namespace ShinyBotHunter.Service.Pointers
         // app.ovyId of the battle application (overlay 12); constant; QA: hgss-route33
         public uint BattleOverlayId => 12;
 
+        // The field script chain, pointer-discovery.md "Field scripts". Members for natives and tasks no decision
+        // uses (WaitStd, the touch menu, 0x02041CA9, the fade child) are left out; their names are in the research doc.
+
+        // task.env, the ScriptEnvironment while the task function is Task_RunScripts (taskman + 0x0C); offset
+        // (revision-independent); observed; QA: hgss-heal-variants, hgss-poison-walk
+        public int ScriptEnvironmentOffset => 0x0C;
+
+        // env.check, the environment's magic (env + 0x00); offset (revision-independent); observed;
+        // QA: hgss-heal-variants, hgss-poison-walk
+        public int ScriptEnvironmentCheckOffset => 0x00;
+
+        // env.check's value, 222271 (0x3643F); constant; observed; QA: hgss-heal-variants, hgss-poison-walk
+        public uint ScriptEnvironmentMagic => 222271;
+
+        // env.script (u16), the script id: 1 the map's NPC script, 2003 std_survive_poisoning (env + 0x0A); offset
+        // (revision-independent); observed; QA: hgss-heal-variants, hgss-poison-walk
+        public int ScriptIdOffset => 0x0A;
+
+        // env.ctx[0], the first of three ScriptContext pointers, ctx[i] at + 4*i (env + 0x38); offset
+        // (revision-independent); observed; QA: hgss-heal-variants (ctx 0 and 1), hgss-poison-walk (ctx 0)
+        public int ScriptContextsOffset => 0x38;
+
+        // ctx.mode (u8): 0 stopped, 1 running bytecode, 2 waiting in a native (ctx + 0x01); offset
+        // (revision-independent); observed; QA: hgss-heal-variants, hgss-poison-walk
+        public int ScriptContextModeOffset => 0x01;
+
+        // ctx.native, the native the context waits in while mode is 2, Thumb bit set (ctx + 0x04); offset
+        // (revision-independent); observed; QA: hgss-heal-variants, hgss-poison-walk
+        public int ScriptContextNativeOffset => 0x04;
+
+        // Task_RunScripts, the task function while a field script runs; root (revision-dependent; static ARM9, rev 0);
+        // observed; QA: hgss-heal-variants, hgss-poison-walk
+        public uint RunScriptsTask => 0x0203FF45;
+
+        // The heal animation child task the nurse script pushes after Yes (taskman points at it, the script task is
+        // underneath); not named in pointer-discovery.md; root (revision-dependent; overlay, rev 0); observed;
+        // QA: hgss-heal-variants
+        public uint HealAnimationTask => 0x0224BB91;
+
+        // std_survive_poisoning, env.script of the "survived the poisoning" message; constant; observed;
+        // QA: hgss-poison-walk
+        public int SurvivePoisoningScript => 2003;
+
+        // ov01_021EF348 (from ScrCmd_NPCMsg), a message printing or waiting at the arrow; root (revision-dependent;
+        // overlay 1, rev 0); observed; QA: hgss-heal-variants, hgss-poison-walk
+        public uint PrintingNative => 0x021EF349;
+
+        // sub_020477C0 (ScrCmd_GetMenuChoice), a Yes/No or list menu is open; root (revision-dependent; static ARM9,
+        // rev 0); observed; QA: hgss-heal-variants
+        public uint MenuChoiceNative => 0x020477C1;
+
+        // sub_02041074 (ScrCmd_WaitButton), waiting for A or B; root (revision-dependent; static ARM9, rev 0);
+        // decomp only; pressed like PrintingNative per R18, move to observed in the PR whose run logs one;
+        // QA: hgss-heal-variants, hgss-poison-walk
+        public uint WaitButtonNative => 0x02041075;
+
+        // WaitButtonOrDelay; root (revision-dependent; static ARM9, rev 0); decomp only;
+        // pressed like PrintingNative per R18, move to observed in the PR whose run logs one;
+        // QA: hgss-heal-variants, hgss-poison-walk
+        public uint WaitButtonOrDelayNative => 0x02041041;
+
+        // WaitButtonOrDpad; root (revision-dependent; static ARM9, rev 0); decomp only;
+        // pressed like PrintingNative per R18, move to observed in the PR whose run logs one;
+        // QA: hgss-heal-variants, hgss-poison-walk
+        public uint WaitButtonOrDpadNative => 0x020410F1;
+
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 
