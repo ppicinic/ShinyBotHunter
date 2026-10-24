@@ -90,6 +90,14 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-route33-evolve, hgss-route33-evolve-learn
         public int EvolutionStateOffset => 0x64;
 
+        // evo.summary, OverlayManager * of the Pokémon summary app (gOverlayTemplate_PokemonSummary), non-NULL only while
+        // evo.state is 23 (evo + 0x38); offset (revision-independent); observed; QA: hgss-route33-evolve-learn-replace
+        public int EvolutionSummaryOffset => 0x38;
+
+        // OverlayManager.proc_state (u32), overlay_manager.h; in the summary app, Main's state: 8 the move list, 9 the confirm
+        // (summary + 0x14); offset (revision-independent); observed; QA: hgss-route33-evolve-learn-replace
+        public int OverlayProcStateOffset => 0x14;
+
         // BS, the BattleSystem, valid while app.state is 4..9 (app + 0x1C); offset (revision-independent); QA: hgss-route33
         public int BattleSystemOffset => 0x1C;
 

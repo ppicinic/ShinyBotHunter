@@ -26,6 +26,9 @@ namespace ShinyBotHunter.Games.Hgss
         private const uint ChooseMoveToForget = 23;
         private const uint GiveUpLearning = 34;
 
+        // evo.state, the forget-move list: the summary app runs (pointer-discovery.md, "The forget-move list (yes path)").
+        private const byte ForgetMoveList = 23;
+
         // env.ctx[0..2] and ctx.mode (pointer-discovery.md, "Field scripts").
         private const int ScriptContexts = 3;
         private const int ContextPointerSize = 4;
@@ -45,6 +48,7 @@ namespace ShinyBotHunter.Games.Hgss
         private const int EvoBlock = 7;
         private const int EnvBlock = 8;
         private const int FirstScriptContextBlock = 9;
+        private const int SummaryBlock = 12;
 
         private readonly IMemoryClient memory;
         private readonly HgssPointerService addresses;
@@ -69,6 +73,7 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + 2 * ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, a.EvolutionSummaryOffset, a.OverlayProcStateOffset], 4),
             ];
         }
 
@@ -107,8 +112,13 @@ namespace ShinyBotHunter.Games.Hgss
             if (state < BattleMain) return Snapshot(GameScreen.BattleStarting);
             if (state == EvolutionMain)
             {
-                return Ok(r[EvoBlock])
-                    ? Snapshot(GameScreen.Evolution) with { Prompt = r[EvoBlock].Bytes[addresses.EvolutionStateOffset] }
+                if (!Ok(r[EvoBlock])) return Snapshot(GameScreen.Transitioning);
+                byte evoState = r[EvoBlock].Bytes[addresses.EvolutionStateOffset];
+                GameSnapshot evolution = Snapshot(GameScreen.Evolution) with { Prompt = evoState };
+                // The summary app runs only at 23; elsewhere evo.summary is NULL.
+                if (evoState != ForgetMoveList) return evolution;
+                return Ok(r[SummaryBlock])
+                    ? evolution with { SummaryState = (int)U32(r[SummaryBlock].Bytes, 0) }
                     : Snapshot(GameScreen.Transitioning);
             }
             // 13 included: every battle end passes through the evolution check.
