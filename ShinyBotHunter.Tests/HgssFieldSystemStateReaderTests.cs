@@ -22,6 +22,7 @@ namespace ShinyBotHunter.Tests
         private const uint Env = 0x02190000;
         private const uint ScriptCtx0 = 0x021A0000;
         private const uint ScriptCtx1 = 0x021B0000;
+        private const uint Summary = 0x021C0000;
 
         private const uint OutOfRange = 0x02400000;
 
@@ -41,7 +42,7 @@ namespace ShinyBotHunter.Tests
             uint ovyId = 12, uint state = 9, uint bs = Bs, byte outcome = 0,
             uint ctx = Ctx, uint command = 0, byte sel = 0, uint script = 0,
             uint getter = 0, uint getterState = 0,
-            uint setup = Setup, uint evo = Evo, byte evoState = 0,
+            uint setup = Setup, uint evo = Evo, byte evoState = 0, uint summary = 0, uint summaryState = 0,
             uint env = Env, uint envCheck = Magic, ushort scriptId = 0,
             uint scriptCtx0 = 0, byte mode0 = 0, uint native0 = 0,
             uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0)
@@ -60,6 +61,8 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(App, Table.BattleSystemOffset), BitConverter.GetBytes(bs));
             memory.Place(At(Setup, Table.EvolutionTaskOffset), BitConverter.GetBytes(evo));
             memory.Place(At(Evo, Table.EvolutionStateOffset), [evoState]);
+            memory.Place(At(Evo, Table.EvolutionSummaryOffset), BitConverter.GetBytes(summary));
+            memory.Place(At(Summary, Table.OverlayProcStateOffset), BitConverter.GetBytes(summaryState));
             memory.Place(At(Bs, Table.BattleContextOffset), BitConverter.GetBytes(ctx));
             memory.Place(At(Bs, Table.OutcomeOffset), [outcome]);
             memory.Place(At(Ctx, Table.MenuStateOffset), [sel]);
@@ -181,15 +184,29 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.BattleStarting, snapshot.Screen);
         }
 
+        // A summary app placed outside evo.state 23 is not read.
         [Theory]
         [InlineData(3)]
         [InlineData(21)]
         public async Task Evolution(byte evoState)
         {
-            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: evoState));
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: evoState, summary: Summary, summaryState: 8));
 
             Assert.Equal(GameScreen.Evolution, snapshot.Screen);
             Assert.Equal((int)evoState, snapshot.Prompt);
+            Assert.Null(snapshot.SummaryState);
+        }
+
+        [Theory]
+        [InlineData(8u)]
+        [InlineData(9u)]
+        public async Task EvolutionForgetMoveList(uint proc)
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, state: 14, evoState: 23, summary: Summary, summaryState: proc));
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(23, snapshot.Prompt);
+            Assert.Equal((int)proc, snapshot.SummaryState);
         }
 
         // State 13 is the evolution check every battle end passes through, seen on a flee.
@@ -370,7 +387,7 @@ namespace ShinyBotHunter.Tests
 
         // The spec's block table, written out as literals so a mixed-up member shows here.
         [Fact]
-        public async Task RequestIsTheTwelveBlocksOfTheWalk()
+        public async Task RequestIsTheThirteenBlocksOfTheWalk()
         {
             FakeMemoryClient memory = Memory();
 
@@ -382,10 +399,10 @@ namespace ShinyBotHunter.Tests
                 new int[][]
                 {
                     [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0],
-                    [0x10, 0x0C, 0], [0x10, 0x0C, 0x38, 0], [0x10, 0x0C, 0x3C, 0], [0x10, 0x0C, 0x40, 0],
+                    [0x10, 0x0C, 0], [0x10, 0x0C, 0x38, 0], [0x10, 0x0C, 0x3C, 0], [0x10, 0x0C, 0x40, 0], [0, 4, 0x18, 0x198, 0x38, 0x14],
                 },
                 blocks.Select(block => block.Hops));
-            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65, 0x0C, 8, 8, 8], blocks.Select(block => block.Length));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65, 0x0C, 8, 8, 8, 4], blocks.Select(block => block.Length));
         }
 
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
@@ -411,6 +428,9 @@ namespace ShinyBotHunter.Tests
         [InlineData("evo", OutOfRange, GameScreen.Transitioning)]
         [InlineData("evoAfterEvolution", OutOfRange, GameScreen.BattleOver)]
         [InlineData("evoInBattle", OutOfRange, GameScreen.BattleMenu)]
+        [InlineData("summary", 0u, GameScreen.Transitioning)]
+        [InlineData("summary", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("summaryOutsideList", OutOfRange, GameScreen.Evolution)]
         [InlineData("env", 0u, GameScreen.Transitioning)]
         [InlineData("env", OutOfRange, GameScreen.Transitioning)]
         [InlineData("scriptCtx", 0u, GameScreen.FieldTask)]
@@ -430,6 +450,8 @@ namespace ShinyBotHunter.Tests
                 "evo" => Memory(app: App, state: 14, evo: pointer),
                 "evoAfterEvolution" => Memory(app: App, state: 13, evo: pointer),
                 "evoInBattle" => Memory(app: App, command: 5, sel: 1, evo: pointer),
+                "summary" => Memory(app: App, state: 14, evoState: 23, summary: pointer),
+                "summaryOutsideList" => Memory(app: App, state: 14, evoState: 21, summary: pointer),
                 "env" => Memory(taskman: Taskman, taskFunction: RunScripts, env: pointer, scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing),
                 // With 0, all three context pointers are NULL (ctx 2 is never placed).
                 "scriptCtx" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: pointer, scriptCtx1: pointer),
