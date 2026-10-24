@@ -104,12 +104,17 @@ namespace ShinyBotHunter.BotEvents
                 // read into the evolution flow.
                 var freshParty = await reader.GetPartyState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
-                // Ids, not names: an empty slot has no move metadata.
-                PokemonData evolved = state.BattleState.PartyPokemon.First(x => x.PID == evo.Pokemon.PID);
-                Console.WriteLine($"[LevelUp] {evolved.Name} moves after the evolution: {string.Join(", ", evolved.Moves.Select(m => m.Id))}");
             }
             await GameStateWait.UntilAsync(state.Bot.State, "the evolution app to close",
                 s => s.Screen is GameScreen.FieldFree or GameScreen.FieldTask, TimeSpan.FromSeconds(30), ct);
+            // The read inside the loop can come before the scene has written the species and the learned move; once
+            // the app has closed, the party holds both. Ids, not names: an empty slot has no move metadata.
+            var closedParty = await reader.GetPartyState(state.Bot);
+            foreach (var evo in evolutions)
+            {
+                PokemonData evolved = closedParty.PartyPokemon.Take(closedParty.PartySize).Select(x => x!).First(x => x.PID == evo.Pokemon.PID);
+                Console.WriteLine($"[LevelUp] {evolved.Name} moves after the evolution: {string.Join(", ", evolved.Moves.Select(m => m.Id))}");
+            }
             Console.WriteLine("end evolution");
             state.PendingEvolutions = new Dictionary<(uint, ushort), EvolutionMetadata>();
             state.SwapState(EventState.EnemyFainted);
