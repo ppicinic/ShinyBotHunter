@@ -1,6 +1,0 @@
-name: ClearFaintText
-flavor: HGSS
-steps:
- - W.90
- - T.A
- - W.30

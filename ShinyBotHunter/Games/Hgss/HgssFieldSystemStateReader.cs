@@ -26,6 +26,11 @@ namespace ShinyBotHunter.Games.Hgss
         private const uint ChooseMoveToForget = 23;
         private const uint GiveUpLearning = 34;
 
+        // env.ctx[0..2] and ctx.mode (pointer-discovery.md, "Field scripts").
+        private const int ScriptContexts = 3;
+        private const int ContextPointerSize = 4;
+        private const byte WaitingInNative = 2;
+
         // The trailing hop of a block that starts at the struct its last pointer names.
         private const int StructStart = 0;
 
@@ -38,6 +43,8 @@ namespace ShinyBotHunter.Games.Hgss
         private const int GetterBlock = 5;
         private const int OutcomeBlock = 6;
         private const int EvoBlock = 7;
+        private const int EnvBlock = 8;
+        private const int FirstScriptContextBlock = 9;
 
         private readonly IMemoryClient memory;
         private readonly HgssPointerService addresses;
@@ -58,6 +65,10 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.BattleContextOffset, a.GetterOffset, a.GetterStateOffset], 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.BattleSystemOffset, a.OutcomeOffset], 1),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, StructStart], a.EvolutionStateOffset + 1),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, StructStart], a.ScriptIdOffset + 2),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset, StructStart], a.ScriptContextNativeOffset + 4),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + 2 * ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
             ];
         }
 
@@ -77,9 +88,12 @@ namespace ShinyBotHunter.Games.Hgss
                 bool mapReady = U32(fs, addresses.MapReadyOffset) == 1;
                 if (mapReady && taskman != 0)
                 {
-                    return Ok(r[TaskBlock])
-                        ? Snapshot(GameScreen.FieldTask) with { TaskFunction = U32(r[TaskBlock].Bytes, addresses.TaskFunctionOffset) }
-                        : Snapshot(GameScreen.Transitioning);
+                    if (!Ok(r[TaskBlock])) return Snapshot(GameScreen.Transitioning);
+                    uint function = U32(r[TaskBlock].Bytes, addresses.TaskFunctionOffset);
+                    // A child task on top of the script (the fade, the heal animation) carries only its function.
+                    return function == addresses.RunScriptsTask
+                        ? FieldScript(r, function)
+                        : Snapshot(GameScreen.FieldTask) with { TaskFunction = function };
                 }
                 return mapReady && taskman == 0 && U32(sub0, addresses.PausedOffset) == 0
                     ? Snapshot(GameScreen.FieldFree)
@@ -129,6 +143,30 @@ namespace ShinyBotHunter.Games.Hgss
                 }
             }
             return Snapshot(GameScreen.BattleTurn);
+        }
+
+        // Native comes from the innermost live context, the highest one whose pointer is set: the map's NPC script
+        // waits in WaitStd in ctx 0 while the standard script it called (the nurse) works in ctx 1.
+        private GameSnapshot FieldScript(ChainBlockResult[] r, uint function)
+        {
+            ChainBlockResult env = r[EnvBlock];
+            if (!Ok(env) || U32(env.Bytes, addresses.ScriptEnvironmentCheckOffset) != addresses.ScriptEnvironmentMagic)
+                return Snapshot(GameScreen.Transitioning);
+            GameSnapshot script = Snapshot(GameScreen.FieldTask) with
+            {
+                TaskFunction = function,
+                Script = BitConverter.ToUInt16(env.Bytes, addresses.ScriptIdOffset),
+            };
+            for (int i = ScriptContexts - 1; i >= 0; i--)
+            {
+                ChainBlockResult ctx = r[FirstScriptContextBlock + i];
+                if (ctx.Status == ChainBlockStatus.NullPointer) continue;
+                if (!Ok(ctx)) return Snapshot(GameScreen.Transitioning);
+                return ctx.Bytes[addresses.ScriptContextModeOffset] == WaitingInNative
+                    ? script with { Native = U32(ctx.Bytes, addresses.ScriptContextNativeOffset) }
+                    : script;
+            }
+            return script;
         }
 
         // Outcome is null when its block failed or the byte is outside 1 to 5 (the 0x40 and 0x80
