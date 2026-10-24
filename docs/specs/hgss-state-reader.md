@@ -239,7 +239,7 @@ S2 opens only when every scenario below passes on the legacy reader (so the harn
 | `hgss-route33-train` (exists, #111; one level-up through the UI, new move declined) | `hgss.qa-route33` | R6, R7: scripts, turn, exp prompts 11/13, move-learn 21 and 34 on the decline path |
 | `hgss-route33-fight-learn` (new) | `Pokemon HeartGold2` clone (lead one EXP short, move pending), answering yes | R7: getter 23 and the learned path, moving them from decomp-only to observed |
 | `hgss-route33-evolve` (new) | `Pokemon HeartGold3` clone | R4, R13 |
-| `hgss-navigate-heal-return` (planned in the QA spec) | `hgss.qa-route33` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
+| `hgss-navigate-heal-return` (planned in the QA spec) | `hgss.qa-heal-lead-fainted` | R9, R10, R11, R12; `FieldTask` for scripts and warps |
 | `hgss-togepi-egg-hatch` (planned) | an egg save, to make | the egg loop unchanged under the new field signals |
 
 The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are added to the QA spec's initial set in S1's PR, as Playwright specs beside the two that exist. The two PKHeX clones are already in `C:\BizHawk-2.11\NDS\SaveRAM` on the dev machine and move to `../shinybothunterqasaves/` with README rows per the QA decision.
@@ -290,3 +290,4 @@ The two new scenarios (`hgss-route33-fight-learn`, `hgss-route33-evolve`) are ad
 - 2026-10-23: S2b QA (#139): the move selection's first press is confirmed by `BattleMoveList`, not by leaving the menu, after a transient `BattleTurn` skipped the move press; both move presses confirm in 1000 ms.
 - 2026-10-23: S2c (#149): the eighth block `evo` (`[app.setup + 0x198]`, 0x65 bytes) read only at app state 14; `Evolution` carries `evo.state` in `Prompt` (R20); `EvolutionMacro`, `EvolutionLearnMoveInit` and `EvolutionDoNotLearnMacro` replaced by presses at the waiting scene states (new timeout row); the yes path (22-31), the free slot (37, 38) and a cancelled evolution (41-45) are decomp-only rows; the in-battle prompt waits now also require `BattleExpPrompt` or `BattleMoveLearnPrompt`, because the scene states share numbers (11, 13, 21) with the getter's.
 - 2026-10-23: S2c QA (#149): the scene-state presses confirm in 1500 ms, 6 attempts, after the state-12 message outlasted 3 x 1000 ms on `hgss-route33-evolve`.
+- 2026-10-23: S3 (#140): `hgss-navigate-heal-return` runs on `hgss.qa-heal-lead-fainted` (`Pokemon HeartGold6`), whose fainted lead takes the heal leg on the first decision.

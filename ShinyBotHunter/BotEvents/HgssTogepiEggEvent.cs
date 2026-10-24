@@ -181,7 +181,7 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         private async Task EnsureStartPositionAsync(CancellationToken cancellationToken)
         {
-            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
             ushort mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
             (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
@@ -213,7 +213,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 bot.RunMacroString(walk);
                 await bot.WaitForMacroAsync(cancellationToken);
-                await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+                await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
                 (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != config.StartX || y != config.StartY)
@@ -251,7 +251,7 @@ namespace ShinyBotHunter.BotEvents
             SetState(EggHuntState.ReceivingEgg);
             // The macro opens by pressing A immediately, so it has to start from a settled overworld --
             // whether we just walked here or just came back from a soft reset.
-            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
             await Task.Delay(config.StartPositionSettleMs, cancellationToken);
 
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, config.ReceiveEggMacro));
@@ -424,7 +424,7 @@ namespace ShinyBotHunter.BotEvents
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, config.ContinueMacro));
             await bot.WaitForMacroAsync(cancellationToken);
             await Task.Delay(config.PostContinueDelayMs, cancellationToken);
-            await Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
         }
 
         // -- Helpers ----------------------------------------------------------------------------

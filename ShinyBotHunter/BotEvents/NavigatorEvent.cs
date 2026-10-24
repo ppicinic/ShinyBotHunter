@@ -72,12 +72,21 @@ namespace ShinyBotHunter.BotEvents
         {
             EventState topState = state.State.Peek();
 
-            if (topState == EventState.GoToPokemonCenter)
-                await GoToPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.HealAtPokemonCenter)
-                await HealAtPokemonCenterAsync(state, cancellationToken);
-            else if (topState == EventState.ReturnToStart)
-                await ReturnToStartAsync(state, cancellationToken);
+            try
+            {
+                if (topState == EventState.GoToPokemonCenter)
+                    await GoToPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.HealAtPokemonCenter)
+                    await HealAtPokemonCenterAsync(state, cancellationToken);
+                else if (topState == EventState.ReturnToStart)
+                    await ReturnToStartAsync(state, cancellationToken);
+            }
+            catch (GameStateTimeoutException ex)
+            {
+                // A stale-timeout parks the bot for the operator rather than crashing the event.
+                Console.WriteLine($"[Navigator] {ex}");
+                state.SwapState(EventState.Waiting);
+            }
 
             return state;
         }
@@ -394,6 +403,9 @@ namespace ShinyBotHunter.BotEvents
             {
                 state.Bot.ClearMacro();
                 await state.Bot.WaitForMacroAsync(cancellationToken);
+                // A faulted racer (a stale-timeout or a read failure) rethrows here rather than being
+                // read as its outcome.
+                await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
                 return SegmentOutcome.Blocked;
@@ -404,9 +416,10 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>
         /// Completes when the trainer has stopped moving for <see cref="StallTimeoutMs"/> while a walk
-        /// macro is still running. The macro holds a direction until the coordinate reaches its target,
-        /// so anything that blocks movement -- most often a signpost message opened by pressing into
-        /// it from the tile alongside -- holds that direction forever with nothing else noticing.
+        /// macro is still running and the field is free. The macro holds a direction until the
+        /// coordinate reaches its target, so anything that blocks movement holds that direction forever
+        /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
+        /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait.
         /// </summary>
         private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -415,6 +428,15 @@ namespace ShinyBotHunter.BotEvents
             while (true)
             {
                 await Task.Delay(StallPollIntervalMs, cancellationToken);
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                if (snapshot.Screen != GameScreen.FieldFree)
+                {
+                    Console.WriteLine($"[Navigator] Stall timer held: {snapshot}");
+                    await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
+                    (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    still.Restart();
+                    continue;
+                }
                 (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                 if (x != lastX || y != lastY)
                 {
@@ -624,6 +646,7 @@ namespace ShinyBotHunter.BotEvents
         // window, so an unconfirmed candidate costs nothing but a log line.
         private async Task WaitForPoisonEventAsync(IBot bot, PartySnapshot partyAtStart, CancellationToken cancellationToken)
         {
+            // Bounded by the segment's stall racer (R12), which ends or times out the race.
             while (true)
             {
                 // Cancels out of the loop once another racer wins, so a losing poll can never
@@ -654,32 +677,41 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        // Waits until the field is free on the destination map (and, when given, within a tile of
+        // the destination). Throws after 15 s with neither the screen nor the map id changing (R11).
         private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            (GameScreen Screen, int MapId)? last = null;
+            var unchanged = Stopwatch.StartNew();
+            while (true)
             {
-                if ((int)await bot.Overworld.GetMapIdAsync(cancellationToken) == destMapId)
-                    break;
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-            }
-            if (destX.HasValue && destY.HasValue)
-            {
-                while (!cancellationToken.IsCancellationRequested)
+                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
+                int mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+                if (last != (snapshot.Screen, mapId))
                 {
+                    Console.WriteLine($"[Navigator] Warp to map {destMapId}: on map {mapId}, {snapshot}");
+                    last = (snapshot.Screen, mapId);
+                    unchanged.Restart();
+                }
+                if (mapId == destMapId && snapshot.Screen == GameScreen.FieldFree)
+                {
+                    if (!destX.HasValue || !destY.HasValue)
+                        break;
                     var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
-                    await Task.Delay(Constant.PollIntervalMs, cancellationToken);
                 }
+                if (unchanged.Elapsed >= TimeSpan.FromSeconds(15))
+                    throw new GameStateTimeoutException($"the warp to map {destMapId} (still on map {mapId})", snapshot);
+                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
             bot.RunMacroString("W.60");
             await bot.WaitForMacroAsync(cancellationToken);
         }
 
-        // After a battle the overworld coordinates read (0,0) for a moment while the field
-        // fades back in. Wait until they populate so we don't pathfind from a bogus origin.
+        // Wait until the field is free: no app, no task, map up, so we don't pathfind from a bogus origin.
         private static Task WaitForOverworldReadyAsync(IBot bot, CancellationToken cancellationToken)
-            => Overworld.WaitForReadyAsync(bot.Overworld, cancellationToken);
+            => Overworld.WaitForReadyAsync(bot.State, cancellationToken);
 
         private async Task WaitForBattleAsync(IBot bot, CancellationToken cancellationToken)
         {
