@@ -16,12 +16,6 @@ namespace ShinyBotHunter.BotEvents
         private const string LearnMoveMacroTemplate = "S.NewMove;W.165;S.New{0};W.20;S.Forget;W.5";
         private const string FreeSlotMacro = "T.A;W.30;T.A;W.15";
 
-        // The post-evolution free-slot path: with an open move slot the game learns the move outright
-        // and only shows "<Pokemon> learned <Move>!", so this just settles and advances that text.
-        // There is no prompt to walk into here.
-        // The level-up equivalent is FreeSlotMacro.
-        private const string EvolutionFreeSlotMacro = "W.160;T.A;W.15";
-
         // The stale-timeout table's rows for the exp and move-learn prompts: 15 s between prompts, and a
         // press at a prompt confirmed within 1000 ms, 3 attempts.
         private static readonly TimeSpan PromptStale = TimeSpan.FromSeconds(15);
@@ -110,6 +104,9 @@ namespace ShinyBotHunter.BotEvents
                 // read into the evolution flow.
                 var freshParty = await reader.GetPartyState(state.Bot);
                 state.BattleState!.PartyPokemon = freshParty.PartyPokemon.Take(freshParty.PartySize).Select(x => x!).ToList();
+                // Ids, not names: an empty slot has no move metadata.
+                PokemonData evolved = state.BattleState.PartyPokemon.First(x => x.PID == evo.Pokemon.PID);
+                Console.WriteLine($"[LevelUp] {evolved.Name} moves after the evolution: {string.Join(", ", evolved.Moves.Select(m => m.Id))}");
             }
             await GameStateWait.UntilAsync(state.Bot.State, "the evolution app to close",
                 s => s.Screen is GameScreen.FieldFree or GameScreen.FieldTask, TimeSpan.FromSeconds(30), ct);
@@ -236,12 +233,11 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // An open slot means the game just learns the move -- there is no "forget which?"
                     // prompt at all. Asking Discord here answered a question nobody was asked, and the
-                    // replace macros below would then run against dialogue that isn't on screen. It
+                    // replace presses below would then run against dialogue that isn't on screen. It
                     // also crashed outright: the prompt builds a button per move slot, and an empty
                     // slot has no move metadata to name it.
                     Console.WriteLine($"{pokemon.Name} learned {newMove.Name} in an open move slot");
-                    state.Bot.RunMacroString(EvolutionFreeSlotMacro);
-                    await state.Bot.WaitForMacroAsync(ct);
+                    await PressAtEvolutionStateAsync(state.Bot.State, Tap(state.Bot, ct), "T.A", EvolutionLearnedPrompt, ct);
                     ApplyLearnedMove(pokemon, FirstOpenMoveSlot(pokemon), newMove);
                     continue;
                 }
