@@ -19,8 +19,19 @@ namespace ShinyBotHunter.Tests
         private const uint Getter = 0x02160000;
         private const uint Setup = 0x02170000;
         private const uint Evo = 0x02180000;
+        private const uint Env = 0x02190000;
+        private const uint ScriptCtx0 = 0x021A0000;
+        private const uint ScriptCtx1 = 0x021B0000;
 
         private const uint OutOfRange = 0x02400000;
+
+        // Values from pointer-discovery.md, "Field scripts".
+        private const uint RunScripts = 0x0203FF45;
+        private const uint Magic = 222271;
+        private const uint Printing = 0x021EF349;
+        private const uint WaitStd = 0x02040BCD;
+        private const uint MenuChoice = 0x020477C1;
+        private const uint HealAnimation = 0x0224BB91;
 
         // The pointer parameters say what each hop holds; the structs stay at the addresses above. The fake
         // answers a zero pointer with NullPointer and OutOfRange with OutOfRange. The defaults are the free field.
@@ -30,7 +41,10 @@ namespace ShinyBotHunter.Tests
             uint ovyId = 12, uint state = 9, uint bs = Bs, byte outcome = 0,
             uint ctx = Ctx, uint command = 0, byte sel = 0, uint script = 0,
             uint getter = 0, uint getterState = 0,
-            uint setup = Setup, uint evo = Evo, byte evoState = 0)
+            uint setup = Setup, uint evo = Evo, byte evoState = 0,
+            uint env = Env, uint envCheck = Magic, ushort scriptId = 0,
+            uint scriptCtx0 = 0, byte mode0 = 0, uint native0 = 0,
+            uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0)
         {
             FakeMemoryClient memory = new();
             memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
@@ -53,6 +67,15 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(Ctx, Table.ScriptFileOffset), BitConverter.GetBytes(script));
             memory.Place(At(Ctx, Table.GetterOffset), BitConverter.GetBytes(getter));
             memory.Place(At(Getter, Table.GetterStateOffset), BitConverter.GetBytes(getterState));
+            memory.Place(At(Taskman, Table.ScriptEnvironmentOffset), BitConverter.GetBytes(env));
+            memory.Place(At(Env, Table.ScriptEnvironmentCheckOffset), BitConverter.GetBytes(envCheck));
+            memory.Place(At(Env, Table.ScriptIdOffset), BitConverter.GetBytes(scriptId));
+            memory.Place(At(Env, Table.ScriptContextsOffset), BitConverter.GetBytes(scriptCtx0));
+            memory.Place(At(Env, Table.ScriptContextsOffset + 4), BitConverter.GetBytes(scriptCtx1));
+            memory.Place(At(ScriptCtx0, Table.ScriptContextModeOffset), [mode0]);
+            memory.Place(At(ScriptCtx0, Table.ScriptContextNativeOffset), BitConverter.GetBytes(native0));
+            memory.Place(At(ScriptCtx1, Table.ScriptContextModeOffset), [mode1]);
+            memory.Place(At(ScriptCtx1, Table.ScriptContextNativeOffset), BitConverter.GetBytes(native1));
             return memory;
         }
 
@@ -83,6 +106,51 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
             Assert.Equal(0x020551B9u, snapshot.TaskFunction);
+        }
+
+        [Fact]
+        public async Task FieldScript()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 2003,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 2003, null, RunScripts, Printing), snapshot);
+        }
+
+        [Fact]
+        public async Task FieldScriptNativeIsTheInnermostContext()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 1,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: ScriptCtx1, mode1: 2, native1: MenuChoice));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 1, null, RunScripts, MenuChoice), snapshot);
+        }
+
+        [Fact]
+        public async Task FieldScriptContextNotInANativeHasNoNative()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 1,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: ScriptCtx1, mode1: 1, native1: Printing));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, 1, null, RunScripts, null), snapshot);
+        }
+
+        [Fact]
+        public async Task ChildTaskHasNoScriptQualifiers()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: HealAnimation, scriptId: 1,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: ScriptCtx1, mode1: 2, native1: Printing));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldTask, null, null, null, HealAnimation), snapshot);
+        }
+
+        [Fact]
+        public async Task FieldScriptWithoutTheMagicIsTransitioning()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(taskman: Taskman, taskFunction: RunScripts, envCheck: 0, scriptId: 2003,
+                scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing));
+
+            Assert.Equal(new GameSnapshot(GameScreen.Transitioning, null, null, null, null), snapshot);
         }
 
         [Theory]
@@ -273,6 +341,7 @@ namespace ShinyBotHunter.Tests
         [Theory]
         [InlineData("FieldFree", GameScreen.FieldFree)]
         [InlineData("FieldTask", GameScreen.FieldTask)]
+        [InlineData("FieldScript", GameScreen.FieldTask)]
         [InlineData("BattleMenu", GameScreen.BattleMenu)]
         [InlineData("BattleMoveList", GameScreen.BattleMoveList)]
         [InlineData("BattleExpPrompt", GameScreen.BattleExpPrompt)]
@@ -285,6 +354,7 @@ namespace ShinyBotHunter.Tests
             {
                 "FieldFree" => Memory(),
                 "FieldTask" => Memory(taskman: Taskman, taskFunction: 0x020551B9),
+                "FieldScript" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptId: 2003, scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing),
                 "BattleMenu" => Memory(app: App, command: 5, sel: 1),
                 "BattleMoveList" => Memory(app: App, command: 5, sel: 4),
                 "BattleExpPrompt" => Memory(app: App, command: 8, getter: Getter, getterState: 11),
@@ -300,7 +370,7 @@ namespace ShinyBotHunter.Tests
 
         // The spec's block table, written out as literals so a mixed-up member shows here.
         [Fact]
-        public async Task RequestIsTheEightBlocksOfTheWalk()
+        public async Task RequestIsTheTwelveBlocksOfTheWalk()
         {
             FakeMemoryClient memory = Memory();
 
@@ -309,9 +379,13 @@ namespace ShinyBotHunter.Tests
             IReadOnlyList<ChainBlockRequest> blocks = memory.ChainReads[0].Blocks;
             Assert.All(blocks, block => Assert.Equal(0x021D4158u, block.Anchor));
             Assert.Equal(
-                new int[][] { [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0] },
+                new int[][]
+                {
+                    [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0],
+                    [0x10, 0x0C, 0], [0x10, 0x0C, 0x38, 0], [0x10, 0x0C, 0x3C, 0], [0x10, 0x0C, 0x40, 0],
+                },
                 blocks.Select(block => block.Hops));
-            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65], blocks.Select(block => block.Length));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x65, 0x0C, 8, 8, 8], blocks.Select(block => block.Length));
         }
 
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
@@ -337,6 +411,10 @@ namespace ShinyBotHunter.Tests
         [InlineData("evo", OutOfRange, GameScreen.Transitioning)]
         [InlineData("evoAfterEvolution", OutOfRange, GameScreen.BattleOver)]
         [InlineData("evoInBattle", OutOfRange, GameScreen.BattleMenu)]
+        [InlineData("env", 0u, GameScreen.Transitioning)]
+        [InlineData("env", OutOfRange, GameScreen.Transitioning)]
+        [InlineData("scriptCtx", 0u, GameScreen.FieldTask)]
+        [InlineData("scriptCtx1", OutOfRange, GameScreen.Transitioning)]
         public async Task BadPointerAtEachHop(string hop, uint pointer, GameScreen expected)
         {
             FakeMemoryClient memory = hop switch
@@ -352,6 +430,10 @@ namespace ShinyBotHunter.Tests
                 "evo" => Memory(app: App, state: 14, evo: pointer),
                 "evoAfterEvolution" => Memory(app: App, state: 13, evo: pointer),
                 "evoInBattle" => Memory(app: App, command: 5, sel: 1, evo: pointer),
+                "env" => Memory(taskman: Taskman, taskFunction: RunScripts, env: pointer, scriptCtx0: ScriptCtx0, mode0: 2, native0: Printing),
+                // With 0, all three context pointers are NULL (ctx 2 is never placed).
+                "scriptCtx" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: pointer, scriptCtx1: pointer),
+                "scriptCtx1" => Memory(taskman: Taskman, taskFunction: RunScripts, scriptCtx0: ScriptCtx0, mode0: 2, native0: WaitStd, scriptCtx1: pointer),
                 _ => Memory(app: App, command: 5, sel: 1, getter: pointer, getterState: 11),
             };
 
@@ -359,6 +441,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(expected, snapshot.Screen);
             Assert.Null(snapshot.Outcome);
+            Assert.Null(snapshot.Native);
         }
     }
 }
