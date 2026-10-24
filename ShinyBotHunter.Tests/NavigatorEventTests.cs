@@ -31,7 +31,11 @@ namespace ShinyBotHunter.Tests
             public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
         }
 
-        private static GameSnapshot Script(uint? native, int script = 1) => new(GameScreen.FieldTask, null, script, null, RunScripts, native);
+        private static GameSnapshot Script(uint? native, int script = 1, int? textPrinter = null)
+            => new(GameScreen.FieldTask, null, script, null, RunScripts, native, TextPrinter: textPrinter);
+
+        // One box of the printing native: drawing, at the arrow, then the slot NULL.
+        private static GameSnapshot[] Box(int script = 1) => [Script(Printing, script, 0), Script(Printing, script, 2), Script(Printing, script)];
 
         private static GameSnapshot ChildTask(uint function) => new(GameScreen.FieldTask, null, null, null, function);
 
@@ -51,9 +55,11 @@ namespace ShinyBotHunter.Tests
         public async Task HealPressesAUntilTheMenuThenOneYesThenB()
         {
             ScriptedReader reader = new(
-                Script(Printing), Script(TouchMenuHide), Script(MenuChoice), Script(Movement), Script(Printing), Script(null),
-                ChildTask(FadeTask), ChildTask(HealAnimationTask), Script(Movement), Script(Printing), Script(Printing), Script(Printing),
-                Script(TouchMenuShow), Free);
+            [
+                .. Box(), Script(TouchMenuHide), Script(MenuChoice), Script(Movement), .. Box(), Script(null),
+                ChildTask(FadeTask), ChildTask(HealAnimationTask), Script(Movement), .. Box(), .. Box(), .. Box(),
+                Script(TouchMenuShow), Free,
+            ]);
 
             List<string> presses = [];
             await PressThrough(reader, presses);
@@ -62,14 +68,50 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task PoisonScriptPressesAAtPrintingUntilTheFieldIsFree()
+        public async Task PoisonScriptPressesOnceAtTheArrow()
         {
-            ScriptedReader reader = new(Script(Printing, 2003), Script(Printing, 2003), Free);
+            ScriptedReader reader = new(Script(Printing, 2003, 0), Script(Printing, 2003, 0), Script(Printing, 2003, 2), Script(Printing, 2003), Free);
+
+            List<string> presses = [];
+            await PressThrough(reader, presses);
+
+            Assert.Equal([A], presses);
+        }
+
+        [Fact]
+        public async Task NothingIsPressedWhilePrintingDraws()
+        {
+            ScriptedReader reader = new(Script(Printing, 1, 0), Script(Printing, 1, 6), Script(Printing, 1, 0), Script(Printing), Free);
+
+            List<string> presses = [];
+            await PressThrough(reader, presses);
+
+            Assert.Empty(presses);
+        }
+
+        // Between boxes the printer goes back to drawing; 3 is the arrow that scrolls.
+        [Fact]
+        public async Task MultiBoxMessageGetsOnePressPerArrow()
+        {
+            ScriptedReader reader = new(
+                Script(Printing, 1, 0), Script(Printing, 1, 2), Script(Printing, 1, 0), Script(Printing, 1, 3), Script(Printing), Free);
 
             List<string> presses = [];
             await PressThrough(reader, presses);
 
             Assert.Equal([A, A], presses);
+        }
+
+        [Fact]
+        public async Task ArrowThatDoesNotClearIsRetriedThenThrows()
+        {
+            List<string> presses = [];
+            ScriptedReader reader = new(Script(Printing, 1, 2));
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => PressThrough(reader, presses));
+
+            Assert.Equal([A, A, A], presses);
+            Assert.Equal("the script box", e.WaitingFor);
         }
 
         [Theory]
@@ -114,7 +156,8 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task HealAnimationMarksTheYesWhenTheMenuWasMissed()
         {
-            ScriptedReader reader = new(Script(Printing), ChildTask(HealAnimationTask), Script(Printing), Free);
+            ScriptedReader reader = new(
+                Script(Printing, 1, 2), Script(Printing), ChildTask(HealAnimationTask), Script(Printing, 1, 2), Free);
 
             List<string> presses = [];
             await PressThrough(reader, presses);
