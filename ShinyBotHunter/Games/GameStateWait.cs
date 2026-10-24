@@ -35,6 +35,14 @@ namespace ShinyBotHunter.Games
         // snapshot that shows the menu can land before input is accepted (pointer-discovery.md, "Battle menu input-ready gap").
         public const int MenuSettleMs = 85;
 
+        // The settle before a press on a battle menu: Run, Fight, the move slot, and the getter's Yes/No (21, 34) once its
+        // question's printer has cleared. ctx.sel turns 1 before the player's controller builds the menu, and the Yes/No
+        // menu is built only after its question prints; then isTouchDisabled clears about 80 ms after the build
+        // (pointer-discovery.md, "Battle menu input-ready gap"). 85 ms still lost the first Run press in hgss-route33 run
+        // 20261024-033056, and a press right after the question cleared was lost at 34 in hgss-route33-train run
+        // 20261024-044032.
+        public const int BattleMenuSettleMs = 300;
+
         // Waits settleMs once (none when 0), then presses and polls up to confirm for the expected snapshot; repeats up to
         // attempts times.
         public static async Task<GameSnapshot> PressUntilAsync(

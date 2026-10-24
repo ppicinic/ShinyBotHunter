@@ -391,7 +391,8 @@ namespace ShinyBotHunter.BotEvents
         // The battle's Yes/No menus (21, 34) are built only once the question above them has printed: the player
         // controller's Yes/No task (ov12_0225FA44) prints it, waits on TextPrinterCheckActive, then changes the menu. A touch
         // while it draws only speeds the text (lost at both prompts in the probe run 20261024-042051), so the press waits
-        // for the printer to be seen and then to clear, and needs no settle; the retry stays as the safety net.
+        // for the printer to be seen and then to clear, then settles for the built menu's input-ready gap; the retry stays as
+        // the safety net.
         private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
         {
             Stopwatch? atPrompt = null;
@@ -403,7 +404,7 @@ namespace ShinyBotHunter.BotEvents
             }, PromptStale, ct);
             await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to print",
                 s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt && s.TextPrinter is null, PromptStale, ct);
-            await PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct, settleMs: 0);
+            await PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct, GameStateWait.BattleMenuSettleMs);
         }
 
         private static async Task PressAtPromptAsync(
