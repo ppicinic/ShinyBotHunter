@@ -1,4 +1,5 @@
-﻿using ShinyBotHunter.Bot;
+﻿using System.Diagnostics;
+using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -28,6 +29,11 @@ namespace ShinyBotHunter.BotEvents
         // message still prints only speeds the text, and "evolved into" prints for over 3 s.
         private static readonly TimeSpan EvolutionPressConfirm = TimeSpan.FromMilliseconds(1500);
         private const int EvolutionPressAttempts = 6;
+
+        // How long a battle Yes/No prompt waits for its question's printer to appear: the getter state turns about 0.16 s
+        // before the printer exists (probe run 20261024-042051). Past it the wait falls through, so a question that printed
+        // between two polls does not hold the flow.
+        private static readonly TimeSpan QuestionPrintStart = TimeSpan.FromSeconds(1);
 
         // The getter's prompt states (docs/specs/hgss-state-reader.md, state table). The evolution scene's states
         // share numbers with these (11, 13, 21), so every wait for one of them names the battle screens too.
@@ -385,10 +391,16 @@ namespace ShinyBotHunter.BotEvents
         // The battle's Yes/No menus (21, 34) are built only once the question above them has printed: the player
         // controller's Yes/No task (ov12_0225FA44) prints it, waits on TextPrinterCheckActive, then changes the menu. A touch
         // while it draws only speeds the text (lost at both prompts in the probe run 20261024-042051), so the press waits
-        // for the printer slot to clear and needs no settle. The retry stays, because hgss-route33-train run 20261024-035549
-        // lost three presses at 34 for a reason not yet found.
+        // for the printer to be seen and then to clear, and needs no settle; the retry stays as the safety net.
         private static async Task PressAtYesNoAsync(IGameStateReader game, Func<string, Task> tap, string macro, int prompt, CancellationToken ct)
         {
+            Stopwatch? atPrompt = null;
+            await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to start printing", s =>
+            {
+                if (s.Screen != GameScreen.BattleMoveLearnPrompt || s.Prompt != prompt) return false;
+                atPrompt ??= Stopwatch.StartNew();
+                return s.TextPrinter is not null || atPrompt.Elapsed >= QuestionPrintStart;
+            }, PromptStale, ct);
             await GameStateWait.UntilAsync(game, $"prompt {prompt}'s question to print",
                 s => s.Screen == GameScreen.BattleMoveLearnPrompt && s.Prompt == prompt && s.TextPrinter is null, PromptStale, ct);
             await PressAtPromptAsync(game, tap, macro, prompt, PromptPressConfirm, PromptPressAttempts, ct, settleMs: 0);

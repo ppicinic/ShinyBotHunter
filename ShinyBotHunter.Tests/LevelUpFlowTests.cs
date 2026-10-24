@@ -109,6 +109,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
         }
 
+        // The first read at 34 comes before the question's printer exists; the tap waits for the printer to appear and clear.
+        // Only the marked read after the draw takes the tap (Script is a marker the flow ignores).
+        [Fact]
+        public async Task NoTapBeforeTheQuestionStartsPrinting()
+        {
+            GameSnapshot Ready(int prompt) => Prompt(GameScreen.BattleMoveLearnPrompt, prompt) with { Script = 1 };
+            GameSnapshot Asking = Prompt(GameScreen.BattleMoveLearnPrompt, 34) with { TextPrinter = 0 };
+            ScriptedGame game = new(
+            [
+                Ready(21), Script276,
+                Prompt(GameScreen.BattleMoveLearnPrompt, 34), Asking, Asking, Ready(34), Menu,
+            ], waits: s => s.Script == 1);
+
+            await LevelUpFlow.DeclineMoveAsync(game, game.Tap, CancellationToken.None);
+
+            Assert.Equal(["S.DoNotLearn", "S.DoNotLearnComplete"], game.Taps);
+        }
+
         // Slot 2 proves the slot-to-button mapping.
         [Fact]
         public async Task ReplaceTouchesYesThenTheSlotAndForget()
