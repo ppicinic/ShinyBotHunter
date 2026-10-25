@@ -135,6 +135,19 @@ Outcome: no file over ~500 lines without a reason, and one definition per fact.
 
 Rows 5.3 to 5.3d and the `IBot` change in 5.6 are designed in the [game profile spec](../specs/game-profile.md) (2026-10-21); its P1 to P7 are the task split and change no behaviour. Row 5.3e is the [HGSS state reader spec](../specs/hgss-state-reader.md), implemented on `feature/hgss-state-reader` under epic #136 (2026-10-23 to 24) with its QA gate run on every task; see the implementation notes below. RS stays a wrapper profile until row 6.1.
 
+### Phase 7: Wishmaker Jirachi hunt (its own spec, after 5.3e)
+A new self-managing special event for RS that hunts the Colosseum Bonus Disc Jirachi through Dolphin and BizHawk. Spiked 2026-10-24 to 25 ([research](../research/wishmaker-jirachi.md)); designed in the [Wishmaker Jirachi spec](../specs/wishmaker-jirachi.md) with decisions in [decisions/wishmaker-jirachi.md](../decisions/wishmaker-jirachi.md). The rows are the spec's suggested tasks.
+
+| # | Task | Deliverable | Depends on | Size |
+|---|---|---|---|---|
+| 7.1 | Settings and Dolphin install (W1) | `DolphinBaseDirectory`, `GbaBiosPath`, `ColosseumBonusDiscPath`; `Dolphin/Config/*.ini`; `Scripts/deploy-dolphin.ps1` installing a bot-owned Dolphin user folder. | — | S |
+| 7.2 | Gen 3 save sections (W2) | `Gen3SaveFile`: section walk, live block, first-block seed, play time, Pokédex flag, party count, save completion, party slot bytes; tests on the spike's saves. | — | M |
+| 7.3 | RS `ContinueGame` (W3) | Deterministic RS continue macro; `Launch Bot + Continue` for RS. | — | S |
+| 7.4 | Dolphin pieces (W4) | `DolphinLauncher`, `DolphinMemory`, `DolphinPad` (DSU server), `DolphinGbaWindow` (reset), `BonusDiscAddresses`; unit tests over fakes. | — | M |
+| 7.5 | The event (W5) | `WishmakerJirachiEvent` and config, registry entry, `HasWishmakerJirachi`, `GameFilter` and the dashboard dropdown filter, Start validation, the cycle, prediction check, shiny path. | 7.1 to 7.4 | L |
+| 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. | 7.5 | M |
+| 7.7 | Close-out (W7) | Architecture section, spec status, implementation notes here. | 7.6 | S |
+
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
 - Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.

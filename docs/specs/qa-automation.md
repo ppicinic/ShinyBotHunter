@@ -273,6 +273,9 @@ Preconditions:
 | `hgss-route33-evolve-learn-free` (#152) | dashboard, bot-engine, encounter | none; no Discord prompt |
 | `hgss-route33-train-replace` (#154) | dashboard, bot-engine, encounter | none; Tackle, then Confirm Choice, in Discord by hand |
 | `hgss-route33-train-free` (#154) | dashboard, bot-engine, encounter | none; no Discord prompt |
+| `rs-jirachi-setup-refusals` | dashboard, jirachi | none; a rev 0 ROM, a missing save, a full party and a save without the Pokédex each refused at Start with the spec's sentence ([Wishmaker Jirachi spec](wishmaker-jirachi.md)) |
+| `rs-jirachi-soak` | dashboard, bot-engine, jirachi, persistence | none; one unattended hour, at least 20 Jirachi encounters with distinct PIDs, every PID equal to the save's prediction, no cycle over 240 s |
+| `rs-jirachi-shiny` | dashboard, jirachi, persistence, discord | `jirachi-seed.ts` crafts the base save's first-block play time to seed `ECDD` (PID `987ED636`, shiny); asserts the encounter row, the Mongo catch, the Discord alert and that the event stops in Waiting |
 
 ## Spike results (2026-10-20)
 
@@ -345,6 +348,9 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-heal-pokerus` | `Pokemon HeartGold8` | Route 33 path tile; lead at 15 HP with Pokérus, event flag `0x65` cleared so the nurse explains it; copy of `hgss.qa-route33` | 15613 / 35374 | `hgss-heal-variants` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
 | `rs.qa-starter` | to make | Whatever the RS starter hunt expects | | the `rs-starter-*` scenarios |
+| `rs.qa-jirachi` | the rev 2 Sapphire ROM (`AXPE` revision 2) | Trainer Phil in the field, Pokédex received (flag `0x801`), one party member, play time about 93 h; the spike's final hunt save, with its `.bak` | 39541 / 17794 | `rs-jirachi-soak`, `rs-jirachi-shiny` (seed `ECDD` crafted by `jirachi-seed.ts` on a copy) |
+| `rs.qa-jirachi-full` | the rev 2 Sapphire ROM | `rs.qa-jirachi` with six party members (PKHeX) | 39541 / 17794 | `rs-jirachi-setup-refusals` |
+| `rs.qa-jirachi-nodex` | the rev 2 Sapphire ROM | `Pokemon Sapphire8.SaveRAM` as the owner made it: no Pokédex, one party member | 39541 / 17794 | `rs-jirachi-setup-refusals` |
 
 The `README.md` in the saves folder lists each save and its state so it can be remade if lost.
 
