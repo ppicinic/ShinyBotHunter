@@ -7,5 +7,6 @@ namespace ShinyBotHunter.Games
         bool HasEggs,                  // Togepi egg event
         bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
         bool HasSoftResetStarterHunt,  // RS wave hunt
-        bool HasShinyStarterHunt);     // HGSS starter hunt
+        bool HasShinyStarterHunt,      // HGSS starter hunt
+        bool HasWishmakerJirachi);     // RS Wishmaker Jirachi hunt over the Colosseum Bonus Disc
 }

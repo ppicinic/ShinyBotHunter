@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
@@ -135,6 +136,11 @@ namespace ShinyBotHunter.Tests
                   "RequiredParameters": [ "GameName", "Starter" ],
                   "OptionalParameters": [ "RecordingName", "RequireFemale" ]
                 }
+              },
+              {
+                "Name": "Wishmaker Jirachi Hunt",
+                "RequiredParameters": [ "GameName", "PhaseName" ],
+                "GameFilter": { "Flavor": "RS", "TestedOnly": true }
               }
             ]
             """;
@@ -154,6 +160,18 @@ namespace ShinyBotHunter.Tests
             var actual = Build().GetTopLevelOptions();
 
             Assert.Equal(JsonSerializer.Serialize(today, options), JsonSerializer.Serialize(actual, options));
+        }
+
+        [Fact]
+        public void JirachiFilterTakesOnlyTestedRs()
+        {
+            GameFilter filter = EventRegistry.Get("Wishmaker Jirachi Hunt").Options.GameFilter!;
+            static RomInfo Rom(GameFlavor flavor, RevisionSupport support)
+                => new("Sapphire", @"D:\R\Sapphire.gba", ".gba", ConsoleType.GBA, flavor, "Pokemon Sapphire", "AXPE", "POKEMON SAPP", "English", 2, support);
+
+            Assert.True(filter.Matches(Rom(GameFlavor.RS, RevisionSupport.Tested)));
+            Assert.False(filter.Matches(Rom(GameFlavor.RS, RevisionSupport.SupportedUntested)));
+            Assert.False(filter.Matches(Rom(GameFlavor.HGSS, RevisionSupport.Tested)));
         }
 
         private static IEnumerable<string> DeclaredParameters(EventArgumentOptions action)

@@ -205,6 +205,39 @@ namespace ShinyBotHunter.Service
             return Task.FromResult(GetBotDashboardState());
         }
 
+        internal Task<Dictionary<int, EmulatorState>> StartWishmakerJirachiAsync(NewEventArguments args, int newPos)
+        {
+            // The hunt holds the one Dolphin, the one DSU port and the one GBA window. Other bots may
+            // run beside it.
+            if (slots.Entries.Values.Any(e => e.Event is WishmakerJirachiEvent))
+            {
+                throw new ArgumentException("A Wishmaker Jirachi Hunt is already running.");
+            }
+            if (string.IsNullOrWhiteSpace(args.GameName)) throw new ArgumentException("A game must be chosen for the Wishmaker Jirachi Hunt.");
+            if (string.IsNullOrWhiteSpace(args.PhaseName)) throw new ArgumentException("A milestone must be chosen for the Wishmaker Jirachi Hunt.");
+
+            RomInfo rom = romInfoService.GetByHandle(args.GameName)
+                ?? throw new ArgumentException($"No ROM named '{args.GameName}' was found.");
+            EventRegistration entry = EventRegistry.Get("Wishmaker Jirachi Hunt");
+            if (!entry.Options.GameFilter!.Matches(rom))
+            {
+                throw new ArgumentException(
+                    $"Wishmaker Jirachi Hunt runs only on a tested Ruby or Sapphire ROM (revision 2); {args.GameName} is {rom.DisplayName}.");
+            }
+            RequireCapability(entry, profiles.Get(GameFlavor.RS));
+
+            // The constructor checks the save and the Dolphin files, so each FR-5 refusal comes back
+            // as a 400 before anything launches.
+            var hunt = new WishmakerJirachiEvent(args.GameName, args.PhaseName, rom.Extension, newPos, WishmakerJirachiConfig.Load(), provider);
+
+            var huntState = new GameState { Profile = profiles.Get(GameFlavor.RS), BotService = this, Milestone = args.PhaseName, Target = new ShinyTarget() };
+            huntState.State.Push(EventState.Running);
+            var huntEvent = new BotAndOrEvent { GameState = huntState };
+            slots.Entries[newPos] = huntEvent;
+            runner.StartEvent(newPos, huntEvent, hunt, huntState, $"Wishmaker Jirachi: {args.GameName}", removeWhenDone: true);
+            return Task.FromResult(GetBotDashboardState());
+        }
+
         public async Task<Dictionary<int, EmulatorState>> ExecuteEvent(int pos, NewEventArguments args)
         {
             await slots.Gate.WaitAsync();
