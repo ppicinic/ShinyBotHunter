@@ -35,6 +35,10 @@ namespace ShinyBotHunter.Tests
             return save;
         }
 
+        /// <summary>A real save from the Wishmaker spike, read from the source tree.</summary>
+        private static byte[] Fixture(string name) =>
+            File.ReadAllBytes(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Saves", name));
+
         [Fact]
         public void ReadsTheTrainerIdOfASaveWrittenOnce()
         {
@@ -98,6 +102,26 @@ namespace ShinyBotHunter.Tests
             finally
             {
                 File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void FindsTheLiveBlockOfTheRev0Base()
+        {
+            Assert.Equal(0xE000, Gen3SaveFile.LiveBlockOffset(Fixture("rs-rev0-base.SaveRAM")));
+        }
+
+        [Fact]
+        public void EverySectionOfTheRev0BaseIsValid()
+        {
+            // Pins the data-size table and the checksum fold against a save the game wrote.
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            foreach (int block in new[] { 0x0000, 0xE000 })
+            {
+                var sections = Gen3SaveFile.ReadSections(save, block);
+                Assert.Equal(14, sections.Length);
+                Assert.All(sections, s => Assert.True(s.Valid, $"block 0x{block:X4} section {s.Id}"));
+                Assert.Equal(Enumerable.Range(0, 14), sections.Select(s => (int)s.Id).Order());
             }
         }
     }
