@@ -23,6 +23,12 @@ namespace ShinyBotHunter
         public int TotalMaxEmulators => MaxEmulators.Values.Sum();
         public string ROMBaseDirectory { get; set; } = null!;
         public string BizHawkBaseDirectory { get; set; } = null!;
+        // Folder holding Dolphin.exe.
+        public string DolphinBaseDirectory { get; set; } = null!;
+        // The GBA BIOS file Dolphin's integrated GBA boots from.
+        public string GbaBiosPath { get; set; } = null!;
+        // The Pokemon Colosseum Bonus Disc ISO.
+        public string ColosseumBonusDiscPath { get; set; } = null!;
         public Dictionary<string, int> DisplayWidth { get; set; } = null!;
         public Dictionary<string, int> DisplayHeight { get; set; } = null!;
         public Dictionary<string, int> WidthOffset { get; set; } = null!;
