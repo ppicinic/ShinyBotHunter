@@ -34,7 +34,7 @@ namespace ShinyBotHunter.Tests
 
         private static readonly GameProfile Profile = new(
             GameFlavor.HGSS,
-            new GameCapabilities(false, false, false, true, false, false),
+            new GameCapabilities(false, false, false, true, false, false, false),
             [0],
             _ => Addresses,
             new StubParser(),
