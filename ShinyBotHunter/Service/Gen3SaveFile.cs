@@ -21,6 +21,11 @@ namespace ShinyBotHunter.Service
         private const int FooterOffset = 0xFF4;
         private const uint SectionSignature = 0x08012025;
         private const int TrainerIdOffset = 0x0A;
+        private const int PlayTimeOffset = 0x0E;
+        private const int PokedexFlagOffset = 0x3A0;
+        private const int PartyCountOffset = 0x234;
+        private const int PartyOffset = 0x238;
+        private const int PartySlotSize = 100;
 
         private static readonly int[] BlockOffsets = [0x0000, 0xE000];
 
@@ -124,6 +129,40 @@ namespace ShinyBotHunter.Service
         }
 
         /// <summary>
+        /// The Wishmaker seed: the stored checksum of section 0 in the block at 0x0000, whichever
+        /// block is live.
+        /// </summary>
+        public static ushort ReadWishmakerSeed(ReadOnlySpan<byte> save)
+        {
+            return BitConverter.ToUInt16(save[(SectionOffset(save, BlockOffsets[0], 0) + FooterOffset + 2)..]);
+        }
+
+        /// <summary>The play time of the live save.</summary>
+        public static (ushort Hours, byte Minutes, byte Seconds, byte Frames) ReadPlayTime(ReadOnlySpan<byte> save)
+        {
+            ReadOnlySpan<byte> time = save[(LiveSectionOffset(save, 0) + PlayTimeOffset)..];
+            return (BitConverter.ToUInt16(time), time[2], time[3], time[4]);
+        }
+
+        /// <summary>Whether the live save has the Pokedex (FLAG_SYS_POKEDEX_GET, flag 0x801).</summary>
+        public static bool HasPokedex(ReadOnlySpan<byte> save)
+        {
+            return (save[LiveSectionOffset(save, 2) + PokedexFlagOffset] & 0x02) != 0;
+        }
+
+        /// <summary>The number of party members in the live save.</summary>
+        public static int ReadPartyCount(ReadOnlySpan<byte> save)
+        {
+            return save[LiveSectionOffset(save, 1) + PartyCountOffset];
+        }
+
+        /// <summary>The 100 encrypted bytes of a party slot in the live save, as Gen3PokemonParser takes them.</summary>
+        public static byte[] ReadPartySlot(ReadOnlySpan<byte> save, int slot)
+        {
+            return save.Slice(LiveSectionOffset(save, 1) + PartyOffset + PartySlotSize * slot, PartySlotSize).ToArray();
+        }
+
+        /// <summary>
         /// The trainer ID in a SaveRAM file, or null when it holds no readable save. Unreadable is not
         /// an error here: files are inspected while saves are being created, so one that is missing or
         /// half-written is an ordinary outcome rather than a fault.
@@ -139,6 +178,12 @@ namespace ShinyBotHunter.Service
                 // Being written right now. The caller re-reads on its next attempt.
                 return null;
             }
+        }
+
+        private static int LiveSectionOffset(ReadOnlySpan<byte> save, int id)
+        {
+            int block = LiveBlockOffset(save) ?? throw new InvalidOperationException("The save has no live block.");
+            return SectionOffset(save, block, id);
         }
 
         /// <summary>
