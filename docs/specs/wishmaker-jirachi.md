@@ -133,6 +133,23 @@ Disjoint file lists; W1 to W4 can run in parallel, W5 after them, W6 and W7 last
 
 QA runs once, on the feature branch, after W6 (owner's decision 2026-10-25); W4 and W5 may run the soak scenario early at the orchestrator's discretion, one emulator run at a time.
 
+## What diverged
+
+Where the build differs from this spec as first written (2026-10-25). The statements above are corrected in place; this list keeps the record.
+
+- W3, FR-7, FR-8: the RS `ContinueGame` macro was already on `main` (b2d59d6), so W3 (#166) closed with no change; FR-8 moved to W5 (#177), and FR-7's QA is every soak cycle.
+- FR-2: `Dolphin.ini` also carries `[Analytics] PermissionAsked = True`, which suppresses the usage statistics dialog (W1b, #175). The deploy script refuses to run while Dolphin runs, and builds the `Dolphin.exe` path without `Join-Path` (#172).
+- FR-6: `SectionOffset` finds a section by its footer id and signature. Two spike saves, `rs-rev0-base.SaveRAM` and `rs-seed-ecdd.sav`, are unit fixtures in `ShinyBotHunter.Tests/Saves/`, read through `RepoPaths.Root` (#171; [decision](../decisions/wishmaker-jirachi.md#two-spike-saves-are-unit-test-fixtures-in-the-repo)).
+- FR-8: the EmuHawk ready wait (an anchor read that answers) has no settle delay after it; the bounded A-plus-check retry (10 checks) covers a continue macro that runs early (#177).
+- FR-9: "the first block's counter increased" compares the highest section counter in the block at `0x0000` before and after the save (#177). The start menu is confirmed live by a cursor probe, with the spike's held presses and waits, because the menu bytes keep their last values after the menu closes and a Start press the game ate passed the plain check; that bug stopped the first soak run in the second save (W5e, #184).
+- FR-11: the one-time backup is `{GameName}.SaveRAM.wishmaker.bak`, because BizHawk writes and restores `{name}.SaveRAM.bak` itself (#177).
+- FR-12: `-C Dolphin.GBA.Rom2` and `-C Dolphin.GBA.SavesPath` work on 2609a and are not persisted; the `Dolphin.ini` rewrite was not built. `DolphinLauncher` is not an `ILauncher`, and its dispose kills a second time when Dolphin has not exited 10 s after the first kill, as seen on the dev PC (#173).
+- FR-14: the pad frame carries a u64 microsecond timestamp, and the port-info reply is the fixed bytes of one connected full-gyro pad (#173).
+- FR-15: the address table and the drive loop are `Emulators/Dolphin/BonusDisc.cs` (`DriveGiftAsync`), not a file in the event's folder. The press caps come from the config budgets: Right 60 and prompt 40 as written, Play 30 (`DiscMenuTimeoutMs` / 2 s), not 10 (#173, #177).
+- FR-16: Down gets `WM_KEYDOWN` and `WM_KEYUP` four times and Return only `WM_KEYDOWN`, because Qt runs Reset on the key-down and closes the popup (a key-up then failed with error 1400). A failed `PostMessage` throws (#173).
+- FR-19: `Bot.DisposeAsync` logs a failed final flush and still disposes the launcher (W5d, #179). This applies to every event.
+- QA: the soak counts rows with psql, `rs.qa-jirachi` has no `.bak`, and the scenarios find the saves folder through `git rev-parse --git-common-dir`, so they run from a worktree (#181). `rs-jirachi-shiny` and `jirachi-seed.ts` are not built (W6b held; see Open questions).
+
 ## Open questions
 
 - Resolved by assumption: the ISO location is a third settings key rather than a file in `ROMBaseDirectory`, because `RomInfoService` lists only GBA and DS ROMs and the disc is not a game to hunt. Change to a fixed name under the ROM folder if a third key is unwanted.
