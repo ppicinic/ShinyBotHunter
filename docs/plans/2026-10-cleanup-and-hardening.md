@@ -1,7 +1,7 @@
 # Cleanup and Hardening Plan
 
-Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phases 4b and 6 open
-Last updated: 2026-10-22
+Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phase 7 (Wishmaker Jirachi hunt) implemented 2026-10-25 under epic #163 except the `rs-jirachi-shiny` QA; phases 4b and 6 open
+Last updated: 2026-10-25
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
 ## Goal
@@ -142,10 +142,10 @@ A new self-managing special event for RS that hunts the Colosseum Bonus Disc Jir
 |---|---|---|---|---|
 | 7.1 | Settings and Dolphin install (W1) | `DolphinBaseDirectory`, `GbaBiosPath`, `ColosseumBonusDiscPath`; `Dolphin/Config/*.ini`; `Scripts/deploy-dolphin.ps1` installing a bot-owned Dolphin user folder. | — | S |
 | 7.2 | Gen 3 save sections (W2) | `Gen3SaveFile`: section walk, live block, first-block seed, play time, Pokédex flag, party count, save completion, party slot bytes; tests on the spike's saves. | — | M |
-| 7.3 | RS `ContinueGame` (W3) | Deterministic RS continue macro; `Launch Bot + Continue` for RS. | — | S |
+| 7.3 | RS `ContinueGame` (W3) | Deterministic RS continue macro; `Launch Bot + Continue` for RS. Already on `main` (b2d59d6); FR-8 done in 7.5. | — | S |
 | 7.4 | Dolphin pieces (W4) | `DolphinLauncher`, `DolphinMemory`, `DolphinPad` (DSU server), `DolphinGbaWindow` (reset), `BonusDiscAddresses`; unit tests over fakes. | — | M |
 | 7.5 | The event (W5) | `WishmakerJirachiEvent` and config, registry entry, `HasWishmakerJirachi`, `GameFilter` and the dashboard dropdown filter, Start validation, the cycle, prediction check, shiny path. | 7.1 to 7.4 | L |
-| 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. | 7.5 | M |
+| 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. Split into W6a and W6b; W6b held. | 7.5 | M |
 | 7.7 | Close-out (W7) | Architecture section, spec status, implementation notes here. | 7.6 | S |
 
 ## Testing strategy
@@ -216,3 +216,13 @@ Done on `feature/hgss-state-reader` under epic #136 (the [spec](../specs/hgss-st
 - S3's overworld-ready wait on `FieldFree` exposed that the blind heal macros left the nurse script running (the old coordinate heuristic walked through it), and S4's heal exposed a door re-entry: the Center exit lands one tile beyond the spawn node and the navigator walked back onto the door. S3b skips the spawn node after a portal crossing.
 - S4's press loop observed `ScrCmd_WaitButton` (`0x02041075`) in the nurse's Pokérus explanation; it was decomp-only until then. The other two wait-button natives stay decomp-only.
 - QA additions: `hgss-route33-evolve`, `-evolve-learn`, `-evolve-learn-replace`, `-evolve-learn-free`, `-train-replace`, `-train-free`, `hgss-navigate-heal-return`, `hgss-heal-variants` (three saves), `hgss-poison-walk`; saves `Pokemon HeartGold3`, `4`, `9`, `10` were made with PKHeX by subagents. The Discord move prompt is answered by the orchestrator in the desktop app with computer use; no production hook exists for it.
+
+## Implementation notes, Wishmaker Jirachi hunt (2026-10-25)
+Done on `feature/wishmaker-jirachi` under epic #163 (the [spec](../specs/wishmaker-jirachi.md)'s rows W1 to W7), task issues #164 to #170 plus #174, #178 and #183, PRs #171 to #184, merged in the order W2, W1, W1b, W4, W5c, W5a, W5d, W5b, W6a, W5e. The detail of every divergence is in the spec's [What diverged](../specs/wishmaker-jirachi.md#what-diverged); in short:
+- 7.1: W1 plus W1b, which suppresses Dolphin's usage statistics dialog; the deploy script refuses while Dolphin runs.
+- 7.2: the two spike saves are unit fixtures in the repo, recorded as a [decision](../decisions/wishmaker-jirachi.md#two-spike-saves-are-unit-test-fixtures-in-the-repo).
+- 7.3: no change; the macro was already on `main` and FR-8 moved to 7.5.
+- 7.4: the address table is `BonusDisc.cs` with the drive loop; `-C` works on 2609a, so the `Dolphin.ini` rewrite was not built; the Return that triggers the GBA reset gets no key-up; `DolphinLauncher` is not an `ILauncher`.
+- 7.5: split into W5a (the event), W5b (registry, capability, `GameFilter`, Start), W5c (the dashboard filter), W5d (`Bot.DisposeAsync` disposes the launcher after a failed flush, for every event) and W5e (the save step confirms the start menu by a cursor probe, after the first soak run stopped in the second save). The backup is `.SaveRAM.wishmaker.bak`, and the Play press cap is 30, not 10.
+- 7.6: split into W6a (refusals, soak, saves) and W6b (the shiny scenario and `jirachi-seed.ts`), which is held for the shiny route (spec's Open questions).
+- Owner checks before the merge to `main`: choose the route for `rs-jirachi-shiny`, and confirm the soak numbers below.
