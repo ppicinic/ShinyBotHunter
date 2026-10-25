@@ -1,0 +1,144 @@
+# Spec: Wishmaker Jirachi hunt
+
+Status: Approved for implementation (owner, 2026-10-25); epic and branch `feature/wishmaker-jirachi` to be opened by the orchestrator
+Last updated: 2026-10-25
+Owner: Phil
+Related: [research: the spike](../research/wishmaker-jirachi.md) (the source for every address, timing and rule here), [decisions](../decisions/wishmaker-jirachi.md), [game profile spec](game-profile.md), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), plan [phase 7](../plans/2026-10-cleanup-and-hardening.md#phase-7-wishmaker-jirachi-hunt)
+
+## Summary
+
+A new self-managing special event, beside the RS shiny starter hunt, that hunts the Wishmaker Jirachi from the Pokémon Colosseum Bonus Disc. One cycle is: continue the Sapphire or Ruby save in BizHawk, play a random while, save in-game (twice if the first save landed in the second block), flush and close; start Dolphin on the Bonus Disc with that save on the integrated GBA, drive the disc's Jirachi menu from a virtual pad, reboot the GBA when the disc waits for it, and read the Jirachi the disc wrote into the save; log it as an encounter; on a shiny, keep the save, record the catch, alert Discord and stop. The spike proved every step unattended, gated on memory and files only, over a one-hour soak.
+
+The Jirachi is a function of the save: the disc seeds it from the checksum of the save's first block, and the PID is the Gen 3 LCRNG run from that seed. The hunt therefore makes each cycle a real, different encounter by letting the game itself advance the save (play time and the fields that move on every in-game save), never by editing bytes. Every cycle checks the Jirachi it got against the one the save predicts; a mismatch stops the hunt and reports, because it means the pipeline read a different save than it wrote.
+
+## Goals
+
+- G1: the event runs from the dashboard like the starter hunt, with no operator action after Start, no screen reads, no keyboard focus, and no LLM.
+- G2: every wait is a memory value or a file change with a stale-timeout that names what it waited for and what it saw.
+- G3: a bad setup fails at Start with one plain sentence in the dashboard (wrong ROM, no save, no Pokédex, full party, Dolphin or BIOS missing).
+- G4: the Dolphin side is installed and configured by a script from files in the repo, from the same settings the backend reads.
+- G5: every cycle is a logged encounter whose PID the save predicts; the shiny path records the catch, alerts Discord and stops.
+
+## Non-goals
+
+- A Dolphin fork or any change to Dolphin. Mainline Dolphin 2609a, driven through its DSU client, its shared memory mapping and its GBA window.
+- Crafting the seed (editing play time to hit a shiny seed). The bot only ever plays the game and saves. The QA shiny scenario does craft one save, in QA tooling, to prove the shiny path.
+- Keeping emulators alive between cycles. Both restart every cycle; about 155 s per cycle is accepted (the spike measured 152 to 171). Cutting it is a later task if the hunt proves too slow.
+- Ruby and Sapphire ROM revisions other than 1.2 (header revision 2), and any save that is not the operator's own.
+- More than one Jirachi hunt at a time: one DSU port, one Dolphin, one GBA window. The emulator-count setting does not apply.
+- Reading the Jirachi out of BizHawk's RAM to decide anything. The decision is made from the save file; BizHawk is launched on the result only so the operator can see and keep it.
+
+## Requirements
+
+| ID | Requirement | Priority | Acceptance |
+|---|---|---|---|
+| FR-1 | `ApplicationSettings` gains `DolphinBaseDirectory` (the folder holding `Dolphin.exe`), `GbaBiosPath` (the GBA BIOS file) and `ColosseumBonusDiscPath` (the ISO). `appsettings.json` carries placeholders like the BizHawk keys; real paths live in user secrets. | Must | Settings test: the three keys bind; `Scripts/deploy-dolphin.ps1` reads them (FR-2). |
+| FR-2 | A top-level `Dolphin/` folder holds the Dolphin config the bot needs as files (`Config/Dolphin.ini`, `Config/DSUClient.ini`, `Config/GCPadNew.ini`), and `Scripts/deploy-dolphin.ps1` installs them into a Dolphin user folder the bot owns, `{DolphinBaseDirectory}\User-ShinyBotHunter`, substituting the BIOS path. The bot always launches Dolphin with `-u` on that folder, so the operator's own Dolphin settings are never touched. | Must | Running the script on a clean folder produces the three files; `Dolphin.exe -u <folder> -e <iso>` then boots the disc with the integrated GBA on port 2 and the DSU pad on GCPad1 (QA: `rs-jirachi-soak`). |
+| FR-3 | Registry entry `Wishmaker Jirachi Hunt`: parameters `GameName` (required), `PhaseName` (required); `OwnsEmulators: true`; requires a new capability `HasWishmakerJirachi`, true for RS only. | Must | `GameProfileTests` asserts the RS profile has it and HGSS does not; `GetTopLevelOptions` lists the entry. |
+| FR-4 | The `GameName` choices for this event are only ROMs with flavor RS and `RevisionSupport == Tested` (header revision 2), and the backend refuses any other handle at Start with a 400 naming the ROM and its revision. The dashboard filters the dropdown from a filter the registry entry carries (`EventArgumentOptions.GameFilter`: flavor and tested-only), so the rule lives in one place. | Must | Unit test on the filter; dashboard test on the dropdown; QA: a rev 0 ROM in the folder is absent from the list. |
+| FR-5 | At Start, before any emulator launches, the event reads `{BizHawk}\GBA\SaveRAM\{GameName}.SaveRAM` and refuses with a 400 when: the file is missing or shorter than 131072 bytes; the live block (higher section-0 counter) is incomplete (not all 14 sections valid); the Pokédex flag (`FLAG_SYS_POKEDEX_GET`, flag `0x801`, in `SaveBlock1.flags` at `0x1220`, so section 2 offset `0x3A0` bit 1) is clear; the party count (`SaveBlock1` offset `0x234`, section 1) is 6; `Dolphin.exe`, the BIOS or the ISO is missing. The message says which, in one sentence the dashboard shows as it shows other 400s. | Must | Unit tests over crafted saves for each refusal (section walk, flag, party count); QA: Start on the rev 2 ROM with no save shows the message. |
+| FR-6 | `Gen3SaveFile` grows the section walk the hunt needs: every section's id, counter, stored and computed checksum; the live block; the first-block section-0 checksum (the Wishmaker seed); the play time; the Pokédex flag and party count; "every section of a block carries counter above N with a valid checksum" (save completion); the 100-byte party slot bytes. Pure functions over a byte span, no I/O beyond the existing file reader. | Must | Unit tests on the spike's saves: seed `0A64` for the rev 0 base, `ECDD` for the crafted shiny save, completion false for the truncated save (8 of 14). |
+| FR-7 | An RS `ContinueGame` macro (`Macro/Configs/RS/continue_game.yaml`): the deterministic twin of `ContinueGameWithRandom`, the same presses with fixed waits and no `W.R[0,2000]`. `Launch Bot + Continue` works for RS through it, as it does for HGSS. | Must | `MacroTests` lists it; QA: `Launch Bot + Continue` on the rev 2 ROM reaches the field. |
+| FR-8 | Reaching the field is confirmed, not assumed: after the continue macro the event opens the start menu and reads it through `RsStartMenuService` (count 1 to 10, SAVE id present), closes it with B, and retries A plus the check up to a bounded count; it never presses B at the CONTINUE menu. | Must | QA: `rs-jirachi-soak` log shows "in the field" on every cycle. |
+| FR-9 | The in-game save: close any text box (B twice), open the start menu, step to SAVE by its id through `RsStartMenuService`, run the RS `SaveGame` macro, then POST `/flush` once a second and read the SaveRAM until every section of a block carries a counter above the previous maximum with a valid checksum (FR-6); dismiss "saved the game" with A. Then, if the first block's counter did not increase, do it again. Timeout 40 s per save, then stop and report. | Must | Unit test for the "save again" rule; QA: every soak cycle's save has 14 new sections and the first block's counter rises by one or two per cycle. |
+| FR-10 | Random play: a uniform wait of `MinPlayMs` to `MaxPlayMs` (config, default 2000 to 20000) in the field before saving. | Must | Config validation test (min < max, both positive). |
+| FR-11 | After the saves, `/flush`, then close EmuHawk the way the launcher does (`CloseMainWindow`, then kill after the timeout). The resulting SaveRAM, `{GameName}.SaveRAM`, is the hunt's save: the operator's own file, continued and saved over in place every cycle, never replaced by anything Dolphin wrote. A one-time `.bak` copy is taken before the first cycle. | Must | QA: the SaveRAM's play time and counters grow across the soak; the `.bak` is unchanged. |
+| FR-11b | Two files carry the Wishmaker suffix, named after the Jirachi's OT: `{GameName}-WISHMKR.gba` in the ROM folder, a copy of the hunt's ROM made at Start if missing (as `CreateSaveEvent` copies ROMs), and `{GameName}-WISHMKR.SaveRAM` in the SaveRAM folder, which every cycle overwrites with the save Dolphin returned. The fork names SaveRAM after the ROM file, so EmuHawk on the suffixed ROM opens the result and never the hunt save. The parse (FR-17) reads the suffixed SaveRAM. | Must | Unit test of the two paths; QA: after a soak cycle the suffixed SaveRAM holds Jirachi in slot 1 and the hunt save holds none. |
+| FR-12 | `DolphinLauncher` (`Emulators/Dolphin/`): copies the hunt's SaveRAM to `{user folder}\GBA\Saves\{rom}-2.sav` (a copy; Dolphin names the port-2 GBA save after the ROM file with a `-2` suffix; the mGBA footer round-trips), starts `Dolphin.exe -u <folder> -e <iso> -C Dolphin.GBA.Rom2=<rom> -C Dolphin.GBA.SavesPath=<folder>\GBA\Saves` (if `-C` does not take the GBA keys, the launcher rewrites those two lines of the user folder's `Dolphin.ini` before launch; the task verifies which and records it), waits for the shared memory mapping `dolphin-emu.<pid>` to open and the game id `PC6E01` to read at `0x80000000`, and stops Dolphin by process. | Must | QA: `rs-jirachi-soak`. |
+| FR-13 | `DolphinMemory` (`Emulators/Dolphin/`): `MemoryMappedFile.OpenExisting("dolphin-emu." + pid)` and a read accessor over MEM1 (24 MiB, big-endian, `0x80000000` at offset 0); `ReadByte(addr)`, `ReadBytes(addr, n)`. | Must | Unit test against a fake mapping; QA: the game id reads. |
+| FR-14 | `DolphinPad` (`Emulators/Dolphin/`): a cemuhook (DSU) server on UDP 26760 that answers version and port-info requests, streams an 84-byte pad frame every 4 ms to every requester seen in the last 5 s, ignores ICMP resets, and exposes `Press(button, holdMs)`. Buttons used: `Cross` (A), `Pad E` (D-pad Right). | Must | Unit tests for the frame layout and CRC (header `DSUS`, protocol 1001, CRC32 over the packet with the field zeroed); QA: Dolphin subscribes within 2 s of launch. |
+| FR-15 | The disc is driven as a state machine on four MEM1 bytes, with no screen read: `0x80D0ED38` menu cursor (0 movie, 1 Colosseum, 2 Jirachi); `0x800C662D` gift flow active; `0x800C6631` gift phase (logged only); `0x800C7D63` waiting for GBA power. Steps: Right every 1 s until cursor is 2 and active is 0 (max 60); A every 2 s until active is 1 (max 10); A every 1.5 s until wait-for-power is 1 (max 40); reset the GBA (FR-16); wait until the GBA save file's mtime changes and phase is at least 6 (max 90 s); then 2 s and parse. Each loop's exhaustion stops the hunt and reports the bytes it saw. Addresses live in one commented table in the event's folder, FR-9 style (symbol or origin, proving scenario). | Must | Unit test of the state machine over a scripted memory; QA: `rs-jirachi-soak` reaches "power prompt" on every cycle. |
+| FR-16 | The GBA reset needs no focus and no coordinates: find Dolphin's `GBA2` window by title, post `WM_CONTEXTMENU` to it, find the Qt popup window that appears for Dolphin's process, and post `WM_KEYDOWN`/`WM_KEYUP` for Down four times and Return to the popup (menu order: Connected, Load ROM, Unload ROM, a disabled e-Reader entry that keyboard navigation skips, Reset). Success is observed, not assumed: the wait-for-power byte must clear and the save file must change within the FR-15 wait, else stop and report. | Must | QA: every soak cycle; the research doc records this as the posted-message variant, with UI Automation by item name as the fallback if the order ever changes. |
+| FR-17 | The result: copy the GBA save Dolphin rewrote to `{GameName}-WISHMKR.SaveRAM` (FR-11b) and parse the party from it (FR-6 slot bytes, `Gen3PokemonParser`); Jirachi must be in the party; compute the predicted PID from the pre-disc save's first-block seed (`seed`, two LCRNG steps: `s = s * 0x41C64E6D + 0x6073`, high halves form the PID) and compare; a mismatch stops the hunt with both values in the message. Log one encounter (`AddEncounterAsync`: Game RS, Milestone PhaseName, GameFileName GameName, the parsed PID, IVs, nature, shiny flag). | Must | Unit test of the LCRNG rule on the spike's nine seed/PID pairs; QA: every soak row's PID equals the prediction logged beside it. |
+| FR-18 | On a shiny: the suffixed SaveRAM already holds the result and is not overwritten again (the hunt's own save stays as it was), `AddCaughtPokemonAsync` with `GameFileName` `{GameName}-WISHMKR`, `ShinyAlertService.NotifyTargetFoundAsync` (the gold embed in the shiny channel), launch EmuHawk on `{GameName}-WISHMKR.gba` so the operator sees the Jirachi, push `Waiting`, and stop cycling. The dashboard shows the event stopped with the shiny, as the starter hunt parks one. | Must | QA: `rs-jirachi-shiny`. |
+| FR-19 | Cancel from the dashboard stops at the next step boundary and kills both emulators; no cycle leaves a half-written hunt save (the SaveRAM is only replaced by a complete save per FR-9). | Must | QA: cancel during the Dolphin half; the SaveRAM is still the last complete save. |
+| FR-20 | Config `Configs/Events/WishmakerJirachi.json` (loaded like `RsStarterHunt.json`): `ContinueMacro`, `SaveMacro`, `SaveMenuActionId`, `MinPlayMs`, `MaxPlayMs`, `LaunchReadyTimeoutMs`, `SaveTimeoutMs`, `DiscMenuTimeoutMs`, `DiscPromptTimeoutMs`, `TransferTimeoutMs`, `DsuPort`. Validated at load. | Must | Config validation tests. |
+| NFR-1 | A cycle completes in under 240 s on the dev PC (soak mean 159 s); a cycle over the limit is logged, not fatal. | Should | QA soak timings. |
+| NFR-2 | A one-hour unattended soak completes every cycle with no stall, every PID matching its prediction and no repeated seed. | Must | QA: `rs-jirachi-soak`. |
+| NFR-3 | No `SendInput`, no screenshot, no pixel read, no window focus call anywhere in the feature. | Must | Reviewer grep: `SendInput`, `GetPixel`, `SetForegroundWindow`, `CopyFromScreen` absent from the feature's files. |
+
+## Design
+
+### Where it lives
+
+| Piece | Location | Notes |
+|---|---|---|
+| Event | `BotEvents/WishmakerJirachiEvent.cs`, `WishmakerJirachiConfig.cs` | `AbstractBotEvent`, self-managing like `StarterHuntEvent`; one emulator slot; `Configs/Events/WishmakerJirachi.json`. |
+| Save logic | `Service/Gen3SaveFile.cs` (grown per FR-6) | Pure; the validation and the seed are here, tested on real saves. |
+| Dolphin | `Emulators/Dolphin/DolphinLauncher.cs`, `DolphinMemory.cs`, `DolphinPad.cs`, `DolphinGbaWindow.cs` | Four classes, one job each. No interface: `DolphinLauncher` implements `ILauncher` only if its members fit without stubs; otherwise it is a plain class the event owns. |
+| Disc addresses | `Emulators/Dolphin/BonusDiscAddresses.cs` | The four bytes, each with origin and proving scenario, per the game profile's comment rule. |
+| Registry | `Games/EventRegistry.cs`, `Games/GameCapabilities.cs`, `Games/Rs/RsProfile.cs` | New entry and capability; `EventArgumentOptions.GameFilter`. |
+| Dashboard | `admin/actionSchema.ts`, `BotControlTab.tsx` | Filter the `GameName` options by the entry's `GameFilter`. No new component. |
+| Macro | `Macro/Configs/RS/continue_game.yaml` | FR-7. |
+| Settings | `ApplicationSettings.cs`, `appsettings.json` | FR-1. |
+| Dolphin config | `Dolphin/Config/*.ini`, `Scripts/deploy-dolphin.ps1` | FR-2; the script follows `deploy-apihawk.ps1`'s conventions (header, `param()`, stop on error). |
+| QA | `ShinyBotHunter.Qa/dashboard/rs-jirachi-soak.spec.ts`, `rs-jirachi-shiny.spec.ts`, `jirachi-seed.ts` | See [QA](#qa). |
+
+### The cycle
+
+```mermaid
+stateDiagram-v2
+  [*] --> Validate: Start
+  Validate --> Continue: save, ROM, Dolphin, BIOS, ISO ok
+  Validate --> [*]: 400 with the reason
+  Continue --> Field: start menu opens with SAVE
+  Field --> Save: random play done
+  Save --> Save: first block unchanged (save again)
+  Save --> Close: 14 new sections, first block changed
+  Close --> Disc: SaveRAM flushed, EmuHawk closed
+  Disc --> Transfer: cursor 2, active 1, wait-for-power 1, GBA reset
+  Transfer --> Parse: .sav changed, phase >= 6
+  Parse --> Log: Jirachi present, PID == predicted
+  Parse --> [*]: mismatch or missing: stop and report
+  Log --> Continue: not shiny
+  Log --> Shiny: shiny
+  Shiny --> [*]: catch recorded, Discord alerted, result loaded, Waiting
+```
+
+Every arrow out of a wait has a timeout from the config; an exhausted timeout ends the event with a message naming the state and the last values read. Cancellation is checked at every arrow.
+
+### Dolphin configuration the script installs
+
+`Dolphin.ini`: `[Core] SIDevice0 = 6` (standard pad), `SIDevice1 = 13` (integrated GBA, port 2); `[GBA] BIOS = <GbaBiosPath>`, `SavesInRomPath = False`, `Threads = True`; `[Input] BackgroundInput = True`; `[Interface] ConfirmStop = False`; `[Analytics] Enabled = False`. `DSUClient.ini`: `[Server] Enabled = True`, `Entries = DSU1:127.0.0.1:26760;` (this build's key is `Entries`). `GCPadNew.ini`: `[GCPad1] Device = DSUClient/0/DSU1`, A `Cross`, B `Circle`, Start `Options`, D-Pad `Pad N/S/E/W`, Main Stick `Left X-/X+/Y-/Y+`. The ROM and saves path are per launch (FR-12).
+
+### What stays in the spike's write-up, not here
+
+The pointer discovery method (snapshot diff), the checksum arithmetic, the seed band and the odds, the Dolphin and mGBA save-file facts, and the alternatives that were tried and rejected (hotkeys, keyboard focus, PrintWindow, pixels) are in the [research doc](../research/wishmaker-jirachi.md). This spec states what the bot does; that doc states why.
+
+## QA
+
+QA runs on the final feature branch, programmatically through the Electron UI with the existing Playwright driver, one emulator run at a time.
+
+| Scenario | What it does | Asserts |
+|---|---|---|
+| `rs-jirachi-setup-refusals` | Starts the event from the UI on: a rev 0 ROM (absent from the dropdown); the rev 2 ROM with no SaveRAM; a save with a full party (QA-made); a save with no Pokédex (the original `Pokemon Sapphire8.SaveRAM`). | Each shows the FR-5 sentence in the dashboard and launches nothing. |
+| `rs-jirachi-soak` | Loads `rs.qa-jirachi`, starts `Wishmaker Jirachi Hunt` on `PhaseName` "Jirachi" from the UI, waits one hour, cancels. | At least 20 `encounters` rows with species Jirachi for the phase (Npgsql, as the QA spec's `assert-latest-encounter` step), all PIDs distinct, every backend log line "predicted … got …" equal, no cycle over 240 s, the SaveRAM's first-block counter advanced by cycles × 2 or so, no emulator left running after cancel. |
+| `rs-jirachi-shiny` | `jirachi-seed.ts` solves a play time whose first-block checksum is `ECDD` on a copy of `rs.qa-jirachi` (the spike's solver: hours and frames move the high half-word, minutes and seconds the low one; recompute the section checksum), loads it, starts the event from the UI. | One cycle; the `encounters` row is Jirachi PID `987ED636` shiny; a `CaughtPokemon` document for it in Mongo; the Discord shiny channel's latest message (Discord REST with the QA token) is the Jirachi alert; the dashboard shows the event stopped in Waiting; `{GameName}-WISHMKR.SaveRAM` holds Jirachi in slot 1 and `{GameName}.SaveRAM` holds none; EmuHawk is open on `{GameName}-WISHMKR.gba`. |
+
+Saves (added to the QA save table): `rs.qa-jirachi` = Sapphire rev 2, trainer Phil (TID 39541), Pokédex, one party member, play time about 93 h after the spike (the spike's final base), with its `.bak`; `rs.qa-jirachi-full` = the same with six party members (PKHeX); `rs.qa-jirachi-nodex` = `Pokemon Sapphire8.SaveRAM` as the operator made it.
+
+## Suggested task split
+
+Disjoint file lists; W1 to W4 can run in parallel, W5 after them, W6 and W7 last.
+
+| Task | Scope | Files |
+|---|---|---|
+| W1 | FR-1, FR-2: settings, `Dolphin/Config`, `Scripts/deploy-dolphin.ps1` | `ApplicationSettings.cs`, `appsettings.json`, `Dolphin/**`, `Scripts/deploy-dolphin.ps1` |
+| W2 | FR-6: `Gen3SaveFile` section walk, seed, flag, party count, completion, slot bytes; tests on the spike's saves | `Service/Gen3SaveFile.cs`, tests |
+| W3 | FR-7, FR-8: RS `ContinueGame`; `Launch Bot + Continue` for RS | `Macro/Configs/RS/continue_game.yaml`, `MacroTests` |
+| W4 | FR-12 to FR-16: the four Dolphin classes and the address table, with unit tests over fakes | `Emulators/Dolphin/**`, tests |
+| W5 | FR-3, FR-4, FR-5, FR-9 to FR-11, FR-17 to FR-20: the event, config, registry entry, capability, `GameFilter`, dashboard filter | `BotEvents/WishmakerJirachi*.cs`, `Configs/Events/WishmakerJirachi.json`, `Games/*`, `Games/Rs/RsProfile.cs`, `Service/BotService.cs`, `admin/actionSchema.ts`, `BotControlTab.tsx`, tests |
+| W6 | QA: the three scenarios, `jirachi-seed.ts`, the saves and their README rows | `ShinyBotHunter.Qa/dashboard/rs-jirachi-*.spec.ts`, `jirachi-seed.ts`, `docs/specs/qa-automation.md` |
+| W7 | Close-out: architecture section, this spec's status, the plan's implementation notes | `docs/**` |
+
+QA runs once, on the feature branch, after W6 (owner's decision 2026-10-25); W4 and W5 may run the soak scenario early at the orchestrator's discretion, one emulator run at a time.
+
+## Open questions
+
+- Resolved by assumption: the ISO location is a third settings key rather than a file in `ROMBaseDirectory`, because `RomInfoService` lists only GBA and DS ROMs and the disc is not a game to hunt. Change to a fixed name under the ROM folder if a third key is unwanted.
+- Resolved by assumption: the GBA reset uses posted key messages (proven in the spike with another application in the foreground); UI Automation by item name is the fallback, recorded in the decisions file, and would need the WindowsDesktop framework reference or COM interop.
+- Resolved by the owner (2026-10-25): the hunt save is the operator's own file in BizHawk's SaveRAM folder, continued and saved over in place with a one-time `.bak`; Dolphin only ever gets a copy; the result lives under the `-WISHMKR` suffix with its own ROM copy. The starter hunt's copy-per-wave machinery is not reused because there is one save and one emulator.
+
+## Changelog
+
+- 2026-10-25: first version, from the spike of 2026-10-24 to 25.
