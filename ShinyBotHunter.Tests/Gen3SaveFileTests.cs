@@ -1,3 +1,4 @@
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
@@ -34,6 +35,10 @@ namespace ShinyBotHunter.Tests
             if (blockB is not null) WriteBlock(0xE000, blockB.Value);
             return save;
         }
+
+        /// <summary>A real save from the Wishmaker spike, read from the source tree.</summary>
+        private static byte[] Fixture(string name) =>
+            File.ReadAllBytes(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Saves", name));
 
         [Fact]
         public void ReadsTheTrainerIdOfASaveWrittenOnce()
@@ -99,6 +104,129 @@ namespace ShinyBotHunter.Tests
             {
                 File.Delete(path);
             }
+        }
+
+        [Fact]
+        public void FindsTheLiveBlockOfTheRev0Base()
+        {
+            Assert.Equal(0xE000, Gen3SaveFile.LiveBlockOffset(Fixture("rs-rev0-base.SaveRAM")));
+        }
+
+        [Fact]
+        public void EverySectionOfTheRev0BaseIsValid()
+        {
+            // Pins the data-size table and the checksum fold against a save the game wrote.
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            foreach (int block in new[] { 0x0000, 0xE000 })
+            {
+                var sections = Gen3SaveFile.ReadSections(save, block);
+                Assert.Equal(14, sections.Length);
+                Assert.All(sections, s => Assert.True(s.Valid, $"block 0x{block:X4} section {s.Id}"));
+                Assert.Equal(Enumerable.Range(0, 14), sections.Select(s => (int)s.Id).Order());
+            }
+        }
+
+        [Fact]
+        public void ReadsTheWishmakerSeedFromTheFirstBlockOfTheRev0Base()
+        {
+            // Block B is live (counter 3 against 2), but the seed comes from the first block.
+            Assert.Equal((ushort)0x0A64, Gen3SaveFile.ReadWishmakerSeed(Fixture("rs-rev0-base.SaveRAM")));
+        }
+
+        [Fact]
+        public void ReadsTheWishmakerSeedOfTheCraftedShinySave()
+        {
+            Assert.Equal((ushort)0xECDD, Gen3SaveFile.ReadWishmakerSeed(Fixture("rs-seed-ecdd.sav")));
+        }
+
+        [Fact]
+        public void ReadsTheSameSeedWithOrWithoutTheMgbaFooter()
+        {
+            byte[] flashOnly = Fixture("rs-rev0-base.SaveRAM")[..131072];
+            Assert.Equal((ushort)0x0A64, Gen3SaveFile.ReadWishmakerSeed(flashOnly));
+        }
+
+        [Fact]
+        public void ReadsThePokedexFlagAndPartyCountOfTheRev0Base()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            Assert.True(Gen3SaveFile.HasPokedex(save));
+            Assert.Equal(1, Gen3SaveFile.ReadPartyCount(save));
+        }
+
+        [Fact]
+        public void ReadsAPokedexFlagThatIsClear()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            int section2 = Gen3SaveFile.ReadSections(save, 0xE000).Single(s => s.Id == 2).Offset;
+            save[section2 + 0x3A0] &= unchecked((byte)~0x02);
+            Assert.False(Gen3SaveFile.HasPokedex(save));
+        }
+
+        [Fact]
+        public void ReadsAFullParty()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            int section1 = Gen3SaveFile.ReadSections(save, 0xE000).Single(s => s.Id == 1).Offset;
+            save[section1 + 0x234] = 6;
+            Assert.Equal(6, Gen3SaveFile.ReadPartyCount(save));
+        }
+
+        [Fact]
+        public void ReadsThePartySlotBytesOfTheRev0Base()
+        {
+            byte[] slot = Gen3SaveFile.ReadPartySlot(Fixture("rs-rev0-base.SaveRAM"), 0);
+            Assert.Equal(100, slot.Length);
+            // The substructure checksum only passes when the slot was read at the right offset.
+            var pokemon = Gen3PokemonParser.Decode(slot);
+            Assert.NotNull(pokemon);
+            Assert.False(pokemon.IsCorrupt);
+        }
+
+        [Fact]
+        public void ReadsThePlayTimeOfTheRev0Base()
+        {
+            // Live block B. Block A holds 0:14:51 frame 40.
+            Assert.Equal(((ushort)0, (byte)15, (byte)13, (byte)3), Gen3SaveFile.ReadPlayTime(Fixture("rs-rev0-base.SaveRAM")));
+        }
+
+        [Fact]
+        public void TheRev0BaseIsCompleteAfterItsOlderCounter()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            Assert.True(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 3));
+        }
+
+        [Fact]
+        public void APartlyWrittenSaveIsNotComplete()
+        {
+            // The 8-of-14 case: six sections of block B still carry the old counter. The counter sits
+            // outside the checksummed data, so every section stays valid and only the counter rule fails.
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            foreach (var section in Gen3SaveFile.ReadSections(save, 0xE000).Where(s => s.Id != 0).Take(6))
+            {
+                BitConverter.GetBytes(2u).CopyTo(save, section.Offset + FooterOffset + 8);
+            }
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+            Assert.All(Gen3SaveFile.ReadSections(save, 0x0000).Concat(Gen3SaveFile.ReadSections(save, 0xE000)), s => Assert.True(s.Valid));
+        }
+
+        [Fact]
+        public void ASectionWithABadChecksumIsNotComplete()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            int section = Gen3SaveFile.ReadSections(save, 0xE000)[5].Offset;
+            save[section] ^= 0xFF;
+            Assert.False(Gen3SaveFile.ReadSections(save, 0xE000)[5].Valid);
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+        }
+
+        [Fact]
+        public void ABlankFileHasNoCompleteBlock()
+        {
+            // A fresh SaveRAM: ids are 0 and every signature is missing.
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(new byte[131072], 0));
         }
     }
 }
