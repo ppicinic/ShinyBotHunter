@@ -1,4 +1,4 @@
-import type { Condition, ConditionalParameter, EncounterType, EventArgumentOptions, NewEventLegArguments, TrainType } from '../../types/api'
+import type { Condition, ConditionalParameter, EncounterType, EventArgumentOptions, GameRomInfo, NewEventLegArguments, TrainType } from '../../types/api'
 
 // Maps internal parameter names to user-friendly display labels
 const PARAM_DISPLAY_NAMES: Record<string, string> = {
@@ -83,6 +83,13 @@ export function visibleParamNames(schema: EventArgumentOptions, params: Record<s
     ...(schema.optionalParameters ?? []),
     ...visibleConditionalsOf(schema, params).map((cp) => cp.name)
   ])
+}
+
+/** The ROMs the schema's GameName dropdown offers: those its gameFilter admits, or all of them without one. */
+export function gamesFor(schema: EventArgumentOptions, games: GameRomInfo[]): GameRomInfo[] {
+  const filter = schema.gameFilter
+  if (!filter) return games
+  return games.filter((g) => g.flavor === filter.flavor && (!filter.testedOnly || g.revisionSupport === 'Tested'))
 }
 
 /** Maps one form's parameter values onto the JSON body of an encounter leg. */

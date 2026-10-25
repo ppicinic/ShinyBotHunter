@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLegBody,
+  gamesFor,
   getParamLabel,
   initialParamsFor,
   isConditionMet,
@@ -9,6 +10,7 @@ import {
   visibleConditionalsOf,
   visibleParamNames
 } from './actionSchema'
+import type { GameRomInfo } from '../../types/api'
 
 describe('getParamLabel', () => {
   it('maps a known parameter to its display label', () => {
@@ -135,6 +137,36 @@ describe('visibleParamNames', () => {
     expect(visibleParamNames(schema, { TrainType: 'Standard' })).toEqual(
       new Set(['PhaseName', 'TrainType', 'TargetLevel'])
     )
+  })
+})
+
+describe('gamesFor', () => {
+  const rom = (handle: string, flavor: string | null, revisionSupport: string): GameRomInfo => ({
+    handle,
+    console: 'GBA',
+    flavor,
+    gameName: handle,
+    gameCode: '',
+    language: 'English',
+    revision: 0,
+    displayName: handle,
+    revisionSupport
+  })
+  const games = [
+    rom('Sapphire', 'RS', 'Tested'),
+    rom('Ruby', 'RS', 'SupportedUntested'),
+    rom('HeartGold', 'HGSS', 'Tested')
+  ]
+
+  it('keeps only tested RS when the schema has an RS tested-only gameFilter', () => {
+    const schema = { name: 'Wishmaker Jirachi Hunt', gameFilter: { flavor: 'RS', testedOnly: true } }
+
+    expect(gamesFor(schema, games).map((g) => g.handle)).toEqual(['Sapphire'])
+  })
+
+  it('returns every game when gameFilter is null or absent', () => {
+    expect(gamesFor({ name: 'Launch Bot', gameFilter: null }, games)).toEqual(games)
+    expect(gamesFor({ name: 'Launch Bot' }, games)).toEqual(games)
   })
 })
 
