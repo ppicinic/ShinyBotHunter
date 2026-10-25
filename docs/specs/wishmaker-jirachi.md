@@ -1,6 +1,6 @@
 # Spec: Wishmaker Jirachi hunt
 
-Status: Approved for implementation (owner, 2026-10-25); epic and branch `feature/wishmaker-jirachi` to be opened by the orchestrator
+Status: Implemented (epic #163, 2026-10-25): FR-1 to FR-20 and NFR-1 to NFR-3 are built; `rs-jirachi-setup-refusals` and `rs-jirachi-soak` passed on `feature/wishmaker-jirachi` (run folders under [QA](#qa)). FR-18's QA, `rs-jirachi-shiny`, is not run and not built: it waits on the owner's choice of route ([Open questions](#open-questions)), so the shiny path is unproven end to end. Divergences under [What diverged](#what-diverged)
 Last updated: 2026-10-25
 Owner: Phil
 Related: [research: the spike](../research/wishmaker-jirachi.md) (the source for every address, timing and rule here), [decisions](../decisions/wishmaker-jirachi.md), [game profile spec](game-profile.md), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), plan [phase 7](../plans/2026-10-cleanup-and-hardening.md#phase-7-wishmaker-jirachi-hunt)
@@ -117,6 +117,12 @@ QA runs on the final feature branch, programmatically through the Electron UI wi
 
 Saves (added to the QA save table): `rs.qa-jirachi` = Sapphire rev 2, trainer Phil (TID 39541), Pokédex, one party member, play time about 93 h after the spike (the spike's final base); `rs.qa-jirachi-full` = the same with six party members (PKHeX); `rs.qa-jirachi-nodex` = `Pokemon Sapphire8.SaveRAM` as the operator made it.
 
+Results (run folders on the dev PC under `ShinyBotHunter.Qa/dashboard/qa-runs/`, not committed):
+- `rs-jirachi-setup-refusals` passed 2026-10-25 13:34 UTC (`20261025-133415-rs-jirachi-setup-refusals`): the dropdown listed only the rev 2 ROM, and the no-save, full-party and no-Pokédex saves each showed their FR-5 sentence.
+- `rs-jirachi-soak` run 1, on tip 2938f4e, failed after 2 minutes in the second in-game save: the stale start-menu bytes passed the menu check (fixed by W5e, #184).
+- `rs-jirachi-soak` run 2, on tip 569588f, passed 2026-10-25 14:03 to 15:07 UTC (`20261025-140333-rs-jirachi-soak`): 20 Jirachi rows with 20 distinct PIDs, every "predicted … got …" line equal; cycle gaps 172 to 188 s (mean 181 s); first-block counter 82 to 124 (two saves a cycle); the `.wishmaker.bak` unchanged; the cancel during the Dolphin half left no EmuHawk or Dolphin running, and the hunt save was byte-identical to its snapshot on the Jirachi entry, complete, with the last logged seed (FR-19).
+- `rs-jirachi-shiny`: not run (see Open questions).
+
 ## Suggested task split
 
 Disjoint file lists; W1 to W4 can run in parallel, W5 after them, W6 and W7 last.
@@ -152,6 +158,11 @@ Where the build differs from this spec as first written (2026-10-25). The statem
 
 ## Open questions
 
+- Open (owner): how `rs-jirachi-shiny` proves FR-18. The scenario as written crafts an `ECDD` play time into `rs.qa-jirachi`, but the event continues the game, plays and saves in-game before the disc reads the save, so the crafted first-block checksum is overwritten and the cycle yields a non-shiny Jirachi. The options:
+  1. Freeze the play-time fields with a generated BizHawk cheat file during the shiny run, QA-side only. Needs a two-cycle emulator spike for the frame and RTC risks.
+  2. Pin play time at its maximum and tune another section-0 field. Needs a spike.
+  3. Change the acceptance so the shiny path is proved another way.
+
 - Resolved by assumption: the ISO location is a third settings key rather than a file in `ROMBaseDirectory`, because `RomInfoService` lists only GBA and DS ROMs and the disc is not a game to hunt. Change to a fixed name under the ROM folder if a third key is unwanted.
 - Resolved by assumption: the GBA reset uses posted key messages (proven in the spike with another application in the foreground); UI Automation by item name is the fallback, recorded in the decisions file, and would need the WindowsDesktop framework reference or COM interop.
 - Resolved by the owner (2026-10-25): the hunt save is the operator's own file in BizHawk's SaveRAM folder, continued and saved over in place with a one-time `.bak`; Dolphin only ever gets a copy; the result lives under the `-WISHMKR` suffix with its own ROM copy. The starter hunt's copy-per-wave machinery is not reused because there is one save and one emulator.
@@ -159,3 +170,4 @@ Where the build differs from this spec as first written (2026-10-25). The statem
 ## Changelog
 
 - 2026-10-25: first version, from the spike of 2026-10-24 to 25.
+- 2026-10-25: implemented (epic #163); statements corrected to what was built, What diverged, QA results, and the shiny route as an open question.
