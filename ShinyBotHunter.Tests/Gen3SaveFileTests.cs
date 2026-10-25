@@ -189,5 +189,44 @@ namespace ShinyBotHunter.Tests
             // Live block B. Block A holds 0:14:51 frame 40.
             Assert.Equal(((ushort)0, (byte)15, (byte)13, (byte)3), Gen3SaveFile.ReadPlayTime(Fixture("rs-rev0-base.SaveRAM")));
         }
+
+        [Fact]
+        public void TheRev0BaseIsCompleteAfterItsOlderCounter()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            Assert.True(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 3));
+        }
+
+        [Fact]
+        public void APartlyWrittenSaveIsNotComplete()
+        {
+            // The 8-of-14 case: six sections of block B still carry the old counter. The counter sits
+            // outside the checksummed data, so every section stays valid and only the counter rule fails.
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            foreach (var section in Gen3SaveFile.ReadSections(save, 0xE000).Where(s => s.Id != 0).Take(6))
+            {
+                BitConverter.GetBytes(2u).CopyTo(save, section.Offset + FooterOffset + 8);
+            }
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+            Assert.All(Gen3SaveFile.ReadSections(save, 0x0000).Concat(Gen3SaveFile.ReadSections(save, 0xE000)), s => Assert.True(s.Valid));
+        }
+
+        [Fact]
+        public void ASectionWithABadChecksumIsNotComplete()
+        {
+            byte[] save = Fixture("rs-rev0-base.SaveRAM");
+            int section = Gen3SaveFile.ReadSections(save, 0xE000)[5].Offset;
+            save[section] ^= 0xFF;
+            Assert.False(Gen3SaveFile.ReadSections(save, 0xE000)[5].Valid);
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(save, 2));
+        }
+
+        [Fact]
+        public void ABlankFileHasNoCompleteBlock()
+        {
+            // A fresh SaveRAM: ids are 0 and every signature is missing.
+            Assert.False(Gen3SaveFile.HasCompleteBlockAfter(new byte[131072], 0));
+        }
     }
 }

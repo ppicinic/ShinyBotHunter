@@ -129,6 +129,23 @@ namespace ShinyBotHunter.Service
         }
 
         /// <summary>
+        /// Whether either block has all 14 sections valid and every one written after
+        /// <paramref name="counter"/>: a save the game finished writing since that counter.
+        /// </summary>
+        public static bool HasCompleteBlockAfter(ReadOnlySpan<byte> save, uint counter)
+        {
+            foreach (int block in BlockOffsets)
+            {
+                var sections = ReadSections(save, block);
+                if (sections.All(s => s.Valid && s.Counter > counter))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The Wishmaker seed: the stored checksum of section 0 in the block at 0x0000, whichever
         /// block is live.
         /// </summary>
