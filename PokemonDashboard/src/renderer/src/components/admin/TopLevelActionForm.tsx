@@ -1,7 +1,7 @@
 import React from 'react'
 import type { EventArgumentOptions, GameRomInfo, PhaseInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
-import { getParamLabel, initialParamsFor, legsVisible, requiredParamsFilled, visibleConditionalsOf } from './actionSchema'
+import { gamesFor, getParamLabel, initialParamsFor, legsVisible, requiredParamsFilled, visibleConditionalsOf } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
 
 // Which hunt a mode-carrying action runs. Values are C# GameFlavor names; the label is what the
@@ -80,7 +80,7 @@ export function TopLevelActionForm({
           className="flex-1 bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500"
         >
           <option value="">Select a game...</option>
-          {allGames.map((game) => (
+          {gamesFor(action, allGames).map((game) => (
             <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
           ))}
         </select>
