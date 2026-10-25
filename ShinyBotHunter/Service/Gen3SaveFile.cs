@@ -154,6 +154,19 @@ namespace ShinyBotHunter.Service
             return BitConverter.ToUInt16(save[(SectionOffset(save, BlockOffsets[0], 0) + FooterOffset + 2)..]);
         }
 
+        /// <summary>
+        /// The PID of the Jirachi the Bonus Disc gives a save with this seed: two steps of the Gen 3
+        /// LCRNG from the seed, the high half of the first output followed by the high half of the second.
+        /// </summary>
+        public static uint PredictWishmakerPid(ushort seed)
+        {
+            uint state = seed;
+            state = state * 0x41C64E6D + 0x6073;
+            uint high = state >> 16;
+            state = state * 0x41C64E6D + 0x6073;
+            return (high << 16) | (state >> 16);
+        }
+
         /// <summary>The play time of the live save.</summary>
         public static (ushort Hours, byte Minutes, byte Seconds, byte Frames) ReadPlayTime(ReadOnlySpan<byte> save)
         {
