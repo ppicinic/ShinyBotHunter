@@ -147,6 +147,7 @@ A new self-managing special event for RS that hunts the Colosseum Bonus Disc Jir
 | 7.5 | The event (W5) | `WishmakerJirachiEvent` and config, registry entry, `HasWishmakerJirachi`, `GameFilter` and the dashboard dropdown filter, Start validation, the cycle, prediction check, shiny path. | 7.1 to 7.4 | L |
 | 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. Split into W6a and W6b; W6b held. | 7.5 | M |
 | 7.7 | Close-out (W7) | Architecture section, spec status, implementation notes here. | 7.6 | S |
+| 7.8 | Summary view and RAM read (W8) | Owner's rule of 2026-10-25: every cycle opens the result in EmuHawk, shows the Jirachi's summary, then reads the slot from RAM and logs it; NFR-1 to 300 s. Soak rerun and video. | 7.7 | M |
 
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
