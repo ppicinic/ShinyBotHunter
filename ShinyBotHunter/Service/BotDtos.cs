@@ -28,6 +28,19 @@ namespace ShinyBotHunter.Service
         // When set, the legs are only offered while this holds -- an action whose modes do not all
         // take a list. Null means always, which is every action that existed before modes.
         public Condition? LegCondition { get; set; }
+        // When set, only the ROMs that match are offered for GameName, and Start refuses any other.
+        // Null means every ROM.
+        public GameFilter? GameFilter { get; set; }
+    }
+
+    public class GameFilter
+    {
+        public GameFlavor Flavor { get; set; }
+        /// <summary>Only the revision the flavor is tested on (<see cref="RevisionSupport.Tested"/>).</summary>
+        public bool TestedOnly { get; set; }
+
+        public bool Matches(RomInfo rom)
+            => rom.Flavor == Flavor && (!TestedOnly || rom.RevisionSupport == RevisionSupport.Tested);
     }
 
     public class ConditionalParameters
