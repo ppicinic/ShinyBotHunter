@@ -1,6 +1,6 @@
 # Wishmaker Jirachi: a real hunt through BizHawk and Dolphin
 
-Status: spike done, 2026-10-24 to 25. Nothing in this doc is implemented in the bot; the design that implements it is the [Wishmaker Jirachi spec](../specs/wishmaker-jirachi.md) (plan phase 7), with the choices recorded in [decisions](../decisions/wishmaker-jirachi.md).
+Status: spike done, 2026-10-24 to 25; implemented by the [Wishmaker Jirachi spec](../specs/wishmaker-jirachi.md) (epic #163, 2026-10-25, plan phase 7), with the choices recorded in [decisions](../decisions/wishmaker-jirachi.md). The bot differs from this write-up in three places: the GBA reset is the posted variant (Down four times and a Return key-down to the popup), not UI Automation, which stays the fallback ("GBA timing" row); the GBA ROM and saves path go on the command line with `-C`, which works on 2609a and is not persisted, so the last open point is settled; and the save step confirms the start menu is live by a cursor probe, with the spike's waits between held presses ("Save twice" row). The rows and open points below stay as the spike's record.
 
 ## What was proved
 

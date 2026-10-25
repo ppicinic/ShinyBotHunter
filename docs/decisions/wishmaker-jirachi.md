@@ -59,3 +59,20 @@ Before the disc runs, the event computes the PID the save predicts (first-block 
 ### Consequences
 - A silent pipeline fault cannot be logged as an encounter.
 - The prediction is a 40-line pure function in `Gen3SaveFile` with unit tests on real saves; it is not a second RNG implementation in the bot.
+
+---
+
+## Two spike saves are unit-test fixtures in the repo
+
+Status: Accepted
+Date: 2026-10-25
+
+### Context
+FR-6's acceptance needs tests on the spike's real saves (seed `0A64` for the rev 0 base, `ECDD` for the crafted shiny save), while the global decision [QA cheats live in the QA project; QA saves live beside the repo](global.md#qa-cheats-live-in-the-qa-project-qa-saves-live-beside-the-repo) keeps saves out of the repo.
+
+### Decision
+`rs-rev0-base.SaveRAM` and `rs-seed-ecdd.sav` are committed, frozen, in `ShinyBotHunter.Tests/Saves/` and read through `RepoPaths.Root` (W2, #171). The global rule is about QA saves, which change as scenarios need; these two are test inputs that never change.
+
+### Consequences
+- The `Gen3SaveFile` tests stay hermetic and run on real bytes.
+- QA saves are unchanged: they still live beside the repo.
