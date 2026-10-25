@@ -29,6 +29,20 @@ namespace ShinyBotHunter.BotEvents
         // From the spike: one A press and start-menu check every 2.5 s.
         private const int FieldCheckMs = 2500;
         private const int MenuPollMs = 250;
+        // From the spike's save, which saved twice in a row every cycle: held presses and the waits
+        // after each, so a press is not eaten by the transition the previous one started.
+        private const string CloseTextBoxesMacro = "H.B.4;W.20;H.B.4;W.20";
+        private const int CloseTextBoxesMs = 1200;
+        private const string OpenStartMenuMacro = "H.Start.4;W.6";
+        private const int OpenStartMenuMs = 700;
+        private const string CloseStartMenuMacro = "H.B.4;W.10";
+        private const int CloseStartMenuMs = 1500;
+        private const string DismissSavedMacro = "H.A.4;W.30";
+        private const int DismissSavedMs = 1000;
+        // From the spike: twelve Start presses was its bound for finding the menu.
+        private const int OpenStartMenuAttempts = 12;
+        // A cursor press shows in the cursor byte within a few frames; 1 s is the margin.
+        private const int CursorProbeMs = 1000;
         // FR-9: flush and read the SaveRAM once a second.
         private const int SavePollMs = 1000;
         // NFR-1: the spike's soak averaged 159 s a cycle.
@@ -237,9 +251,48 @@ namespace ShinyBotHunter.BotEvents
         private async Task<byte[]> SaveAsync(IBot bot, Service.Pointers.RsPointerService pointers, uint previousMax)
         {
             // Closes a text box first: the menu bytes keep their last values while one is open.
-            bot.RunMacroString("T.B;W.15;T.B;W.15;T.Start");
+            bot.RunMacroString(CloseTextBoxesMacro);
             await bot.WaitForMacroAsync(CancellationToken.None);
-            RsStartMenuService.MenuState menu = await WaitForStartMenuAsync(bot, pointers, CancellationToken.None);
+            await Task.Delay(CloseTextBoxesMs);
+
+            // The menu bytes also keep their last values after the menu closes, so a Start press the
+            // game ate still reads as "open with SAVE". Only a cursor that moves proves the menu live.
+            RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot, pointers);
+            bool live = false;
+            for (int attempt = 1; attempt <= OpenStartMenuAttempts && !live; attempt++)
+            {
+                bot.RunMacroString(OpenStartMenuMacro);
+                await bot.WaitForMacroAsync(CancellationToken.None);
+                await Task.Delay(OpenStartMenuMs);
+                menu = await WaitForStartMenuAsync(bot, pointers, CancellationToken.None);
+                if (IsOpenWithSave(menu))
+                {
+                    bot.RunMacroString(menu.CursorPos == menu.Count - 1 ? "H.Up.4;W.8" : "H.Down.4;W.8");
+                    await bot.WaitForMacroAsync(CancellationToken.None);
+                    DateTime probeDeadline = DateTime.UtcNow.AddMilliseconds(CursorProbeMs);
+                    RsStartMenuService.MenuState probed = await startMenu.ReadAsync(bot, pointers);
+                    while (probed.CursorPos == menu.CursorPos && DateTime.UtcNow < probeDeadline)
+                    {
+                        await Task.Delay(MenuPollMs);
+                        probed = await startMenu.ReadAsync(bot, pointers);
+                    }
+                    live = probed.CursorPos != menu.CursorPos;
+                    menu = probed;
+                }
+                if (!live)
+                {
+                    // Not open: B is harmless in the field and closes the menu if it opened late.
+                    bot.RunMacroString(CloseStartMenuMacro);
+                    await bot.WaitForMacroAsync(CancellationToken.None);
+                    await Task.Delay(CloseStartMenuMs);
+                }
+            }
+            if (!live)
+            {
+                throw new InvalidOperationException(
+                    $"The start menu did not open after {OpenStartMenuAttempts} Start presses (the cursor never " +
+                    $"moved); last start menu {menu.Describe()}.");
+            }
             RsStartMenuService.StepsTo(menu, config.SaveMenuActionId);
             await MoveCursorToAsync(bot, pointers, menu.IndexOf(config.SaveMenuActionId));
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.RS, config.SaveMacro));
@@ -274,8 +327,9 @@ namespace ShinyBotHunter.BotEvents
                 {
                     if (Gen3SaveFile.HasCompleteBlockAfter(save, previousMax))
                     {
-                        bot.RunMacroString("T.A");
+                        bot.RunMacroString(DismissSavedMacro);
                         await bot.WaitForMacroAsync(CancellationToken.None);
+                        await Task.Delay(DismissSavedMs);
                         return save;
                     }
                     lastSeen = Counters(save);
