@@ -33,6 +33,7 @@ namespace ShinyBotHunter.Emulators.Dolphin
             string savesFolder = Path.Combine(_userFolder, "GBA", "Saves");
             GbaSavePath = Path.Combine(savesFolder, Path.GetFileNameWithoutExtension(romPath) + "-2.sav");
             // A byte copy: the mGBA RTC footer BizHawk writes round-trips through Dolphin's mGBA.
+            Directory.CreateDirectory(savesFolder);
             File.Copy(saveRamPath, GbaSavePath, overwrite: true);
 
             // -C sets the two per-launch GBA keys for this run only (checked on Dolphin 2609a).

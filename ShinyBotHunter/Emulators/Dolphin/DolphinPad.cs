@@ -113,7 +113,7 @@ namespace ShinyBotHunter.Emulators.Dolphin
                 foreach ((EndPoint subscriber, long seen) in _subscribers)
                 {
                     if (now - seen > SubscriberLifetimeMs)
-                        _subscribers.TryRemove(subscriber, out _);
+                        _subscribers.TryRemove(new KeyValuePair<EndPoint, long>(subscriber, seen));
                     else
                         await _socket.SendToAsync(frame, SocketFlags.None, subscriber, ct);
                 }
