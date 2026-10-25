@@ -25,16 +25,14 @@ namespace ShinyBotHunter.Emulators.Dolphin
             IntPtr popup = await WaitForWindowAsync("the GBA2 context menu (a Qt popup window)", w => w.ClassName.Contains("Popup", StringComparison.Ordinal), timeout, ct);
 
             for (int i = 0; i < 4; i++)
-                await PostKeyAsync(popup, VK_DOWN, DownKeyLParam, ct);
-            await PostKeyAsync(popup, VK_RETURN, ReturnKeyLParam, ct);
-        }
-
-        private static async Task PostKeyAsync(IntPtr window, int key, int lParam, CancellationToken ct)
-        {
-            Post(window, WM_KEYDOWN, key, lParam);
-            await Task.Delay(KeyGapMs, ct);
-            Post(window, WM_KEYUP, key, lParam | KeyUpFlags);
-            await Task.Delay(KeyGapMs, ct);
+            {
+                Post(popup, WM_KEYDOWN, VK_DOWN, DownKeyLParam);
+                await Task.Delay(KeyGapMs, ct);
+                Post(popup, WM_KEYUP, VK_DOWN, DownKeyLParam | KeyUpFlags);
+                await Task.Delay(KeyGapMs, ct);
+            }
+            // Return triggers Reset on its key-down and the menu closes, so it gets no key-up.
+            Post(popup, WM_KEYDOWN, VK_RETURN, ReturnKeyLParam);
         }
 
         private static void Post(IntPtr window, uint message, IntPtr wParam, IntPtr lParam)
