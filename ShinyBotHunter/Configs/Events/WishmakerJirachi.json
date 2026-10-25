@@ -1,0 +1,37 @@
+{
+  // Macro names are resolved against GameFlavor.RS at run time. The continue is the deterministic
+  // one: reaching the field is checked through the start menu after it (FR-8), not assumed.
+  "ContinueMacro": "ContinueGame",
+  // Confirms the save, starting with the cursor already on SAVE.
+  "SaveMacro": "SaveGame",
+
+  // Start-menu entry id for SAVE (pret menu action order). The bot reads the live menu and fails
+  // naming what it found if this id is not present.
+  "SaveMenuActionId": 5,
+
+  // Random play in the field before each save, uniform in this range. Play time is what moves the
+  // Wishmaker seed, so this is what makes each cycle a different Jirachi.
+  "MinPlayMs": 2000,
+  "MaxPlayMs": 20000,
+
+  // How long a launched EmuHawk, or Dolphin booting the Bonus Disc, may take to answer.
+  "LaunchReadyTimeoutMs": 240000,
+
+  // One in-game save, from the save macro until all 14 sections of a block are new on disk. The
+  // spike saw about 4 s before the write starts and 5 s for the write itself.
+  "SaveTimeoutMs": 40000,
+
+  // Budget for the disc menu presses (Right to the Jirachi entry, then A into the gift flow); each
+  // loop's press count is this divided by its press interval.
+  "DiscMenuTimeoutMs": 60000,
+
+  // Budget for the A presses up to the "turn on the power" prompt, and for finding the GBA window
+  // and its menu during the reset. The spike needed 14 presses at 1.5 s.
+  "DiscPromptTimeoutMs": 60000,
+
+  // From the GBA reset until the disc has rewritten the GBA save. The spike saw about 17 s.
+  "TransferTimeoutMs": 90000,
+
+  // UDP port of the virtual pad. Must match Entries in Dolphin/Config/DSUClient.ini.
+  "DsuPort": 26760
+}
