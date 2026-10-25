@@ -139,6 +139,30 @@ namespace ShinyBotHunter.Tests
             Assert.Equal((ushort)0xECDD, Gen3SaveFile.ReadWishmakerSeed(Fixture("rs-seed-ecdd.sav")));
         }
 
+        [Theory]
+        [InlineData(0x353D, 0xBA7DF435u)]
+        [InlineData(0x3D60, 0xEB0DA543u)]
+        [InlineData(0x7236, 0x2EC1608Du)]
+        [InlineData(0x7360, 0xBF98F1D5u)]
+        [InlineData(0x9359, 0xBCFAF2B0u)]
+        [InlineData(0xA030, 0x4633087Du)]
+        [InlineData(0xCF37, 0x7B053548u)]
+        [InlineData(0xECDD, 0x987ED636u)]
+        [InlineData(0xF500, 0xC90E8744u)]
+        public void PredictPidMatchesTheShinySeeds(int seed, uint pid)
+        {
+            Assert.Equal(pid, Gen3SaveFile.PredictWishmakerPid((ushort)seed));
+            // Independent of the rule: each of the nine is shiny for the Wishmaker OT 20043, SID 0.
+            Assert.True((20043 ^ 0 ^ (pid & 0xFFFF) ^ (pid >> 16)) < 8, $"{pid:X8} is not shiny for 20043/0");
+        }
+
+        [Fact]
+        public void PredictPidFromTheCraftedSave()
+        {
+            ushort seed = Gen3SaveFile.ReadWishmakerSeed(Fixture("rs-seed-ecdd.sav"));
+            Assert.Equal(0x987ED636u, Gen3SaveFile.PredictWishmakerPid(seed));
+        }
+
         [Fact]
         public void ReadsTheSameSeedWithOrWithoutTheMgbaFooter()
         {
