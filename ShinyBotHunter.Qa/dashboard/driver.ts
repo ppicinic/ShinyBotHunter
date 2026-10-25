@@ -190,3 +190,11 @@ export function killTree(pid: number): void {
 export function killEmuHawk(): void {
   spawnSync('taskkill', ['/F', '/IM', 'EmuHawk.exe'])
 }
+
+export function dolphinRunning(): boolean {
+  return spawnSync('tasklist', ['/FI', 'IMAGENAME eq Dolphin.exe', '/NH'], { encoding: 'utf8' }).stdout.includes('Dolphin.exe')
+}
+
+export function killDolphin(): void {
+  spawnSync('taskkill', ['/F', '/IM', 'Dolphin.exe'])
+}
