@@ -1,7 +1,7 @@
 # System Architecture Overview
 
 Status: Draft
-Last updated: 2026-10-17
+Last updated: 2026-10-25
 Related: [Engineering principles](../engineering-principles.md), [Code review 2026-10](../reviews/2026-10-code-review.md), [Improvement plan](../plans/2026-10-cleanup-and-hardening.md)
 
 ## 1. What the system does
@@ -37,6 +37,10 @@ flowchart LR
     EmuHawk --- ApiHawk[ApiHawk external tool<br/>MemoryServer + CommandServer]
   end
 
+  subgraph Dol["Wishmaker Jirachi hunt only"]
+    DolLauncher[DolphinLauncher] --> Dolphin[Dolphin.exe 2609a<br/>Bonus Disc + integrated GBA]
+  end
+
   PG[(PostgreSQL + Timescale<br/>encounters)]
   Mongo[(MongoDB<br/>CaughtPokemon, PhaseInfos, PokemonMetadata, PhaseStates)]
   DiscordAPI[(Discord)]
@@ -45,6 +49,7 @@ flowchart LR
   Main -- SignalR --> Hub
   API --> BotSvc --> Events
   Events -- memory reads / input commands over HTTP --> ApiHawk
+  Events -- DSU pad on UDP 26760 / MEM1 mapping / posted window messages --> Dolphin
   BotSvc --> Launcher
   Events --> Persist
   Persist --> PG
@@ -53,7 +58,7 @@ flowchart LR
   Persist --> Discord --> DiscordAPI
 ```
 
-Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensions.AsRequiredPort` (`Startup.cs:446`). Each emulator gets its own pair of ApiHawk ports chosen by the launcher.
+Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensions.AsRequiredPort` (`Startup.cs:446`). Each emulator gets its own pair of ApiHawk ports chosen by the launcher; the Jirachi hunt's virtual pad listens on UDP 26760 (`DsuPort`).
 
 ## 3. Projects
 
@@ -63,6 +68,8 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 | `ShinyBotHunter.Tests/` | net10.0 xUnit | ~109 hermetic unit tests. |
 | `ApiHawk/` | net48 | BizHawk external tool loaded into EmuHawk. Exposes memory reads and input commands over local HTTP. Builds against the custom BizHawk fork below, so it is outside the solution and CI; deployed by `Scripts/deploy-apihawk.ps1`. |
 | BizHawk fork (external) | C# | `ppicinic/BizHawk`, branch `fix/4535-sticky-analog`, built as 2.11.2 with `Dist/BuildRelease.sh`. Not in this repo; see section 8. |
+| `Dolphin/`, `Scripts/deploy-dolphin.ps1` | ini files | Dolphin config as files, installed by the script into `{DolphinBaseDirectory}\User-ShinyBotHunter`, the user folder the bot launches Dolphin with (`-u`). |
+| Dolphin 2609a (external) | C++ | Mainline Dolphin, no fork, used only by the Wishmaker Jirachi hunt; see section 8. |
 | `PokemonDashboard/` | Electron + React + TS | Operator UI. Multi-window (admin, phase cards, recent encounters). |
 
 ## 4. Backend startup and composition
@@ -150,7 +157,7 @@ flowchart TD
 `IBotEvent.ExecuteAsync(GameState, CancellationToken)` is the whole contract. Two families:
 
 - **Bot-driven events** are handed an existing bot. `OrchestratorEvent` is the top-level overworld state machine (`DecideOverworldAction → Encountering → BattleStart`), delegating to `SpinEncounterEvent`/`RunEncounterEvent` for finding encounters, `BattleOrchestratorEvent` for the fight (read foe, parse, persist, check target, fight/flee) with `LevelUpFlow` for level-up, move learning and evolution, and `NavigatorEvent` + `PathfindingService` for walking to a Pokemon Center. `ChainedOrchestratorEvent` runs a list of `EventLeg`s over one shared `GameState`. `HgssTogepiEggEvent` is a self-contained egg loop.
-- **Self-managing hunts** launch and own their own emulators: `MultiStarterHuntEvent`/`StarterHuntEvent` for RS soft-reset starter hunting (wave-based; progress, created saves and retired copies kept in Mongo via `StarterHuntStateStore`; parked shinies are dropped on restart), `MultiShinyHunterEvent`/`HgssShinyStarterEvent` for HGSS (channel-based). They are two unrelated orchestrations behind one dashboard action. A third, the [Wishmaker Jirachi hunt](../specs/wishmaker-jirachi.md) (planned 2026-10-25), drives one BizHawk and one Dolphin per cycle: it is the only event that touches a second emulator, through four classes under `Emulators/Dolphin/` (process, shared memory mapping, DSU pad server, GBA window reset) and no change to Dolphin itself.
+- **Self-managing hunts** launch and own their own emulators: `MultiStarterHuntEvent`/`StarterHuntEvent` for RS soft-reset starter hunting (wave-based; progress, created saves and retired copies kept in Mongo via `StarterHuntStateStore`; parked shinies are dropped on restart), `MultiShinyHunterEvent`/`HgssShinyStarterEvent` for HGSS (channel-based). They are two unrelated orchestrations behind one dashboard action. A third, `WishmakerJirachiEvent` ([spec](../specs/wishmaker-jirachi.md), epic #163), drives one BizHawk and one Dolphin per cycle: it is the only event that touches a second emulator (section 8). Start refuses with a 400 a ROM outside the entry's `GameFilter`, a missing or incomplete save, no Pokédex, a full party, or a missing `Dolphin.exe`, BIOS or ISO, and takes a one-time `{GameName}.SaveRAM.wishmaker.bak`. Each cycle continues the operator's save in EmuHawk, confirms the field through the start menu, plays a random stretch, saves in-game once or twice until the first block advances, flushes and closes EmuHawk, and predicts the PID from that block's checksum. Dolphin then gets a copy as `{rom}-2.sav`; the event drives the disc to the power prompt, resets the GBA, waits for the transfer, copies the result to `{GameName}-WISHMKR.SaveRAM`, parses it, requires the predicted PID and logs one encounter. A shiny records the catch, alerts Discord, opens EmuHawk on `{GameName}-WISHMKR.gba` and parks in `Waiting`.
 
 `GameState` is the shared bag the events pass around: the profile (set where `BotService` constructs the state; `GameFlavor` derives from it, with no default), bot, milestone, target, train settings, tile penalties, and `State`, a `Stack<EventState>` (`Init`, `Running`, `Waiting`, `Resume`, `Complete` ...) that both the event loop and the dashboard read. `ITarget` decides whether an encounter parks the run (`Waiting`) for the operator to catch it; `Resume` re-enters and `CheckForCatchAsync` records the catch and flushes the save.
 
@@ -193,6 +200,17 @@ Consequences: `ApiHawk/lib/` must hold the fork's `BizHawk.Client.Common.dll`, `
 
 > **OPEN:** is the fork's branch rebased on a tagged upstream release, and is there a written list of its commits beyond the two above? A short `FORK.md` in the fork, linked from here, would stop this knowledge living in one `.gitkeep`.
 
+### Dolphin
+The Wishmaker Jirachi hunt also drives mainline Dolphin 2609a, unforked, with no ApiHawk equivalent: everything goes through what Dolphin already exposes, from four classes and a table under `Emulators/Dolphin/`. Dolphin always runs on the bot-owned user folder `User-ShinyBotHunter` that `Scripts/deploy-dolphin.ps1` installs, so the operator's own Dolphin settings are never touched.
+
+- `DolphinLauncher` (a plain class the event owns, not an `ILauncher`): copies the hunt save to `{user folder}\GBA\Saves\{rom}-2.sav`, starts `Dolphin.exe -u <folder> -e <iso> -C Dolphin.GBA.Rom2=<rom> -C Dolphin.GBA.SavesPath=<saves>`, waits for the `dolphin-emu.<pid>` mapping and the game id `PC6E01`, and stops Dolphin by killing the process tree (twice if the first kill has not ended it in 10 s).
+- `DolphinMemory`: a read-only view of MEM1 through that mapping, 24 MiB big-endian with `0x80000000` at offset 0; no process handle or injection.
+- `DolphinPad`: a cemuhook (DSU) server that Dolphin's DSU client subscribes to as GCPad1 (this build's `DSUClient.ini` key is `Entries`). It sends the 84-byte pad frame every 4 ms to every requester seen in the last 5 s. The requester map is a concurrent dictionary written by the receive loop and pruned by the send loop; the pressed buttons have one writer (the event) and one reader (the send loop), both through `Volatile`.
+- `DolphinGbaWindow`: resets the integrated GBA by posting `WM_CONTEXTMENU` to the `GBA2` window and Down four times and a Return key-down to the Qt popup; the caller observes success (the wait-for-power byte clears, the `.sav` changes). UI Automation by item name is the recorded fallback.
+- `BonusDisc`: the four commented MEM1 bytes (menu cursor, gift active, gift phase, waiting for power) and `DriveGiftAsync`, the press-and-check loop over them.
+
+None of it calls `SendInput`, reads the screen or takes focus (NFR-3). Design in the [spec](../specs/wishmaker-jirachi.md), choices in the [decisions](../decisions/wishmaker-jirachi.md), evidence in the [research doc](../research/wishmaker-jirachi.md).
+
 Risks found are in the [review](../reviews/2026-10-code-review.md#5-architecture-and-patterns).
 
 ## 9. Dashboard
@@ -226,7 +244,7 @@ The project grows in two known directions. Each gets one seam; nothing else is g
 | Party/box/foe parsing and shiny check | generation | `IPokemonParser`, `IBattlePokemonParser` | `profile.Parser`, `profile.BattleParser` (null for RS) |
 | Where the game is (field free, field task, the battle screens, evolution) | game | `IGameStateReader`; `HgssFieldSystemStateReader` walks the `sFieldSysPtr` chain in one opcode `0x05` request ([state reader spec](../specs/hgss-state-reader.md)) | `profile.CreateStateReader`, exposed as `bot.State`; RS has none |
 | Map id, position, facing | game | `IOverworldReader`; `HgssOverworldReader` | `profile.CreateOverworldReader`, exposed as `bot.Overworld`; RS has none |
-| Capabilities | game | `GameCapabilities`: `HasOverworldNavigation`, `HasWildEncounters`, `HasEggs`, `CanReadBoxes`, `HasSoftResetStarterHunt`, `HasShinyStarterHunt` | `profile.Capabilities`; HGSS declares all but the soft-reset hunt, RS only the soft-reset hunt. `BotService` refuses an action the bot's flavor lacks with a 400 and the dashboard never lists it |
+| Capabilities | game | `GameCapabilities`: `HasOverworldNavigation`, `HasWildEncounters`, `HasEggs`, `CanReadBoxes`, `HasSoftResetStarterHunt`, `HasShinyStarterHunt`, `HasWishmakerJirachi` | `profile.Capabilities`; HGSS declares all but the soft-reset hunt and the Wishmaker hunt, RS only those two. `BotService` refuses an action the bot's flavor lacks with a 400 and the dashboard never lists it |
 | Map and graph data | game | `MapService`, `GraphService`, `PathfindingService` instances | `profile.Maps`, `.Graph`, `.Pathfinding`, loaded from `HgssProfile.DataDirectory`; null for RS |
 | Macro set | game | YAML | `Macro/Configs/{flavor}/`, unchanged |
 | Phases | game | JSON | `Phases/{flavor}/`, unchanged |
@@ -235,7 +253,7 @@ The project grows in two known directions. Each gets one seam; nothing else is g
 Different flavors supporting different things is expected and fine. The rule is that the difference is declared in `GameCapabilities`, not discovered by exception: no reader stub throws `NotSupportedException` any more.
 
 ### Axis 2: event types
-Each event type is one `EventRegistration` in the static list `EventRegistry.All` (`Games/EventRegistry.cs`): its name, its parameter schema (`EventArgumentOptions`, which the dashboard renders), the capability it requires (with the name, so the refusal can say which), whether it owns its own emulators, and `Create`, a delegate onto the internal `BotService` method that starts it. The eight entries are `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS; its `Mode` also routes to the HGSS hunt), `HGSS Shiny Starter Hunt` (by name only), `Wild Encounter`, `Chained Encounter`, `HGSS Togepi Egg` and `Resume`. `BotService` looks the entry up (an unknown name is a 400), checks `Requires` against the bot's profile, checks the bot's state as before, and calls `Create`; `GetAvailableActions` is the list filtered by state and then by `Requires`, and `GetTopLevelOptions` is the owns-emulators entries the dashboard shows. `SpecialEvents.json` and the action map are gone. The registry names `BotService` because the start methods do slot, state and runner wiring that only `BotService` owns; the spec's sketch of a factory returning an event did not fit three of the eight entries, which build no event (decided 2026-10-22, see the plan's implementation notes).
+Each event type is one `EventRegistration` in the static list `EventRegistry.All` (`Games/EventRegistry.cs`): its name, its parameter schema (`EventArgumentOptions`, which the dashboard renders), the capability it requires (with the name, so the refusal can say which), whether it owns its own emulators, and `Create`, a delegate onto the internal `BotService` method that starts it. The nine entries are `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS; its `Mode` also routes to the HGSS hunt), `HGSS Shiny Starter Hunt` (by name only), `Wishmaker Jirachi Hunt`, `Wild Encounter`, `Chained Encounter`, `HGSS Togepi Egg` and `Resume`. `BotService` looks the entry up (an unknown name is a 400), checks `Requires` against the bot's profile, checks the bot's state as before, and calls `Create`; `GetAvailableActions` is the list filtered by state and then by `Requires`, and `GetTopLevelOptions` is the owns-emulators entries the dashboard shows. An entry can restrict its `GameName` choices with `EventArgumentOptions.GameFilter` (a flavor, and tested revisions only), and the dashboard filters the dropdown by it. `SpecialEvents.json` and the action map are gone. The registry names `BotService` because the start methods do slot, state and runner wiring that only `BotService` owns; the spec's sketch of a factory returning an event did not fit three of the eight entries, which build no event (decided 2026-10-22, see the plan's implementation notes).
 
 The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEvent` for HGSS) stay separate implementations behind one registry entry until a third game shows what they share.
 
@@ -243,3 +261,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-10-17: first draft; extension axes added after review discussion.
 - 2026-10-21: section 7 updated for the BotService split (row 5.1).
 - 2026-10-22: sections 4, 5, 7 and 11 updated for the game profile, the readers and the event registry (epic #118).
+- 2026-10-25: sections 2, 3, 7, 8 and 11 updated for Dolphin and the Wishmaker Jirachi hunt (epic #163).
