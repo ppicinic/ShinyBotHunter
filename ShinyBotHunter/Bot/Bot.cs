@@ -50,7 +50,15 @@ namespace ShinyBotHunter.Bot
 
         public async ValueTask DisposeAsync()
         {
-            await FlushSave(); // we force save cause we can't trust Window Server to close properly.
+            try
+            {
+                await FlushSave(); // we force save cause we can't trust Window Server to close properly.
+            }
+            catch (Exception ex)
+            {
+                // Logged, not rethrown: the launcher below must still close EmuHawk.
+                Console.WriteLine($"[Bot] Final save flush failed for {GameFileName}, disposing anyway: {ex}");
+            }
             try
             {
                 await memoryClient.DisposeAsync();
