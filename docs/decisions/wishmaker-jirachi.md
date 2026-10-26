@@ -59,3 +59,56 @@ Before the disc runs, the event computes the PID the save predicts (first-block 
 ### Consequences
 - A silent pipeline fault cannot be logged as an encounter.
 - The prediction is a 40-line pure function in `Gen3SaveFile` with unit tests on real saves; it is not a second RNG implementation in the bot.
+
+---
+
+## Two spike saves are unit-test fixtures in the repo
+
+Status: Accepted
+Date: 2026-10-25
+
+### Context
+FR-6's acceptance needs tests on the spike's real saves (seed `0A64` for the rev 0 base, `ECDD` for the crafted shiny save), while the global decision [QA cheats live in the QA project; QA saves live beside the repo](global.md#qa-cheats-live-in-the-qa-project-qa-saves-live-beside-the-repo) keeps saves out of the repo.
+
+### Decision
+`rs-rev0-base.SaveRAM` and `rs-seed-ecdd.sav` are committed, frozen, in `ShinyBotHunter.Tests/Saves/` and read through `RepoPaths.Root` (W2, #171). The global rule is about QA saves, which change as scenarios need; these two are test inputs that never change.
+
+### Consequences
+- The `Gen3SaveFile` tests stay hermetic and run on real bytes.
+- QA saves are unchanged: they still live beside the repo.
+
+---
+
+## The result is shown at its summary screen and read from BizHawk's RAM before it is logged
+
+Status: Accepted
+Date: 2026-10-25 (owner, after the first soak)
+
+### Context
+W5 logged each cycle's Jirachi by parsing the save file Dolphin returned, and opened the result in BizHawk only on a shiny. The first recorded cycle showed the pipeline closing EmuHawk before anyone could see the Jirachi.
+
+### Decision
+Every cycle does what a human would: EmuHawk loads the `-WISHMKR` result, the game is continued, the Jirachi's summary screen is opened and held on view so the operator sees it and whether it is shiny, and only then is the party slot read from BizHawk's RAM, checked against the save's prediction and logged. The save file still predicts the result and keeps it.
+
+### Consequences
+- About 40 s more per cycle; NFR-1's budget rises from 240 s to 300 s.
+- The party and summary screens have no mapped RS byte, so those presses are held presses with waits; the RAM read is the gate, and a slot that does not decode as Jirachi stops the hunt.
+- On a shiny the EmuHawk already open at the summary is the one the event parks on (FR-18); no second launch.
+- The "Every cycle is checked against the save's prediction" decision stands; the value compared now comes from RAM.
+
+---
+
+## Real-save tests are QA; unit tests build their saves
+
+Status: Accepted. Supersedes [Two spike saves are unit-test fixtures in the repo](#two-spike-saves-are-unit-test-fixtures-in-the-repo).
+Date: 2026-10-26 (owner)
+
+### Context
+The owner's rule: a test that relies on saves from outside is a QA test, not a unit test. The two spike saves came from outside the code, so the W2 fixtures broke it.
+
+### Decision
+`ShinyBotHunter.Tests/Saves/` is deleted (W10, #195). `Gen3SaveFileTests` builds a complete two-block save in the test, with checksums computed by the test, and `WishmakerJirachiEventTests` uses it. The real-save values (seed `0A64` on the rev 0 base, `ECDD` on the crafted save, live block, completion, play time, Pokédex, party count) are the QA check `rs-jirachi-saves`, which reads `rs-rev0-base.SaveRAM` and `rs-seed-ecdd.sav` from `../shinybothunterqasaves/rs/` with `jirachi-seed.ts`.
+
+### Consequences
+- The unit project reads no save file; the global rule that QA saves live beside the repo holds without an exception.
+- The C# reader meets real bytes only in QA: `rs-jirachi-shiny` (its `Seed ECDD` line) and `rs-jirachi-soak` (every prediction equal to the PID).

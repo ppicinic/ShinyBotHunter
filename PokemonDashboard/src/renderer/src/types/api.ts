@@ -277,6 +277,14 @@ export interface EventArgumentOptions {
   legParameters?: EventArgumentOptions
   // When present, the legs are only offered while this holds.
   legCondition?: Condition
+  // When present, the GameName dropdown offers only the ROMs this admits.
+  gameFilter?: GameFilter | null
+}
+
+// Matches C# GameFilter in BotDtos.cs. testedOnly admits only ROMs whose revisionSupport is "Tested".
+export interface GameFilter {
+  flavor: string
+  testedOnly: boolean
 }
 
 // Matches C# NewEventLegArguments in BotService.cs -- one leg of a chained action.

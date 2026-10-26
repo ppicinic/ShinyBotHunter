@@ -31,7 +31,8 @@ namespace ShinyBotHunter.Tests
                 HasEggs: true,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
-                HasShinyStarterHunt: true), profile.Capabilities);
+                HasShinyStarterHunt: true,
+                HasWishmakerJirachi: false), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
@@ -53,7 +54,8 @@ namespace ShinyBotHunter.Tests
                 HasEggs: false,
                 CanReadBoxes: false,
                 HasSoftResetStarterHunt: true,
-                HasShinyStarterHunt: false), profile.Capabilities);
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: true), profile.Capabilities);
             Assert.Null(profile.BattleParser);
             Assert.Null(profile.CreateOverworldReader);
             Assert.Null(profile.CreateStateReader);
@@ -91,7 +93,8 @@ namespace ShinyBotHunter.Tests
                 HasEggs: false,
                 CanReadBoxes: canReadBoxes,
                 HasSoftResetStarterHunt: false,
-                HasShinyStarterHunt: false);
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: false);
 
             // No battle parser, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
             Assert.Throws<ArgumentException>(() => new GameProfile(
@@ -118,7 +121,8 @@ namespace ShinyBotHunter.Tests
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
-                    HasShinyStarterHunt: false),
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
                 [0],
                 _ => table,
                 new HgssPokemonParser(Metadata()),
@@ -142,7 +146,8 @@ namespace ShinyBotHunter.Tests
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
-                    HasShinyStarterHunt: false),
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
                 [0],
                 _ => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),

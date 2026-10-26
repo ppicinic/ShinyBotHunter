@@ -227,3 +227,21 @@ Each game, generation and ROM revision needs its own cheat, so cheats are versio
 ### Consequences
 - Adding a game or revision to QA means adding a cheat folder and a save; no deployable code changes.
 - A fresh machine needs the saves folder copied over by hand; the repo alone is not enough to run QA.
+
+---
+
+## Hunts act as a human would: the result is seen before it is logged
+
+Status: Accepted
+Date: 2026-10-25 (owner), recorded 2026-10-26
+
+### Context
+The Wishmaker Jirachi hunt first logged each Jirachi by parsing the save file Dolphin returned and never showed it. A pipeline can log a Pokémon no one has seen, which is not how the owner hunts.
+
+### Decision
+A hunt does what a human would do, visibly. Before the bot reads a Pokémon from memory and logs it, the Pokémon is on the emulator screen (its summary, or the encounter itself in a battle hunt) where an operator watching could see it and whether it is shiny. The read that is logged comes from the emulator's memory at that moment, not from a file. Decisions made from files (a save's prediction, a copy to keep) may still gate and check the cycle, but never replace the on-screen step.
+
+### Consequences
+- The Wishmaker Jirachi hunt opens the result in EmuHawk and shows the summary every cycle (its spec's G6, NFR-4, FR-17); about 40 s per cycle.
+- A new hunt's spec states where in its cycle the Pokémon is on screen and which memory read follows; a plan that logs from a file alone is rejected at plan review.
+- QA evidence includes a screen recording of at least one cycle when the presses change.

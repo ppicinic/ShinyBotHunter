@@ -1,3 +1,4 @@
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Games
@@ -43,6 +44,17 @@ namespace ShinyBotHunter.Games
                 new EventArgumentOptions { Name = "HGSS Shiny Starter Hunt" },
                 (nameof(GameCapabilities.HasShinyStarterHunt), c => c.HasShinyStarterHunt), OwnsEmulators: true,
                 (s, _, pos) => s.StartHgssStarterHunt(pos)),
+            // Macros, timings and the Dolphin paths live in Configs/Events/WishmakerJirachi.json and
+            // the settings, so the only choices are the ROM and where to log the encounters.
+            new("Wishmaker Jirachi Hunt",
+                new EventArgumentOptions
+                {
+                    Name = "Wishmaker Jirachi Hunt",
+                    RequiredParameters = ["GameName", "PhaseName"],
+                    GameFilter = new() { Flavor = GameFlavor.RS, TestedOnly = true },
+                },
+                (nameof(GameCapabilities.HasWishmakerJirachi), c => c.HasWishmakerJirachi), OwnsEmulators: true,
+                (s, args, pos) => s.StartWishmakerJirachiAsync(args, pos)),
             new("Wild Encounter",
                 EncounterParameters("Wild Encounter"),
                 (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters), OwnsEmulators: false,
