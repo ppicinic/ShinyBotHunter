@@ -131,8 +131,9 @@ Results (run folders on the dev PC under `ShinyBotHunter.Qa/dashboard/qa-runs/`,
   - EmuHawk was on `-WISHMKR.gba` at the summary, with no Dolphin. The result save had Jirachi `987ED636` (OT 20043/0) in slot 2, and the hunt save had one party member and first-block seed `ECDD`.
   - One shiny `CaughtPokemon` (species 385, `GameFileName` `{GameName}-WISHMKR`) was written, the Discord alert "Shiny Jirachi encountered!" was sent after the Start, and there was one shiny `encounters` row.
   - Cancel left nothing running, the cheat was removed, and the pristine save was restored.
-- `rs-jirachi-saves` (#195) passed 2026-10-26 on `task/195-saves-to-qa` in under a second (1 test); it writes no run folder.
   - Two earlier attempts were harness faults, not product faults. Run 1 failed on a mongosh warning before launch. Run 2 reached the park but read Mongo before the queued insert landed.
+- `rs-jirachi-shiny` rerun under a screen recording, on tip 76254cd, passed 2026-10-26 09:36 to 09:40 UTC (`20261026-093609-rs-jirachi-shiny-recorded`, `shiny-cycle.mp4`); same result.
+- `rs-jirachi-saves` (#195) passed 2026-10-26 on `task/195-saves-to-qa` in under a second (1 test); it writes no run folder.
 
 ## Suggested task split
 
