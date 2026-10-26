@@ -54,8 +54,6 @@ The hunt runs in two stages.
 
 [Your data](../06-your-data.md) explains where these are kept.
 
-This hunt does not send a shiny alert to Discord.
-
 > **Ask the owner:** should the page say outright that this hunt sends no Discord alert?
 
 ## How does it stop?
@@ -69,9 +67,9 @@ Once the hunt has finished, its saved progress says finished, so starting it aga
 
 ## If it stops early
 
-**You see** the hunt stop, and the bot's log shows "No ROM in the ROM folder identifies as Pokemon HeartGold. The starter hunt needs one." (or the same for Pokemon SoulSilver).
-**It means** the bot found no ROM of that game in your ROM folder.
-**Do** put your HeartGold or SoulSilver ROM in the ROM folder, as [Install](../01-install.md) describes, and start the hunt again.
+**You see** the hunt stop, and the bot's log shows "No ROM in the ROM folder identifies as Pokemon HeartGold. The starter hunt needs one."
+**It means** the bot found no HeartGold ROM in your ROM folder.
+**Do** put your HeartGold ROM in the ROM folder, as [Install](../01-install.md) describes, and start the hunt again.
 
 **You see** Start refused with "Multi shiny hunting in HGSS can be the only active bot[s]."
 **It means** something else is running on the dashboard.

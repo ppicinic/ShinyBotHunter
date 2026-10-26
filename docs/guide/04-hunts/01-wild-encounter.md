@@ -44,7 +44,7 @@ How the action form works in general is on [the dashboard page](../03-dashboard.
 
 | What it means | Field on the dashboard |
 |---|---|
-| The milestone the encounters are filed under. It is also the list of shiny Pokémon the hunt is trying to complete. | Milestone |
+| The milestone the encounters are filed under. With Target Type PhaseTarget or ShinyTarget, it is also the list of shiny Pokémon the hunt is trying to complete. | Milestone |
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. **NoTarget**: nothing is ever found, so the hunt is only for training and needs a Train Type other than None. With PhaseTarget and ShinyTarget, the hunt also ends once the milestone is complete. | Target Type |
 | How to meet wild Pokémon. **Run**: walk back and forth in a straight line. **Spin**: turn on the spot. | Encounter Type |
 | How many tiles to walk each way from home, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
@@ -73,7 +73,7 @@ For example, a chain can switch-train a Pokémon to level 20 in its first leg, t
 2. It reads the wild Pokémon and writes it to the encounter log.
 3. If it is a Pokémon you are hunting for, the bot stops and waits for you, and sends a shiny alert to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
 4. Otherwise, with Train Type None, it runs away.
-5. When training, it fights with the move that does the most damage. In Switch training it switches to the Battler first. If the switch does not work three times in a row, it runs from that battle instead.
+5. When training, it fights with the move the bot's damage calculator picks. In Switch training it switches to the Battler first. If the switch does not work three times in a row, it runs from that battle instead.
 6. It runs from a battle when the Pokémon fighting is down to a quarter of its HP or less, or has no PP left on damaging moves.
 7. After a win, the bot handles level-ups, new moves and evolutions:
    - A new move goes into a free move slot without asking.
