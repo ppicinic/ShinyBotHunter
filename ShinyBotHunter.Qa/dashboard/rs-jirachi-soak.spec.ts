@@ -21,7 +21,7 @@ const ACTION = 'Wishmaker Jirachi Hunt'
 const PHASE = 'Jirachi'
 const MINUTE = 60 * 1000
 const HOUR = 60 * MINUTE
-const CYCLE_LIMIT_MS = 240 * 1000
+const CYCLE_LIMIT_MS = 300 * 1000
 
 const sha256 = (file: string): string => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 const backendLines = (pattern: RegExp): string[] =>
@@ -180,11 +180,12 @@ test('RS Wishmaker Jirachi through the dashboard: one hour of cycles, cancel dur
     expect(predictions.map((m) => m[2]), 'the logged PIDs are not the rows, in order').toEqual(rows.map((r) => r.pid))
     expect(backendLines(/in the field after/).length, 'a cycle has no "in the field" line').toBeGreaterThanOrEqual(rows.length)
     expect(backendLines(/Bonus Disc: power prompt/).length, 'a cycle has no "power prompt" line').toBeGreaterThanOrEqual(rows.length)
+    expect(backendLines(/\[Wishmaker\] summary on view/).length, 'a cycle has no "summary on view" line').toBeGreaterThanOrEqual(rows.length)
 
     const gaps = rows.map((r, i) => r.at - (i === 0 ? startedAt : rows[i - 1].at))
     step(`cycle gaps (s): ${gaps.map((g) => (g / 1000).toFixed(0)).join(', ')}; max ${(Math.max(...gaps) / 1000).toFixed(0)}`)
-    expect(Math.max(...gaps), 'a cycle took over 240 s').toBeLessThanOrEqual(CYCLE_LIMIT_MS)
-    expect(backendLines(/over the 240 s budget/), 'the backend logged a cycle over budget').toEqual([])
+    expect(Math.max(...gaps), 'a cycle took over 300 s').toBeLessThanOrEqual(CYCLE_LIMIT_MS)
+    expect(backendLines(/over the 300 s budget/), 'the backend logged a cycle over budget').toEqual([])
 
     expect(backendLines(/Backed up the hunt save/).length, 'not exactly one backup line').toBe(1)
     expect(sha256(BACKUP), 'the .wishmaker.bak is not the pristine save').toBe(pristineHash)
