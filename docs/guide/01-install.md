@@ -1,4 +1,4 @@
-<!-- Derived from: Scripts/*.ps1, ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the README of the BizHawk fork (ppicinic/BizHawk, branch fix/4535-sticky-analog), Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8) -->
+<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the README of the BizHawk fork (ppicinic/BizHawk, branch fix/4535-sticky-analog), Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/admin/BotControlTab.tsx, PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (gamesFor), AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8) -->
 # Install
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -91,7 +91,7 @@ Steps:
    powershell -File Scripts\deploy-apihawk.ps1 -BizHawkDir "<your BizHawk folder>"
    ```
 
-**Expected result:** the script prints `Trusted in config.ini` (and `Trusted in config_sound_on.ini` if that file exists), then a line like `Deployed 120kb, SHA512:…`.
+**Expected result:** the script prints `Trusted in config.ini` (and `Trusted in config_sound_on.ini` if that file exists), then a line like `Deployed <size>kb, SHA512:…`.
 
 Run it again after every BizHawk rebuild and every bot update. Each new build of ApiHawk has a new fingerprint, and BizHawk trusts only the fingerprint it was given.
 
@@ -160,7 +160,7 @@ The bot recognises HeartGold, SoulSilver, Ruby and Sapphire. HeartGold and SoulS
    dotnet build ShinyBotHunter\ShinyBotHunter.csproj -c Release
    ```
 
-   **Expected result:** the build ends with `Build succeeded`.
+   **Expected result:** the build finishes without errors.
 
 2. Then run:
 
@@ -209,7 +209,7 @@ Steps:
 
    Start it this way, with `dotnet run`. It makes the bot listen on ports 5000 and 5001, which the dashboard expects.
 
-**Expected result:** the window shows `Scanned N ROM(s) in <your ROM folder>.`, where N is the number of games found. If Discord is not set up, it also shows `Discord bot token is not configured. Skipping Discord bot startup.`
+**Expected result:** the window shows `Scanned N ROM(s) in <your ROM folder>.`, where N is the number of games found. If you set the Discord token to an empty value (see [Configure](02-configure.md)), it also shows `Discord bot token is not configured. Skipping Discord bot startup.`
 
 To stop the bot, type `end` in its window and press Enter.
 
@@ -227,7 +227,7 @@ To stop the bot, type `end` in its window and press Enter.
 - **Admin**, with the tabs Dashboard Config, Bot Control, Milestone Editor and Window Layout;
 - **Recent Encounters**.
 
-The game list on the Bot Control tab shows your ROMs, or is empty if the ROM folder has none.
+On the Bot Control tab, the game list for a hunt shows the ROMs in your ROM folder that fit that hunt; some hunts list only the tested revision of their game. If no ROM fits, the list is empty.
 
 > **Ask the owner:** whether operators should start the dashboard with `npm run dev`, or install it with `npm run dist`.
 
