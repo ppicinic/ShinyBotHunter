@@ -225,6 +225,7 @@ npx playwright test hgss-poison-walk
 npx playwright test rs-jirachi-setup-refusals
 npx playwright test rs-jirachi-soak
 npx playwright test rs-jirachi-shiny
+npx playwright test rs-jirachi-saves
 ```
 Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
 
@@ -304,6 +305,7 @@ Preconditions:
 | `rs-jirachi-setup-refusals` | dashboard, jirachi | none; a rev 0 ROM, a missing save, a full party and a save without the Pokédex each refused at Start with the spec's sentence ([Wishmaker Jirachi spec](wishmaker-jirachi.md)) |
 | `rs-jirachi-soak` | dashboard, bot-engine, jirachi, persistence | none; one unattended hour, at least 20 Jirachi encounters with distinct PIDs, every PID equal to the save's prediction, a "summary on view" line per cycle, no cycle over 300 s, then a cancel during the Dolphin half (FR-19) |
 | `rs-jirachi-shiny` | bot-engine, jirachi, persistence, discord | `rs-sapphire-usa-rev2` seed freeze, generated per run: `jirachi-seed.ts` crafts `qa-jirachi`'s live section 0 to seed `ECDD` (PID `987ED636`, shiny), and the cheat freezes the play time and berry-stamp fields so the bot's own saves keep it. Asserts the encounter row, the Mongo catch, the Discord alert, the event in Waiting and EmuHawk parked at the summary |
+| `rs-jirachi-saves` (#195) | jirachi | none; no emulator, backend or database, under a second, no run folder. `jirachi-seed.ts` reads `rs.rev0-base` and `rs.seed-ecdd` in place and asserts their sizes and sha256, every section of the base's two blocks valid, counters 2 and 3, live block `0xE000`, seed `0A64` with and without the mGBA footer, complete after counter 2 and not after 3, live play time 0:15:13 frame 3, Pokédex, one party member, and seed `ECDD` on the crafted save. The C# `Gen3SaveFile` is unit-tested on synthetic saves only; its coverage on real bytes is `rs-jirachi-shiny` (`Seed ECDD`) and `rs-jirachi-soak` (every prediction equal to the PID) |
 
 ## Spike results (2026-10-20)
 
@@ -379,12 +381,15 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `rs.qa-jirachi` | `Pokemon - Sapphire Version (USA, Europe) (Rev 2)` (`AXPE` revision 2) | Trainer Phil in the field, Pokédex received (flag `0x801`), one party member, play time about 93 h, first-block counter 82; a byte copy of the spike's final hunt save, kept as `../shinybothunterqasaves/rs/qa-jirachi.SaveRAM` | 39541 / 17794 | `rs-jirachi-soak`, `rs-jirachi-shiny` (seed `ECDD` crafted by `jirachi-seed.ts` on a copy) |
 | `rs.qa-jirachi-full` | `Pokemon - Sapphire Version (USA, Europe) (Rev 2)` | `rs.qa-jirachi` with six party members (PKHeX), kept as `../shinybothunterqasaves/rs/qa-jirachi-full.SaveRAM` | 39541 / 17794 | `rs-jirachi-setup-refusals` |
 | `rs.qa-jirachi-nodex` | `Pokemon - Sapphire Version (USA, Europe) (Rev 2)` | `Pokemon Sapphire8.SaveRAM` as the owner made it: no Pokédex, one party member, kept as `../shinybothunterqasaves/rs/qa-jirachi-nodex.SaveRAM` | 39541 / 17794 | `rs-jirachi-setup-refusals` |
+| `rs.rev0-base` | none: read in place, never installed (a rev 0 `Pokemon - Sapphire Version (USA)` save) | The spike's rev 0 base, 131088 bytes with the mGBA footer: every section of both blocks valid, section-0 counters 2 (block A) and 3 (block B, live), first-block seed `0A64`, live play time 0:15:13 frame 3, Pokédex set, one party member; kept as `../shinybothunterqasaves/rs/rs-rev0-base.SaveRAM`, sha256 `8aebc82d4453815c91ecd6a6667d3f2b1e01521f992431aabb4016b66458cc9e` | 39541 / 17794 | `rs-jirachi-saves` |
+| `rs.seed-ecdd` | none: read in place, never installed | The spike's crafted shiny save, 131072 bytes with no footer: first-block seed `ECDD` (Jirachi PID `987ED636`, shiny); kept as `../shinybothunterqasaves/rs/rs-seed-ecdd.sav`, sha256 `3d86c956005d064dcf5684486502ddd002a02e245befc8d9f85fa540c7a82dc7` | 39541 / 17794 | `rs-jirachi-saves` |
 
 The `README.md` in the saves folder lists each save and its state so it can be remade if lost.
 
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed. The exception is `rs-jirachi-soak`, which saves in-game by design: it installs a pristine copy, restores it afterwards, and compares the restored hash with the pristine one.
 
 ## Changelog
+- 2026-10-26: `rs-jirachi-saves` check, its run line, and the `rs.rev0-base` and `rs.seed-ecdd` save rows, for W10 (#195): the spike's saves left the unit project.
 - 2026-10-26: `rs-jirachi-shiny` scenario (REST, a crafted `ECDD` save and a generated QA cheat freezing the moving section-0 fields), the `rs-sapphire-usa-rev2/` cheat folder, its run line and preconditions, for W6b (#189).
 - 2026-10-25: `rs-jirachi-setup-refusals` and `rs-jirachi-soak` scenarios (the soak gains the FR-19 cancel during the Dolphin half), their preconditions, and the three Jirachi save rows with their ROM file and saves-folder location, for W6a (#169); the soak is the exception to "never save in-game".
 - 2026-10-24: `hgss-route33-train-replace` (`Pokemon HeartGold2`, Tackle forgotten on the battle's forget-move screen) and `hgss-route33-train-free` (`Pokemon HeartGold9`) scenarios, for S2e (#154); the decline scenario's run line gains `.spec`.

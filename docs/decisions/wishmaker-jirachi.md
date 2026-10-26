@@ -95,3 +95,20 @@ Every cycle does what a human would: EmuHawk loads the `-WISHMKR` result, the ga
 - The party and summary screens have no mapped RS byte, so those presses are held presses with waits; the RAM read is the gate, and a slot that does not decode as Jirachi stops the hunt.
 - On a shiny the EmuHawk already open at the summary is the one the event parks on (FR-18); no second launch.
 - The "Every cycle is checked against the save's prediction" decision stands; the value compared now comes from RAM.
+
+---
+
+## Real-save tests are QA; unit tests build their saves
+
+Status: Accepted. Supersedes [Two spike saves are unit-test fixtures in the repo](#two-spike-saves-are-unit-test-fixtures-in-the-repo).
+Date: 2026-10-26 (owner)
+
+### Context
+The owner's rule: a test that relies on saves from outside is a QA test, not a unit test. The two spike saves came from outside the code, so the W2 fixtures broke it.
+
+### Decision
+`ShinyBotHunter.Tests/Saves/` is deleted (W10, #195). `Gen3SaveFileTests` builds a complete two-block save in the test, with checksums computed by the test, and `WishmakerJirachiEventTests` uses it. The real-save values (seed `0A64` on the rev 0 base, `ECDD` on the crafted save, live block, completion, play time, Pokédex, party count) are the QA check `rs-jirachi-saves`, which reads `rs-rev0-base.SaveRAM` and `rs-seed-ecdd.sav` from `../shinybothunterqasaves/rs/` with `jirachi-seed.ts`.
+
+### Consequences
+- The unit project reads no save file; the global rule that QA saves live beside the repo holds without an exception.
+- The C# reader meets real bytes only in QA: `rs-jirachi-shiny` (its `Seed ECDD` line) and `rs-jirachi-soak` (every prediction equal to the PID).
