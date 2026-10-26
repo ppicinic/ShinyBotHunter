@@ -19,9 +19,9 @@ The Bonus Disc seeds Jirachi's PID from the checksum of section 0 in the save's 
 
 Every line is in the `hgss-usa-rev0/wild-shiny.cht` column order: address, value, compare `N`, domain `System Bus`, enabled `1`, name, size, display `h`, big-endian `0`, compare type `None`. Lines end in LF. There is no compare value, because these are data fields, not code.
 
-## Verified (2026-10-26, run `20261026-090332-hgss-route33-dashboard`)
+## Verified (2026-10-26, run `20261026-090332-rs-jirachi-shiny`)
 
 - `gSaveBlock2` is at `0x02024EA4` on the `System Bus` domain of BizHawk's mGBA core. Through the ApiHawk memory port, `+0x00` read `CA DC DD E0` ("Phil") and `+0x0A` read TID 39541.
-- The cheat was active from the ROM load. Two reads 1.5 s apart returned the crafted values: hours 43, minutes 59, seconds 19, frames 59, berry stamp day 47 at 08:13:30. Play time would have ticked between the reads if nothing held it.
+- Once the save loaded, two reads 1.5 s apart returned the crafted values: hours 43, minutes 59, seconds 19, frames 59, berry stamp day 47 at 08:13:30. Play time only runs after CONTINUE, so these reads do not show that the cheat holds the fields; the next two lines do.
 - The first cycle logged `Seed ECDD predicts PID 987ED636`, so the frames byte was saved as crafted. The `+1 frames` allowance was not used.
 - After the bot's saves, the hunt save's first block had seed `ECDD`.
