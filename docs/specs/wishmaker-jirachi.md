@@ -1,6 +1,6 @@
 # Spec: Wishmaker Jirachi hunt
 
-Status: Implemented (epic #163, 2026-10-25) except FR-17 and FR-18 as rewritten on 2026-10-25 (the summary view and the RAM read, task W8, open); FR-1 to FR-16, FR-19, FR-20 and NFR-1 to NFR-3 are built; `rs-jirachi-setup-refusals` and `rs-jirachi-soak` passed on `feature/wishmaker-jirachi` (run folders under [QA](#qa)). FR-18's QA, `rs-jirachi-shiny`, is not run and not built: it waits on the owner's choice of route ([Open questions](#open-questions)), so the shiny path is unproven end to end. Divergences under [What diverged](#what-diverged)
+Status: Implemented (epic #163, 2026-10-26). FR-1 to FR-20 and NFR-1 to NFR-3 are built, with FR-17 and FR-18 as rewritten on 2026-10-25 (the summary view and the RAM read, W8, #188). `rs-jirachi-setup-refusals` and `rs-jirachi-soak` passed on `feature/wishmaker-jirachi`. `rs-jirachi-shiny` passed on 2026-10-26, so the shiny path is proven end to end. Run folders are under [QA](#qa); divergences are under [What diverged](#what-diverged).
 Last updated: 2026-10-25
 Owner: Phil
 Related: [research: the spike](../research/wishmaker-jirachi.md) (the source for every address, timing and rule here), [decisions](../decisions/wishmaker-jirachi.md), [game profile spec](game-profile.md), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), plan [phase 7](../plans/2026-10-cleanup-and-hardening.md#phase-7-wishmaker-jirachi-hunt)
@@ -121,7 +121,13 @@ Results (run folders on the dev PC under `ShinyBotHunter.Qa/dashboard/qa-runs/`,
 - `rs-jirachi-setup-refusals` passed 2026-10-25 13:34 UTC (`20261025-133415-rs-jirachi-setup-refusals`): the dropdown listed only the rev 2 ROM, and the no-save, full-party and no-Pokédex saves each showed their FR-5 sentence.
 - `rs-jirachi-soak` run 1, on tip 2938f4e, failed after 2 minutes in the second in-game save: the stale start-menu bytes passed the menu check (fixed by W5e, #184).
 - `rs-jirachi-soak` run 2, on tip 569588f, passed 2026-10-25 14:03 to 15:07 UTC (`20261025-140333-rs-jirachi-soak`): 20 Jirachi rows with 20 distinct PIDs, every "predicted … got …" line equal; cycle gaps 172 to 188 s (mean 181 s); first-block counter 82 to 124 (two saves a cycle); the `.wishmaker.bak` unchanged; the cancel during the Dolphin half left no EmuHawk or Dolphin running, and the hunt save was byte-identical to its snapshot on the Jirachi entry, complete, with the last logged seed (FR-19).
-- `rs-jirachi-shiny`: not run (see Open questions).
+- `rs-jirachi-shiny` (#189), on tip 5f22950, passed 2026-10-26 09:03 to 09:07 UTC (`20261026-090332-hgss-route33-dashboard`), over REST.
+  - The crafted `qa-jirachi` (play time 43:59:19, frames 59) and the generated System Bus cheat held `gSaveBlock2` (`0x02024EA4`).
+  - The first cycle logged `Seed ECDD predicts PID 987ED636`, then the Dolphin half, `summary on view` and `predicted 987ED636 got 987ED636 SHINY`, and parked in Waiting.
+  - EmuHawk was on `-WISHMKR.gba` at the summary, with no Dolphin. The result save had Jirachi `987ED636` (OT 20043/0) in slot 2, and the hunt save had one party member and first-block seed `ECDD`.
+  - One shiny `CaughtPokemon` (species 385, `GameFileName` `{GameName}-WISHMKR`) was written, the Discord alert "Shiny Jirachi encountered!" was sent after the Start, and there was one shiny `encounters` row.
+  - Cancel left nothing running, the cheat was removed, and the pristine save was restored.
+  - Two earlier attempts were harness faults, not product faults. Run 1 failed on a mongosh warning before launch. Run 2 reached the park but read Mongo before the queued insert landed.
 
 ## Suggested task split
 

@@ -131,6 +131,8 @@ ShinyBotHunter.Qa/Cheats/
     wild-shiny.cht        code patch, loaded disabled, armed by hotkey
     starter-shiny.cht     RNG freeze; the seed line is filled per save from its TID/SID
     README.md             how each cheat works, the decomp symbols behind each address, how it was verified
+  rs-sapphire-usa-rev2/
+    README.md             the Wishmaker seed freeze: the .cht is generated per run by jirachi-seed.ts, installed enabled, removed after
   rs-us-rev1/             added when RS is mapped
 ```
 The harness picks the folder from the ROM's game code and revision (`RomInfoService` already reports both), copies the scenario's cheat into the QA BizHawk install as `NDS\Cheats\<ROM file name>.cht` before launch, and fails with a clear message if no folder matches. Adding a game or revision means adding a folder, verified the way the spike verified HGSS: original bytes match the decomp, one encounter with and one without the cheat.
@@ -222,6 +224,7 @@ $env:QA_HEAL_ROM = "Pokemon HeartGold6"; npx playwright test hgss-heal-variants 
 npx playwright test hgss-poison-walk
 npx playwright test rs-jirachi-setup-refusals
 npx playwright test rs-jirachi-soak
+npx playwright test rs-jirachi-shiny
 ```
 Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
 
@@ -249,7 +252,23 @@ A twelfth scenario, `rs-jirachi-setup-refusals.spec.ts`, checks the [Wishmaker J
 
 A thirteenth scenario, `rs-jirachi-soak.spec.ts`, runs the hunt for an hour (timeout 90 minutes). It deletes any `{hunt}.SaveRAM.wishmaker.bak` and `{rom}-WISHMKR.SaveRAM` left by an earlier run, installs `qa-jirachi` as the hunt save, checks its hash, and records the first block's highest section counter. It starts `Wishmaker Jirachi Hunt` on the rev 2 ROM and `Jirachi` from Bot Control and expects an emulator card. There is no emulator recording, since EmuHawk and Dolphin restart every cycle; the dashboard gets a screenshot every 15 minutes. Every 30 s it fails on a `[BotService] Event '…' crashed` line and logs the row count and the newest `[Wishmaker] predicted` line. After the hour it waits for the next `Bonus Disc: on the Jirachi entry` line, checks that the hunt save's first-block seed is the last `[Wishmaker] Seed` line's, that Dolphin runs and EmuHawk does not, then cancels from the card (FR-19). It asserts that the card goes and both emulators are gone within 60 s, that the hunt save is byte-identical to the snapshot with a complete live block, and that no cycle finished after the cancel. After the documented shutdown it reads `encounters` with `psql` (`C:\Tools\pgsql\bin\psql.exe`, connection taken from the backend's `ConnectionStrings:DefaultConnection` user secret and never logged) and asserts at least 20 Jirachi rows for `Jirachi` since the Start, all PIDs distinct, every `predicted X got Y` line with X = Y and their PIDs equal to the rows in order, at least as many `in the field after` and `Bonus Disc: power prompt` lines as rows, no gap over 240 s from the Start click to the first row or between rows and no `over the 240 s budget` line, exactly one `Backed up the hunt save` line with the `.wishmaker.bak` equal to `qa-jirachi`, a first-block counter rise between the row count and 2 × (rows + 1), and that `{rom}-WISHMKR.SaveRAM` exists. Its `finally` kills any stray EmuHawk or Dolphin, copies the end-state hunt save, the `.wishmaker.bak` and the `-WISHMKR.SaveRAM` into the run folder, and copies `qa-jirachi` back with both hashes logged. Fewer than 20 rows after exactly one hour fails the run; 18 or 19 with no stall is a rerun, not a bug.
 
-Both Jirachi scenarios write to the same `-hgss-route33-dashboard` run folder name as the others, because `driver.ts` fixes it.
+A fourteenth scenario, `rs-jirachi-shiny.spec.ts`, runs one real cycle to a shiny, through REST rather than the UI (timeout 30 minutes).
+- **Setup.** It deletes any `.wishmaker.bak`, `-WISHMKR.SaveRAM`, `-WISHMKR.SaveRAM.bak` and `GBA\Cheats\{rom}.cht` left by an earlier run. `jirachi-seed.ts` crafts a copy of `qa-jirachi` whose live section 0 has checksum `ECDD`: play time hours, searched upward from the save's own, plus minutes, seconds and frames. The scenario asserts that the crafted block is valid, installs it as the hunt save, and installs the generated cheat enabled (see `Cheats/rs-sapphire-usa-rev2/README.md`). It counts the matching `CaughtPokemon` documents with `mongosh`.
+- **Start and the cheat check.** It starts the backend and POSTs `startTopLevelAction` with `Wishmaker Jirachi Hunt`, the rev 2 ROM and `Jirachi`, expecting position 0. It then checks the cheat: once `gSaveBlock2` (`0x02024EA4`) reads "Phil" and TID 39541, two reads 1.5 s apart must both return the crafted fields.
+- **Hold point.** If the first `[Wishmaker] Seed` line is not `ECDD`, the run stops and reports the seed, the crafted fields, the last RAM read and the hunt save's first-block fields. There is no second cycle.
+- **Asserts.** On `ECDD` it waits for the park and asserts:
+  - the log order Seed, `Bonus Disc: power prompt`, `summary on view`, `predicted 987ED636 got 987ED636 SHINY`, then the park line;
+  - `Waiting` in `getDashboardState`;
+  - exactly one EmuHawk, on `{rom}-WISHMKR.gba`, and no Dolphin (a screenshot of the park);
+  - the result save holds 2 party members, with slot 2 being PID `987ED636` and OT 20043/0;
+  - the hunt save holds 1 party member, and its first block has seed `ECDD`;
+  - one new `CaughtPokemon` (polled, since the insert is queued), species 385 and shiny;
+  - the shiny channel's latest Discord message is the `Shiny Jirachi` alert, sent after the Start;
+  - a single Cancel leaves no event and no emulator;
+  - after the documented shutdown, exactly one `encounters` row since the Start: 385, `Jirachi`, the rev 2 ROM, `987ED636`, shiny.
+- **Teardown.** Its `finally` kills the backend first, then any emulator, and removes the cheat. It keeps the end-state saves in the run folder, deletes the bot's artefacts, and restores `qa-jirachi` with its hash asserted.
+
+The Jirachi scenarios write to the same `-hgss-route33-dashboard` run folder name as the others, because `driver.ts` fixes it.
 
 Preconditions:
 - Postgres is started, the Route 33 milestone exists in Mongo, and the backend's user secrets point at both on localhost and hold the Discord token. The train, train-replace, evolve-learn and evolve-learn-replace scenarios need someone to answer the move prompt in Discord.
@@ -257,7 +276,7 @@ Preconditions:
 - The QA BizHawk install is in `C:\BizHawk-2.11` with the Route 33 save and its `.bak` in `NDS\SaveRAM`.
 - Playwright's ffmpeg is installed (`npx playwright install ffmpeg`). Without it, launching with video recording leaves every window unanswered and the scenario hangs until its timeout.
 - ffmpeg is on PATH (for `record-window.ps1`), the desktop is unlocked, and nothing else holds port 5000 or runs EmuHawk. The emulator must keep focus while the hotkey is sent.
-- For the Jirachi scenarios: `Pokemon - Sapphire Version (USA, Europe) (Rev 2).gba` and `Pokemon - Sapphire Version (USA).gba` are in the backend's `ROMBaseDirectory` (`C:\ROMs`), and the soak's `-WISHMKR.gba` copy there is expected; `../shinybothunterqasaves/rs/` holds the three Jirachi saves; the RS milestone `Jirachi` exists in Mongo, made in the Milestone Editor (never as a `Phases/*.json`); the Dolphin user folder is deployed with `Scripts/deploy-dolphin.ps1` and the Dolphin, BIOS and Bonus Disc settings are in the user secrets; Postgres is started; no EmuHawk or Dolphin is running, and for the soak nothing else uses the machine's emulators for the hour.
+- For the Jirachi scenarios: `Pokemon - Sapphire Version (USA, Europe) (Rev 2).gba` and `Pokemon - Sapphire Version (USA).gba` are in the backend's `ROMBaseDirectory` (`C:\ROMs`), and the soak's `-WISHMKR.gba` copy there is expected; `../shinybothunterqasaves/rs/` holds the three Jirachi saves; the RS milestone `Jirachi` exists in Mongo, made in the Milestone Editor (never as a `Phases/*.json`); the Dolphin user folder is deployed with `Scripts/deploy-dolphin.ps1` and the Dolphin, BIOS and Bonus Disc settings are in the user secrets; Postgres is started; no EmuHawk or Dolphin is running, and for the soak nothing else uses the machine's emulators for the hour. For the shiny scenario, three more things must be in place. The user secrets need the Discord token, and the bot needs read access to the shiny channel (`ShinyLogChannel`). `SpriteBaseDirectory` must end in a slash and hold `Shiny/jirachi.png`. `mongosh` must be under `%LOCALAPPDATA%\Programs\mongosh`.
 
 ### Initial scenario set
 | Scenario | Areas | Cheat |
@@ -284,7 +303,7 @@ Preconditions:
 | `hgss-route33-train-free` (#154) | dashboard, bot-engine, encounter | none; no Discord prompt |
 | `rs-jirachi-setup-refusals` | dashboard, jirachi | none; a rev 0 ROM, a missing save, a full party and a save without the Pokédex each refused at Start with the spec's sentence ([Wishmaker Jirachi spec](wishmaker-jirachi.md)) |
 | `rs-jirachi-soak` | dashboard, bot-engine, jirachi, persistence | none; one unattended hour, at least 20 Jirachi encounters with distinct PIDs, every PID equal to the save's prediction, no cycle over 240 s, then a cancel during the Dolphin half (FR-19) |
-| `rs-jirachi-shiny` | dashboard, jirachi, persistence, discord | `jirachi-seed.ts` crafts the base save's first-block play time to seed `ECDD` (PID `987ED636`, shiny); asserts the encounter row, the Mongo catch, the Discord alert and that the event stops in Waiting |
+| `rs-jirachi-shiny` | bot-engine, jirachi, persistence, discord | `rs-sapphire-usa-rev2` seed freeze, generated per run: `jirachi-seed.ts` crafts `qa-jirachi`'s live section 0 to seed `ECDD` (PID `987ED636`, shiny), and the cheat freezes the play time and berry-stamp fields so the bot's own saves keep it. Asserts the encounter row, the Mongo catch, the Discord alert, the event in Waiting and EmuHawk parked at the summary |
 
 ## Spike results (2026-10-20)
 
@@ -366,6 +385,7 @@ The `README.md` in the saves folder lists each save and its state so it can be r
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed. The exception is `rs-jirachi-soak`, which saves in-game by design: it installs a pristine copy, restores it afterwards, and compares the restored hash with the pristine one.
 
 ## Changelog
+- 2026-10-26: `rs-jirachi-shiny` scenario (REST, a crafted `ECDD` save and a generated QA cheat freezing the moving section-0 fields), the `rs-sapphire-usa-rev2/` cheat folder, its run line and preconditions, for W6b (#189).
 - 2026-10-25: `rs-jirachi-setup-refusals` and `rs-jirachi-soak` scenarios (the soak gains the FR-19 cancel during the Dolphin half), their preconditions, and the three Jirachi save rows with their ROM file and saves-folder location, for W6a (#169); the soak is the exception to "never save in-game".
 - 2026-10-24: `hgss-route33-train-replace` (`Pokemon HeartGold2`, Tackle forgotten on the battle's forget-move screen) and `hgss-route33-train-free` (`Pokemon HeartGold9`) scenarios, for S2e (#154); the decline scenario's run line gains `.spec`.
 - 2026-10-23: `hgss-route33-evolve-learn-replace` (`Pokemon HeartGold4`, Water Gun forgotten) and `hgss-route33-evolve-learn-free` (`Pokemon HeartGold10`) scenarios, for S2d (#152); the decline scenario's run line gains `.spec`.
