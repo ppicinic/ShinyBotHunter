@@ -24,8 +24,6 @@ namespace ShinyBotHunter.Service
         private const int PlayTimeOffset = 0x0E;
         private const int PokedexFlagOffset = 0x3A0;
         private const int PartyCountOffset = 0x234;
-        private const int PartyOffset = 0x238;
-        private const int PartySlotSize = 100;
 
         private static readonly int[] BlockOffsets = [0x0000, 0xE000];
 
@@ -184,12 +182,6 @@ namespace ShinyBotHunter.Service
         public static int ReadPartyCount(ReadOnlySpan<byte> save)
         {
             return save[LiveSectionOffset(save, 1) + PartyCountOffset];
-        }
-
-        /// <summary>The 100 encrypted bytes of a party slot in the live save, as Gen3PokemonParser takes them.</summary>
-        public static byte[] ReadPartySlot(ReadOnlySpan<byte> save, int slot)
-        {
-            return save.Slice(LiveSectionOffset(save, 1) + PartyOffset + PartySlotSize * slot, PartySlotSize).ToArray();
         }
 
         /// <summary>

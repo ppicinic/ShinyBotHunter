@@ -13,9 +13,10 @@ namespace ShinyBotHunter.BotEvents
     ///
     /// One cycle continues the save in BizHawk, plays a random while, saves in-game until the first
     /// block holds the new save, and closes; then Dolphin boots the disc with a copy of that save on
-    /// its integrated GBA, the disc writes the Jirachi into the copy, and the copy is parsed. The
-    /// Jirachi is a function of the save, so each cycle's PID is checked against the one the save
-    /// predicts. The bot never writes save bytes: the hunt save changes only by the game saving.
+    /// its integrated GBA, and the disc writes the Jirachi into the copy. EmuHawk then opens the copy,
+    /// shows the Jirachi at its summary screen, and reads it from RAM. The Jirachi is a function of
+    /// the save, so each cycle's PID is checked against the one the save predicts. The bot never
+    /// writes save bytes: the hunt save changes only by the game saving.
     /// </summary>
     public class WishmakerJirachiEvent : AbstractBotEvent<PokemonData?>
     {
@@ -45,8 +46,27 @@ namespace ShinyBotHunter.BotEvents
         private const int CursorProbeMs = 1000;
         // FR-9: flush and read the SaveRAM once a second.
         private const int SavePollMs = 1000;
-        // NFR-1: the spike's soak averaged 159 s a cycle.
-        private const int CycleWarnMs = 240000;
+        // NFR-1: a cycle completes in under 300 s.
+        private const int CycleWarnMs = 300000;
+        // pokeruby's MENU_ACTION order: POKéMON is 1, as SAVE is 5.
+        private const int PokemonMenuActionId = 1;
+        // FR-17: how long the summary stays on view before the RAM read.
+        private const int SummaryDisplayMs = 3000;
+        // Observed live on rs.qa-jirachi (#188): held presses and the waits after each, as the save's.
+        private const string OpenPartyMacro = "H.A.4;W.10";
+        private const int OpenPartyMs = 2000;
+        // Observed live on rs.qa-jirachi (#188).
+        private const string PartyDownMacro = "H.Down.4;W.8";
+        private const int PartyDownMs = 500;
+        // Observed live on rs.qa-jirachi (#188).
+        private const string OpenSlotMenuMacro = "H.A.4;W.10";
+        private const int OpenSlotMenuMs = 1000;
+        // Observed live on rs.qa-jirachi (#188).
+        private const string OpenSummaryMacro = "H.A.4;W.10";
+        private const int OpenSummaryMs = 2000;
+        // Observed live on rs.qa-jirachi (#188): summary to party, party to start menu, start menu to field.
+        private const string CloseToFieldMacro = "H.B.4;W.30;H.B.4;W.30;H.B.4;W.30";
+        private const int CloseToFieldMs = 2000;
         private const ushort JirachiSpecies = 385;
 
         private readonly string gameName;
@@ -57,7 +77,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly PokemonPersistenceService persistence;
         private readonly ShinyAlertService alerts;
         private readonly RsStartMenuService startMenu;
-        private readonly IPokemonParser parser;
+        private readonly PokemonStateReader reader;
         private readonly ApplicationSettings settings;
         private readonly (string HuntSave, string ResultSave, string HuntRom, string ResultRom) paths;
 
@@ -72,7 +92,7 @@ namespace ShinyBotHunter.BotEvents
             persistence = provider.GetRequiredService<PokemonPersistenceService>();
             alerts = provider.GetRequiredService<ShinyAlertService>();
             startMenu = provider.GetRequiredService<RsStartMenuService>();
-            parser = provider.GetRequiredService<GameProfiles>().Get(GameFlavor.RS).Parser;
+            reader = provider.GetRequiredService<PokemonStateReader>();
             settings = provider.GetRequiredService<IOptions<ApplicationSettings>>().Value;
 
             paths = PathsFor(settings.ROMBaseDirectory, settings.BizHawkBaseDirectory, gameName, extension);
@@ -99,17 +119,16 @@ namespace ShinyBotHunter.BotEvents
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                PokemonData jirachi = await CycleAsync(cancellationToken);
+                PokemonData jirachi = await CycleAsync(state, cancellationToken);
                 if (jirachi.IsShiny)
                 {
-                    await ParkShinyAsync(state, jirachi, cancellationToken);
                     return jirachi;
                 }
             }
         }
 
         /// <summary>One cycle: the BizHawk half, the disc, and the checked, logged result (FR-17).</summary>
-        private async Task<PokemonData> CycleAsync(CancellationToken ct)
+        private async Task<PokemonData> CycleAsync(GameState state, CancellationToken ct)
         {
             DateTime started = DateTime.UtcNow;
 
@@ -124,32 +143,7 @@ namespace ShinyBotHunter.BotEvents
             await RunDiscAsync(ct);
             ct.ThrowIfCancellationRequested();
 
-            byte[] result = File.ReadAllBytes(paths.ResultSave);
-            int count = Gen3SaveFile.ReadPartyCount(result);
-            // The gift lands in the first free slot, which is the last one filled.
-            PokemonData? jirachi = parser.Parse(Gen3SaveFile.ReadPartySlot(result, count - 1));
-            if (jirachi is null || jirachi.IsCorrupt || jirachi.Species != JirachiSpecies)
-            {
-                string found = jirachi is null || jirachi.IsCorrupt ? "undecodable" : $"species {jirachi.Species}";
-                throw new InvalidOperationException(
-                    $"Jirachi not in the party of {paths.ResultSave}: party count {count}, slot {count - 1} is {found}.");
-            }
-            if (jirachi.PID != predicted)
-            {
-                throw new InvalidOperationException(
-                    $"Jirachi PID {jirachi.PID:X8} is not the {predicted:X8} that seed {seed:X4} predicts: " +
-                    "the disc read a different save than the hunt wrote. Stopping.");
-            }
-            Console.WriteLine($"[Wishmaker] predicted {predicted:X8} got {jirachi.PID:X8}{(jirachi.IsShiny ? " SHINY" : "")}");
-
-            await persistence.AddEncounterAsync(new PersistPokemonData
-            {
-                PokemonData = jirachi,
-                Game = GameFlavor.RS,
-                Phase = phaseName,
-                GameFileName = gameName,
-                DateTime = DateTime.UtcNow,
-            });
+            PokemonData jirachi = await ShowAndReadResultAsync(state, seed, predicted, ct);
 
             double elapsedMs = (DateTime.UtcNow - started).TotalMilliseconds;
             if (elapsedMs > CycleWarnMs)
@@ -423,8 +417,88 @@ namespace ShinyBotHunter.BotEvents
         }
 
         /// <summary>
-        /// FR-18: record and announce the catch, open the result in EmuHawk for the operator, and park
-        /// in Waiting until Cancel, which closes that EmuHawk.
+        /// FR-17: EmuHawk on the result continues, opens POKéMON, the last party member and SUMMARY,
+        /// holds the summary on view, and only then reads the party from RAM, checks it against the
+        /// prediction and logs it. Not shiny: B back to the field. Shiny: parks on this EmuHawk (FR-18).
+        /// The bot is disposed on every way out, the park's Cancel included.
+        /// </summary>
+        private async Task<PokemonData> ShowAndReadResultAsync(GameState state, ushort seed, uint predicted, CancellationToken ct)
+        {
+            // The header stays the original's: the suffixed ROM is a byte copy of it.
+            var context = botFactory.BuildGameContext(gameName, -1, position);
+            context.SourceGameName = gameName + ResultSuffix;
+            IBot bot = botFactory.CreateBot(context);
+            try
+            {
+                var pointers = (Service.Pointers.RsPointerService)bot.Addresses;
+                await bot.LaunchAsync();
+                await WaitUntilReadyAsync(bot, pointers, ct);
+                await ReachFieldAsync(bot, pointers, ct);
+
+                // Steers the presses only; the logged value is read after the summary is on view.
+                byte count = await bot.ReadByteAsync(pointers.Anchor);
+                RsStartMenuService.MenuState menu = await OpenLiveStartMenuAsync(bot, pointers, ct);
+                RsStartMenuService.StepsTo(menu, PokemonMenuActionId);
+                await MoveCursorToAsync(bot, pointers, menu.IndexOf(PokemonMenuActionId));
+                await PressAsync(bot, OpenPartyMacro, OpenPartyMs, ct);
+                for (int slot = 1; slot < count; slot++)
+                {
+                    await PressAsync(bot, PartyDownMacro, PartyDownMs, ct);
+                }
+                await PressAsync(bot, OpenSlotMenuMacro, OpenSlotMenuMs, ct);
+                await PressAsync(bot, OpenSummaryMacro, OpenSummaryMs, ct);
+                Console.WriteLine("[Wishmaker] summary on view");
+                await Task.Delay(SummaryDisplayMs, ct);
+
+                PokemonState party = await reader.GetPartyState(bot);
+                // The gift lands in the first free slot, which is the last one filled.
+                PokemonData jirachi = party.PartyPokemon[party.PartySize - 1]!;
+                if (jirachi.Species != JirachiSpecies)
+                {
+                    throw new InvalidOperationException(
+                        $"Jirachi not in the RAM party: party size {party.PartySize}, slot {party.PartySize - 1} is species {jirachi.Species}.");
+                }
+                if (jirachi.PID != predicted)
+                {
+                    throw new InvalidOperationException(
+                        $"Jirachi PID {jirachi.PID:X8} is not the {predicted:X8} that seed {seed:X4} predicts: " +
+                        "the disc read a different save than the hunt wrote. Stopping.");
+                }
+                Console.WriteLine($"[Wishmaker] predicted {predicted:X8} got {jirachi.PID:X8}{(jirachi.IsShiny ? " SHINY" : "")}");
+
+                await persistence.AddEncounterAsync(new PersistPokemonData
+                {
+                    PokemonData = jirachi,
+                    Game = GameFlavor.RS,
+                    Phase = phaseName,
+                    GameFileName = gameName,
+                    DateTime = DateTime.UtcNow,
+                });
+
+                if (jirachi.IsShiny)
+                {
+                    await ParkShinyAsync(state, jirachi, ct);
+                }
+                await PressAsync(bot, CloseToFieldMacro, CloseToFieldMs, ct);
+                return jirachi;
+            }
+            finally
+            {
+                await bot.DisposeAsync();
+            }
+        }
+
+        /// <summary>One held press and the wait after it, as the save's presses run.</summary>
+        private static async Task PressAsync(IBot bot, string macro, int waitMs, CancellationToken ct)
+        {
+            bot.RunMacroString(macro);
+            await bot.WaitForMacroAsync(ct);
+            await Task.Delay(waitMs, ct);
+        }
+
+        /// <summary>
+        /// FR-18: record and announce the catch, leave the EmuHawk of FR-17 at the summary for the
+        /// operator, and park in Waiting until Cancel, which closes that EmuHawk.
         /// </summary>
         private async Task ParkShinyAsync(GameState state, PokemonData jirachi, CancellationToken ct)
         {
@@ -439,23 +513,11 @@ namespace ShinyBotHunter.BotEvents
             await persistence.AddCaughtPokemonAsync(caught);
             await alerts.NotifyTargetFoundAsync(caught);
 
-            // The header stays the original's: the suffixed ROM is a byte copy of it.
-            var context = botFactory.BuildGameContext(gameName, -1, position);
-            context.SourceGameName = gameName + ResultSuffix;
-            IBot result = botFactory.CreateBot(context);
-            try
-            {
-                await result.LaunchAsync();
-                state.TargetPokemon = caught;
-                state.State.Push(EventState.Waiting);
-                Console.WriteLine(
-                    $"[Wishmaker] SHINY Jirachi PID {jirachi.PID:X8} in {paths.ResultSave}, open in EmuHawk. Cancel to close it.");
-                await Task.Delay(Timeout.Infinite, ct);
-            }
-            finally
-            {
-                await result.DisposeAsync();
-            }
+            state.TargetPokemon = caught;
+            state.State.Push(EventState.Waiting);
+            Console.WriteLine(
+                $"[Wishmaker] SHINY Jirachi PID {jirachi.PID:X8} in {paths.ResultSave}, open in EmuHawk at its summary. Cancel to close it.");
+            await Task.Delay(Timeout.Infinite, ct);
         }
 
         private static uint MaxLiveCounter(byte[] save) =>
