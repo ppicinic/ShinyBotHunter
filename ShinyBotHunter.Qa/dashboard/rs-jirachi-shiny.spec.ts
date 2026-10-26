@@ -72,7 +72,7 @@ function mongo(uri: string, script: string): any {
   if (res.status !== 0) throw new Error(`mongosh exited with ${res.status}: ${res.stderr}`)
   return JSON.parse(res.stdout.trim())
 }
-const caughtFilter = `{ Phase: '${PHASE}', GameFileName: '${RESULT_ROM}', 'Pokemon.PID': NumberLong(${parseInt(SHINY_PID, 16)}) }`
+const caughtFilter = `{ Phase: '${PHASE}', GameFileName: '${RESULT_ROM}', 'Pokemon.PID': NumberLong('${parseInt(SHINY_PID, 16)}') }`
 
 /** The frozen fields as they are in RAM now. */
 async function readFields(): Promise<Frozen> {
@@ -234,11 +234,13 @@ test('RS Wishmaker Jirachi shiny: a crafted ECDD save and a QA cheat give a real
     expect(partyCount(hunt), 'the hunt save party is not 1').toBe(1)
     expect(firstBlockSeed(hunt), 'the hunt save first block is not ECDD after the bot saves').toBe(SEED)
 
-    // 12. Mongo: one new CaughtPokemon for the shiny.
-    const caught = mongo(mongoUri,
+    // 12. Mongo: one new CaughtPokemon for the shiny. The backend queues the insert behind its cache load, so poll.
+    const findCaught = (): any => mongo(mongoUri,
       `const d = db.CaughtPokemon.find(${caughtFilter}).toArray(); print(EJSON.stringify({ count: d.length, last: d.at(-1)?.Pokemon }, { relaxed: true }))`)
+    await expect.poll(() => findCaught().count, { message: 'no new CaughtPokemon document', timeout: 60_000, intervals: [2000] })
+      .toBe(caughtBefore + 1)
+    const caught = findCaught()
     step(`CaughtPokemon: ${caught.count} matching; newest species ${caught.last?.Species}, IsShiny ${caught.last?.IsShiny}`)
-    expect(caught.count, 'no new CaughtPokemon document').toBe(caughtBefore + 1)
     expect(caught.last.Species, 'the CaughtPokemon is not Jirachi').toBe(385)
     expect(caught.last.IsShiny, 'the CaughtPokemon is not shiny').toBe(true)
 
