@@ -10,7 +10,7 @@ namespace ShinyBotHunter.Tests
     public class WishmakerJirachiEventTests : IDisposable
     {
         private const int FooterOffset = 0xFF4;
-        private const int LiveBlock = 0xE000; // the live block of rs-rev0-base
+        private const int LiveBlock = 0xE000; // the live block of Gen3SaveFileTests.CompleteSave
 
         private readonly string folder = Path.Combine(Path.GetTempPath(), $"wishmaker-{Guid.NewGuid()}");
         private readonly string huntSave;
@@ -36,8 +36,7 @@ namespace ShinyBotHunter.Tests
             Directory.Delete(folder, recursive: true);
         }
 
-        private static byte[] Base() =>
-            File.ReadAllBytes(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Saves", "rs-rev0-base.SaveRAM"));
+        private static byte[] Base() => Gen3SaveFileTests.CompleteSave();
 
         /// <summary>Writes the computed checksum of a live-block section into its footer, after an edit.</summary>
         private static void Resign(byte[] save, int id)
