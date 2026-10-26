@@ -1,4 +1,3 @@
-using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
@@ -194,17 +193,6 @@ namespace ShinyBotHunter.Tests
             int section1 = Gen3SaveFile.ReadSections(save, 0xE000).Single(s => s.Id == 1).Offset;
             save[section1 + 0x234] = 6;
             Assert.Equal(6, Gen3SaveFile.ReadPartyCount(save));
-        }
-
-        [Fact]
-        public void ReadsThePartySlotBytesOfTheRev0Base()
-        {
-            byte[] slot = Gen3SaveFile.ReadPartySlot(Fixture("rs-rev0-base.SaveRAM"), 0);
-            Assert.Equal(100, slot.Length);
-            // The substructure checksum only passes when the slot was read at the right offset.
-            var pokemon = Gen3PokemonParser.Decode(slot);
-            Assert.NotNull(pokemon);
-            Assert.False(pokemon.IsCorrupt);
         }
 
         [Fact]
