@@ -141,8 +141,9 @@ test('RS Wishmaker Jirachi shiny: a crafted ECDD save and a QA cheat give a real
     expect(Object.keys(JSON.parse(startBody)), 'the event is not at position 0').toEqual(['0'])
     step(`event started at ${runStart}`)
 
-    // 5. The cheat is active: once the save is loaded (trainer "Phil", TID 39541 at gSaveBlock2), the fields
-    //    read the crafted values twice, 1.5 s apart, so a ticking play time cannot pass.
+    // 5. Once the save is loaded (trainer "Phil", TID 39541 at gSaveBlock2), the fields read the crafted values
+    //    twice, 1.5 s apart. Play time only runs after CONTINUE, so this shows the crafted values are in RAM, not
+    //    that the cheat holds them; the proof is the ECDD seed of step 6, logged after field play and two saves.
     const loadDeadline = Date.now() + 3 * MINUTE
     let loaded = false
     while (!loaded) {

@@ -85,8 +85,8 @@ test('RS Wishmaker Jirachi through the dashboard: one hour of cycles, cancel dur
   expect(fs.existsSync(PRISTINE), `missing ${PRISTINE}`).toBe(true)
   const pg = pgEnv()
   try {
-    // 1. Install the pristine hunt save; the backup and the result save left by an earlier run are the bot's QA artefacts.
-    for (const stale of [BACKUP, RESULT_SAVE]) {
+    // 1. Install the pristine hunt save; the backup, the result save and BizHawk's .bak of it left by an earlier run are QA artefacts.
+    for (const stale of [BACKUP, RESULT_SAVE, RESULT_SAVE + '.bak']) {
       if (fs.existsSync(stale)) {
         fs.rmSync(stale)
         step(`deleted stale ${stale}`)

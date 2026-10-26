@@ -1,6 +1,6 @@
 # Cleanup and Hardening Plan
 
-Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phase 7 (Wishmaker Jirachi hunt) implemented 2026-10-25 under epic #163 except the `rs-jirachi-shiny` QA; phases 4b and 6 open
+Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phase 7 (Wishmaker Jirachi hunt) implemented 2026-10-26 under epic #163; phases 4b and 6 open
 Last updated: 2026-10-25
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
@@ -141,13 +141,13 @@ A new self-managing special event for RS that hunts the Colosseum Bonus Disc Jir
 | # | Task | Deliverable | Depends on | Size |
 |---|---|---|---|---|
 | 7.1 | Settings and Dolphin install (W1) | `DolphinBaseDirectory`, `GbaBiosPath`, `ColosseumBonusDiscPath`; `Dolphin/Config/*.ini`; `Scripts/deploy-dolphin.ps1` installing a bot-owned Dolphin user folder. | — | S |
-| 7.2 | Gen 3 save sections (W2) | `Gen3SaveFile`: section walk, live block, first-block seed, play time, Pokédex flag, party count, save completion, party slot bytes; tests on the spike's saves. | — | M |
+| 7.2 | Gen 3 save sections (W2) | `Gen3SaveFile`: section walk, live block, first-block seed, play time, Pokédex flag, party count, save completion; tests on the spike's saves. | — | M |
 | 7.3 | RS `ContinueGame` (W3) | Deterministic RS continue macro; `Launch Bot + Continue` for RS. Already on `main` (b2d59d6); FR-8 done in 7.5. | — | S |
 | 7.4 | Dolphin pieces (W4) | `DolphinLauncher`, `DolphinMemory`, `DolphinPad` (DSU server), `DolphinGbaWindow` (reset), `BonusDiscAddresses`; unit tests over fakes. | — | M |
 | 7.5 | The event (W5) | `WishmakerJirachiEvent` and config, registry entry, `HasWishmakerJirachi`, `GameFilter` and the dashboard dropdown filter, Start validation, the cycle, prediction check, shiny path. | 7.1 to 7.4 | L |
-| 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. Split into W6a and W6b; W6b held. | 7.5 | M |
+| 7.6 | QA (W6) | `rs-jirachi-setup-refusals`, `rs-jirachi-soak` (one hour), `rs-jirachi-shiny` (crafted seed, Mongo, Discord, stop); `jirachi-seed.ts`; saves `rs.qa-jirachi`, `-full`, `-nodex`. Runs on the feature branch. Split into W6a and W6b (#189). | 7.5 | M |
 | 7.7 | Close-out (W7) | Architecture section, spec status, implementation notes here. | 7.6 | S |
-| 7.8 | Summary view and RAM read (W8) | Owner's rule of 2026-10-25: every cycle opens the result in EmuHawk, shows the Jirachi's summary, then reads the slot from RAM and logs it; NFR-1 to 300 s. Soak rerun and video. | 7.7 | M |
+| 7.8 | Summary view and RAM read (W8) | **Done 2026-10-26 (#188, PR #190).** Owner's rule of 2026-10-25: every cycle opens the result in EmuHawk, shows the Jirachi's summary, then reads the slot from RAM and logs it; NFR-1 to 300 s. Soak rerun and video. | 7.7 | M |
 
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
@@ -225,6 +225,7 @@ Done on `feature/wishmaker-jirachi` under epic #163 (the [spec](../specs/wishmak
 - 7.3: no change; the macro was already on `main` and FR-8 moved to 7.5.
 - 7.4: the address table is `BonusDisc.cs` with the drive loop; `-C` works on 2609a, so the `Dolphin.ini` rewrite was not built; the Return that triggers the GBA reset gets no key-up; `DolphinLauncher` is not an `ILauncher`.
 - 7.5: split into W5a (the event), W5b (registry, capability, `GameFilter`, Start), W5c (the dashboard filter), W5d (`Bot.DisposeAsync` disposes the launcher after a failed flush, for every event) and W5e (the save step confirms the start menu by a cursor probe, after the first soak run stopped in the second save). The backup is `.SaveRAM.wishmaker.bak`, and the Play press cap is 30, not 10.
-- 7.6: split into W6a (refusals, soak, saves) and W6b (the shiny scenario and `jirachi-seed.ts`), which is held for the shiny route (spec's Open questions).
-- QA (run folders on the dev PC, linked by name on the epic): `rs-jirachi-setup-refusals` passed 2026-10-25 (`20261025-133415-rs-jirachi-setup-refusals`). `rs-jirachi-soak` failed its first run on 2938f4e, which W5e fixed, and passed on 569588f (`20261025-140333-rs-jirachi-soak`): 20 rows, 20 distinct PIDs all equal to their prediction, cycles 172 to 188 s (mean 181 s, under NFR-1's 240 s), first-block counter 82 to 124, and the FR-19 cancel clean. `rs-jirachi-shiny` is not run.
-- Owner checks before the merge to `main`: choose the route for `rs-jirachi-shiny`, and confirm the soak numbers above.
+- 7.6: split into W6a (refusals, soak, saves) and W6b (#189, PR #193: the shiny scenario and `jirachi-seed.ts`). The owner's route: a save crafted to seed `ECDD` and a generated QA cheat that freezes the moving section-0 fields, so the bot's own saves keep the seed; the scenario drives REST and polls Mongo for the queued catch.
+- 7.8: W8 (#188, PR #190). Each cycle shows the Jirachi at its summary in EmuHawk on `{GameName}-WISHMKR.gba`, then reads the slot from RAM and logs it; the press shapes were found live, closing to the field takes four B presses, `Gen3SaveFile.ReadPartySlot` was deleted, and the cycle budget is 300 s.
+- QA (run folders on the dev PC, linked by name on the epic): `rs-jirachi-setup-refusals` passed 2026-10-25 (`20261025-133415-rs-jirachi-setup-refusals`). `rs-jirachi-soak` failed its first run on 2938f4e, which W5e fixed, and passed on 569588f (`20261025-140333-rs-jirachi-soak`): 20 rows, 20 distinct PIDs all equal to their prediction, cycles 172 to 188 s (mean 181 s, under NFR-1's 240 s), first-block counter 82 to 124, and the FR-19 cancel clean. After W8, on 40c1a13, the soak run at five cycles (owner's choice) passed 2026-10-26 (`20261026-084126-rs-jirachi-soak5-recorded`): 5 rows, 5 distinct PIDs all equal to their prediction, every cycle "summary on view", gaps 211 to 227 s (under 300 s), first-block counter 82 to 94, the cancel clean; its first two cycles were screen-recorded ad hoc. `rs-jirachi-shiny` passed 2026-10-26 on 5f22950 (`20261026-090332-rs-jirachi-shiny`): Jirachi `987ED636` shiny, logged, caught in Mongo, alerted on Discord, parked in Waiting at the summary.
+- Owner checks before the merge to `main`: confirm the soak numbers above.
