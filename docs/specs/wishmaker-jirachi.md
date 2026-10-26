@@ -18,6 +18,7 @@ The Jirachi is a function of the save: the disc seeds it from the checksum of th
 - G3: a bad setup fails at Start with one plain sentence in the dashboard (wrong ROM, no save, no Pokédex, full party, Dolphin or BIOS missing).
 - G4: the Dolphin side is installed and configured by a script from files in the repo, from the same settings the backend reads.
 - G5: every cycle is a logged encounter whose PID the save predicts; the shiny path records the catch, alerts Discord and stops.
+- G6: the hunt does what a human would do, visibly: the Pokémon is shown on screen (its summary) before anything about it is read from memory and logged, so an operator watching the emulator can verify every encounter the bot records (owner's rule, 2026-10-25; [global decision](../decisions/global.md#hunts-act-as-a-human-would-the-result-is-seen-before-it-is-logged)).
 
 ## Non-goals
 
@@ -56,6 +57,7 @@ The Jirachi is a function of the save: the disc seeds it from the checksum of th
 | NFR-1 | A cycle completes in under 300 s on the dev PC (soak mean 181 s before the FR-17 summary view, which adds about 40 s); a cycle over the limit is logged, not fatal. | Should | QA soak timings. |
 | NFR-2 | A one-hour unattended soak completes every cycle with no stall, every PID matching its prediction and no repeated seed. | Must | QA: `rs-jirachi-soak`. |
 | NFR-3 | No `SendInput`, no screenshot, no pixel read, no window focus call anywhere in the feature. | Must | Reviewer grep: `SendInput`, `GetPixel`, `SetForegroundWindow`, `CopyFromScreen` absent from the feature's files. |
+| NFR-4 | Like a human: nothing about a Pokémon is logged before it has been shown on the emulator screen (G6); every logged encounter is one an operator could have seen. | Must | QA: every soak cycle logs "summary on view" before its "predicted … got" line; the recorded cycle video shows the summary before the log line. |
 
 ## Design
 
