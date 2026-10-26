@@ -113,7 +113,7 @@ QA runs on the final feature branch, programmatically through the Electron UI wi
 |---|---|---|
 | `rs-jirachi-setup-refusals` | Starts the event from the UI on: a rev 0 ROM (absent from the dropdown); the rev 2 ROM with no SaveRAM; a save with a full party (QA-made); a save with no Pokédex (the original `Pokemon Sapphire8.SaveRAM`). | Each shows the FR-5 sentence in the dashboard and launches nothing. |
 | `rs-jirachi-soak` | Loads `rs.qa-jirachi`, starts `Wishmaker Jirachi Hunt` on `PhaseName` "Jirachi" from the UI, waits one hour, cancels during the Dolphin half (FR-19). | At least 20 `encounters` rows with species Jirachi for the phase (psql, as the QA spec's `assert-latest-encounter` step), all PIDs distinct, every backend log line "predicted … got …" equal, no cycle over 240 s, the SaveRAM's first-block counter advanced by cycles × 2 or so, no emulator left running after cancel. |
-| `rs-jirachi-shiny` | `jirachi-seed.ts` solves a play time whose first-block checksum is `ECDD` on a copy of `rs.qa-jirachi` (the spike's solver: hours and frames move the high half-word, minutes and seconds the low one; recompute the section checksum), loads it, starts the event from the UI. | One cycle; the `encounters` row is Jirachi PID `987ED636` shiny; a `CaughtPokemon` document for it in Mongo; the Discord shiny channel's latest message (Discord REST with the QA token) is the Jirachi alert; the dashboard shows the event stopped in Waiting; `{GameName}-WISHMKR.SaveRAM` holds Jirachi in slot 1 and `{GameName}.SaveRAM` holds none; EmuHawk is open on `{GameName}-WISHMKR.gba`. |
+| `rs-jirachi-shiny` | `jirachi-seed.ts` crafts a copy of `rs.qa-jirachi` whose live-block section-0 checksum is `ECDD` (play time and the berry-tree stamp; checksum recomputed) and writes the matching QA cheat that freezes those bytes in RAM; installs both, starts the event (REST or UI). | One cycle, for real: the `encounters` row is Jirachi PID `987ED636` shiny; a `CaughtPokemon` document for it in Mongo; the Discord shiny channel's latest message (Discord REST with the QA token) is the Jirachi alert; the event is in Waiting; `{GameName}-WISHMKR.SaveRAM` holds Jirachi in slot 2 and `{GameName}.SaveRAM` holds none; EmuHawk is open on `{GameName}-WISHMKR.gba` at the summary; no Dolphin. The cheat is removed afterwards. |
 
 Saves (added to the QA save table): `rs.qa-jirachi` = Sapphire rev 2, trainer Phil (TID 39541), Pokédex, one party member, play time about 93 h after the spike (the spike's final base); `rs.qa-jirachi-full` = the same with six party members (PKHeX); `rs.qa-jirachi-nodex` = `Pokemon Sapphire8.SaveRAM` as the operator made it.
 
@@ -158,10 +158,7 @@ Where the build differs from this spec as first written (2026-10-25). The statem
 
 ## Open questions
 
-- Open (owner): how `rs-jirachi-shiny` proves FR-18. The scenario as written crafts an `ECDD` play time into `rs.qa-jirachi`, but the event continues the game, plays and saves in-game before the disc reads the save, so the crafted first-block checksum is overwritten and the cycle yields a non-shiny Jirachi. The options:
-  1. Freeze the play-time fields with a generated BizHawk cheat file during the shiny run, QA-side only. Needs a two-cycle emulator spike for the frame and RTC risks.
-  2. Pin play time at its maximum and tune another section-0 field. Needs a spike.
-  3. Change the acceptance so the shiny path is proved another way.
+- Resolved by the owner (2026-10-26): `rs-jirachi-shiny` runs the real cycle on a crafted copy of `rs.qa-jirachi` and keeps the crafted seed through the bot's own in-game saves with a QA-only BizHawk cheat. Across the soak's 42 saves only six bytes of section 0 moved: play time minutes, seconds and frames (`0x10` to `0x12`) and the berry-tree RTC stamp (`0xA2` to `0xA4`); the cheat freezes those fields (plus hours `0x0E` and the stamp's day `0xA0`) in `gSaveBlock2` at their crafted values, so the game writes a section 0 whose checksum stays `ECDD` and the disc returns the shiny Jirachi `987ED636` for real. The cheat lives under `ShinyBotHunter.Qa/Cheats/` and is installed enabled for the run only; the bot is unchanged. The scenario may drive the backend's REST directly instead of the Electron UI. It asserts the stop on the shiny: the encounter row, the Mongo `CaughtPokemon` document, the Discord alert, the event in `Waiting`, EmuHawk parked at the summary and no Dolphin. Earlier options considered: pin play time at its maximum, or change the acceptance; both dropped.
 
 - Resolved by assumption: the ISO location is a third settings key rather than a file in `ROMBaseDirectory`, because `RomInfoService` lists only GBA and DS ROMs and the disc is not a game to hunt. Change to a fixed name under the ROM folder if a third key is unwanted.
 - Resolved by assumption: the GBA reset uses posted key messages (proven in the spike with another application in the foreground); UI Automation by item name is the fallback, recorded in the decisions file, and would need the WindowsDesktop framework reference or COM interop.
@@ -169,6 +166,7 @@ Where the build differs from this spec as first written (2026-10-25). The statem
 
 ## Changelog
 
+- 2026-10-26: the shiny route resolved (QA cheat freeze of the six moving section-0 bytes; REST allowed); W6b.
 - 2026-10-25 (later): owner's rule: the Jirachi is shown at its summary screen in BizHawk and read from RAM before it is logged (FR-17, FR-18, NFR-1 rewritten; non-goal replaced; task W8).
 
 - 2026-10-25: first version, from the spike of 2026-10-24 to 25.
