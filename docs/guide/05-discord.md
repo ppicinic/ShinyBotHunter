@@ -24,7 +24,7 @@ The two channels are separate settings. You can use one channel for both.
 ## How do I create the bot in Discord?
 
 1. Open the Discord Developer Portal in your browser and sign in.
-2. Create a new application. Give it any name; this is the name the bot shows in your server.
+2. Create a new application and give it a name.
 3. Open the application's **Bot** section.
 4. Copy the bot token. Keep it secret: anyone with the token can act as your bot. It goes in the secrets file, as [Configure](02-configure.md) shows.
 5. In the same section, turn on the privileged gateway intents. The bot asks Discord for every intent when it connects, so these switches must be on.
@@ -116,7 +116,7 @@ Anyone who can see the channel can press the buttons. The bot checks which messa
 
 ## How do I run without Discord?
 
-1. Leave the bot token **empty** in the secrets file. The placeholder token in the shipped settings, `your-token-here`, does not count as empty: the bot only skips Discord when the token is empty, so you have to empty it, not leave it as shipped.
+1. Leave the bot token **empty** in the secrets file. The placeholder token in the shipped settings, `your-token-here`, does not count as empty: the bot skips Discord only when the token is empty (or is exactly `YOUR_BOT_TOKEN`), so you have to empty it, not leave it as shipped.
 2. Leave the example ids in place. The bot reads the server id and the new-move channel id when it starts, even without a token.
 
 > **Ask the owner:** what happens if the token is left as `your-token-here`.
@@ -125,7 +125,7 @@ When the backend starts, its window shows `Discord bot token is not configured. 
 
 From then on:
 
-- Shiny alerts are dropped. The backend's window shows `Discord is not logged in; dropping message: <title>`.
+- Shiny alerts are dropped. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>>`, where the number is the id of the role to mention. The line does not name the Pokémon.
 - New-move questions are answered **Do Not Learn** for you. The backend's window shows `Discord is not logged in; <name> will not learn <move>.`, and the bot walks the game through declining the move.
 
 ## What if Discord does not work?

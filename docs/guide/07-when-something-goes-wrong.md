@@ -35,7 +35,7 @@ If the deploy script itself stops:
 |---|---|---|
 | `EmuHawk is running. Close it first: ...` | An EmuHawk is still open. | Close every EmuHawk and run the script again. |
 | `ApiHawk build failed.` | The bot's tool did not build. | Check the build steps in [Install](01-install.md). |
-| `Config trust update failed.` | The script could not write BizHawk's settings. | Check that the BizHawk folder is right and that `python` runs in a terminal, then run the script again. |
+| `Config trust update failed.` | The script could not run the Python step that writes BizHawk's settings. | Check that `python` runs in a terminal, then run the script again. |
 
 ## The emulator window never moves into place
 
@@ -70,7 +70,7 @@ When you start an action and the bot refuses it, the dashboard shows one of thes
 
 | You see | It means | Do |
 |---|---|---|
-| `<action> needs <capability>, which <game> does not have.` | That game does not support the action. The dashboard only offers the actions a game supports, so you meet this only with a game the bot does not know. | Pick a game the action supports. |
+| `<action> needs <capability>, which <game> does not have.` | That game does not support the action. The dashboard only offers the actions a game supports, so you should not normally see this. | Pick a game the action supports. |
 | `Shiny Starter Hunt needs HasSoftResetStarterHunt; '<game>' is <name>, which has no game profile.` | The bot does not know that game, so it cannot run the starter hunt on it. | Pick a game the starter hunt supports. |
 | `Wishmaker Jirachi Hunt runs only on a tested Ruby or Sapphire ROM (revision 2); <game> is <name>.` | The Jirachi hunt runs only on revision 2 of Ruby or Sapphire. | Use a revision 2 Ruby or Sapphire ROM. |
 
