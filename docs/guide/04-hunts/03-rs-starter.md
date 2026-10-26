@@ -11,7 +11,7 @@ It soft-resets Ruby or Sapphire until the starter you chose is shiny. The game o
 
 - **ROM copy**: each emulator plays its own copy of your ROM, so each copy has its own save. A copy is named after your ROM file plus a number: `<your ROM>1`, `<your ROM>2`, and so on. The bot makes the copies itself, in your ROM folder.
 - **Wave**: the group of emulators hunting one starter at the same time. The first shiny ends the wave.
-- **Save**: the bot makes each copy's save itself. It starts a new game and saves in front of Professor Birch's bag, and every reset goes back to that save. If a new save has the same trainer ID as another save, the bot wipes it and makes it again, up to 10 times, because two saves with one trainer ID find the same shinies.
+- **Save**: the bot makes each copy's save itself. It starts a new game and saves in front of Professor Birch's bag, and every reset goes back to that save. If a new save has the same trainer ID as another save, the bot wipes it and makes it again, at most 9 more times (10 tries in all), because two saves with one trainer ID find the same shinies.
 - **Parked shiny**: an emulator left paused in the middle of the battle with a shiny, waiting for you.
 - **Retired copy**: a copy whose save now holds a caught shiny. The bot never hunts on it again.
 - **Resume**: the button that saves the oldest parked shiny.
@@ -105,10 +105,12 @@ See [Your data](../06-your-data.md) for where these are stored.
 
 See also [When something goes wrong](../07-when-something-goes-wrong.md).
 
+The log shows the first two messages after "An emulator stopped with an error:". For those two, only that one emulator stops; the rest of the wave carries on.
+
 | You see | It means | Do |
 |---|---|---|
-| "Emulator for ... was not responding ... after launch, so no macro was sent" | An emulator did not start in time. | Close the other programs that slow the PC down, or hunt with fewer Emulators. |
-| "Could not read the starter on ... Refusing to reset, because the pokemon on screen may be a shiny and resetting would lose it." | The bot could not read the starter. | Leave that emulator open and look at the Pokémon on screen. It may be a shiny. |
+| "Emulator for ... was not responding ... after launch, so no macro was sent" | An emulator did not start in time. The bot closed it. | If it keeps happening, hunt with fewer Emulators. |
+| "Could not read the starter on ... Refusing to reset, because the pokemon on screen may be a shiny and resetting would lose it." | The bot could not read the starter, so it closed that emulator without resetting it. | Nothing: that emulator is already closed, and the other emulators keep hunting. |
 | "No save appeared at ... after saving. The shiny is still on the paused emulator; save manually before closing anything." | Resume did not produce a save. | Save the game by hand in that emulator before you close anything. |
 | "Start-menu cursor would not settle on position ... Refusing to press A on whatever is highlighted." | The bot could not reach SAVE in the start menu during Resume. | Save the game by hand in that emulator before you close anything. |
 
@@ -121,7 +123,7 @@ The hunt's settings are in `ShinyBotHunter/Configs/Events/RsStarterHunt.json`. O
 | `ConcurrentLaunches` | How many emulators may be starting at the same time. Raise it to open a wave faster; starting many at once can slow the PC down so badly that emulators fail to open. | 1 |
 | `StarterOnFieldSettleMs` | A pause, in milliseconds, once the starter is on the field, so you can watch it arrive. 0 removes the pause. | 1000 |
 | `LogLegalityForEveryEncounter` | Whether the legality check is logged for every starter, not only for shinies. Shinies are always checked. | true |
-| `SaveTrainerIdRetries` | How many times a new save is remade when its trainer ID belongs to another save. | 10 |
+| `SaveTrainerIdRetries` | How many saves the bot makes in all for a copy whose new save's trainer ID belongs to another save. With 10, a save is remade at most 9 times; the last one is kept even if it still clashes. | 10 |
 | `LaunchReadyTimeoutMs` | How long, in milliseconds, the bot waits for a new emulator to answer before it gives up. | 240000 |
 
 The other settings in the file name the recorded button presses and the timings for diagnosing problems. Leave them as they are.
