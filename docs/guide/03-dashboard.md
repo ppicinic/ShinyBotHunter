@@ -163,7 +163,7 @@ Some hunts stop and wait for you, for example after finding a shiny. The entry u
 
 1. Click **Run** beside **Resume**.
 
-The hunt carries on. When and why each hunt waits is on its page: [Ruby and Sapphire starter hunt](04-hunts/03-rs-starter.md), [Wishmaker Jirachi hunt](04-hunts/05-wishmaker-jirachi.md).
+The hunt carries on. When and why a hunt waits is on its page: [Ruby and Sapphire starter hunt](04-hunts/03-rs-starter.md), [Wild and chained encounters](04-hunts/01-wild-encounter.md).
 
 ## Stop an action or close an emulator
 
@@ -173,19 +173,19 @@ The hunt carries on. When and why each hunt waits is on its page: [Ruby and Sapp
 You see a green message such as `Cancelled position 1`. What happens depends on what the entry was doing:
 
 - **Running an action on an emulator**: the action stops. The emulator stays open and its entry stays, ready for a new action.
-- **Waiting for you**: the waiting action is dropped. The emulator stays open.
+- **Waiting for you on an emulator**: the waiting action is dropped. The emulator stays open.
 - **Doing nothing**: the emulator closes and its entry goes away.
-- **A hunt started from the Start Action list**: the hunt stops and its entry goes away.
+- **A hunt started from the Start Action list**: the hunt stops and its entry goes away, even while it is waiting for you.
 
 ## Arrange the windows
 
-Move and resize the windows with the mouse; positions and sizes are saved as you go. To set them by number, use the **Window Layout** tab: change **X**, **Y**, **Width** or **Height** for a window and click **Apply**, or click **Reset** to undo your typing. A counts window you closed is not listed there; add its subscription again to reopen it.
+Move and resize the windows with the mouse; positions and sizes are saved as you go. The **Window Layout** tab lets you set them by number instead.
 
 ## If something on this screen goes wrong
 
 - **You see** Start or Run greyed out. **It means** a field the action needs is empty. **Do** fill in every field.
 - **You see** "Pick a game first" in **Milestone**. **It means** no game is chosen yet. **Do** pick the game first.
-- **You see** "No actions available." or a red box under **Start Action**. **It means** the dashboard could not reach the bot. **Do** see [When something goes wrong](07-when-something-goes-wrong.md).
+- **You see** a red box under **Start Action**. **It means** the dashboard could not reach the bot. **Do** see [When something goes wrong](07-when-something-goes-wrong.md).
 - **You see** a red message after Start or Run. **It means** the bot refused, and the message is its reason, word for word. For example, a message of the form "ACTION needs CAPABILITY, which GAME does not have." means that action does not exist for that game. **Do** what the message asks, then try again.
 
 For anything else, see [When something goes wrong](07-when-something-goes-wrong.md).
