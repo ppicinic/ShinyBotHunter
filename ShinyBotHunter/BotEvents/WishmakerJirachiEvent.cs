@@ -64,9 +64,10 @@ namespace ShinyBotHunter.BotEvents
         // Observed live on rs.qa-jirachi (#188).
         private const string OpenSummaryMacro = "H.A.4;W.10";
         private const int OpenSummaryMs = 2000;
-        // Observed live on rs.qa-jirachi (#188): summary to party, party to start menu, start menu to field.
-        private const string CloseToFieldMacro = "H.B.4;W.30;H.B.4;W.30;H.B.4;W.30";
-        private const int CloseToFieldMs = 2000;
+        // Observed live on rs.qa-jirachi (#188): four B, from the summary to the slot menu, the party
+        // list, the start menu and the field; the longer waits cover the two screen fades.
+        private const string CloseToFieldMacro = "H.B.4;W.60;H.B.4;W.30;H.B.4;W.90;H.B.4;W.30";
+        private const int CloseToFieldMs = 1000;
         private const ushort JirachiSpecies = 385;
 
         private readonly string gameName;
