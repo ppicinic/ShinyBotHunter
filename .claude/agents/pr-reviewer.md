@@ -30,6 +30,7 @@ Review in three passes, in this order. Label every finding with its pass and a s
 - dead or commented-out code left behind.
 
 Also check: the Added section matches the diff; shared mutable state has its protection stated in a comment at the declaration; no file outside the task's list was touched; docs under `docs/` that the change makes wrong are updated or listed.
+A change to a registry entry, a settings key, a script under `Scripts/`, or a dashboard action updates the matching page under `docs/guide/` in the same PR; if it does not, that is a finding.
 
 ## Rules for you
 
