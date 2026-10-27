@@ -201,4 +201,4 @@ The Bonus Disc steps have their own time limits: about a minute to reach the Jir
 
 See [Discord](05-discord.md).
 
-Next: [Back to the guide](README.md)
+Next: [Updating and versions](08-updating.md)

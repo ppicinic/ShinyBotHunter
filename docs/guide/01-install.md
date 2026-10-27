@@ -196,7 +196,7 @@ Steps:
 
 1. Create an empty PostgreSQL database whose name matches the `Database=` part of your connection string. The connection string is set on the [Configure](02-configure.md) page.
 
-> **Ask the owner:** how the database's tables are created on a new PC. Nothing in the bot or its scripts creates them, and the TimescaleDB extension must be turned on in the database before they are.
+The bot does not create the database's tables itself. How they are created, and how to tell whether yours are up to date, is on [Updating and versions](08-updating.md#is-a-database-migration-needed). The TimescaleDB extension must be turned on in the database before the tables are created.
 
 ## Start the bot for the first time
 
