@@ -1,9 +1,7 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
-import { getParamLabel, isConditionMet } from './actionSchema'
-
-const ENCOUNTER_TYPE_OPTIONS = ['Spin', 'Run']
+import { encounterTypeChoices, getParamLabel, isConditionMet } from './actionSchema'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
@@ -34,6 +32,10 @@ export function ActionParamFields({
   // GameName falls through to a plain text input like any other parameter.
   games?: GameRomInfo[]
 }): JSX.Element {
+  const encounter = encounterTypeChoices(schema, params['EncounterType'])
+  useEffect(() => {
+    if (params['EncounterType'] && encounter.selected !== params['EncounterType']) onChange('EncounterType', '')
+  }, [encounter.selected, params['EncounterType']])
   const visibleConditionals = (schema.conditionalParameters ?? []).filter((cp: ConditionalParameter) => {
     return isConditionMet(cp.condition, params) || !cp.hideIfConditionNotMet
   })
@@ -82,8 +84,8 @@ export function ActionParamFields({
               className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
             >
               <option value="">Select encounter type...</option>
-              {ENCOUNTER_TYPE_OPTIONS.map((t) => (
-                <option key={t} value={t}>{t}</option>
+              {encounter.options.map((o) => (
+                <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
               ))}
             </select>
           ) : (
