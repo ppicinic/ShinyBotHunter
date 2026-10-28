@@ -1,7 +1,7 @@
 # Cleanup and Hardening Plan
 
-Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phase 7 (Wishmaker Jirachi hunt) implemented 2026-10-26 under epic #163; phases 4b and 6 open
-Last updated: 2026-10-25
+Status: Phases 0 to 5 implemented except the event half of 5.6 and 5.9 (2026-10-22, epics #30, #67 and #118; 5.3e, the HGSS state reader, 2026-10-24, epic #136); phase 7 (Wishmaker Jirachi hunt) implemented 2026-10-26 under epic #163; phases 4b and 6 open; phase 9 (Headbutt encounter) implemented 2026-10-28 under epic #224
+Last updated: 2026-10-28
 Related: [Code review 2026-10](../reviews/2026-10-code-review.md), [System architecture](../architecture/system-overview.md), [Engineering principles](../engineering-principles.md), [the CI decision](../decisions/global.md#ci-runs-locally-before-merge-not-on-github-actions)
 
 ## Goal
@@ -240,3 +240,13 @@ Done on `feature/wishmaker-jirachi` under epic #163 (the [spec](../specs/wishmak
 - 7.8: W8 (#188, PR #190). Each cycle shows the Jirachi at its summary in EmuHawk on `{GameName}-WISHMKR.gba`, then reads the slot from RAM and logs it; the press shapes were found live, closing to the field takes four B presses, `Gen3SaveFile.ReadPartySlot` was deleted, and the cycle budget is 300 s.
 - QA (run folders on the dev PC, linked by name on the epic): `rs-jirachi-setup-refusals` passed 2026-10-25 (`20261025-133415-rs-jirachi-setup-refusals`). `rs-jirachi-soak` failed its first run on 2938f4e, which W5e fixed, and passed on 569588f (`20261025-140333-rs-jirachi-soak`): 20 rows, 20 distinct PIDs all equal to their prediction, cycles 172 to 188 s (mean 181 s, under NFR-1's 240 s), first-block counter 82 to 124, and the FR-19 cancel clean. After W8, on 40c1a13, the soak run at five cycles (owner's choice) passed 2026-10-26 (`20261026-084126-rs-jirachi-soak5-recorded`): 5 rows, 5 distinct PIDs all equal to their prediction, every cycle "summary on view", gaps 211 to 227 s (under 300 s), first-block counter 82 to 94, the cancel clean; its first two cycles were screen-recorded ad hoc. `rs-jirachi-shiny` passed 2026-10-26 on 5f22950 (`20261026-090332-rs-jirachi-shiny`): Jirachi `987ED636` shiny, logged, caught in Mongo, alerted on Discord, parked in Waiting at the summary.
 - Owner checks before the merge to `main`: confirm the soak numbers above.
+
+## Implementation notes, Headbutt encounter (2026-10-28)
+Done on `feature/headbutt-encounter` under epic #224 (the [spec](../specs/headbutt-encounter.md)'s rows H1 to H5), task issues #225 to #229. Merge order: #230, #231, #232, #233, #234. The divergences are in the spec's [What diverged](../specs/headbutt-encounter.md#what-diverged).
+- 9.1: #230 (the `EncounterType.Headbutt` groundwork, so H2 could build in parallel) and #233. Cover the event, the dispatch, `StartFacing`, the press-loop predicate, `HeadbuttScript` (state reader spec R30) and the return cache.
+- 9.2: #232, with one fix cycle: a failed or empty party read is not cached, because a bot is idle at the title screen after a launch.
+- 9.3: #231. The dropdown helper is `encounterTypeChoices` in `actionSchema.ts`, and the guide page.
+- 9.4: #234. Six scenarios and three saves, with one fix cycle (the start-tile asserts, the shiny row tied to the foe's species).
+- 9.5: this close-out (#229).
+- QA: run on 3e97461, all six passed first time, folders under `ShinyBotHunter.Qa/dashboard/qa-runs/` on the dev PC: `hgss-headbutt` `20261028-062747-hgss-route33-dashboard` (11 A presses all at (426,464,Down); returns none, built from (426,463,Up), 9 cached; 10 rows; cycle gaps 25.5 to 27.7 s, about 26 s, under NFR-1's 45 s), `-sideways` `20261028-063338-hgss-route33-dashboard`, `-cutin` `20261028-063702-hgss-route33-dashboard`, `-dead-tree` `20261028-064025-hgss-route33-dashboard`, `-greyed` `20261028-062606-hgss-headbutt-greyed`, `-shiny` `20261028-064133-hgss-route33-dashboard` (a shiny Spearow, so the wild-shiny cheat reaches headbutt encounters).
+- Owner checks before the merge to `main`: the open follow-up from the plan gate. The dashboard does not refetch actions after Reload party, and that button shows only under Train Type Switch.
