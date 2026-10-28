@@ -7,7 +7,10 @@
 # Writing the new hash alongside the DLL is what a redeploy actually consists of.
 param(
     [string]$BizHawkDir = "D:\BizHawk-2.11",
-    [string]$RepoDir = (Split-Path $PSScriptRoot -Parent)
+    [string]$RepoDir = (Split-Path $PSScriptRoot -Parent),
+    # A prebuilt BotServer.dll (the apihawk\ folder of a release zip). When given, nothing is built,
+    # so a release install needs neither the ApiHawk source nor the fork's DLLs in ApiHawk\lib.
+    [string]$BotServerDll = ""
 )
 
 $ErrorActionPreference = "Stop"

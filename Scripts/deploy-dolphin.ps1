@@ -10,7 +10,11 @@
 # Paths come from the same sources the backend reads: appsettings.json, then user secrets
 # (flat "ApplicationSettings:<Key>" entries, as dotnet user-secrets set writes them) on top.
 param(
-    [string]$RepoDir = (Split-Path $PSScriptRoot -Parent)
+    [string]$RepoDir = (Split-Path $PSScriptRoot -Parent),
+    # Where the shipped settings and the secrets id come from. The defaults are the source tree; an
+    # unzipped release has no csproj, so it passes backend\appsettings.json and the id from the guide.
+    [string]$AppSettings = "$RepoDir\ShinyBotHunter\appsettings.json",
+    [string]$SecretsId = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,11 +23,14 @@ if (Get-Process Dolphin -ErrorAction SilentlyContinue) {
     throw "Dolphin is running. Close it first: it rewrites its config files when it exits, which would undo this deploy."
 }
 
-$settings = (Get-Content "$RepoDir\ShinyBotHunter\appsettings.json" -Raw | ConvertFrom-Json).ApplicationSettings
+$settings = (Get-Content $AppSettings -Raw | ConvertFrom-Json).ApplicationSettings
 $dolphinDir = $settings.DolphinBaseDirectory
 $biosPath = $settings.GbaBiosPath
 
-$secretsId = ([xml](Get-Content "$RepoDir\ShinyBotHunter\ShinyBotHunter.csproj" -Raw)).Project.PropertyGroup.UserSecretsId | Where-Object { $_ }
+$secretsId = $SecretsId
+if (-not $secretsId) {
+    $secretsId = ([xml](Get-Content "$RepoDir\ShinyBotHunter\ShinyBotHunter.csproj" -Raw)).Project.PropertyGroup.UserSecretsId | Where-Object { $_ }
+}
 $secretsFile = "$env:APPDATA\Microsoft\UserSecrets\$secretsId\secrets.json"
 if (Test-Path $secretsFile) {
     $secrets = Get-Content $secretsFile -Raw | ConvertFrom-Json

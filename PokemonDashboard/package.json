@@ -1,6 +1,6 @@
 {
   "name": "pokemon-dashboard",
-  "version": "1.0.0",
+  "version": "0.1.1",
   "description": "Live Pokemon hunting dashboard",
   "main": "out/main/index.js",
   "scripts": {
@@ -65,6 +65,7 @@
     ],
     "win": {
       "target": "nsis",
+      "signAndEditExecutable": false,
       "icon": "resources/icon.ico"
     },
     "nsis": {
