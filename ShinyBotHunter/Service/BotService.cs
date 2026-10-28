@@ -7,6 +7,7 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
@@ -83,13 +84,26 @@ namespace ShinyBotHunter.Service
                 var gameContext = botFactory.BuildGameContext(args.GameName, -1, newPos, args.SoundOn);
                 var bot = botFactory.CreateBot(gameContext);
                 await bot.LaunchAsync();
-                if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                try
                 {
-                    throw new InvalidOperationException($"Position {newPos} is already taken.");
+                    await Task.Delay(4000);
+                    bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
+                    await bot.WaitForMacroAsync();
+                    // The bot is offered no actions until the save has loaded, so nothing reads the party
+                    // at the title screen. Only a profile with a state reader can tell when the field is up.
+                    if (bot.Profile.CreateStateReader is not null)
+                    {
+                        await Overworld.WaitForReadyAsync(bot.State, CancellationToken.None);
+                    }
                 }
-                await Task.Delay(4000);
-                bot.RunMacroString(MacroRegistry.Instance.GetMacro(gameContext.GameFlavor, "ContinueGame"));
-                await bot.WaitForMacroAsync();
+                finally
+                {
+                    // Registered on a failed load too, so the emulator can still be cancelled from the dashboard.
+                    if (!slots.Entries.TryAdd(newPos, new BotAndOrEvent(bot) { BotPosition = newPos, Context = gameContext }))
+                    {
+                        throw new InvalidOperationException($"Position {newPos} is already taken.");
+                    }
+                }
                 return GetBotDashboardState();
             }
             else
