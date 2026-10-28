@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button), ShinyBotHunter/Data/HGSS/mapreverselookup.json (key 157), ShinyBotHunter/Service/BotEventRunner.cs (the crashed message), docs/guide/07-when-something-goes-wrong.md -->
+<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button), ShinyBotHunter/Data/HGSS/mapreverselookup.json (key 157), ShinyBotHunter/Service/BotEventRunner.cs (the crashed message), docs/guide/07-when-something-goes-wrong.md, the owner's answers of 2026-10-27 -->
 # Togepi egg hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -17,9 +17,9 @@ It works in HeartGold and SoulSilver.
 2. **Saved before receiving the egg, in the area where it is given.** The bot walks to the exact tile and facing it starts every attempt from, and saves there once, so that every soft reset comes back to that spot. If you are already standing there facing the right way, it does not save. If the save is in a different area, the bot stops at once (see [If it stops early](#if-it-stops-early)).
 3. **A free party slot.** With six Pokémon in your party, the egg cannot be handed over, so the bot refuses to start.
 
-> **Ask the owner:** where in the game, and at what point in the story, is the Togepi egg handed over? (The bot's map data names its map only by the code T22FS0101.)
+The egg is handed over in the Pokémon Mart in Violet City, after you have the first gym badge. Your save should be in Violet City with that badge, before the egg has been received.
 
-> **Ask the owner:** which route or path is the east-west walk the hand-over ends on?
+The walk is outside in Violet City: the bot paces back and forth on the street outside the Mart, so nothing should block that line.
 
 ## Start the hunt
 
