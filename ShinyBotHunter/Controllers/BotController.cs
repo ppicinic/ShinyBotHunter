@@ -45,15 +45,15 @@ namespace ShinyBotHunter.Controllers
         }
 
         [HttpGet("bot/getBotActions/{pos}")]
-        public ActionResult<EventArgumentOptions> GetBotActions(int pos)
+        public async Task<ActionResult<EventArgumentOptions>> GetBotActions(int pos)
         {
-            return Ok(botService.GetAvailableActions(pos).ToArray());
+            return Ok((await botService.GetBotActionsAsync(pos)).ToArray());
         }
 
         [HttpGet("bot/getParty/{pos}")]
         public async Task<ActionResult<List<PartySlotInfo>>> GetParty(int pos)
         {
-            return Ok(await botService.GetPartyAsync(pos));
+            return Ok(await botService.ReloadPartyAsync(pos));
         }
 
         [HttpPost("bot/startAction/{pos}")]

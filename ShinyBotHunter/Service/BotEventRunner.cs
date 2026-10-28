@@ -55,6 +55,7 @@ namespace ShinyBotHunter.Service
             entry.Event = ev;
             entry.EventName = name;
             entry.CancellationTokenSource = cts;
+            entry.HeadbuttRefusal = null;
             entry.EventTask = RunEventAsync(key, entry, ev.ExecuteAsync(state, cts.Token), cts, state, name, removeWhenDone);
         }
 
@@ -104,6 +105,7 @@ namespace ShinyBotHunter.Service
                 }
                 entry.EventTask = null;
                 entry.CancellationTokenSource = null;
+                entry.HeadbuttRefusal = null;
                 if (removeWhenDone)
                 {
                     // The key captured at start, not a position read back from the event.

@@ -182,7 +182,8 @@ namespace ShinyBotHunter.BotEvents
         };
 
         /// <summary>
-        /// Presses through a field script until the field is free (R18, R19): A once per arrow of the printing
+        /// Presses through a field script until the field is free, or until <paramref name="until"/> when given, and returns
+        /// the snapshot that ended it (R18, R19): A once per arrow of the printing
         /// native's printer and at every poll in the wait-button natives, one A at the menu native (Yes), then B for
         /// every later wait, since B closes a message as well as A and cannot start a second conversation or answer a
         /// second menu. The printing native's press is confirmed by the printer leaving the arrow, and none is sent while
@@ -192,9 +193,11 @@ namespace ShinyBotHunter.BotEvents
         /// landed on the menu by race is never followed by another A. Throws when the snapshot has not changed for
         /// stale; the clock is not restarted by a press, so a box that never closes under presses still times out.
         /// </summary>
-        internal static async Task PressThroughScriptAsync(
-            IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct)
+        internal static async Task<GameSnapshot> PressThroughScriptAsync(
+            IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct,
+            Func<GameSnapshot, bool>? until = null)
         {
+            until ??= s => s.Screen == GameScreen.FieldFree;
             GameSnapshot? last = null;
             Stopwatch unchanged = Stopwatch.StartNew();
             bool yesGiven = false;
@@ -207,9 +210,9 @@ namespace ShinyBotHunter.BotEvents
                     last = snapshot;
                     unchanged.Restart();
                 }
-                if (snapshot.Screen == GameScreen.FieldFree)
+                if (until(snapshot))
                 {
-                    return;
+                    return snapshot;
                 }
                 if (unchanged.Elapsed >= stale)
                 {

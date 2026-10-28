@@ -218,6 +218,22 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void EncounterRangesStayConditionalOnRun()
+        {
+            EventArgumentOptions[] schemas = [EventRegistry.Get("Wild Encounter").Options, EventRegistry.Get("Chained Encounter").Options.LegParameters!];
+
+            foreach (EventArgumentOptions schema in schemas)
+            {
+                Assert.Equal(["PhaseName", "TargetType", "EncounterType"], schema.RequiredParameters!);
+                foreach (string range in new[] { "xRange", "yRange" })
+                {
+                    Condition condition = schema.ConditionalParameters.Single(cp => cp.Name == range).Condition;
+                    Assert.Equal((ConditionType.Eq, "EncounterType", "Run"), (condition.ConditionType, condition.Name, condition.Value));
+                }
+            }
+        }
+
+        [Fact]
         public void OnlyTheLegsThatHaveAConditionAreGated()
         {
             // Chained encounters predate modes and must keep offering their legs unconditionally.
