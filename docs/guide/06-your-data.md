@@ -155,10 +155,9 @@ There are three things to copy: the PostgreSQL database, the MongoDB database, a
 
 Run these in a terminal in the folder that holds your backup.
 
-1. Make an empty PostgreSQL database with TimescaleDB on. Open `psql` as in [Look at your encounters](#look-at-your-encounters), but with `-d postgres`, since your own database does not exist yet. Then run these one at a time, with your own database name:
+1. Make an empty PostgreSQL database with TimescaleDB on. Open `psql` as in [Look at your encounters](#look-at-your-encounters). If your database does not exist yet, open it with `-d postgres` instead, and first run `CREATE DATABASE your_db;` with your own database name. Then run these one at a time:
 
    ```
-   CREATE DATABASE your_db;
    \c your_db
    CREATE EXTENSION IF NOT EXISTS timescaledb;
    SELECT timescaledb_pre_restore();

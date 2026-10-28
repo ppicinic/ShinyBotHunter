@@ -34,10 +34,12 @@ The bot asks Discord for every intent when it connects, so all three switches mu
 ## How do I invite the bot to my server?
 
 1. In the Developer Portal, open your app's **Installation** page.
-2. Under **Default Install Settings**, for **Guild Install**, add the scopes `applications.commands` and `bot`.
-3. In the **Permissions** menu that appears, pick the four the bot needs to post what it posts: view channels, send messages, embed links and attach files (`VIEW_CHANNEL`, `SEND_MESSAGES`, `EMBED_LINKS` and `ATTACH_FILES` in Discord's documents). A shiny alert is a card with a picture of the Pokémon, which needs the last two.
-4. Copy the **Install Link** and open it in your browser.
-5. Choose **Add to server**, pick your server, and follow the prompt.
+2. Under **Installation Contexts**, make sure **Guild Install** is selected.
+3. Under **Install Link**, select **Discord Provided Link** if it is not already selected. A **Default Install Settings** section then appears.
+4. Under **Default Install Settings**, for **Guild Install**, add the scopes `applications.commands` and `bot`.
+5. In the **Permissions** menu that appears, pick the four the bot needs to post what it posts: view channels, send messages, embed links and attach files (`VIEW_CHANNEL`, `SEND_MESSAGES`, `EMBED_LINKS` and `ATTACH_FILES` in Discord's documents). A shiny alert is a card with a picture of the Pokémon, which needs the last two.
+6. Copy the **Install Link** and open it in your browser.
+7. Choose **Add to server**, pick your server, and follow the prompt.
 
 ## Which channels and role do I make?
 
@@ -119,7 +121,7 @@ Anyone who can see the channel can press the buttons. The bot checks which messa
 1. Leave the bot token **empty** in the secrets file. The placeholder token in the shipped settings, `your-token-here`, does not count as empty: the bot skips Discord only when the token is empty (or is exactly `YOUR_BOT_TOKEN`), so you have to empty it, not leave it as shipped.
 2. Leave the example ids in place. The bot reads the server id and the new-move channel id when it starts, even without a token.
 
-If the token is left as `your-token-here`, the bot tries to log in with it. Discord's library writes the warning `A supplied token was invalid.` in the backend's window and tries anyway, and Discord refuses the login ("Authentication failed"), so `Discord client ready` never appears. Empty the token as in step 1.
+If the token is left as `your-token-here`, the bot tries to log in with it. Discord's library writes the warning `A supplied token was invalid.` in the backend's window and tries anyway, and Discord refuses the login, so `Discord client ready` never appears. Empty the token as in step 1.
 
 When the backend starts, its window shows `Discord bot token is not configured. Skipping Discord bot startup.`
 
