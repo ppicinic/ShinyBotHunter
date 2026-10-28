@@ -269,8 +269,13 @@ namespace ShinyBotHunter.Service
             return await entry.Create(this, args, pos);
         }
 
-        internal Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
+        internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
+            // A fresh read, not the cached answer, which may predate a party change.
+            if (args.EncounterType == EncounterType.Headbutt && await HeadbuttRefusalAsync(slots.Entries[pos].Bot!) is { } reason)
+            {
+                throw new ArgumentException(reason);
+            }
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
             var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
@@ -278,14 +283,19 @@ namespace ShinyBotHunter.Service
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
             runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
-            return Task.FromResult(GetBotDashboardState());
+            return GetBotDashboardState();
         }
 
-        internal Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
+        internal async Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
         {
             if (args.Legs is null || args.Legs.Count == 0)
             {
                 throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
+            }
+            // A fresh read, not the cached answer, which may predate a party change.
+            if (args.Legs.Any(l => l.EncounterType == EncounterType.Headbutt) && await HeadbuttRefusalAsync(slots.Entries[pos].Bot!) is { } reason)
+            {
+                throw new ArgumentException(reason);
             }
             // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
             // after leg 1 has already been running for an hour.
@@ -299,7 +309,7 @@ namespace ShinyBotHunter.Service
             string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
             runner.StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
 
-            return Task.FromResult(GetBotDashboardState());
+            return GetBotDashboardState();
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartTogepiEggAsync(NewEventArguments args, int pos)
@@ -490,6 +500,127 @@ namespace ShinyBotHunter.Service
                 result.Add(new PartySlotInfo(i + 1, pokemon.Name, pokemon.Level, pokemon.HP, pokemon.MaxHP, pokemon.IsShiny));
             }
             return result;
+        }
+
+        // MOVE_HEADBUTT, include/constants/moves.h:33
+        private const ushort MoveHeadbutt = 29;
+
+        private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
+
+        /// <summary>
+        /// Null when a party member knows Headbutt, otherwise the reason the dashboard shows. Never
+        /// faults: a failed read is logged and becomes <see cref="PartyUnreadable"/>.
+        /// </summary>
+        private async Task<string?> HeadbuttRefusalAsync(IBot bot)
+        {
+            PokemonState party;
+            try
+            {
+                party = await provider.GetRequiredService<PokemonStateReader>().GetPartyState(bot);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BotService] Could not read the party to check for Headbutt: {ex}");
+                return PartyUnreadable;
+            }
+            // A game in the field always has a party member; none means the title screen.
+            if (party.PartySize == 0)
+            {
+                return PartyUnreadable;
+            }
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                var pokemon = party.PartyPokemon[i]!;
+                if (pokemon.Move1 == MoveHeadbutt || pokemon.Move2 == MoveHeadbutt || pokemon.Move3 == MoveHeadbutt || pokemon.Move4 == MoveHeadbutt)
+                {
+                    return null;
+                }
+            }
+            return "No Pokémon in your party knows Headbutt.";
+        }
+
+        /// <summary>
+        /// <see cref="GetAvailableActions"/> with Headbutt marked disabled on the encounter actions
+        /// when no party member knows it. The party is read once per idle period, or again on the next
+        /// call while the read fails: the read is started under the gate and awaited outside it.
+        /// </summary>
+        public async Task<List<EventArgumentOptions>> GetBotActionsAsync(int pos)
+        {
+            var actions = GetAvailableActions(pos);
+            // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
+            // can still be closed between the two reads.
+            if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
+            {
+                return actions;
+            }
+            Task<string?>? refusal = entry.HeadbuttRefusal;
+            if (refusal is null)
+            {
+                await slots.Gate.WaitAsync();
+                try
+                {
+                    refusal = entry.HeadbuttRefusal ??= HeadbuttRefusalAsync(entry.Bot!);
+                }
+                finally
+                {
+                    slots.Gate.Release();
+                }
+            }
+            string? reason = await refusal;
+            if (reason == PartyUnreadable)
+            {
+                // Not kept, so the next call reads again: a bot is idle at the title screen after a
+                // launch. Only this task is dropped, never a later fill.
+                await slots.Gate.WaitAsync();
+                try
+                {
+                    if (entry.HeadbuttRefusal == refusal)
+                    {
+                        entry.HeadbuttRefusal = null;
+                    }
+                }
+                finally
+                {
+                    slots.Gate.Release();
+                }
+            }
+            if (reason is null)
+            {
+                return actions;
+            }
+            var disabled = new Dictionary<string, Dictionary<string, string>>
+            {
+                ["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = reason },
+            };
+            // Copies of the two that change, so the registry's own options are never touched.
+            return actions.Select(a => a.Name switch
+            {
+                "Wild Encounter" => a with { DisabledChoices = disabled },
+                "Chained Encounter" => a with { LegParameters = a.LegParameters! with { DisabledChoices = disabled } },
+                _ => a,
+            }).ToList();
+        }
+
+        /// <summary>
+        /// <see cref="GetPartyAsync"/> for the dashboard, which also forgets the cached Headbutt
+        /// answer. A separate method because GetPartyAsync is also called under the gate, which is
+        /// not re-entrant.
+        /// </summary>
+        public async Task<List<PartySlotInfo>> ReloadPartyAsync(int pos)
+        {
+            await slots.Gate.WaitAsync();
+            try
+            {
+                if (slots.Entries.TryGetValue(pos, out var entry))
+                {
+                    entry.HeadbuttRefusal = null;
+                }
+            }
+            finally
+            {
+                slots.Gate.Release();
+            }
+            return await GetPartyAsync(pos);
         }
 
         public List<EventArgumentOptions> GetAvailableActions(int pos)
