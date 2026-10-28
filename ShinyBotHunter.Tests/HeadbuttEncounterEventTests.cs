@@ -295,5 +295,18 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("The tree in front of you gave no Pokémon. It may give none for your trainer ID, or a Repel is active.", park);
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
+
+        [Fact]
+        public void ChainedLegDropsHeadbuttMacros()
+        {
+            GameState state = new();
+            state.EncounterMacros["Run"] = "run";
+            state.EncounterMacros["Headbutt:426,463,Up"] = "behind";
+            state.EncounterMacros["Headbutt:425,464,Left"] = "beside";
+
+            ChainedOrchestratorEvent.ApplyLeg(state, new EventLeg(null!, "leg", new EncounterParams(EncounterType.Headbutt), TrainType.None, null, null));
+
+            Assert.Empty(state.EncounterMacros);
+        }
     }
 }
