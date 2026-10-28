@@ -54,9 +54,17 @@ Copy-Item "$repo\README.md" $stage
 
 $zip = Join-Path $OutDir "ShinyBotHunter-$Version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
-# .NET's writer, not Compress-Archive: the latter stores entry names with backslashes, which some unzip tools flatten.
+# Entry names are written with forward slashes by hand: Compress-Archive and .NET Framework's
+# ZipFile.CreateFromDirectory both store backslashes, which some unzip tools flatten into one folder.
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-[IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+$archive = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($file in Get-ChildItem $stage -Recurse -File) {
+        $name = $file.FullName.Substring($stage.Length + 1).Replace('\', '/')
+        [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $name, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+    }
+} finally { $archive.Dispose() }
 Remove-Item -Recurse -Force $stage
 
 # Dashboard installer. electron-builder names it from package.json's version and productName.
