@@ -1,4 +1,4 @@
-<!-- Derived from: the repository's git tags (v0.1.0 at 123b4c4, tagged 2026-10-19), ShinyBotHunter/Migrations/* (which migration each version carries, from `git ls-tree v0.1.0 ShinyBotHunter/Migrations/` against main), docs/guide/08-updating.md, the owner's answer of 2026-10-27 (v0.1.1 is tagged on the merge of the guide to main, 2026-10-27) -->
+<!-- Derived from: the repository's git tags (v0.1.0 at 123b4c4, tagged 2026-10-19), ShinyBotHunter/Migrations/* (which migration each version carries, from `git ls-tree v0.1.0 ShinyBotHunter/Migrations/` against main), docs/guide/08-updating.md, the owner's answer of 2026-10-27 (v0.1.1 is tagged on the merge of the guide to main, 2026-10-27), docs/guide/01-install.md (Install from a release) -->
 # Versions
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -14,6 +14,8 @@ This page lists the bot's versions and says, for each one, whether your encounte
    ```
 
 **Expected result:** the version, for example `v0.1.0`. If it prints something like `v0.1.0-12-gabc1234`, you are 12 changes past `v0.1.0` and on the way to the next version.
+
+**Installed from a release?** There is no repository folder. Your version is in the name of the zip you unzipped, `ShinyBotHunter-<version>-win-x64.zip`, and of the installer you ran; see [Install from a release](01-install.md#install-from-a-release-instead-of-building).
 
 ## Which versions are there?
 

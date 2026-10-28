@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj (TargetFramework, package versions, UserSecretsId), ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, EncountersCountsIndex, the model snapshot), ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Startup.cs (MainAsync up to builder.Build(); UseTimescaleDb; AddUserSecrets; no Migrate or EnsureCreated; the "end" command), ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Migrations/20260511164802_InitialCreate.cs (create_hypertable), docs/specs/qa-automation.md (line 155), https://learn.microsoft.com/ef/core/cli/dbcontext-creation (From application services), https://learn.microsoft.com/ef/core/cli/dotnet (installing the tools, verify installation, dotnet ef database update), https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows (CREATE EXTENSION IF NOT EXISTS timescaledb, on each database), the fork's releases page https://github.com/ppicinic/BizHawk/releases, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ApiHawk/lib/.gitkeep, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, PokemonDashboard/package.json, PokemonDashboard/README.md, AGENTS.md, docs/guide/01-install.md, docs/guide/02-configure.md, docs/guide/06-your-data.md -->
+<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj (TargetFramework, package versions, UserSecretsId), ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, EncountersCountsIndex, the model snapshot), ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Startup.cs (MainAsync up to builder.Build(); UseTimescaleDb; AddUserSecrets; no Migrate or EnsureCreated; the "end" command), ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Migrations/20260511164802_InitialCreate.cs (create_hypertable), docs/specs/qa-automation.md (line 155), https://learn.microsoft.com/ef/core/cli/dbcontext-creation (From application services), https://learn.microsoft.com/ef/core/cli/dotnet (installing the tools, verify installation, dotnet ef database update), https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows (CREATE EXTENSION IF NOT EXISTS timescaledb, on each database), the fork's releases page https://github.com/ppicinic/BizHawk/releases, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ApiHawk/lib/.gitkeep, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, PokemonDashboard/package.json, PokemonDashboard/README.md, AGENTS.md, docs/guide/01-install.md, docs/guide/02-configure.md, docs/guide/06-your-data.md, docs/guide/01-install.md (Install from a release) -->
 # Updating and versions
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -124,7 +124,7 @@ If it goes wrong:
 
 ### How are the tables created and brought up to date?
 
-The bot does not create or change its tables when it starts. You do it with Microsoft's tool for migrations, `dotnet ef`. Steps 1 and 2 are once per PC and once per database; step 3 is on a new PC and after every update that adds a migration.
+The bot does not create or change its tables when it starts. You do it with Microsoft's tool for migrations, `dotnet ef`, or, if you installed from a release, with the `migrate.exe` that ships in the zip (see the note after step 3). Steps 1 and 2 are once per PC and once per database; step 3 is on a new PC and after every update that adds a migration.
 
 1. **Install the tool once.** In a terminal, run:
 
@@ -155,5 +155,7 @@ The bot does not create or change its tables when it starts. You do it with Micr
    **Expected result:** it builds the bot and finishes without an error. The check in [Is your database behind?](#is-your-database-behind) now lists every migration in the table above.
 
    The tool reads your connection string the same way the bot does, from `appsettings.json` and then your secrets file. It does not start the bot, Discord or any emulator.
+
+   **Installed from a release?** Skip step 1: the zip's `backend` folder holds `migrate.exe`, which does what step 3 does without the SDK or the source. Open a terminal in that folder and run `migrate.exe`. **Expected result:** it finishes without a line starting with `ERROR`, and the check in [Is your database behind?](#is-your-database-behind) lists every migration in the table above. It reads your connection string the same way the bot does; see [Install from a release](01-install.md#install-from-a-release-instead-of-building).
 
 Next: [Versions](09-versions.md)

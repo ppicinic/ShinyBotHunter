@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md -->
+<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md, docs/guide/01-install.md (Install from a release) -->
 # When something goes wrong
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -23,7 +23,7 @@ This is the ApiHawk trust prompt.
 - **It means:** BizHawk only loads the bot's tool without asking when it trusts that exact build. A new build of the tool has to be trusted again. An emulator the bot started never gets its answer, so the tool never starts and the bot gives up on it.
 - **Do:**
   1. Close every EmuHawk.
-  2. Run the ApiHawk deploy script exactly as [Install](01-install.md) gives it.
+  2. Run the ApiHawk deploy script exactly as [Install](01-install.md) gives it. From a release install, add the `-BotServerDll` parameter as under [Install from a release](01-install.md#install-from-a-release-instead-of-building).
   3. Check its output: `Trusted in config.ini` (and `Trusted in config_sound_on.ini` if you have that file), then `Deployed <n>kb, SHA512:<hash>`.
   4. Start again.
 
@@ -34,7 +34,7 @@ If the deploy script itself stops:
 | You see | It means | Do |
 |---|---|---|
 | `EmuHawk is running. Close it first: ...` | An EmuHawk is still open. | Close every EmuHawk and run the script again. |
-| `ApiHawk build failed.` | The bot's tool did not build. | Check the build steps in [Install](01-install.md). |
+| `ApiHawk build failed.` | The bot's tool did not build. | Check the build steps in [Install](01-install.md). From a release install this does not happen, because the script is given the prebuilt DLL and builds nothing. |
 | `Config trust update failed.` | The script could not run the Python step that writes BizHawk's settings. | Check that `python` runs in a terminal, then run the script again. |
 
 ## The emulator window never moves into place
@@ -129,7 +129,7 @@ This is the case where Dolphin is not connected to the bot's virtual controller.
 - **It means:** the presses never reached the disc. The bot presses buttons through a virtual controller on port 26760, and Dolphin has to be set up to listen to it. Two settings files that the Dolphin deploy script installs do that.
 - **Do:**
   1. Close Dolphin.
-  2. Run the Dolphin deploy script exactly as [Install](01-install.md) gives it.
+  2. Run the Dolphin deploy script exactly as [Install](01-install.md) gives it. From a release install, add the `-AppSettings` and `-SecretsId` parameters as under [Install from a release](01-install.md#install-from-a-release-instead-of-building).
   3. Check its output: `Deployed Dolphin config to <folder> with GBA BIOS <path>`.
   4. Start the hunt again.
 

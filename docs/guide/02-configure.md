@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ShinyBotHunter.csproj, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/EmulatorGrid.cs, ShinyBotHunter/Bot/BotFactory.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, Scripts/deploy-dolphin.ps1, PokemonDashboard/config.json, PokemonDashboard/README.md, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, .gitignore -->
+<!-- Derived from: ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ShinyBotHunter.csproj, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/EmulatorGrid.cs, ShinyBotHunter/Bot/BotFactory.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, Scripts/deploy-dolphin.ps1, PokemonDashboard/config.json, PokemonDashboard/README.md, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, .gitignore, docs/guide/01-install.md (Install from a release) -->
 # Configure
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -41,6 +41,8 @@ The folder name is the bot project's secrets id; every copy of the bot uses the 
    ```
 
 Always use this form, with the parts of the name joined by `:`. The Dolphin install script reads only entries written this way.
+
+**Installed from a release?** Without the .NET SDK there is no `dotnet user-secrets` command, and the folder and file may not exist yet. Create them yourself: make the folder named under [Find the secrets file](#find-the-secrets-file), create a file called `secrets.json` in it, and type the entries in the shape shown below, one `"ApplicationSettings:<Key>": value` line per setting. The bot from the zip reads that file exactly as a built one does; see [Install from a release](01-install.md#install-from-a-release-instead-of-building).
 
 A setting that has one value per console has a third part, the console, `DS` or `GBA`. For example:
 
