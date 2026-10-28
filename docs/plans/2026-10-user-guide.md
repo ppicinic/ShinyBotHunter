@@ -1,7 +1,7 @@
 # User Guide Plan
 
-Status: Approved (owner, 2026-10-26); epic and branch `feature/user-guide` to be opened by the orchestrator
-Last updated: 2026-10-26
+Status: Implemented (2026-10-27) on `feature/user-guide`, epic #198; PR to `main` opened by the orchestrator for the owner to merge
+Last updated: 2026-10-27
 Owner: Phil
 Related: [feature workflow](../specs/feature-workflow.md), [architecture](../architecture/system-overview.md), [decisions](../decisions/global.md)
 
@@ -80,6 +80,13 @@ Each page names, in a comment at the top, the files it is derived from, so a wri
 | 8.6 | Front door and the rule | U1, U14 | 8.1 to 8.5 | S |
 | 8.7 | Updating and versions | U13, plus its line in the guide README and the Next link from U12; the install page's "how are the tables created" question points at it. Replaces the fresh-clone walk-through (owner, 2026-10-26: no walk-through; the docs say how to run everything) | 8.1, 8.6 | S |
 
+## Implementation notes (2026-10-27)
+
+- Rows 8.0 to 8.7 merged in PRs #207, #208, #211, #210, #209, #212, #213 and #215 (task issues #199 to #205 and #214); `Scripts/ci-local.ps1` passed 8/8 on every tip. #206, the fresh-clone walk-through, was closed unplanned (owner: not necessary).
+- What diverged: 8.7 is the updating-and-versions page U13, not a walk-through. No screenshots were taken and `docs/guide/images/` does not exist. Each page cites more read-only sources than its page-table row names; the HTML comment on the page is the authoritative list.
+- Owner review: the pages carry marked "Ask the owner" lines (`grep "Ask the owner" docs/guide`), mostly the BizHawk fork build and install, Discord's own screens, in-game facts for the hunts, and troubleshooting actions. They stay until the owner fills them in.
+- Code gaps the pages exposed, listed on the epic's handoff comment as candidate issues: nothing applies the EF migrations on a new PC (and `docs/specs/qa-automation.md` line 157 claims the QA harness does, which no code backs); the shipped Discord placeholder `your-token-here` is not the value the skip check looks for; three errors reach the dashboard only as a generic server error; `deploy-apihawk.ps1` defaults to an owner path; ROM copies and `-WISHMKR` ROMs appear in the Game lists; a missing SoulSilver ROM is never reported; the Togepi hunt can end silently; `system-overview.md` sections 6 and 9 and the dashboard README have drifted.
+
 ## Open questions
 
 All answered by the owner on 2026-10-26: a markdown folder in the repository; operators only, no contributor page; screenshots allowed but never required; the install page documents the BizHawk fork and how to build it; nothing about the owner's own machines (dev and streaming PCs are the same setup twice, which the secrets file explains per machine). None remain.
@@ -88,3 +95,4 @@ All answered by the owner on 2026-10-26: a markdown folder in the repository; op
 
 - 2026-10-26: first draft from the interview; the five questions answered the same day.
 - 2026-10-26: 8.7 is no longer a walk-through (owner: not necessary); it is U13, an updating-and-versions page that also tracks whether an EF migration is needed. 8.0 to 8.6 merged on `feature/user-guide` the same day.
+- 2026-10-27: 8.7 (U13) merged; status Implemented; implementation notes added.
