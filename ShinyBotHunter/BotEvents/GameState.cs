@@ -42,6 +42,7 @@ namespace ShinyBotHunter.BotEvents
         public int StartY { get; set; } = -1;
         public int StartMapId { get; set; } = -1;
         public int StartX { get; set; } = -1;
+        public Direction StartFacing { get; set; } = Direction.None;
         public bool MilestoneComplete { get; set; } = false;
         public BotService BotService { get; set; } = null!;
         public List<NodePoint>? NavigationPath { get; set; } = null;

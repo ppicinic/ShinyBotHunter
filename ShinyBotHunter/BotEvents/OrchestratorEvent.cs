@@ -1,6 +1,7 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -73,10 +74,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 if(state.StartX == -1 && state.StartY == -1 && state.StartMapId == -1)
                 {
-                    // TODO set map start point.
-                    state.StartMapId = await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
-                    (state.StartX, state.StartY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
-                    Console.WriteLine($"[Orchestrator] Start tile captured: map={state.StartMapId} ({state.StartX},{state.StartY})");
+                    await CaptureStartAsync(state, state.Bot.Overworld, cancellationToken);
                 }
                 // Every Init, not just the first: a chained leg re-enters here with the start tile
                 // already captured and still needs its milestone state read fresh.
@@ -93,14 +91,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if(topState == EventState.Encountering)
                 {
-                    // Dispatch on the configured type. This used to always build a RunEncounterEvent,
-                    // so picking Spin quietly paced an axis instead.
-                    // The two report different result types, so they only meet at the non-generic
-                    // IBotEvent -- which is fine, the result was always discarded here.
-                    IBotEvent encounter = encounterParams.type == EncounterType.Spin
-                        ? new SpinEncounterEvent(state.Bot)
-                        : new RunEncounterEvent(state.Bot, encounterParams);
-                    await encounter.ExecuteAsync(state, cancellationToken);
+                    await BuildEncounter(state.Bot, encounterParams).ExecuteAsync(state, cancellationToken);
                 }
                 else if(topState == EventState.BattleStart)
                 {
@@ -124,6 +115,23 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
+        }
+
+        // Dispatch on the configured type. The events report different result types, so they only
+        // meet at the non-generic IBotEvent -- which is fine, the result is discarded.
+        internal static IBotEvent BuildEncounter(IBot bot, EncounterParams encounterParams) => encounterParams.type switch
+        {
+            EncounterType.Spin => new SpinEncounterEvent(bot),
+            EncounterType.Headbutt => new HeadbuttEncounterEvent(bot),
+            _ => new RunEncounterEvent(bot, encounterParams),
+        };
+
+        internal static async Task CaptureStartAsync(GameState state, IOverworldReader overworld, CancellationToken cancellationToken)
+        {
+            state.StartMapId = await overworld.GetMapIdAsync(cancellationToken);
+            (state.StartX, state.StartY) = await overworld.GetPositionAsync(cancellationToken);
+            state.StartFacing = await overworld.GetFacingAsync(cancellationToken);
+            Console.WriteLine($"[Orchestrator] Start tile captured: map={state.StartMapId} ({state.StartX},{state.StartY}) facing={state.StartFacing}");
         }
 
         // BotService is absent when the orchestrator is driven from the Test harness rather than the
