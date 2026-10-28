@@ -177,6 +177,48 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Script(Movement), e.Last);
         }
 
+        // The headbutt trace (research/headbutt.md): the question, touch menu hide, Yes/No, "used Headbutt.", the swap's
+        // natives and tasks, then the encounter task and the screen leaving the field.
+        private static GameSnapshot[] HeadbuttScript(GameSnapshot end) =>
+        [
+            .. Box(10014), Script(TouchMenuHide, 10014), Script(MenuChoice, 10014), .. Box(10014),
+            Script(0x020492F1, 10014), Script(0x020408D9, 10014), ChildTask(0x0224E0ED), ChildTask(0x022507E9), ChildTask(0x020551B9),
+            new GameSnapshot(GameScreen.Transitioning, null, null, null, null), end,
+        ];
+
+        private static Task<GameSnapshot> PressThroughHeadbutt(ScriptedReader reader, List<string> presses)
+            => NavigatorEvent.PressThroughScriptAsync(reader, Table, macro =>
+            {
+                presses.Add(macro);
+                return Task.CompletedTask;
+            }, "the headbutt script", Stale, CancellationToken.None,
+            s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp));
+
+        [Fact]
+        public async Task HeadbuttLoopEndsOnTheBattleScreen()
+        {
+            GameSnapshot battle = new(GameScreen.BattleStarting, null, null, null, null);
+            ScriptedReader reader = new(HeadbuttScript(battle));
+
+            List<string> presses = [];
+            GameSnapshot end = await PressThroughHeadbutt(reader, presses);
+
+            Assert.Equal([A, Yes, B], presses);
+            Assert.Equal(battle, end);
+        }
+
+        [Fact]
+        public async Task HeadbuttLoopEndsOnFieldFreeWithNoBattle()
+        {
+            ScriptedReader reader = new(HeadbuttScript(Free));
+
+            List<string> presses = [];
+            GameSnapshot end = await PressThroughHeadbutt(reader, presses);
+
+            Assert.Equal([A, Yes, B], presses);
+            Assert.Equal(Free, end);
+        }
+
         [Fact]
         public async Task YesThatDoesNotLandIsRetriedThenThrows()
         {
