@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLegBody,
+  encounterTypeChoices,
   gamesFor,
   getParamLabel,
   initialParamsFor,
@@ -10,7 +11,7 @@ import {
   visibleConditionalsOf,
   visibleParamNames
 } from './actionSchema'
-import type { GameRomInfo } from '../../types/api'
+import type { EventArgumentOptions, GameRomInfo } from '../../types/api'
 
 describe('getParamLabel', () => {
   it('maps a known parameter to its display label', () => {
@@ -209,5 +210,48 @@ describe('buildLegBody', () => {
       Flag: true,
       Off: false
     })
+  })
+})
+
+describe('encounterTypeChoices', () => {
+  const disabled: EventArgumentOptions = {
+    name: 'Wild Encounter',
+    disabledChoices: { EncounterType: { Headbutt: 'No Pokémon in your party knows Headbutt.' } }
+  }
+
+  it('offers Spin, Run and Headbutt in that order, all enabled without disabledChoices', () => {
+    for (const schema of [{ name: 'Wild Encounter' }, { name: 'Wild Encounter', disabledChoices: null }]) {
+      const { options } = encounterTypeChoices(schema, undefined)
+
+      expect(options.map((o) => o.value)).toEqual(['Spin', 'Run', 'Headbutt'])
+      expect(options.map((o) => o.label)).toEqual(['Spin', 'Run', 'Headbutt'])
+      expect(options.some((o) => o.disabled)).toBe(false)
+    }
+  })
+
+  it('greys a choice named in disabledChoices.EncounterType with its reason in the label', () => {
+    const { options } = encounterTypeChoices(disabled, undefined)
+
+    expect(options).toEqual([
+      { value: 'Spin', label: 'Spin', disabled: false },
+      { value: 'Run', label: 'Run', disabled: false },
+      { value: 'Headbutt', label: 'Headbutt (No Pokémon in your party knows Headbutt.)', disabled: true }
+    ])
+  })
+
+  it('uses the disabledChoices of the leg schema', () => {
+    const action: EventArgumentOptions = { name: 'Chained Encounter', legParameters: { ...disabled, name: 'Leg' } }
+
+    const leg = encounterTypeChoices(action.legParameters!, undefined)
+    const parent = encounterTypeChoices(action, undefined)
+
+    expect(leg.options.find((o) => o.value === 'Headbutt')!.disabled).toBe(true)
+    expect(parent.options.find((o) => o.value === 'Headbutt')!.disabled).toBe(false)
+  })
+
+  it('clears a selected value that is now disabled and keeps an enabled one', () => {
+    expect(encounterTypeChoices(disabled, 'Headbutt').selected).toBe('')
+    expect(encounterTypeChoices(disabled, 'Run').selected).toBe('Run')
+    expect(encounterTypeChoices(disabled, undefined).selected).toBe('')
   })
 })
