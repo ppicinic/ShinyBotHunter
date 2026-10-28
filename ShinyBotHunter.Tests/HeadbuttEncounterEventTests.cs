@@ -115,7 +115,7 @@ namespace ShinyBotHunter.Tests
 
             string expected = $"M.Down.464.{Table.TrainerY};W.8;H.Down.3;W.10";
             Assert.Equal([expected], macros);
-            Assert.Equal("built", result);
+            Assert.Equal("built from (426,463,Up)", result);
             Assert.Null(stop);
             Assert.Equal(expected, state.EncounterMacros["Headbutt:426,463,Up"]);
         }
@@ -130,7 +130,7 @@ namespace ShinyBotHunter.Tests
             var (result, _) = await Return(Encountering(), memory, m => { macros.Add(m); Stand(memory, 426, 464, Direction.Down); return Task.CompletedTask; });
 
             Assert.Equal([$"M.Right.426.{Table.TrainerX};W.8;H.Down.3;W.10"], macros);
-            Assert.Equal("built", result);
+            Assert.Equal("built from (425,464,Left)", result);
         }
 
         [Fact]
@@ -165,7 +165,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(2, macros.Count);
             Assert.Equal($"M.Right.426.{Table.TrainerX};W.8;H.Down.3;W.10", macros[1]);
-            Assert.Equal("rebuilt", result);
+            Assert.Equal("rebuilt from (425,464,Left)", result);
             Assert.Null(stop);
         }
 
@@ -202,7 +202,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(1, clears);
             Assert.Equal(2, macros.Count);
-            Assert.Equal("rebuilt", result);
+            Assert.Equal("rebuilt from (426,463,Up)", result);
             Assert.Null(stop);
         }
 

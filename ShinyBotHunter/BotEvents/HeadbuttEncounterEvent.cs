@@ -108,7 +108,8 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        // Puts the player back on the start tile facing the tree (FR-9). Result is none, cached, built or rebuilt;
+        // Puts the player back on the start tile facing the tree (FR-9). Result is none, cached, or built or rebuilt
+        // with the tile and facing the macro was built from;
         // Stop is set, with the position, when the player is not one step from the start or two macros missed.
         internal static async Task<(string Result, string? Stop)> ReturnToTreeAsync(
             GameState state, IGameStateReader game, IOverworldReader overworld, HgssPointerService addresses,
@@ -132,7 +133,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 macro = BuildReturn(state, addresses, x, y);
                 state.EncounterMacros[key] = macro;
-                result = "built";
+                result = $"built from ({x},{y},{facing})";
             }
             await RunReturnMacroAsync(game, run, clear, macro, ct);
             await Overworld.WaitForReadyAsync(game, ct);
@@ -145,14 +146,15 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[Headbutt] Cache miss at ({x}, {y}, {facing}); rebuilt");
             macro = BuildReturn(state, addresses, x, y);
             state.EncounterMacros[Key(x, y, facing)] = macro;
+            string rebuilt = $"rebuilt from ({x},{y},{facing})";
             await RunReturnMacroAsync(game, run, clear, macro, ct);
             await Overworld.WaitForReadyAsync(game, ct);
             (x, y, facing) = await ReadPositionAsync(overworld, ct);
             if (AtStart(state, x, y, facing))
             {
-                return ("rebuilt", null);
+                return (rebuilt, null);
             }
-            return ("rebuilt", $"The return to the tree missed twice; the player is at ({x}, {y}) facing {facing}, not ({state.StartX}, {state.StartY}) facing {state.StartFacing}.");
+            return (rebuilt, $"The return to the tree missed twice; the player is at ({x}, {y}) facing {facing}, not ({state.StartX}, {state.StartY}) facing {state.StartFacing}.");
         }
 
         // Races the macro against a stale watch, as NavigatorEvent.ExecuteSegmentMacroAsync races its walk: on the stale
