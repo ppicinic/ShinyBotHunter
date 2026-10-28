@@ -113,7 +113,8 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
     expect(await headbutt.isDisabled(), `Headbutt is not offered: "${label}"`).toBe(false)
     await card.getByTestId('param-EncounterType').locator('select').selectOption('Headbutt')
     const runStart = new Date().toISOString()
-    const from = backendLog().length
+    // The last element is the empty string after the final newline; the first line after the click replaces it.
+    const from = backendLog().length - 1
     await card.getByRole('button', { name: 'Run', exact: true }).click()
     step(`Wild Encounter started at ${runStart}: ${MILESTONE}, ShinyTarget, Headbutt`)
     await shotAll('02-running', pages)
@@ -222,7 +223,8 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
     step(`backend exited with ${exitCode}`)
     const newest = encounterRows(pg, ROM, runStart).at(-1)
     expect(newest, 'no row since the Start').toBeDefined()
-    expect(HEADBUTT_SPECIES, `the newest row's species ${newest!.species} is not a headbutt species`).toContain(newest!.species)
+    const species = HEADBUTT_SPECIES[HEADBUTT_NAMES.findIndex((n) => n.toLowerCase() === name.toLowerCase())]
+    expect(newest!.species, `the newest row is not the shiny ${name}`).toBe(species)
     expect(newest!.shiny, 'the newest row is not shiny').toBe(true)
   } finally {
     // Failure path: leave nothing running. A forced kill does not flush SaveRAM.

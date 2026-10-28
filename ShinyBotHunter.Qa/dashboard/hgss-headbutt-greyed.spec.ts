@@ -79,7 +79,8 @@ test('HGSS Headbutt with no party member knowing it: the option is greyed with i
     await shotAll('02-greyed', pages)
 
     // 8. A Start with Headbutt through the API is refused with the same sentence (FR-4), and no event starts.
-    const from = backendLog().length
+    // The last element is the empty string after the final newline; the first line after the click replaces it.
+    const from = backendLog().length - 1
     const res = await fetch(`${API}/bot/startAction/0`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

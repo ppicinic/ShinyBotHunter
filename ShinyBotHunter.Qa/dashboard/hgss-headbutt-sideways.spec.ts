@@ -84,7 +84,8 @@ test('HGSS Headbutt with the follower beside: five cycles, one return built from
     expect(await headbutt.isDisabled(), `Headbutt is not offered: "${label}"`).toBe(false)
     await card.getByTestId('param-EncounterType').locator('select').selectOption('Headbutt')
     const runStart = new Date().toISOString()
-    const from = backendLog().length
+    // The last element is the empty string after the final newline; the first line after the click replaces it.
+    const from = backendLog().length - 1
     await card.getByRole('button', { name: 'Run', exact: true }).click()
     step(`Wild Encounter started at ${runStart}: ${MILESTONE}, ShinyTarget, Headbutt`)
     await shotAll('02-running', pages)
