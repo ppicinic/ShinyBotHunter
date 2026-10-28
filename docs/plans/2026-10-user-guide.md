@@ -52,6 +52,7 @@ Each page names, in a comment at the top, the files it is derived from, so a wri
 | U12 | `docs/guide/07-when-something-goes-wrong.md` | The failures an operator meets and what they mean: ApiHawk trust prompt, SaveRAM not appearing, a refused action (capability or revision), Dolphin not subscribing to the pad, a stale-timeout message. | the launchers, `BotService.cs`, the specs' timeout tables |
 | U13 | `docs/guide/08-updating.md` | Keeping the bot current: the versions the bot is built and tested against (.NET 10, Node 18+, the BizHawk fork built as 2.11.2, Dolphin 2609a, PostgreSQL with TimescaleDB, MongoDB) and where each is read from; how to update the bot (pull, rebuild backend and dashboard, redeploy ApiHawk after a BizHawk rebuild); the database migrations: the list that ships in `Migrations/`, how to tell whether the database is behind, and how the tables are created and brought up to date (today nothing in the bot or its scripts applies migrations, which the page states as the code gap it is). | `ShinyBotHunter.csproj`, `Migrations/*`, `PokemonDbContext.cs`, `Startup.cs`, `Scripts/*.ps1`, `PokemonDashboard/package.json`, `DolphinLauncher.cs`, `ApiHawk/lib/.gitkeep` |
 | U14 | The keep-true rule | `AGENTS.md` gains one line under "Keep the docs true": a change to a registry entry, a settings key, a script under `Scripts/`, or a dashboard action updates the guide page in the same PR, and the reviewer checks it. The reviewer prompt in `feature-workflow.md` gets the same line. | `AGENTS.md`, `docs/specs/feature-workflow.md` |
+| U15 | `docs/guide/09-versions.md` | The bot's versions (git tags) and, per version, whether the encounter database needs a migration and what to do; how to tell which version you are on. Added at the owner's request on 2026-10-27, after the plan was implemented. | the git tags, `Migrations/*`, `08-updating.md`, the owner |
 
 ## How the pages are written and checked
 
@@ -96,3 +97,4 @@ All answered by the owner on 2026-10-26: a markdown folder in the repository; op
 - 2026-10-26: first draft from the interview; the five questions answered the same day.
 - 2026-10-26: 8.7 is no longer a walk-through (owner: not necessary); it is U13, an updating-and-versions page that also tracks whether an EF migration is needed. 8.0 to 8.6 merged on `feature/user-guide` the same day.
 - 2026-10-27: 8.7 (U13) merged; status Implemented; implementation notes added.
+- 2026-10-27: U15, the versions page, added directly by the orchestrator at the owner's request (v0.1.0 and the coming v0.1.1 both need a database migration).

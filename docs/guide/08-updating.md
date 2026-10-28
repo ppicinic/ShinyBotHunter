@@ -152,4 +152,4 @@ The bot does not create or change its tables when it starts. You do it with Micr
 
    The tool reads your connection string the same way the bot does, from `appsettings.json` and then your secrets file. It does not start the bot, Discord or any emulator.
 
-Next: [Back to the guide](README.md)
+Next: [Versions](09-versions.md)

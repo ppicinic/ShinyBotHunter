@@ -19,6 +19,7 @@ This guide is for anyone running ShinyBotHunter on their own Windows PC. Read th
 7. [Your data](06-your-data.md): what the bot stores, where, how to look at it, and how to back it up.
 8. [When something goes wrong](07-when-something-goes-wrong.md): what you see, what it means, and what to do.
 9. [Updating and versions](08-updating.md): the versions the bot is built and tested against, how to update it, and whether your database needs a migration.
+10. [Versions](09-versions.md): the bot's versions and which of them need a database migration.
 
 ## Start here
 
