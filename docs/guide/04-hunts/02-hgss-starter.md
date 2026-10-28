@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/ShinyStarterEvent.cs, ShinyBotHunter/Games/EventRegistry.cs ("Shiny Starter Hunt" HGSS mode, "HGSS Shiny Starter Hunt"), ShinyBotHunter/Service/BotService.cs (StartShinyStarterHuntAsync, StartHgssStarterHunt, GetTopLevelOptions), ShinyBotHunter/BotEvents/CreateSaveEvent.cs, ShinyBotHunter/Context/GameContext.cs (GameName, RomExtension), ShinyBotHunter/ApplicationSettings.cs (MaxEmulatorsFor), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx (Game choice label, Start button), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Mode shown as Game) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/ShinyStarterEvent.cs, ShinyBotHunter/Games/EventRegistry.cs ("Shiny Starter Hunt" HGSS mode, "HGSS Shiny Starter Hunt"), ShinyBotHunter/Service/BotService.cs (StartShinyStarterHuntAsync, StartHgssStarterHunt, GetTopLevelOptions), ShinyBotHunter/BotEvents/CreateSaveEvent.cs, ShinyBotHunter/Context/GameContext.cs (GameName, RomExtension), ShinyBotHunter/ApplicationSettings.cs (MaxEmulatorsFor), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx (Game choice label, Start button), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Mode shown as Game), ShinyBotHunter/Phases/HGSS/Starters.json, ShinyBotHunter/Service/PhaseInfoService.cs (files under Phases loaded as fixed milestones), ShinyBotHunter/Macro/GameFlavor.cs (HGSS is 0), docs/guide/06-your-data.md; MultiShinyHunterEvent.cs, ShinyStarterEvent.cs and CreateSaveEvent.cs call neither ShinyAlertService nor DiscordBotService -->
 # HeartGold and SoulSilver starter hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -16,7 +16,7 @@ It runs several emulators at once and opens and closes them itself.
 3. **The number of emulators to run at once.** This is the maximum number of DS emulators, set in [Configure](../02-configure.md).
 4. **Nothing else running on the dashboard.** This hunt has to be the only thing the bot is doing.
 
-> **Ask the owner:** does a milestone named "1-1 Starters" have to exist on the dashboard for this hunt's counts to show there? (The hunt files every starter under that name and does not ask for a milestone.)
+Nothing to make for the counts: a milestone named "1-1 Starters" ships with the bot (fixed, not editable). Pick it on the Dashboard Config tab to watch this hunt's counts.
 
 ## Start the hunt
 
@@ -44,7 +44,7 @@ The hunt runs in two stages.
 1. **HeartGold first.** The bot makes the HeartGold copies, one per window, and starts a new game in each. Then all the windows hunt until any one of them finds a shiny starter. When that happens, the other HeartGold windows are stopped.
 2. **Then SoulSilver.** The bot makes SoulSilver copies and hunts in them until it has a shiny of all three starters, counting the one from HeartGold. When a SoulSilver window finds a shiny, that copy is done, and the window moves on to another copy that is not done yet, or to a new copy.
 
-> **Ask the owner:** is this split intended (HeartGold for the first shiny, SoulSilver for the rest), and should a second shiny of a starter already found count? (The bot keeps every shiny and only checks that all three starters are among them.)
+The first shiny always comes from HeartGold and the rest from SoulSilver. Every shiny is kept, including a second one of a starter already found. That one does not end the hunt, which ends only when all three starters are among the shinies.
 
 ## What does it log?
 
@@ -54,7 +54,7 @@ The hunt runs in two stages.
 
 [Your data](../06-your-data.md) explains where these are kept.
 
-> **Ask the owner:** should the page say outright that this hunt sends no Discord alert?
+This hunt posts nothing to Discord.
 
 ## How does it stop?
 
@@ -63,7 +63,19 @@ The hunt runs in two stages.
 
 Once the hunt has finished, its saved progress says finished, so starting it again ends straight away.
 
-> **Ask the owner:** how does the reader hunt the three starters again after a run has finished?
+To hunt the three starters again, delete the hunt's saved progress, then start it.
+
+> **Warning:** the new run starts a new game in the existing copies 1, 2 and so on, and saves over them. Before you delete anything, copy the saves of the copies that hold your shinies somewhere safe.
+
+1. Open `mongosh` as in [Your data](../06-your-data.md#look-at-caught-pokémon-milestones-and-hunt-progress), paste this and press Enter:
+
+   ```
+   db.PhaseStates.deleteOne({ Name: "1-1 Starters", Game: 0 })
+   ```
+
+   **Expected result:** `deletedCount: 1`.
+
+2. Start the hunt as in [Start the hunt](#start-the-hunt).
 
 ## If it stops early
 
