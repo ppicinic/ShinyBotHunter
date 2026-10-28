@@ -1,6 +1,10 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
@@ -158,6 +162,63 @@ namespace ShinyBotHunter.Tests
             Assert.NotSame(wild, Wild(actions));
             Assert.NotSame(chained, Chained(actions));
             Assert.NotSame(chained.LegParameters, Chained(actions).LegParameters);
+        }
+
+        [Fact]
+        public async Task StartWildEncounterWithHeadbutt_ReadsFreshAndIs400()
+        {
+            var (service, bot) = await LaunchAsync(WithHeadbutt);
+            await service.GetBotActionsAsync(0);
+            bot.Party = WithoutHeadbutt;
+            var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Headbutt };
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NoHeadbutt, content.Content);
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartChainedEncounterWithAHeadbuttLeg_ReadsFreshAndIs400()
+        {
+            var (service, bot) = await LaunchAsync(WithHeadbutt);
+            await service.GetBotActionsAsync(0);
+            bot.Party = WithoutHeadbutt;
+            var args = new NewEventArguments
+            {
+                EventName = "Chained Encounter",
+                Legs =
+                [
+                    new() { PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Spin },
+                    new() { PhaseName = "y", TargetType = "ShinyTarget", EncounterType = EncounterType.Headbutt },
+                ],
+            };
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NoHeadbutt, content.Content);
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartWithHeadbuttWhenThePartyCannotBeRead_Is400WithTheReadSentence()
+        {
+            var (service, bot) = await LaunchAsync(WithHeadbutt);
+            bot.PartyReadError = new TimeoutException("party read timed out");
+            var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Headbutt };
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(ReadFailed, content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
     }
 }

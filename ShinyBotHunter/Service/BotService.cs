@@ -269,8 +269,13 @@ namespace ShinyBotHunter.Service
             return await entry.Create(this, args, pos);
         }
 
-        internal Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
+        internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
+            // A fresh read, not the cached answer, which may predate a party change.
+            if (args.EncounterType == EncounterType.Headbutt && await HeadbuttRefusalAsync(slots.Entries[pos].Bot!) is { } reason)
+            {
+                throw new ArgumentException(reason);
+            }
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
             var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
@@ -278,14 +283,19 @@ namespace ShinyBotHunter.Service
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
             runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
-            return Task.FromResult(GetBotDashboardState());
+            return GetBotDashboardState();
         }
 
-        internal Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
+        internal async Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
         {
             if (args.Legs is null || args.Legs.Count == 0)
             {
                 throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
+            }
+            // A fresh read, not the cached answer, which may predate a party change.
+            if (args.Legs.Any(l => l.EncounterType == EncounterType.Headbutt) && await HeadbuttRefusalAsync(slots.Entries[pos].Bot!) is { } reason)
+            {
+                throw new ArgumentException(reason);
             }
             // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
             // after leg 1 has already been running for an hour.
@@ -299,7 +309,7 @@ namespace ShinyBotHunter.Service
             string name = $"Chain ({legs.Count}): {string.Join(" -> ", legs.Select(x => x.PhaseName))}";
             runner.StartEvent(pos, slots.Entries[pos], chainedEvent, slots.Entries[pos].GameState!, name, removeWhenDone: false);
 
-            return Task.FromResult(GetBotDashboardState());
+            return GetBotDashboardState();
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartTogepiEggAsync(NewEventArguments args, int pos)
