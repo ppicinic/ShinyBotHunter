@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1 -->
+<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md -->
 # When something goes wrong
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -27,7 +27,7 @@ This is the ApiHawk trust prompt.
   3. Check its output: `Trusted in config.ini` (and `Trusted in config_sound_on.ini` if you have that file), then `Deployed <n>kb, SHA512:<hash>`.
   4. Start again.
 
-> **Ask the owner:** the exact wording of BizHawk's question.
+BizHawk's question has the title `Confirm loading` and says `Trust this external tool to run on your device?`, then `If you're not 100% sure of what the tool will do, choose "No".` If you answer it yourself on an emulator you opened, **Yes** also records the trust for that build. The script is still the fix for emulators the bot starts.
 
 If the deploy script itself stops:
 
@@ -42,8 +42,6 @@ If the deploy script itself stops:
 - **You see:** in the backend's window, `Timed out waiting for EmuHawk main window.` about a minute after the launch. The dashboard may show only a general server error.
 - **It means:** EmuHawk did not open its window within a minute. This happens when many emulators start at once.
 - **Do:** start fewer emulators at once. If it happens with one, check the BizHawk folder and ROM folder settings in [Configure](02-configure.md).
-
-> **Ask the owner:** other causes of this message.
 
 ## A hunt says there is no save
 
@@ -60,7 +58,7 @@ This is the case where BizHawk's save file (its SaveRAM) does not appear.
   3. Close EmuHawk.
   4. Start the hunt again.
 
-> **Ask the owner:** when BizHawk writes the SaveRAM file to disk: when EmuHawk closes, or straight away.
+BizHawk writes the save file when the game closes: when you close EmuHawk, or when it loads another game. The Jirachi hunt also asks it to write straight away, through the bot's tool. So save in the game, then close EmuHawk, before starting the hunt.
 
 ## A Start is refused
 
@@ -135,7 +133,16 @@ This is the case where Dolphin is not connected to the bot's virtual controller.
   3. Check its output: `Deployed Dolphin config to <folder> with GBA BIOS <path>`.
   4. Start the hunt again.
 
-> **Ask the owner:** what to do if another program is using port 26760.
+If another program holds the port:
+
+- **You see:** in the backend's window, `[BotService] Event '<name>' crashed` followed by a `System.Net.Sockets.SocketException`, when the Jirachi hunt reaches the disc.
+- **It means:** another program holds UDP port 26760.
+- **Do:**
+  1. In a terminal, run `netstat -ano -p udp | findstr :26760`. The last number on the line it prints is the program's process id.
+  2. Run `tasklist /fi "PID eq <number>"` with that number. It prints the program's name.
+  3. Close that program and start the hunt again.
+
+  Leave `DsuPort` as it is: the Dolphin settings the install script set up use 26760.
 
 If the deploy script itself stops:
 
@@ -178,7 +185,7 @@ The time limits are:
 
 - **Do:** look at that emulator to see what the game shows. Then press **Resume** on the dashboard, or **Cancel**.
 
-> **Ask the owner:** what to do in the game before pressing Resume after a stale timeout.
+**Resume** does not pick up where the game stopped. It goes back to the field: the next encounter, or the walk to or from the Pokémon Center it was on, worked out again from where your character stands. So first finish what the game shows yourself (end or run from the battle, close any message) until your character can walk. If a Pokémon you are hunting is on screen, catch it first ([Wild and chained encounters](04-hunts/01-wild-encounter.md)).
 
 ## The Jirachi hunt stops in its save or result step
 
@@ -195,7 +202,7 @@ Each message appears in the backend's window and stops the hunt. For each one: l
 
 The Bonus Disc steps have their own time limits: about a minute to reach the Jirachi entry and the gift, about a minute to reach the "turn on the power" prompt, and 90 seconds for the transfer itself.
 
-> **Ask the owner:** what to check, besides the emulator, before starting the hunt again after each of these.
+Nothing else by hand. Starting the hunt again checks your save and the Dolphin files first (the refusals under [The Jirachi hunt's save or files are not ready](#the-jirachi-hunts-save-or-files-are-not-ready)). If any cycle ever found a shiny, copy `<game>-WISHMKR.SaveRAM` somewhere safe first, as the [Wishmaker Jirachi page](04-hunts/05-wishmaker-jirachi.md) warns.
 
 ## Discord problems
 

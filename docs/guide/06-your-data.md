@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Persistence/PostgreSQL/PersistPokemonDataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoCaughtPokemonDao.cs, docs/architecture/system-overview.md, ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, the model snapshot), ShinyBotHunter/Persistence/MongoDb/MongoDbMetadataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, ShinyBotHunter/Persistence/MongoDb/BaseGameState.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Service/StarterHuntStateStore.cs, ShinyBotHunter/Service/PokemonMetadataService.cs (GetGender), ShinyBotHunter/BotEvents/StarterHuntGameState.cs, ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs (encounter time is UTC), ShinyBotHunter/Macro/GameFlavor.cs, ShinyBotHunter/Pokemon/PokemonData.cs, ShinyBotHunter/Pokemon/Gen3PokemonParser.cs, ShinyBotHunter/Pokemon/HgssPokemonParser.cs, ShinyBotHunter/appsettings.json (placeholders), PokemonDashboard/README.md (form codes) -->
+<!-- Derived from: ShinyBotHunter/Persistence/PostgreSQL/PersistPokemonDataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoCaughtPokemonDao.cs, docs/architecture/system-overview.md, ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, the model snapshot), ShinyBotHunter/Persistence/MongoDb/MongoDbMetadataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, ShinyBotHunter/Persistence/MongoDb/BaseGameState.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Service/StarterHuntStateStore.cs, ShinyBotHunter/Service/PokemonMetadataService.cs (GetGender), ShinyBotHunter/BotEvents/StarterHuntGameState.cs, ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs (encounter time is UTC), ShinyBotHunter/Macro/GameFlavor.cs, ShinyBotHunter/Pokemon/PokemonData.cs, ShinyBotHunter/Pokemon/Gen3PokemonParser.cs, ShinyBotHunter/Pokemon/HgssPokemonParser.cs, ShinyBotHunter/appsettings.json (placeholders), PokemonDashboard/README.md (form codes), https://www.postgresql.org/docs/current/app-pgdump.html, https://www.postgresql.org/docs/current/app-pgrestore.html, https://www.tigerdata.com/docs/self-hosted/latest/backup-and-restore/logical-backup (restore sequence; no -j), https://www.mongodb.com/docs/database-tools/mongodump/, https://www.mongodb.com/docs/database-tools/mongorestore/ (--drop), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (save written in CloseGame through FlushSaveRAM) -->
 # Your data
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -149,8 +149,47 @@ There are three things to copy: the PostgreSQL database, the MongoDB database, a
    ```
 
    You get a folder `shinybothunter-mongo` with one folder inside it named after the database.
-4. Copy your game folder, with its saves, next to the two backups. Where the game folder is: see [Install](01-install.md).
+4. Copy your game folder, with its saves, next to the two backups. Where the game folder is: see [Install](01-install.md). Close every BizHawk first: BizHawk writes a save to disk only when it closes the game.
 
-> **Ask the owner:** is there a backup routine or schedule to recommend, should running hunts be stopped first, and how is a backup restored?
+## Restore a backup
+
+Run these in a terminal in the folder that holds your backup.
+
+1. Make an empty PostgreSQL database with TimescaleDB on. Open `psql` as in [Look at your encounters](#look-at-your-encounters), but with `-d postgres`, since your own database does not exist yet. Then run these one at a time, with your own database name:
+
+   ```
+   CREATE DATABASE your_db;
+   \c your_db
+   CREATE EXTENSION IF NOT EXISTS timescaledb;
+   SELECT timescaledb_pre_restore();
+   ```
+
+   **Expected result:** no line starting with `ERROR`.
+
+2. Leave `psql` with `\q`, then type the following and press Enter:
+
+   ```
+   pg_restore -h localhost -U postgres -Fc -d your_db shinybothunter-postgres.dump
+   ```
+
+   Type your PostgreSQL password when asked. Do not add `-j`: TimescaleDB's documents say it does not restore TimescaleDB's own tables correctly.
+
+3. Open `psql` on `your_db` again, as in [Look at your encounters](#look-at-your-encounters), and run:
+
+   ```
+   SELECT timescaledb_post_restore();
+   ```
+
+   **Expected result:** no line starting with `ERROR`. The steps come from TimescaleDB's page <https://www.tigerdata.com/docs/self-hosted/latest/backup-and-restore/logical-backup>.
+
+4. Restore MongoDB. Type the following and press Enter:
+
+   ```
+   mongorestore --uri "mongodb://localhost:27017" --drop shinybothunter-mongo
+   ```
+
+   `--drop` first deletes each collection that is in the backup, so the restored data replaces what is there; collections that are not in the backup are left alone.
+
+5. Close every BizHawk, then copy your saves back into the game folder.
 
 Next: [When something goes wrong](07-when-something-goes-wrong.md)
