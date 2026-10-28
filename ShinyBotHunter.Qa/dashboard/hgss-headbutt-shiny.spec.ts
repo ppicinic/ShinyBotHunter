@@ -8,7 +8,7 @@ import {
   shotAll, startBackend, startEmulatorRecorder, step, stopBackend, stopRecorder, toS16, windowByTitle
 } from './driver'
 import {
-  backendLines, backendLog, CRASHED, encounterRows, HEADBUTT_NAMES, HEADBUTT_SPECIES, MILESTONE, pgEnv, readTile, Y_ADDR
+  backendLines, backendLog, CRASHED, encounterRows, HEADBUTT_NAMES, HEADBUTT_SPECIES, headbuttMilestone, pgEnv, readTile, Y_ADDR
 } from './headbutt'
 
 const ROM = 'HG-Headbutt'
@@ -102,9 +102,8 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
 
     // 8. Wild Encounter, ShinyTarget, Headbutt, TrainType left at None. Headbutt must be offered with no workaround.
     await wildPicker.click()
-    const phases = await card.getByTestId('param-PhaseName').locator('option').allTextContents()
-    expect(phases, `no "${MILESTONE}" milestone; make it in the Milestone Editor`).toContain(MILESTONE)
-    await card.getByTestId('param-PhaseName').locator('select').selectOption(MILESTONE)
+    const milestone = await headbuttMilestone(card)
+    await card.getByTestId('param-PhaseName').locator('select').selectOption(milestone)
     await card.getByTestId('param-TargetType').locator('select').selectOption('ShinyTarget')
     const headbutt = card.getByTestId('param-EncounterType').locator('option[value="Headbutt"]')
     await expect(headbutt).toBeAttached({ timeout: 30_000 })
@@ -116,7 +115,7 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
     // The last element is the empty string after the final newline; the first line after the click replaces it.
     const from = backendLog().length - 1
     await card.getByRole('button', { name: 'Run', exact: true }).click()
-    step(`Wild Encounter started at ${runStart}: ${MILESTONE}, ShinyTarget, Headbutt`)
+    step(`Wild Encounter started at ${runStart}: ${milestone}, ShinyTarget, Headbutt`)
     await shotAll('02-running', pages)
     await expect(wildPicker).toHaveCount(0, { timeout: 30_000 })
 
@@ -221,7 +220,7 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
     expect(exitCode, 'backend did not exit within 60 s of "end"').not.toBeNull()
     backend = null
     step(`backend exited with ${exitCode}`)
-    const newest = encounterRows(pg, ROM, runStart).at(-1)
+    const newest = encounterRows(pg, ROM, milestone, runStart).at(-1)
     expect(newest, 'no row since the Start').toBeDefined()
     const species = HEADBUTT_SPECIES[HEADBUTT_NAMES.findIndex((n) => n.toLowerCase() === name.toLowerCase())]
     expect(newest!.species, `the newest row is not the shiny ${name}`).toBe(species)
