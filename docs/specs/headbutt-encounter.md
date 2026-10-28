@@ -1,6 +1,6 @@
 # Spec: Headbutt encounter mode (HGSS)
 
-Status: Approved for implementation (owner, 2026-10-28); epic and branch `feature/headbutt-encounter` to be opened by the orchestrator
+Status: Implemented (epic #224, 2026-10-28): FR-1 to FR-12 and NFR-1, NFR-2, PRs #230, #231, #232, #233, #234 on feature/headbutt-encounter. All six QA scenarios passed on 3e97461; run folders are in the plan's implementation notes and on the epic. Divergences are under [What diverged](#what-diverged).
 Last updated: 2026-10-28
 Owner: Phil
 Related: [research: the spike](../research/headbutt.md) (the source for every value, timing and rule here), [HGSS state reader spec](hgss-state-reader.md) (the field script chain and its press loop), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the guide page [Wild encounters](../guide/04-hunts/01-wild-encounter.md), plan [phase 9](../plans/2026-10-cleanup-and-hardening.md#phase-9-headbutt-encounter-mode)
@@ -121,6 +121,18 @@ Saves (added to the QA save table, made with PKHeX by a subagent where noted): `
 
 H1, H2 and H3 have disjoint files and run in parallel (H3 works from FR-5's JSON shape). H4 after all three; H5 last.
 
+## What diverged
+
+Where the build differs from this spec as approved (2026-10-28). The requirements and design above stay as written; this list keeps the record.
+
+- FR-5: the option list `ENCOUNTER_TYPE_OPTIONS` and its helper `encounterTypeChoices` live in `components/admin/actionSchema.ts`, not `ActionParamFields.tsx`, which calls the helper (#231).
+- FR-6: the start check runs on every cycle, not only the first. `HeadbuttEncounterEvent.RunCycleAsync` presses A and waits for the script task every time; the diagram's "first cycle" branch does not exist. The A is confirmed within 1 s and pressed up to three times, so 3 s in total (#233).
+- FR-6, FR-8, FR-9: every stop parks the event in `Waiting` with the reason logged as a `[Headbutt]` line, not only the "gave no Pokémon" one: no script, another script, more than one step from the start tile, the return missing twice, and a stale-timeout anywhere in the cycle (`Park`, #233).
+- FR-9: the return macro is raced against a 3 s stale watch (`ReturnStale`, `RunReturnMacroAsync`). A blocked step would otherwise hold the direction forever. On the stale, the macro is cleared, and the position check that follows counts it as a miss (#233).
+- FR-9: the "not a swap" stop is `|dx| + |dy| > 1` from the start tile, not "more than one step on both axes". A diagonal tile is a stop (#233).
+- FR-11: the line is `[Headbutt] start=script N presses=P end=battle|nothing return=R`, logged every cycle that reaches the headbutt script. R is `none`, `cached`, `built from (x,y,Facing)` or `rebuilt from (x,y,Facing)` (#233).
+- FR-2: the Init line logs the facing: `[Orchestrator] Start tile captured: map=M (x,y) facing=F` (`OrchestratorEvent.CaptureStartAsync`, #233).
+
 ## Open questions
 
 - Resolved from the code: the dashboard fetches every idle bot's actions on each SignalR state push (`BotControlTab.tsx`, `fetchBotActionsForState`), so FR-3 caches the answer per slot rather than reading the party per call; Start (FR-4) reads fresh.
@@ -130,3 +142,4 @@ H1, H2 and H3 have disjoint files and run in parallel (H3 works from FR-5's JSON
 
 - 2026-10-28: first version, from the spike of the same day.
 - 2026-10-28: FR-3: a failed or empty party read is not cached and is retried on the next call, because the bot is idle at the title screen after a launch, and a cached failure would grey Headbutt for the whole idle period.
+- 2026-10-28: Implemented (PRs #230 to #234); What diverged added.
