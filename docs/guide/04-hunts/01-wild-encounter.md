@@ -1,11 +1,11 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (encounter type choices), docs/specs/headbutt-encounter.md (FR-3 to FR-9), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync) -->
 # Wild and chained encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
 
 ## What does this hunt do?
 
-The bot walks back and forth, or turns on the spot, until a wild battle starts. It reads the wild Pokémon, writes it to the encounter log, and then either runs away or fights. It stops when it finds a Pokémon you are hunting for, or when it has reached the goal you set.
+The bot walks back and forth, turns on the spot, or headbutts a tree, until a wild battle starts. It reads the wild Pokémon, writes it to the encounter log, and then either runs away or fights. It stops when it finds a Pokémon you are hunting for, or when it has reached the goal you set.
 
 It works in HeartGold and SoulSilver only.
 
@@ -20,7 +20,9 @@ There are two actions for it on the dashboard:
 2. **Your character standing on the tile you want to hunt from.** The bot remembers that tile as home when the hunt starts. It walks back there after every trip to heal, and again before the hunt finishes.
 3. **For walking back and forth (Encounter Type Run):** room to walk in a straight line from that tile, the same number of tiles each way. The bot paces left and right, or up and down, centred on where you stand.
 4. **For turning on the spot (Encounter Type Spin):** nothing extra. The bot turns through the four directions without leaving the tile.
-5. **If the bot will fight (any Train Type other than None):** the Pokémon that does the fighting needs damaging moves with at least 3 PP between them, and more than a quarter of its HP. That is the Pokémon in your first party slot, or in Switch training the Pokémon in the Battler slot.
+5. **For headbutting a tree (Encounter Type Headbutt):** stand on foot facing a headbutt tree, not on a bike or surfing, and have a Pokémon in your party that knows Headbutt. The bot does not choose a tree or walk to one; its first headbutt checks that there is a tree in front of you.
+   If no Pokémon in your party knows Headbutt, the Headbutt choice is greyed out with "No Pokémon in your party knows Headbutt." after it. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
+6. **If the bot will fight (any Train Type other than None):** the Pokémon that does the fighting needs damaging moves with at least 3 PP between them, and more than a quarter of its HP. That is the Pokémon in your first party slot, or in Switch training the Pokémon in the Battler slot.
 
 The bot checks nothing about the tile or the line. It holds the direction until your character reaches the end of the range, then turns back, and keeps doing that until a battle starts, with no time limit. So stand where walking starts wild battles, on a line nothing blocks. If something blocks it, your character stays pressed against it and the bot waits for a battle that does not come.
 
@@ -46,7 +48,7 @@ How the action form works in general is on [the dashboard page](../03-dashboard.
 |---|---|
 | The milestone the encounters are filed under. With Target Type PhaseTarget or ShinyTarget, it is also the list of shiny Pokémon the hunt is trying to complete. | Milestone |
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. **NoTarget**: nothing is ever found, so the hunt is only for training and needs a Train Type other than None. With PhaseTarget and ShinyTarget, the hunt also ends once the milestone is complete. | Target Type |
-| How to meet wild Pokémon. **Run**: walk back and forth in a straight line. **Spin**: turn on the spot. | Encounter Type |
+| How to meet wild Pokémon. **Run**: walk back and forth in a straight line. **Spin**: turn on the spot. **Headbutt**: headbutt the tree you are facing. | Encounter Type |
 | How many tiles to walk each way from home, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
 | Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting. The Pokémon in the first slot still earns experience. | Train Type |
 | The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. | Target Level |
@@ -69,7 +71,7 @@ For example, a chain can switch-train a Pokémon to level 20 in its first leg, t
 
 ## What happens in each encounter?
 
-1. The bot walks or turns until a wild battle starts.
+1. The bot walks or turns until a wild battle starts. With Headbutt, it presses A at the tree, answers Yes, and presses through the text until the battle starts. After every battle or heal it walks back to the tile you started on and turns to face the tree before the next headbutt.
 2. It reads the wild Pokémon and writes it to the encounter log.
 3. If it is a Pokémon you are hunting for, the bot stops and waits for you, and sends a shiny alert to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
 4. Otherwise, with Train Type None, it runs away.
@@ -79,6 +81,8 @@ For example, a chain can switch-train a Pokémon to level 20 in its first leg, t
    - A new move goes into a free move slot without asking.
    - When the Pokémon already knows four moves, the bot asks you on Discord what to do. [The Discord page](../05-discord.md) explains the question and how to answer it.
    - Evolutions are allowed to happen. For evolutions that depend on the time of day, the bot goes by your PC's clock, and counts 8 pm to 4 am as night.
+
+If the Pokémon that knows Headbutt is the one following you, it does the headbutt and swaps places with you, so you end up on the tile it stood on, behind you or beside you. The bot steps back and faces the tree each time. If a Pokémon that is not following you knows Headbutt, there is no swap.
 
 ## How does it heal?
 
@@ -110,7 +114,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 
 - **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough.
 - **It finishes where it stands.** It could not find a way home, or a way to a Pokémon Center.
-- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it.
+- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or, with Headbutt, the tree gave no Pokémon.
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
 ## If it stops early
@@ -142,6 +146,26 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **You see** the bot run from a battle in Switch training, and its log says the switch "failed 3 times; fleeing".
 **It means** the switch to the Battler did not take three times in a row.
 **Do** check that the Battler slot holds the Pokémon you meant, then see [When something goes wrong](../07-when-something-goes-wrong.md).
+
+**You see** Run refused with "No Pokémon in your party knows Headbutt."
+**It means** the bot read your party when you pressed Run and no Pokémon in it knows the move. The greyed-out choice can be out of date if you changed your party in the game.
+**Do** teach Headbutt to a Pokémon in your party, or pick Spin or Run.
+
+**You see** the hunt stop, and the backend's window shows "Nothing in front of you starts a script; stand facing a headbutt tree."
+**It means** the first headbutt found nothing in front of you.
+**Do** stand facing a headbutt tree and start the hunt again.
+
+**You see** the hunt stop, and the backend's window shows "The thing in front of you is not a headbutt tree (script N)." with a number for N.
+**It means** what you are facing starts something other than a headbutt.
+**Do** stand facing a headbutt tree and start the hunt again.
+
+**You see** the bot waiting, and the backend's window shows `[Headbutt] The tree in front of you gave no Pokémon. It may give none for your trainer ID, or a Repel is active.`
+**It means** the headbutt ran to the end and no battle started. Some trees give nothing for some trainer IDs, and a Repel stops headbutt battles too.
+**Do** cancel the hunt, stand facing another tree (or let the Repel wear off), and start it again. **Resume** would walk you back to the same tree.
+
+**You see** the hunt stop with a message naming a tile and a facing.
+**It means** after a battle the bot could not get you back to the tile you started on, facing the tree, even after a second try, or you ended up more than one step away on both axes.
+**Do** put your character back on the start tile facing the tree and start the hunt again.
 
 For anything else, including the bot waiting because the game stopped changing, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
