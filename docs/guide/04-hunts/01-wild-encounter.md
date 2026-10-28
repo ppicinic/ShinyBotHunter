@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync) -->
 # Wild and chained encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -22,9 +22,9 @@ There are two actions for it on the dashboard:
 4. **For turning on the spot (Encounter Type Spin):** nothing extra. The bot turns through the four directions without leaving the tile.
 5. **If the bot will fight (any Train Type other than None):** the Pokémon that does the fighting needs damaging moves with at least 3 PP between them, and more than a quarter of its HP. That is the Pokémon in your first party slot, or in Switch training the Pokémon in the Battler slot.
 
-> **Ask the owner:** what kind of tile to stand on (tall grass, cave floor, water), and whether the straight line must be clear of people, ledges and doors?
+The bot checks nothing about the tile or the line. It holds the direction until your character reaches the end of the range, then turns back, and keeps doing that until a battle starts, with no time limit. So stand where walking starts wild battles, on a line nothing blocks. If something blocks it, your character stays pressed against it and the bot waits for a battle that does not come.
 
-> **Ask the owner:** which areas can the bot walk to a Pokémon Center from?
+The bot looks up the nearest Pokémon Center on its own map of HeartGold and SoulSilver, which covers the whole game. It walks only where no field move is needed: no Cut, Surf, Rock Smash, Waterfall, Whirlpool, Strength or Rock Climb.
 
 If the bot cannot find a way from where it is to a Pokémon Center, it finishes the hunt where it stands instead of healing.
 
@@ -104,7 +104,7 @@ If the bot could not read your party and boxes, it stays waiting. Press **Resume
 
 In a chained hunt, Resume carries on with the same leg, then the rest of the chain.
 
-> **Ask the owner:** must the reader catch the shiny before pressing Resume, or is Resume after running from it also expected? (The bot records it only if it is in the party or the boxes.)
+Catch it first. On **Resume** the bot looks in your party and boxes. If the Pokémon is not there (you ran from it, or it fainted), nothing is recorded as caught, and the hunt carries on as if it had not been found.
 
 ## How does it stop?
 

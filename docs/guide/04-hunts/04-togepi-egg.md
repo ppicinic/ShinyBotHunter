@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button), ShinyBotHunter/Data/HGSS/mapreverselookup.json (key 157), ShinyBotHunter/Service/BotEventRunner.cs (the crashed message), docs/guide/07-when-something-goes-wrong.md -->
 # Togepi egg hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -17,9 +17,9 @@ It works in HeartGold and SoulSilver.
 2. **Saved before receiving the egg, in the area where it is given.** The bot walks to the exact tile and facing it starts every attempt from, and saves there once, so that every soft reset comes back to that spot. If you are already standing there facing the right way, it does not save. If the save is in a different area, the bot stops at once (see [If it stops early](#if-it-stops-early)).
 3. **A free party slot.** With six Pokémon in your party, the egg cannot be handed over, so the bot refuses to start.
 
-> **Ask the owner:** where in the game is this (the bot knows it only as map 157), and what must already be true in the story for the egg to be offered?
+> **Ask the owner:** where in the game, and at what point in the story, is the Togepi egg handed over? (The bot's map data names its map only by the code T22FS0101.)
 
-> **Ask the owner:** where is the walking path in the game (the bot knows it as a straight east-west line the hand-over ends on), so the reader can check nothing blocks it?
+> **Ask the owner:** which route or path is the east-west walk the hand-over ends on?
 
 ## Start the hunt
 
@@ -64,7 +64,7 @@ The walking path and the timings are in a file that comes with the bot. They are
 - **It stops** when it cannot read your party after a hatch to confirm it.
 - **It gives up with a message**, as listed below.
 
-> **Ask the owner:** where does the reader see these messages: in the window the bot runs in, or on the dashboard?
+These messages show in the backend's window, as `[BotService] Event '<name>' crashed` followed by the message; on the dashboard the emulator just goes idle. See [Where do the bot's messages appear?](../07-when-something-goes-wrong.md#where-do-the-bots-messages-appear). The full-party refusal is the exception: it shows on the dashboard when you press **Run**.
 
 ## If it stops early
 

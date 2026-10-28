@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/Configs/Events/RsStarterHunt.json, ShinyBotHunter/BotEvents/StarterHuntConfig.cs, ShinyBotHunter/BotEvents/StarterSaveFiles.cs, ShinyBotHunter/Games/EventRegistry.cs ("Shiny Starter Hunt"); read only: ShinyBotHunter/Service/BotService.cs (StartShinyStarterHuntAsync, ResumeAsync), ShinyBotHunter/Context/GameContext.cs (GameName), ShinyBotHunter/Service/StarterHuntStateStore.cs (AllocateCopyIds, IsDone), ShinyBotHunter/Service/RomInfoService.cs (the Game list), ShinyBotHunter/Macro/Configs/RS/create_new_save.yaml (header), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts -->
+<!-- Derived from: ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/Configs/Events/RsStarterHunt.json, ShinyBotHunter/BotEvents/StarterHuntConfig.cs, ShinyBotHunter/BotEvents/StarterSaveFiles.cs, ShinyBotHunter/Games/EventRegistry.cs ("Shiny Starter Hunt"); read only: ShinyBotHunter/Service/BotService.cs (StartShinyStarterHuntAsync, ResumeAsync), ShinyBotHunter/Context/GameContext.cs (GameName), ShinyBotHunter/Service/StarterHuntStateStore.cs (AllocateCopyIds, IsDone), ShinyBotHunter/Service/RomInfoService.cs (the Game list; TestedRevisions and its comment), ShinyBotHunter/Macro/Configs/RS/create_new_save.yaml (header), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts -->
 # Ruby and Sapphire starter hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -22,7 +22,7 @@ It soft-resets Ruby or Sapphire until the starter you chose is shiny. The game o
 - A milestone for the game, made on the dashboard. See [The dashboard](../03-dashboard.md).
 - Nothing else running on the dashboard. This hunt starts and closes its own emulators, so it has to be the only thing running.
 
-> **Ask the owner:** which ROM revisions the recorded button presses were made on. The dashboard lists every ROM for this hunt, whatever its revision.
+The bot is tested on revision 2 (version 1.2) of Ruby and Sapphire, and its recorded button presses go with that revision; another revision needs its own recordings. The Game list shows every ROM whatever its revision, so pick a revision 2 ROM.
 
 ## Which game do you pick?
 

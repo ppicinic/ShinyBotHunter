@@ -1,4 +1,4 @@
-<!-- Derived from: docs/specs/wishmaker-jirachi.md, ShinyBotHunter/Configs/Events/WishmakerJirachi.json, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wishmaker Jirachi Hunt"); read only: ShinyBotHunter/Service/BotService.cs (StartWishmakerJirachiAsync), ShinyBotHunter/Service/RomInfoService.cs (the Game list), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts -->
+<!-- Derived from: docs/specs/wishmaker-jirachi.md, ShinyBotHunter/Configs/Events/WishmakerJirachi.json, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wishmaker Jirachi Hunt"); read only: ShinyBotHunter/Service/BotService.cs (StartWishmakerJirachiAsync), ShinyBotHunter/Service/RomInfoService.cs (the Game list), PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs (CloseMainWindow), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), docs/guide/03-dashboard.md -->
 # Wishmaker Jirachi hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -21,7 +21,17 @@ Part of the [ShinyBotHunter guide](../README.md)
 - Dolphin, the GBA BIOS and the Bonus Disc image, set up as on the [Install](../01-install.md) page.
 - The three Dolphin settings filled in, as on the [Configure](../02-configure.md) page.
 
-> **Ask the owner:** the quickest way to make a first save in BizHawk from the dashboard (for example Launch Bot, then save in-game). This page must not guess the steps.
+To make that save:
+
+1. On the dashboard, press **Launch Bot** with **Game** set to your ROM, as in [Launch an emulator](../03-dashboard.md#launch-an-emulator).
+
+   **Expected result:** BizHawk opens the game.
+
+2. Play until you have the Pokédex, with a party slot free.
+3. Save in the game.
+4. **Cancel** the emulator's entry on the dashboard, which closes BizHawk, as in [Stop an action or close an emulator](../03-dashboard.md#stop-an-action-or-close-an-emulator).
+
+   **Expected result:** `<game>.SaveRAM` is in the `GBA\SaveRAM` folder. BizHawk writes the save file when it closes the game.
 
 ## Which game do you pick?
 

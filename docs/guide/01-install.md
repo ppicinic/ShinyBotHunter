@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the README of the BizHawk fork (ppicinic/BizHawk, branch fix/4535-sticky-analog), Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/admin/BotControlTab.tsx, PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (gamesFor), AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8) -->
+<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the fork's release notes at https://github.com/ppicinic/BizHawk/releases/tag/2.11.2-savepaths.2 and the file list of its BizHawk-2.11.2-savepaths.2-win-x64.zip, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/Program.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/config/SoundConfig.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/PathEntryCollection.cs, https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows, https://www.nuget.org/packages/Microsoft.NETFramework.ReferenceAssemblies and https://learn.microsoft.com/dotnet/core/project-sdk/msbuild-props (neither says the SDK fetches .NET Framework reference assemblies by itself), ShinyBotHunter/Bot/StarterSaveFiles.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/main/windowManager.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/admin/BotControlTab.tsx, PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (gamesFor), AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8) -->
 # Install
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -20,7 +20,19 @@ Install these programs first. After each one, run its check in a new terminal.
 | The Microsoft Visual C++ redistributable (x64) | BizHawk needs it to start. | |
 | Dolphin 2609a | Wishmaker Jirachi hunt only. | |
 
-> **Ask the owner:** how TimescaleDB is installed and turned on for PostgreSQL on Windows, and whether building ApiHawk (a .NET Framework 4.8 project) needs anything beyond the .NET 10 SDK.
+> **Ask the owner:** does building ApiHawk on a PC without Visual Studio need the .NET Framework 4.8 Developer Pack?
+
+### Turn on TimescaleDB
+
+TimescaleDB is an add-on for PostgreSQL. Install it with TimescaleDB's own Windows steps, at <https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows>. In short:
+
+1. Download the TimescaleDB installer for your PostgreSQL version, from the releases page that page links to.
+2. Unzip it. In its `timescaledb` folder, right-click `setup.exe` and choose **Run as Administrator**, then finish the steps it shows. It offers to run `timescaledb-tune`; TimescaleDB recommends accepting.
+3. Restart PostgreSQL. In PowerShell, run `Restart-Service postgresql-x64-18`, with `18` replaced by your PostgreSQL version.
+
+TimescaleDB's page warns that these steps can give errors if PostgreSQL was installed before; it says what to do in that case.
+
+Turning TimescaleDB on inside the bot's own database is a separate command, run once per database. It is on [Updating and versions](08-updating.md#how-are-the-tables-created-and-brought-up-to-date).
 
 ### Game files you supply
 
@@ -37,35 +49,38 @@ The bot cannot use the BizHawk you download from the BizHawk website. It needs a
 - **Touch-screen input.** The special build has a fix that makes the bot's touch-screen presses work. Without it, every HeartGold and SoulSilver touch-screen step fails.
 - **One save per game copy.** The special build names each game's save after the ROM file. That lets the bot run many copies of one game side by side, each with its own save.
 
-The special build is the `fix/4535-sticky-analog` branch of `ppicinic/BizHawk`, version 2.11.2.
+The special build is the `fix/4535-sticky-analog` branch of `ppicinic/BizHawk`, published as releases on that fork. The notes of release `2.11.2-savepaths.2` list the sticky-analog fix that the touch-screen presses need (#1) and Save RAM named after the ROM file (#4).
 
-## Get and build the BizHawk fork
+## Get the BizHawk fork
 
-1. In a terminal, in the folder where you keep code, run:
+1. Open <https://github.com/ppicinic/BizHawk/releases/latest> and download the file `BizHawk-<release>-win-x64.zip` (at the time of writing, `BizHawk-2.11.2-savepaths.2-win-x64.zip`).
 
-   ```
-   git clone --branch fix/4535-sticky-analog https://github.com/ppicinic/BizHawk.git
-   ```
+   **Expected result:** the zip is in your downloads.
 
-2. Build it with the fork's `Dist/BuildRelease.sh` script, not with a plain `dotnet build`. A plain build stamps BizHawk as version 1.0.0.0, and the bot's connector then fails to load into it. The fork's own building notes are at <https://github.com/ppicinic/BizHawk/tree/fix/4535-sticky-analog#building>.
+2. Unzip it into a folder of your choice. That folder is your BizHawk folder, the one the `BizHawkBaseDirectory` setting points at (see [Configure](02-configure.md)).
 
-**Expected result:** the fork folder has an `output` folder with `EmuHawk.exe` in it.
+   **Expected result:** `EmuHawk.exe` and an `ExternalTools` folder sit directly in that folder.
 
-> **Ask the owner:** how to run `Dist/BuildRelease.sh` on Windows (from Git Bash?), and what it needs installed. The fork's README names only Visual Studio 2022 or `dotnet build BizHawk.sln` for Windows, and a plain build is the one that does not work.
+3. Double-click `EmuHawk.exe`, then close it.
 
-> **Ask the owner:** whether the `output` folder is itself the BizHawk folder the bot points at (the `BizHawkBaseDirectory` setting), or is copied somewhere else.
+   **Expected result:** a settings file `config.ini` now sits in your BizHawk folder. The ApiHawk install below needs it.
 
-> **Ask the owner:** whether you must open and close `EmuHawk.exe` once so that its settings file `config.ini` exists (the ApiHawk install below skips a missing one), and how `config_sound_on.ini` is made (the bot starts emulators that have sound on with it, and the repository does not ship it).
+4. Optional, only if you will tick **Sound On** on the dashboard. The bot starts those emulators with a second settings file, `config_sound_on.ini`, and starts every other emulator with `config.ini`. So `config.ini` must end with the sound off, and the copy with the sound on. BizHawk's sound is on when it is first installed.
+   1. Open `EmuHawk.exe`, choose **Config > Sound...**, tick **Sound Master Enable**, click **OK**, and close EmuHawk.
+   2. Copy `config.ini`, rename the copy `config_sound_on.ini`, and keep it in the same folder.
+   3. Open `EmuHawk.exe` again, choose **Config > Sound...**, untick **Sound Master Enable**, click **OK**, and close EmuHawk.
+
+   **Expected result:** `config.ini` and `config_sound_on.ini` are both in your BizHawk folder.
 
 ## Copy four files from the fork into ApiHawk
 
 ApiHawk is the bot's connector: a small add-on that runs inside each BizHawk and lets the bot press buttons and read the game's memory. It is built against four files from the fork.
 
-1. Copy these four files from the fork folder into the repository's `ApiHawk\lib` folder:
-   - `output\dll\BizHawk.Client.Common.dll`
-   - `output\dll\BizHawk.Common.dll`
-   - `output\dll\BizHawk.Emulation.Common.dll`
-   - `output\EmuHawk.exe`
+1. Copy these four files from your BizHawk folder into the repository's `ApiHawk\lib` folder:
+   - `dll\BizHawk.Client.Common.dll`
+   - `dll\BizHawk.Common.dll`
+   - `dll\BizHawk.Emulation.Common.dll`
+   - `EmuHawk.exe`
 
 **Expected result:** `ApiHawk\lib` holds those four files (and the `.gitkeep` that was already there).
 
@@ -105,7 +120,7 @@ If it goes wrong:
   **Do** repeat "Copy four files from the fork into ApiHawk" above.
 - **You see** no `Trusted in` line.
   **It means** the script found no `config.ini` in your BizHawk folder.
-  **Do** see the third "Ask the owner" note under "Get and build the BizHawk fork".
+  **Do** open and close `EmuHawk.exe` once (step 3 of [Get the BizHawk fork](#get-the-bizhawk-fork)) and run the script again.
 
 ## Set up Dolphin and the GBA BIOS (Wishmaker Jirachi hunt only)
 
@@ -146,9 +161,7 @@ If it goes wrong:
 
 The bot recognises HeartGold, SoulSilver, Ruby and Sapphire. HeartGold and SoulSilver are tested on revision 0 of the game, Ruby and Sapphire on revision 2. Other revisions still run, with a warning in the bot's window. Emerald, FireRed and LeafGreen are recognised by name only; there is no hunt for them yet.
 
-**Saves.** BizHawk keeps each game's save as `<ROM file name>.SaveRAM`, in a folder for that console inside your BizHawk folder. Each copy of a ROM has its own save.
-
-> **Ask the owner:** the exact save folder names inside the BizHawk folder (for example `NDS\SaveRAM`).
+**Saves.** BizHawk keeps each game's save as `<ROM file name>.SaveRAM`, in a folder for that console inside your BizHawk folder. Each copy of a ROM has its own save. The folders are BizHawk's standard ones, `NDS\SaveRAM` for HeartGold and SoulSilver and `GBA\SaveRAM` for Ruby and Sapphire, and there is nothing to set up.
 
 **Sprites.** Make one folder for the Pokemon pictures, and inside it four empty folders: `Default`, `Shiny`, `Female_Default` and `Female_Shiny`. Set that folder as `SpriteBaseDirectory` and as the dashboard's `spritesRootPath`. "Fill in the Pokemon data" below fills the four folders.
 
@@ -196,7 +209,7 @@ Steps:
 
 1. Create an empty PostgreSQL database whose name matches the `Database=` part of your connection string. The connection string is set on the [Configure](02-configure.md) page.
 
-The bot does not create the database's tables itself. How they are created, and how to tell whether yours are up to date, is on [Updating and versions](08-updating.md#is-a-database-migration-needed). The TimescaleDB extension must be turned on in the database before the tables are created.
+The bot does not make its tables when it starts. You make them with one command, after turning TimescaleDB on in the database, as shown on [Updating and versions](08-updating.md#how-are-the-tables-created-and-brought-up-to-date).
 
 ## Start the bot for the first time
 
@@ -219,7 +232,15 @@ To stop the bot, type `end` in its window and press Enter.
 2. In a second terminal, in the `PokemonDashboard` folder, run:
 
    ```
-   npm run dev
+   npm run build
+   ```
+
+   **Expected result:** it builds the dashboard into the `out` folder in three parts, each ending with a line like `✓ built in 740ms`, and finishes without errors.
+
+3. Then run:
+
+   ```
+   npm run start
    ```
 
 **Expected result:** two windows open:
@@ -229,7 +250,7 @@ To stop the bot, type `end` in its window and press Enter.
 
 On the Bot Control tab, the game list for a hunt shows the ROMs in your ROM folder that fit that hunt; some hunts list only the tested revision of their game. If no ROM fits, the list is empty.
 
-> **Ask the owner:** whether operators should start the dashboard with `npm run dev`, or install it with `npm run dist`.
+After every update, run `npm run build` again before `npm run start`.
 
 How to use the dashboard is on [The dashboard](03-dashboard.md) page.
 
