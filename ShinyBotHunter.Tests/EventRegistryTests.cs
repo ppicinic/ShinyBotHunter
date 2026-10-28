@@ -224,7 +224,7 @@ namespace ShinyBotHunter.Tests
 
             foreach (EventArgumentOptions schema in schemas)
             {
-                Assert.Equal(["PhaseName", "TargetType", "EncounterType"], schema.RequiredParameters);
+                Assert.Equal(["PhaseName", "TargetType", "EncounterType"], schema.RequiredParameters!);
                 foreach (string range in new[] { "xRange", "yRange" })
                 {
                     Condition condition = schema.ConditionalParameters.Single(cp => cp.Name == range).Condition;

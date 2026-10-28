@@ -191,8 +191,7 @@ namespace ShinyBotHunter.Tests
             {
                 presses.Add(macro);
                 return Task.CompletedTask;
-            }, "the headbutt script", Stale, CancellationToken.None,
-            s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp));
+            }, "the headbutt script", Stale, CancellationToken.None, HeadbuttEncounterEvent.LeftTheScript);
 
         [Fact]
         public async Task HeadbuttLoopEndsOnTheBattleScreen()
