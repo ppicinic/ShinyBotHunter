@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs -->
+<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/ShinyBotHunter.csproj (Discord.Net 3.19.1), discord-net/Discord.Net@3.19.1:src/Discord.Net.Rest/BaseDiscordClient.cs (LoginInternalAsync), discord-net/Discord.Net@3.19.1:src/Discord.Net.Core/Utils/TokenUtils.cs (ValidateToken), https://docs.discord.com/developers/quick-start/getting-started (Create App, Bot page, Reset Token, privileged intents on the Bot page, Installation page, Default Install Settings, Install Link, Add to server, MANAGE_GUILD), https://docs.discord.com/developers/events/gateway (Privileged Gateway Intents section, close code 4014), https://docs.discord.com/developers/topics/opcodes-and-status-codes (close codes 4004 and 4014), https://docs.discord.com/developers/topics/permissions (MANAGE_GUILD, VIEW_CHANNEL, SEND_MESSAGES, EMBED_LINKS, ATTACH_FILES), https://docs.discord.com/developers/topics/oauth2 (bot authorization flow: says only "proper permissions"), https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID (read through https://support.discord.com/api/v2/help_center/en-us/articles/206346498.json, since the article page refuses automated reads; it does not cover role ids), https://support.discord.com/hc/en-us/articles/214836687-Role-Management-101 (read through https://support.discord.com/api/v2/help_center/en-us/articles/214836687.json; Server Settings > Roles) -->
 # Discord
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -19,25 +19,25 @@ The two channels are separate settings. You can use one channel for both.
 - A Discord account.
 - A Discord server you can add a bot to.
 
-> **Ask the owner:** which server permission you need to add a bot to a server.
+You need the `MANAGE_GUILD` permission on that server, which Discord describes as allowing management and editing of the server.
 
 ## How do I create the bot in Discord?
 
 1. Open the Discord Developer Portal in your browser and sign in.
-2. Create a new application and give it a name.
-3. Open the application's **Bot** section.
-4. Copy the bot token. Keep it secret: anyone with the token can act as your bot. It goes in the secrets file, as [Configure](02-configure.md) shows.
-5. In the same section, turn on the privileged gateway intents. The bot asks Discord for every intent when it connects, so these switches must be on.
+2. Open the app creation page (the **Create App** link on <https://docs.discord.com/developers/quick-start/getting-started>), enter a name for your app, and press **Create**.
+3. Open your app's **Bot** page.
+4. Under **Token**, click **Reset Token**, and copy the new token. Keep it secret: anyone with the token can act as your bot. Discord does not show it again unless you reset it once more. It goes in the secrets file, as [Configure](02-configure.md) shows.
+5. On the same page, under **Privileged Gateway Intents**, turn on all three switches: presence, server members and message content (Discord's documents call them `GUILD_PRESENCES`, `GUILD_MEMBERS` and `MESSAGE_CONTENT`).
 
-> **Ask the owner:** the portal's exact button names for these steps, and which intent switches need turning on.
+The bot asks Discord for every intent when it connects, so all three switches must be on. Discord closes the connection of a bot that asks for an intent that is not switched on, with close code 4014, "Disallowed intent(s)".
 
 ## How do I invite the bot to my server?
 
-1. In the Developer Portal, generate an invite link for your application with the scopes `bot` and `applications.commands`.
-2. Give it the permissions it needs to post what it posts: view channels, send messages, embed links and attach files. A shiny alert is a card with a picture of the Pokémon, which needs the last two.
-3. Open the link, pick your server, and accept.
-
-> **Ask the owner:** the exact permission list to tick, and the screens of the invite step.
+1. In the Developer Portal, open your app's **Installation** page.
+2. Under **Default Install Settings**, for **Guild Install**, add the scopes `applications.commands` and `bot`.
+3. In the **Permissions** menu that appears, pick the four the bot needs to post what it posts: view channels, send messages, embed links and attach files (`VIEW_CHANNEL`, `SEND_MESSAGES`, `EMBED_LINKS` and `ATTACH_FILES` in Discord's documents). A shiny alert is a card with a picture of the Pokémon, which needs the last two.
+4. Copy the **Install Link** and open it in your browser.
+5. Choose **Add to server**, pick your server, and follow the prompt.
 
 ## Which channels and role do I make?
 
@@ -49,12 +49,12 @@ In your server, make:
 
 ## How do I copy the ids?
 
-1. In Discord's settings, turn on Developer Mode.
-2. Right-click your server and copy its id.
-3. Right-click the shiny-alert channel and copy its id. Do the same for the new-move channel.
-4. Copy the role's id from the server's role settings.
+1. In the Discord app, click the cogwheel at the bottom left to open your User Settings. Go to **Advanced** and turn on the **Developer Mode** switch.
+2. Right-click your server's icon and choose **Copy Server ID**.
+3. Right-click the shiny-alert channel and choose **Copy Channel ID**. Do the same for the new-move channel.
+4. Copy the role's id from the server's role settings, under **Server Settings > Roles**.
 
-> **Ask the owner:** Discord's exact menu wording for Developer Mode and for copying each id.
+> **Ask the owner:** what is Discord's menu wording for copying a role's id?
 
 The shipped settings already hold example numbers for these ids. Replace each one with the id you copied.
 
@@ -119,7 +119,7 @@ Anyone who can see the channel can press the buttons. The bot checks which messa
 1. Leave the bot token **empty** in the secrets file. The placeholder token in the shipped settings, `your-token-here`, does not count as empty: the bot skips Discord only when the token is empty (or is exactly `YOUR_BOT_TOKEN`), so you have to empty it, not leave it as shipped.
 2. Leave the example ids in place. The bot reads the server id and the new-move channel id when it starts, even without a token.
 
-> **Ask the owner:** what happens if the token is left as `your-token-here`.
+If the token is left as `your-token-here`, the bot tries to log in with it. Discord's library writes the warning `A supplied token was invalid.` in the backend's window and tries anyway, and Discord refuses the login ("Authentication failed"), so `Discord client ready` never appears. Empty the token as in step 1.
 
 When the backend starts, its window shows `Discord bot token is not configured. Skipping Discord bot startup.`
 
