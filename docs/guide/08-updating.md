@@ -80,6 +80,10 @@ Your own settings are in the secrets file on this PC, outside the repository fol
 
    **Expected result:** the same messages as on the install page.
 
+### Updating a release install
+
+If you installed from a release rather than building, skip the steps above: download the new zip and installer from the Releases page, unzip the zip over your old folder (your settings live in the secrets file outside it, so nothing of yours is overwritten), run the installer, and reinstall the connector with the `-BotServerDll` command from [Install from a release](01-install.md#install-from-a-release-instead-of-building). Then, if the [Versions](09-versions.md) page says the new version needs a migration, run `migrate.exe` from the `backend` folder before starting the bot.
+
 ## Is a database migration needed?
 
 ### What is a migration?

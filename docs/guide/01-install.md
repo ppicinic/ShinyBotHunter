@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the fork's release notes at https://github.com/ppicinic/BizHawk/releases/tag/2.11.2-savepaths.2 and the file list of its BizHawk-2.11.2-savepaths.2-win-x64.zip, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/Program.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/config/SoundConfig.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/PathEntryCollection.cs, https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows, https://www.nuget.org/packages/Microsoft.NETFramework.ReferenceAssemblies and https://learn.microsoft.com/dotnet/core/project-sdk/msbuild-props (neither says the SDK fetches .NET Framework reference assemblies by itself), ShinyBotHunter/Bot/StarterSaveFiles.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/main/windowManager.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/admin/BotControlTab.tsx, PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (gamesFor), AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8), the owner's answers of 2026-10-27 -->
+<!-- Derived from: ShinyBotHunter/ShinyBotHunter.csproj, PokemonDashboard/README.md, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/RomInfoService.cs, the fork's release notes at https://github.com/ppicinic/BizHawk/releases/tag/2.11.2-savepaths.2 and the file list of its BizHawk-2.11.2-savepaths.2-win-x64.zip, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/Program.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/config/SoundConfig.Designer.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/PathEntryCollection.cs, https://www.tigerdata.com/docs/self-hosted/latest/install/installation-windows, https://www.nuget.org/packages/Microsoft.NETFramework.ReferenceAssemblies and https://learn.microsoft.com/dotnet/core/project-sdk/msbuild-props (neither says the SDK fetches .NET Framework reference assemblies by itself), ShinyBotHunter/Bot/StarterSaveFiles.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, Scripts/ci-local.ps1, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ShinyBotHunter/Properties/launchSettings.json, ShinyBotHunter/Startup.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/appsettings.json, ShinyBotHunter/Tools/SetupCommands.cs, ShinyBotHunter/Scripts/PokeApiParser.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Service/DiscordBotService.cs, ApiHawk/lib/.gitkeep, ApiHawk/ApiHawk.csproj, PokemonDashboard/package.json, PokemonDashboard/src/main/index.ts, PokemonDashboard/src/main/windowManager.ts, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/admin/BotControlTab.tsx, PokemonDashboard/src/renderer/src/components/admin/TopLevelActionForm.tsx, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (gamesFor), AGENTS.md, docs/architecture/system-overview.md (sections 6 and 8), Scripts/build-release.ps1, PokemonDashboard/src/main/index.ts (config.json beside the packaged app), the owner's answers of 2026-10-27 -->
 # Install
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -41,6 +41,61 @@ You also need your own game files. This guide names only the formats the bot exp
 - HeartGold or SoulSilver, as a `.nds` file.
 - Ruby or Sapphire, as a `.gba` file.
 - For the Wishmaker Jirachi hunt only: a GBA BIOS file, and the Pokemon Colosseum Bonus Disc as an `.iso` file.
+
+## Install from a release instead of building
+
+Every version of the bot is also published as ready-built files on the repository's Releases page, so you can skip the build steps on this page. You still need, from [What you need](#what-you-need): Windows, PostgreSQL with TimescaleDB, MongoDB, Python, the BizHawk fork, and the .NET 10 runtime (the "ASP.NET Core Runtime", which is smaller than the SDK). You do not need Node.js. Game files are the same as for a build.
+
+1. Open <https://github.com/ppicinic/ShinyBotHunter/releases> and, from the newest release, download `ShinyBotHunter-<version>-win-x64.zip` and `Pokemon Dashboard Setup <version>.exe`.
+2. Unzip the zip into a folder of your choice.
+
+   **Expected result:** the folder holds `backend`, `apihawk`, `Scripts`, `Dolphin`, `docs` and `README.md`.
+
+3. Get the BizHawk fork as described under [Get the BizHawk fork](#get-the-bizhawk-fork), and open and close `EmuHawk.exe` once so its `config.ini` exists.
+4. Install the bot's connector into BizHawk. Close every EmuHawk, open a terminal in the unzipped folder and run:
+
+   ```
+   powershell -File Scripts\deploy-apihawk.ps1 -BizHawkDir "<your BizHawk folder>" -BotServerDll "<the unzipped folder>\apihawk\BotServer.dll"
+   ```
+
+   **Expected result:** `Trusted in config.ini` and a `Deployed <size>kb, SHA512:…` line, as under [Install ApiHawk into BizHawk](#install-apihawk-into-bizhawk). Nothing is built.
+
+5. Put your settings in the secrets file as the [Configure](02-configure.md) page shows. Without the .NET SDK there is no `dotnet user-secrets` command, so create the folder and `secrets.json` yourself at the path on that page and type the JSON shape it shows. The bot in the zip reads that file exactly as a built one does.
+6. For the Wishmaker Jirachi hunt only, set up Dolphin as under [Set up Dolphin and the GBA BIOS](#set-up-dolphin-and-the-gba-bios-wishmaker-jirachi-hunt-only), but with two extra parameters so the script finds the shipped settings and your secrets file:
+
+   ```
+   powershell -File Scripts\deploy-dolphin.ps1 -AppSettings "<the unzipped folder>\backend\appsettings.json" -SecretsId 90bed6b9-0481-4f35-8c92-163ea1cba3cf
+   ```
+
+7. Create or update the database tables. Open a terminal in the `backend` folder and run:
+
+   ```
+   migrate.exe
+   ```
+
+   **Expected result:** it finishes without a line starting with `ERROR`. It applies every migration your database has not had yet, reading your connection string the same way the bot does. Run it again after every update that the [Versions](09-versions.md) page marks as needing a migration.
+
+8. Fill in the Pokemon data once, from the `backend` folder:
+
+   ```
+   ShinyBotHunter.exe --parsepokeapi
+   ```
+
+   **Expected result:** as under [Fill in the Pokemon data](#fill-in-the-pokemon-data-once-per-pc).
+
+9. Start the bot from the `backend` folder (it must be started from there, because it reads its macros, hunt settings and milestones from that folder):
+
+   ```
+   ShinyBotHunter.exe
+   ```
+
+   **Expected result:** as under [Start the bot for the first time](#start-the-bot-for-the-first-time).
+
+10. Run `Pokemon Dashboard Setup <version>.exe` and start **Pokemon Dashboard** from the Start menu.
+
+    **Expected result:** the same windows as under [Open the dashboard and check it worked](#open-the-dashboard-and-check-it-worked). The dashboard's own settings file is `resources\config.json` inside the folder the installer created; it points at this PC, so you only edit it if the bot runs elsewhere.
+
+To update a release install, see [How do I update the bot?](08-updating.md#how-do-i-update-the-bot).
 
 ## Why does the bot need its own BizHawk?
 

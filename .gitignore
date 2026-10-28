@@ -241,3 +241,6 @@ ShinyBotHunter.Tests/obj/
 
 # QA dashboard driver run output
 ShinyBotHunter.Qa/dashboard/qa-runs/
+
+# Release assets built by Scripts/build-release.ps1
+/release/
