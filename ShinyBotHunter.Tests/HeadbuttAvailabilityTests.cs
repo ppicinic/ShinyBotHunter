@@ -101,6 +101,20 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["EncounterType"]["Headbutt"]);
             Assert.Equal(ReadFailed, Chained(actions).LegParameters!.DisabledChoices!["EncounterType"]["Headbutt"]);
+            await service.GetBotActionsAsync(0);
+            Assert.Equal(2, bot.PartyReads);
+        }
+
+        [Fact]
+        public async Task EmptyParty_GivesTheReadSentenceAndIsNotCached()
+        {
+            var (service, bot) = await LaunchAsync([]);
+
+            var actions = await service.GetBotActionsAsync(0);
+            await service.GetBotActionsAsync(0);
+
+            Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["EncounterType"]["Headbutt"]);
+            Assert.Equal(2, bot.PartyReads);
         }
 
         [Fact]

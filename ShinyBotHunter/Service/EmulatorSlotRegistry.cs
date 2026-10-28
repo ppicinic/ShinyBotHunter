@@ -75,7 +75,8 @@ namespace ShinyBotHunter.Service
 
         // Guarded like the entry's other fields: written only under the gate, read lock-free once
         // into a local. Null means not read since the bot became idle; a task whose result is null
-        // means a party member knows Headbutt; any other result is the reason the dashboard shows.
+        // means a party member knows Headbutt; any other result is the reason the dashboard shows. A
+        // failed read is dropped once awaited, so it is retried.
         public Task<string?>? HeadbuttRefusal { get; set; }
         public string GetName(int pos)
         {

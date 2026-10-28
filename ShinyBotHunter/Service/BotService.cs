@@ -505,9 +505,11 @@ namespace ShinyBotHunter.Service
         // MOVE_HEADBUTT, include/constants/moves.h:33
         private const ushort MoveHeadbutt = 29;
 
+        private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
+
         /// <summary>
         /// Null when a party member knows Headbutt, otherwise the reason the dashboard shows. Never
-        /// faults: a failed read is logged and becomes its own reason.
+        /// faults: a failed read is logged and becomes <see cref="PartyUnreadable"/>.
         /// </summary>
         private async Task<string?> HeadbuttRefusalAsync(IBot bot)
         {
@@ -519,7 +521,12 @@ namespace ShinyBotHunter.Service
             catch (Exception ex)
             {
                 Console.WriteLine($"[BotService] Could not read the party to check for Headbutt: {ex}");
-                return "The party could not be read; try again once the game is in the field.";
+                return PartyUnreadable;
+            }
+            // A game in the field always has a party member; none means the title screen.
+            if (party.PartySize == 0)
+            {
+                return PartyUnreadable;
             }
             for (int i = 0; i < party.PartySize; i++)
             {
@@ -534,8 +541,8 @@ namespace ShinyBotHunter.Service
 
         /// <summary>
         /// <see cref="GetAvailableActions"/> with Headbutt marked disabled on the encounter actions
-        /// when no party member knows it. The party is read once per idle period: the read is started
-        /// under the gate and awaited outside it.
+        /// when no party member knows it. The party is read once per idle period, or again on the next
+        /// call while the read fails: the read is started under the gate and awaited outside it.
         /// </summary>
         public async Task<List<EventArgumentOptions>> GetBotActionsAsync(int pos)
         {
@@ -560,6 +567,23 @@ namespace ShinyBotHunter.Service
                 }
             }
             string? reason = await refusal;
+            if (reason == PartyUnreadable)
+            {
+                // Not kept, so the next call reads again: a bot is idle at the title screen after a
+                // launch. Only this task is dropped, never a later fill.
+                await slots.Gate.WaitAsync();
+                try
+                {
+                    if (entry.HeadbuttRefusal == refusal)
+                    {
+                        entry.HeadbuttRefusal = null;
+                    }
+                }
+                finally
+                {
+                    slots.Gate.Release();
+                }
+            }
             if (reason is null)
             {
                 return actions;
