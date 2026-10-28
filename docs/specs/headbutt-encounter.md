@@ -143,3 +143,4 @@ Where the build differs from this spec as approved (2026-10-28). The requirement
 - 2026-10-28: first version, from the spike of the same day.
 - 2026-10-28: FR-3: a failed or empty party read is not cached and is retried on the next call, because the bot is idle at the title screen after a launch, and a cached failure would grey Headbutt for the whole idle period.
 - 2026-10-28: Implemented (PRs #230 to #234); What diverged added.
+- 2026-10-28: Launch Bot + Continue registers the bot only once the game is in the field (owner, 2026-10-28), so no party read happens at the title screen after a Continue. The FR-3 retry of a failed or empty read stays as the safety net for plain Launch Bot, where the operator loads the save by hand.
