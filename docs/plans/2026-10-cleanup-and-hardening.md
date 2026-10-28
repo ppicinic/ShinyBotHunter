@@ -149,6 +149,17 @@ A new self-managing special event for RS that hunts the Colosseum Bonus Disc Jir
 | 7.7 | Close-out (W7) | Architecture section, spec status, implementation notes here. | 7.6 | S |
 | 7.8 | Summary view and RAM read (W8) | **Done 2026-10-26 (#188, PR #190).** Owner's rule of 2026-10-25: every cycle opens the result in EmuHawk, shows the Jirachi's summary, then reads the slot from RAM and logs it; NFR-1 to 300 s. Soak rerun and video. | 7.7 | M |
 
+### Phase 9: Headbutt encounter mode (its own spec)
+A third HGSS encounter type, Headbutt, beside Run and Spin, offered only when a party Pokémon knows the move. Spiked 2026-10-28 ([research](../research/headbutt.md)); designed in the [headbutt encounter spec](../specs/headbutt-encounter.md). Phase 8 is the [user guide plan](2026-10-user-guide.md). The rows are the spec's suggested tasks.
+
+| # | Task | Deliverable | Depends on | Size |
+|---|---|---|---|---|
+| 9.1 | The event (H1) | `EncounterType.Headbutt`, `HeadbuttEncounterEvent`, `GameState.StartFacing`, the press-loop predicate, `HgssPointerService.HeadbuttScript`, the cached return macro; unit tests | — | M |
+| 9.2 | Availability (H2) | `EventArgumentOptions.DisabledChoices`, the cached party answer per slot, the fresh read and 400 at Start; unit tests | — | M |
+| 9.3 | Dashboard and guide (H3) | Headbutt in the encounter dropdown, greyed with its reason; the wild encounter guide page | — | S |
+| 9.4 | QA (H4) | `hgss-headbutt`, `-sideways`, `-cutin`, `-dead-tree`, `-greyed`, `-shiny`; saves `hgss.qa-headbutt`, `-cutin`, `-nomove`. Runs on the feature branch. | 9.1 to 9.3 | M |
+| 9.5 | Close-out (H5) | Architecture sentence, spec status, implementation notes here. | 9.4 | S |
+
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
 - Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.
