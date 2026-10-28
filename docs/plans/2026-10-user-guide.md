@@ -97,4 +97,4 @@ All answered by the owner on 2026-10-26: a markdown folder in the repository; op
 - 2026-10-26: first draft from the interview; the five questions answered the same day.
 - 2026-10-26: 8.7 is no longer a walk-through (owner: not necessary); it is U13, an updating-and-versions page that also tracks whether an EF migration is needed. 8.0 to 8.6 merged on `feature/user-guide` the same day.
 - 2026-10-27: 8.7 (U13) merged; status Implemented; implementation notes added.
-- 2026-10-27: U15, the versions page, added directly by the orchestrator at the owner's request (v0.1.0 and the coming v0.1.1 both need a database migration).
+- 2026-10-27: U15, the versions page, added directly by the orchestrator at the owner's request (v0.1.0 and v0.1.1, tagged on this guide's merge to main on 2026-10-27, both need a database migration).
