@@ -492,6 +492,103 @@ namespace ShinyBotHunter.Service
             return result;
         }
 
+        // MOVE_HEADBUTT, include/constants/moves.h:33
+        private const ushort MoveHeadbutt = 29;
+
+        /// <summary>
+        /// Null when a party member knows Headbutt, otherwise the reason the dashboard shows. Never
+        /// faults: a failed read is logged and becomes its own reason.
+        /// </summary>
+        private async Task<string?> HeadbuttRefusalAsync(IBot bot)
+        {
+            PokemonState party;
+            try
+            {
+                party = await provider.GetRequiredService<PokemonStateReader>().GetPartyState(bot);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BotService] Could not read the party to check for Headbutt: {ex}");
+                return "The party could not be read; try again once the game is in the field.";
+            }
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                var pokemon = party.PartyPokemon[i]!;
+                if (pokemon.Move1 == MoveHeadbutt || pokemon.Move2 == MoveHeadbutt || pokemon.Move3 == MoveHeadbutt || pokemon.Move4 == MoveHeadbutt)
+                {
+                    return null;
+                }
+            }
+            return "No Pokémon in your party knows Headbutt.";
+        }
+
+        /// <summary>
+        /// <see cref="GetAvailableActions"/> with Headbutt marked disabled on the encounter actions
+        /// when no party member knows it. The party is read once per idle period: the read is started
+        /// under the gate and awaited outside it.
+        /// </summary>
+        public async Task<List<EventArgumentOptions>> GetBotActionsAsync(int pos)
+        {
+            var actions = GetAvailableActions(pos);
+            // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
+            // can still be closed between the two reads.
+            if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
+            {
+                return actions;
+            }
+            Task<string?>? refusal = entry.HeadbuttRefusal;
+            if (refusal is null)
+            {
+                await slots.Gate.WaitAsync();
+                try
+                {
+                    refusal = entry.HeadbuttRefusal ??= HeadbuttRefusalAsync(entry.Bot!);
+                }
+                finally
+                {
+                    slots.Gate.Release();
+                }
+            }
+            string? reason = await refusal;
+            if (reason is null)
+            {
+                return actions;
+            }
+            var disabled = new Dictionary<string, Dictionary<string, string>>
+            {
+                ["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = reason },
+            };
+            // Copies of the two that change, so the registry's own options are never touched.
+            return actions.Select(a => a.Name switch
+            {
+                "Wild Encounter" => a with { DisabledChoices = disabled },
+                "Chained Encounter" => a with { LegParameters = a.LegParameters! with { DisabledChoices = disabled } },
+                _ => a,
+            }).ToList();
+        }
+
+        /// <summary>
+        /// <see cref="GetPartyAsync"/> for the dashboard, which also forgets the cached Headbutt
+        /// answer. A separate method because GetPartyAsync is also called under the gate, which is
+        /// not re-entrant.
+        /// </summary>
+        public async Task<List<PartySlotInfo>> ReloadPartyAsync(int pos)
+        {
+            await slots.Gate.WaitAsync();
+            try
+            {
+                if (slots.Entries.TryGetValue(pos, out var entry))
+                {
+                    entry.HeadbuttRefusal = null;
+                }
+            }
+            finally
+            {
+                slots.Gate.Release();
+            }
+            return await GetPartyAsync(pos);
+        }
+
         public List<EventArgumentOptions> GetAvailableActions(int pos)
         {
             if (!slots.Entries.TryGetValue(pos, out var botEvent))
