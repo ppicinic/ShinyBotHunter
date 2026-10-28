@@ -54,6 +54,7 @@ When `Scripts/ci-local.ps1` exists, run that instead; it is the definition of "C
 - **One concern per branch and PR**, off `main`. Run the local checks on the branch tip before asking for a merge.
 - **The PR description lists** what was added (packages, interfaces, projects, config keys, folders) and why, what was deleted, which docs were updated, and what was manually checked against a real emulator if anything.
 - **Keep the docs true.** If a change makes an architecture or plan doc wrong, fix the doc in the same PR. If a decision changes, add a section to the relevant `docs/decisions/<area>.md`; never edit history.
+  - **The guide too.** A change to a registry entry, a settings key, a script under `Scripts/`, or a dashboard action updates the matching page under `docs/guide/` in the same PR, and the reviewer checks it.
 - **QA.** When `ShinyBotHunter.Qa` exists, run the scenarios mapped to the changed area (`qa select --changed`) and link the run folder in the PR. Nothing from `qa-runs/` is committed.
 - **Secrets and machine paths** (`D:/ROMs`, `D:/BizHawk`, tokens, connection strings) are never committed beyond the placeholders already in `appsettings.json`.
 

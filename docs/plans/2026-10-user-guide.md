@@ -1,7 +1,7 @@
 # User Guide Plan
 
-Status: Approved (owner, 2026-10-26); epic and branch `feature/user-guide` to be opened by the orchestrator
-Last updated: 2026-10-26
+Status: Implemented (2026-10-27) on `feature/user-guide`, epic #198; PR to `main` opened by the orchestrator for the owner to merge
+Last updated: 2026-10-27
 Owner: Phil
 Related: [feature workflow](../specs/feature-workflow.md), [architecture](../architecture/system-overview.md), [decisions](../decisions/global.md)
 
@@ -43,20 +43,22 @@ Each page names, in a comment at the top, the files it is derived from, so a wri
 | U3 | `docs/guide/02-configure.md` | Every `ApplicationSettings` key and connection string: what it does, an example, which are secrets. The secrets file: its path (`%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`), that it is read in Release too, that `appsettings.Production.json` and environment variables are not read. | `ApplicationSettings.cs`, `appsettings.json`, `Startup.cs` |
 | U4 | `docs/guide/03-dashboard.md` | The Electron dashboard: launching emulators, milestones (made in the UI, stored in Mongo), the actions list and parameters, counts and the encounter log, Resume, cancel, sound. | `PokemonDashboard/src/renderer/src/components/admin/*`, `EventRegistry.cs`, `BotDtos.cs` |
 | U5 | `docs/guide/04-hunts/01-wild-encounter.md` | HGSS wild and chained encounters: the save state it needs (where to stand), parameters (target, train settings, ranges), what the bot does, healing, what it logs, stopping. | `OrchestratorEvent.cs`, `BattleOrchestratorEvent.cs`, `hgss-state-reader.md` |
-| U6 | `docs/guide/04-hunts/02-hgss-starter.md` | HGSS shiny starter hunt. | `MultiShinyHunterEvent.cs`, `HgssShinyStarterEvent.cs` |
+| U6 | `docs/guide/04-hunts/02-hgss-starter.md` | HGSS shiny starter hunt. | `MultiShinyHunterEvent.cs`, `ShinyStarterEvent.cs` |
 | U7 | `docs/guide/04-hunts/03-rs-starter.md` | RS soft-reset starter hunt: ROM copies, waves, saves, retired copies, parked shinies, Resume. | `MultiStarterHuntEvent.cs`, `StarterHuntEvent.cs`, `RsStarterHunt.json` |
 | U8 | `docs/guide/04-hunts/04-togepi-egg.md` | HGSS Togepi egg hunt. | `HgssTogepiEggEvent.cs`, `TogepiEgg.json` |
 | U9 | `docs/guide/04-hunts/05-wishmaker-jirachi.md` | The Jirachi hunt: what the save needs (Pokédex, free slot, rev 1.2 ROM), the Dolphin setup, the cycle in plain words, the `-WISHMKR` files, the shiny stop. | `docs/specs/wishmaker-jirachi.md`, `WishmakerJirachi.json` |
 | U10 | `docs/guide/05-discord.md` | Creating the Discord bot and getting the guild, channel and mention ids; what it posts (shiny alerts, new-move prompts) and how to answer a prompt. | `DiscordBotService.cs`, `ShinyAlertService.cs` |
 | U11 | `docs/guide/06-your-data.md` | What is stored where: Postgres encounters (the row's fields), Mongo caught Pokémon, milestones and hunt state; how to look at them; backups. | `PersistPokemonDataDao.cs`, `MongoCaughtPokemonDao.cs`, `system-overview.md` |
 | U12 | `docs/guide/07-when-something-goes-wrong.md` | The failures an operator meets and what they mean: ApiHawk trust prompt, SaveRAM not appearing, a refused action (capability or revision), Dolphin not subscribing to the pad, a stale-timeout message. | the launchers, `BotService.cs`, the specs' timeout tables |
+| U13 | `docs/guide/08-updating.md` | Keeping the bot current: the versions the bot is built and tested against (.NET 10, Node 18+, the BizHawk fork built as 2.11.2, Dolphin 2609a, PostgreSQL with TimescaleDB, MongoDB) and where each is read from; how to update the bot (pull, rebuild backend and dashboard, redeploy ApiHawk after a BizHawk rebuild); the database migrations: the list that ships in `Migrations/`, how to tell whether the database is behind, and how the tables are created and brought up to date (today nothing in the bot or its scripts applies migrations, which the page states as the code gap it is). | `ShinyBotHunter.csproj`, `Migrations/*`, `PokemonDbContext.cs`, `Startup.cs`, `Scripts/*.ps1`, `PokemonDashboard/package.json`, `DolphinLauncher.cs`, `ApiHawk/lib/.gitkeep` |
 | U14 | The keep-true rule | `AGENTS.md` gains one line under "Keep the docs true": a change to a registry entry, a settings key, a script under `Scripts/`, or a dashboard action updates the guide page in the same PR, and the reviewer checks it. The reviewer prompt in `feature-workflow.md` gets the same line. | `AGENTS.md`, `docs/specs/feature-workflow.md` |
+| U15 | `docs/guide/09-versions.md` | The bot's versions (git tags) and, per version, whether the encounter database needs a migration and what to do; how to tell which version you are on. Added at the owner's request on 2026-10-27, after the plan was implemented. | the git tags, `Migrations/*`, `08-updating.md`, the owner |
 
 ## How the pages are written and checked
 
 - One task per page or pair of pages, disjoint files, so up to four run in parallel. U1 and U14 go last, after the pages exist.
 - The writer is an agent reading the named source files; it may run the backend and the dashboard to confirm what a screen shows, and it must not describe a step it could not find in code or config. Where the truth lives only in the owner's head (how the BizHawk fork is built, where to get a GBA BIOS), the page says "ask the owner" in a marked line, and the owner fills it in at review.
-- Setup is verified once by following it: after U2 and U3 merge, a fresh clone on a clean Windows user profile is built and run through the guide, with no emulator and no game files, up to the dashboard showing an empty games list. Every step that did not work as written is a fix to the page.
+- Setup is not verified by a walk-through (owner, 2026-10-26). The install and configure pages say how to run everything, and the keep-true rule keeps them current.
 - Screenshots: allowed where a picture saves a paragraph (the dashboard's action form, a Discord prompt), under `docs/guide/images/`, named after the page; never required, and a page must still make sense with the images removed, since the keep-true rule can check a sentence but not a picture (owner: no preference, 2026-10-26).
 - Game files: the guide says the operator supplies their own dumps and saves and names the file formats and folders. It never says where to obtain a ROM, a BIOS or a disc image.
 
@@ -77,7 +79,14 @@ Each page names, in a comment at the top, the files it is derived from, so a wri
 | 8.4 | RS hunts | U7, U9 | 8.0 | M |
 | 8.5 | Discord and troubleshooting | U10, U12 | 8.0 | S |
 | 8.6 | Front door and the rule | U1, U14 | 8.1 to 8.5 | S |
-| 8.7 | Fresh-clone walk-through | U2 and U3 followed on a clean profile; fixes to those pages | 8.1 | S |
+| 8.7 | Updating and versions | U13, plus its line in the guide README and the Next link from U12; the install page's "how are the tables created" question points at it. Replaces the fresh-clone walk-through (owner, 2026-10-26: no walk-through; the docs say how to run everything) | 8.1, 8.6 | S |
+
+## Implementation notes (2026-10-27)
+
+- Rows 8.0 to 8.7 merged in PRs #207, #208, #211, #210, #209, #212, #213 and #215 (task issues #199 to #205 and #214); `Scripts/ci-local.ps1` passed 8/8 on every tip. #206, the fresh-clone walk-through, was closed unplanned (owner: not necessary).
+- What diverged: 8.7 is the updating-and-versions page U13, not a walk-through. No screenshots were taken and `docs/guide/images/` does not exist. Each page cites more read-only sources than its page-table row names; the HTML comment on the page is the authoritative list.
+- Owner review: the pages carry marked "Ask the owner" lines (`grep "Ask the owner" docs/guide`), mostly the BizHawk fork build and install, Discord's own screens, in-game facts for the hunts, and troubleshooting actions. They stay until the owner fills them in.
+- Code gaps the pages exposed, listed on the epic's handoff comment as candidate issues: corrected in #218: `dotnet ef database update --project ShinyBotHunter` is the mechanism, EF running the app's `Main` up to `Build()`; 08-updating.md documents it and the QA spec's two lines now match the code; the shipped Discord placeholder `your-token-here` is not the value the skip check looks for; three errors reach the dashboard only as a generic server error; `deploy-apihawk.ps1` defaults to an owner path; ROM copies and `-WISHMKR` ROMs appear in the Game lists; a missing SoulSilver ROM is never reported; the Togepi hunt can end silently; `system-overview.md` sections 6 and 9 and the dashboard README have drifted.
 
 ## Open questions
 
@@ -86,3 +95,6 @@ All answered by the owner on 2026-10-26: a markdown folder in the repository; op
 ## Changelog
 
 - 2026-10-26: first draft from the interview; the five questions answered the same day.
+- 2026-10-26: 8.7 is no longer a walk-through (owner: not necessary); it is U13, an updating-and-versions page that also tracks whether an EF migration is needed. 8.0 to 8.6 merged on `feature/user-guide` the same day.
+- 2026-10-27: 8.7 (U13) merged; status Implemented; implementation notes added.
+- 2026-10-27: U15, the versions page, added directly by the orchestrator at the owner's request (v0.1.0 and v0.1.1, tagged on this guide's merge to main on 2026-10-27, both need a database migration).

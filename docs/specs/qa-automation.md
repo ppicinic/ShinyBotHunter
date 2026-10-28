@@ -154,7 +154,7 @@ A separate BizHawk install, the fork's release build `2.11.2-savepaths.2`, extra
 On the dev PC, from the October 2026 setup:
 - **Postgres**: portable PostgreSQL 17 with TimescaleDB 2.30.2 in `C:\Tools\pgsql`, data in `C:\Tools\pgsql-data`, database `shinybothunter_qa`. No Windows service and no admin rights needed; it stops on restart and starts with `pg_ctl -D C:\Tools\pgsql-data start`.
 - **Mongo**: the local MongoDB service, database `ShinyBotHunter`.
-- **Migrations**: the backend has no design-time DbContext factory, so `dotnet ef` would run the app's `Main`. The harness applies migrations itself with `PokemonDbContext.Database.Migrate()` against the local connection string.
+- **Migrations**: `dotnet ef` works through the app's `Main`. EF runs `Startup.MainAsync` up to `WebApplication.Build()` and stops there, so no design-time factory is needed and nothing starts. The harness does not apply migrations; bring the QA database up to date with `dotnet ef database update --project ShinyBotHunter`.
 - **Metadata**: `--parsepokeapi` once per machine, after pointing `SpriteBaseDirectory` at an existing folder.
 - **Phases**: scenario milestones such as `Route 33` are created in the dashboard's phase editor, which saves them to Mongo. They are not added as JSON files under `Phases/`; those are for the static phases that ship with the app.
 
@@ -327,7 +327,7 @@ Run on the dev PC with the real backend and bot, the QA install above, and the o
 - `--parsepokeapi` crashes if `SpriteBaseDirectory` does not exist. Plan 1.5.
 - The Discord placeholder in `appsettings.json` (`your-token-here`) does not match the skip check (`YOUR_BOT_TOKEN`), so a fresh machine tries to log in with it. Plan 1.6b.
 - `Microsoft.AspNetCore.OpenApi` was removed in the October 2026 cleanup (plan 1.6b); `Microsoft.OpenApi` 2.0.0 is still pulled in transitively and carries a high-severity advisory.
-- No design-time DbContext factory, so `dotnet ef` cannot be used without starting the app. Noted under QA databases; no change planned.
+- `dotnet ef` needs no design-time DbContext factory: it runs the app's `Main` up to `WebApplication.Build()`. Corrected 2026-10-27 (#218); no change planned.
 
 ## Test cases for the harness itself
 | Case | Setup | Expected |
