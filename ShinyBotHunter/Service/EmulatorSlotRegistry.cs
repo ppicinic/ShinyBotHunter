@@ -10,7 +10,9 @@ namespace ShinyBotHunter.Service
         // Lock rule: writers take the gate, readers never do. A writer is any code that changes
         // Entries or a field of a BotAndOrEvent: BotService.ExecuteNewBotOrSpecialEvent,
         // BotService.ExecuteEvent, BotEventRunner.CancelAsync (reached through
-        // BotService.CancelBotOrEventAsync) and the teardown in BotEventRunner.RunEventAsync. Each
+        // BotService.CancelBotOrEventAsync), the teardown in BotEventRunner.RunEventAsync, and the
+        // HeadbuttRefusal fill in BotService.GetBotActionsAsync and clear in
+        // BotService.ReloadPartyAsync. Each
         // holds the gate across its whole check-then-act sequence. Readers
         // (BotService.GetBotDashboardState, GetAvailableActions, GetBotAt, HasRunningEvent,
         // GetPartyAsync) stay lock-free because running events call them from inside their loops,
@@ -70,6 +72,11 @@ namespace ShinyBotHunter.Service
         public GameState? GameState { get; set; }
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         public string? EventName { get; set; }
+
+        // Guarded like the entry's other fields: written only under the gate, read lock-free once
+        // into a local. Null means not read since the bot became idle; a task whose result is null
+        // means a party member knows Headbutt; any other result is the reason the dashboard shows.
+        public Task<string?>? HeadbuttRefusal { get; set; }
         public string GetName(int pos)
         {
             return EventName is not null ? EventName : $"Bot {pos}";
