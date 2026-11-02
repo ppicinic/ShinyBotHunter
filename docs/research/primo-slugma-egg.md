@@ -1,6 +1,6 @@
 # Primo's Slugma egg (HGSS)
 
-Status: spike done, 2026-11-02. Nothing in this doc is implemented in the bot; the design that implements it is the [Primo egg hunt spec](../specs/primo-egg-hunt.md) (plan phase 10).
+Status: spike done, 2026-11-02. The design built on it, the [Primo egg hunt spec](../specs/primo-egg-hunt.md) (plan phase 10), is implemented on `feature/primo-egg-hunt` under epic #240 (2026-11-02). Two entries here are corrected from the QA password run, both about the "Is this your answer?" handler: the +0x20 row of the field table and the Confirm row of the pacing table.
 Related: [pointer discovery](pointer-discovery.md) (the field script chain), [HGSS state reader spec](../specs/hgss-state-reader.md), the Togepi egg hunt (`HgssTogepiEggEvent`, guide page [Togepi egg](../guide/04-hunts/04-togepi-egg.md))
 
 ## What the hunt is
