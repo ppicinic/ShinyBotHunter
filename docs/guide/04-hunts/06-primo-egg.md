@@ -46,7 +46,7 @@ The walking route, the pacing line and the timings are in a file that comes with
 1. The bot reads your trainer ID and works out the Slugma password from it, once per run. It writes the password to the backend's window as four word numbers.
 2. It talks to Primo and enters the password's two words at each of his two prompts. After each prompt it checks that the game took the words it entered.
 3. It takes the egg and finds it in your party.
-4. It walks out of the Pokémon Center to the street outside the Mart, one stretch at a time, checking it arrived at the end of each.
+4. It walks out of the Pokémon Center to the street outside the Mart, one stretch at a time, checking it arrived at the end of each. On the way, the Violet City town sign by the street usually pops up; the bot closes it and walks on.
 5. It walks back and forth on the street until the game itself starts the hatch. Every 30 seconds it writes the egg step count to the backend's window.
 6. It presses A at "Oh?", answers No when asked whether to nickname the Pokémon, and waits until you can walk again.
 7. It reads the hatched Pokémon and writes it to the encounter log.
