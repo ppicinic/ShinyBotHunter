@@ -1,6 +1,6 @@
 # Primo's Slugma egg (HGSS)
 
-Status: spike done, 2026-11-02. Nothing in this doc is implemented in the bot; the design that implements it is the [Primo egg hunt spec](../specs/primo-egg-hunt.md) (plan phase 10).
+Status: spike done, 2026-11-02. The design built on it, the [Primo egg hunt spec](../specs/primo-egg-hunt.md) (plan phase 10), is implemented on `feature/primo-egg-hunt` under epic #240 (2026-11-02). Two entries here are corrected from the QA password run, both about the "Is this your answer?" handler: the +0x20 row of the field table and the Confirm row of the pacing table.
 Related: [pointer discovery](pointer-discovery.md) (the field script chain), [HGSS state reader spec](../specs/hgss-state-reader.md), the Togepi egg hunt (`HgssTogepiEggEvent`, guide page [Togepi egg](../guide/04-hunts/04-togepi-egg.md))
 
 ## What the hunt is
@@ -36,7 +36,7 @@ The wallpaper check is the same decode with "type below 8" instead, so every egg
 |---|---|
 | +0x10, +0x12 | the two chosen words (easy-chat word ids; 0xFFFF when empty) |
 | +0x1C | 1 while the word list scrolls; presses during it are dropped |
-| +0x20 | the current screen's handler: 0x021E7AA5 the two slots (and the "Is this your answer?" Yes/No), 0x021E8241 the group grid, 0x021E87B5 a word list |
+| +0x20 | the current screen's handler: 0x021E7AA5 the two slots, and the "Is this your answer?" Yes/No too: the A at Confirm leaves it unchanged and it changes only after the A on Yes (QA `hgss-primo-egg-password`, 2026-11-02), 0x021E8241 the group grid, 0x021E87B5 a word list |
 | +0x4C, +0x4E | slot screen cursor: row (0 the slots, 1 Confirm, 2 Cancel), column (first or second slot) |
 | +0x50 | group grid cursor, row × 3 + column; Left and Right wrap within a row; locked "???" groups can be selected |
 | +0x54, +0x56, +0x58 | word list scroll (rows), maximum scroll, word count |
@@ -64,7 +64,7 @@ The presses were timed on a gated run, in frames from the press to the gate chan
 | A, slots to grid | 30 | 30 |
 | A, grid to list | 35 | 35 |
 | A, list back to the slots | 46 to 48, and once over 90 | |
-| A, Confirm (opens "Is this your answer?", handler 0x021E8D1D) | 16 | |
+| A, Confirm (opens "Is this your answer?"; the spike logged handler 0x021E8D1D here, but the QA password run of 2026-11-02 saw the handler stay 0x021E7AA5 until the A on Yes) | 16 | |
 
 A fixed replay of the same presses, as one macro with waits above every measured maximum (12 frames after a move, 30 after a page, 45, 50 and 70 after the three kinds of A, 30 before the first press), navigated the list to the right word every time and still lost the A that leaves the list once in two prompts: that transition took over 90 frames the time it was lost, and the wait was 70. One first A right after the app opened was also dropped on a gated run (the gate pressed again). So the app's transitions vary by more than a fixed macro can absorb, and a replayed macro is not safe without the gates. With the gates, a prompt is 10.5 to 12.5 s against a floor of about 9.8 s if every press landed at its measured latency, so the gated entry is within about 20 percent of the fastest the game allows. The press sequence itself is identical run to run for a trainer ID, so it can still be cached; the gates decide when each press goes. The presses depend only on the starting cursor and the four words, so the macro for a trainer ID can be cached once built.
 

@@ -313,8 +313,8 @@ namespace ShinyBotHunter.Service.Pointers
         // offset (revision-independent); observed; QA: hgss-primo-egg-password
         public int EasyChatGroupWordsOffset => 0x104;
 
-        // easy-chat screen handler of the two slots, Confirm and Cancel (and "Is this your answer?"); root
-        // (revision-dependent; overlay 102, rev 0); observed; QA: hgss-primo-egg-password
+        // easy-chat screen handler of the two slots, Confirm and Cancel, kept by "Is this your answer?" until the A on
+        // Yes (the A at Confirm leaves it unchanged); root (revision-dependent; overlay 102, rev 0); observed; QA: hgss-primo-egg-password
         public uint EasyChatSlotsScreen => 0x021E7AA5;
 
         // easy-chat screen handler of the group grid; root (revision-dependent; overlay 102, rev 0); observed;
