@@ -94,6 +94,10 @@ These messages show in the backend's window, as `[BotService] Event '<name>' cra
 **It means** the hatch finished but the bot could not find the hatched Pokémon in your party by the egg's PID, or the egg had not hatched.
 **Do** check your party in the emulator, then see [When something goes wrong](../07-when-something-goes-wrong.md).
 
+**You see** "[EggHatch] the day care step counter read failed", followed by where the read stopped.
+**It means** the bot could not read a value it needs from the game's memory.
+**Do** see [When something goes wrong](../07-when-something-goes-wrong.md).
+
 For anything else, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
 Next: [Wishmaker Jirachi hunt](05-wishmaker-jirachi.md)
