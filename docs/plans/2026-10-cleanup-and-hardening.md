@@ -167,8 +167,8 @@ A new HGSS action, beside the Togepi egg hunt: Primo's computed password entered
 |---|---|---|---|---|
 | 10.1 | Password (E1) | `PrimoPassword` with the 351-word bank; round-trip tests | — | S |
 | 10.2 | Easy chat and addresses (E2) | `HgssEasyChatInput` gated on overlay 102's fields; every new `HgssPointerService` member; read-table rows; tests over a fake app | — | M |
-| 10.3 | Friendship (E3) | `PokemonData.Friendship` from `HgssPokemonParser` | — | S |
-| 10.4 | Shared hatch and the Togepi hunt (E4) | `HgssEggHatch` (pace until script 2021, steps left, No at the nickname, field free); the Togepi hunt on it, with its stall detection, hatch macro and constants deleted; its guide page | 10.2 | M |
+| 10.3 | Friendship (E3) | Removed 2026-11-02 (owner): the egg's cycles byte is not read | — | — |
+| 10.4 | Shared hatch and the Togepi hunt (E4) | `HgssEggHatch` (pace until script 2021, the day care counter logged, No at the nickname, field free); the Togepi hunt on it, with its stall detection, hatch macro and constants deleted; its guide page | 10.2 | M |
 | 10.5 | The Primo event (E5) | `HgssPrimoEggEvent`, `PrimoEggConfig`, `PrimoEgg.json`, the registry entry, the Run checks, the press-loop predicate (shared with 9.1), its guide page | 10.2 to 10.4 | L |
 | 10.6 | QA (E6) | `hgss-primo-egg-refusals`, `-password`, `-hatch` (two cycles), `-shiny` (PID rewrite on a throwaway copy), `hgss-togepi-egg-hatch`; saves `hgss.qa-primo`, `-full` | 10.5 | M |
 | 10.7 | Close-out (E7) | Architecture sentence, spec status, implementation notes here | 10.6 | S |
