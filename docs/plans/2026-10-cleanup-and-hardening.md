@@ -160,6 +160,19 @@ A third HGSS encounter type, Headbutt, beside Run and Spin, offered only when a 
 | 9.4 | QA (H4) | `hgss-headbutt`, `-sideways`, `-cutin`, `-dead-tree`, `-greyed`, `-shiny`; saves `hgss.qa-headbutt`, `-cutin`, `-nomove`. Runs on the feature branch. | 9.1 to 9.3 | M |
 | 9.5 | Close-out (H5) | Architecture sentence, spec status, implementation notes here. | 9.4 | S |
 
+### Phase 10: Primo's Slugma egg hunt (its own spec)
+A new HGSS action, beside the Togepi egg hunt: Primo's computed password entered through the easy-chat screen on memory gates, the Togepi line and pacing macro for the walk, the hatch started and ended by its field script, soft reset until a shiny Slugma hatches; the Togepi hunt moves onto the same hatch signals. Spiked 2026-11-02 ([research](../research/primo-slugma-egg.md)); designed in the [Primo egg hunt spec](../specs/primo-egg-hunt.md). The rows are the spec's suggested tasks.
+
+| # | Task | Deliverable | Depends on | Size |
+|---|---|---|---|---|
+| 10.1 | Password (E1) | `PrimoPassword` with the 351-word bank; round-trip tests | — | S |
+| 10.2 | Easy chat and addresses (E2) | `HgssEasyChatInput` gated on overlay 102's fields; every new `HgssPointerService` member; read-table rows; tests over a fake app | — | M |
+| 10.3 | Friendship (E3) | `PokemonData.Friendship` from `HgssPokemonParser` | — | S |
+| 10.4 | Shared hatch and the Togepi hunt (E4) | `HgssEggHatch` (pace until script 2021, steps left, No at the nickname, field free); the Togepi hunt on it, with its stall detection, hatch macro and constants deleted; its guide page | 10.2 | M |
+| 10.5 | The Primo event (E5) | `HgssPrimoEggEvent`, `PrimoEggConfig`, `PrimoEgg.json`, the registry entry, the Run checks, the press-loop predicate (shared with 9.1), its guide page | 10.2 to 10.4 | L |
+| 10.6 | QA (E6) | `hgss-primo-egg-refusals`, `-password`, `-hatch` (two cycles), `-shiny` (PID rewrite on a throwaway copy), `hgss-togepi-egg-hatch`; saves `hgss.qa-primo`, `-full` | 10.5 | M |
+| 10.7 | Close-out (E7) | Architecture sentence, spec status, implementation notes here | 10.6 | S |
+
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
 - Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.
