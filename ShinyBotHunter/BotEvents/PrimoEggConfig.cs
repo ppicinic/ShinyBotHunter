@@ -5,7 +5,7 @@ namespace ShinyBotHunter.BotEvents
 {
     /// <summary>
     /// Everything about the Primo egg hunt that is a property of the save and the map rather than of the code:
-    /// which egg, where the player stands facing Primo, the route to the pacing line, the line, and the macros.
+    /// which egg, where the player stands facing Primo, the tile the walk to the line ends on, the line, and the macros.
     ///
     /// Loaded from disk on every event start rather than at boot, so it can be corrected against a running game
     /// without restarting the server.
@@ -29,8 +29,10 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Facing at the start tile: Up, Down, Left or Right.</summary>
         public string StartFacing { get; set; } = "Up";
 
-        /// <summary>The legs from the start tile to the pacing line, each "x:N" or "y:N": move along that axis until it reads N.</summary>
-        public string[] RouteToLine { get; set; } = [];
+        /// <summary>The tile the navigator's walk from the start tile ends on, where pacing starts; raw game map id.</summary>
+        public int LineMapId { get; set; } = 73;
+        public int LineX { get; set; } = 469;
+        public int LineY { get; set; } = 258;
 
         /// <summary>Which axis the bot paces along: "x" or "y".</summary>
         public string HatchAxis { get; set; } = "x";
@@ -60,7 +62,7 @@ namespace ShinyBotHunter.BotEvents
             if (!File.Exists(path))
             {
                 throw new FileNotFoundException(
-                    $"Primo egg config not found at '{path}'. It holds the start tile, the route to the pacing line and the line, none of which has a sensible default.", path);
+                    $"Primo egg config not found at '{path}'. It holds the start tile, the line's start tile and the line, none of which has a sensible default.", path);
             }
             var config = JsonSerializer.Deserialize<PrimoEggConfig>(File.ReadAllText(path), new JsonSerializerOptions()
             {
@@ -98,17 +100,6 @@ namespace ShinyBotHunter.BotEvents
             {
                 throw new InvalidOperationException($"{path}: egg must be 8 (Mareep), 9 (Wooper) or 10 (Slugma), got {Egg}.");
             }
-            if (RouteToLine is null || RouteToLine.Length == 0)
-            {
-                throw new InvalidOperationException($"{path}: routeToLine must list at least one leg.");
-            }
-            foreach (string leg in RouteToLine)
-            {
-                if (!TryParseLeg(leg, out _))
-                {
-                    throw new InvalidOperationException($"{path}: routeToLine leg '{leg}' must be 'x:' or 'y:' followed by a tile coordinate.");
-                }
-            }
             if (HatchStaleMs <= 0)
             {
                 throw new InvalidOperationException($"{path}: hatchStaleMs must be above 0, got {HatchStaleMs}.");
@@ -128,19 +119,5 @@ namespace ShinyBotHunter.BotEvents
             Enum.TryParse<Direction>(StartFacing, ignoreCase: true, out var d) ? d : Direction.Up;
 
         public bool IsVerticalCorridor => HatchAxis.ToLowerInvariant() == "y";
-
-        /// <summary>The parsed form of <see cref="RouteToLine"/>. Validated at load.</summary>
-        public IReadOnlyList<(char Axis, short Value)> Legs =>
-            RouteToLine.Select(leg => TryParseLeg(leg, out var parsed) ? parsed : default).ToList();
-
-        private static bool TryParseLeg(string leg, out (char Axis, short Value) parsed)
-        {
-            parsed = default;
-            if (leg is null || leg.Length < 3 || leg[1] != ':') return false;
-            char axis = char.ToLowerInvariant(leg[0]);
-            if ((axis != 'x' && axis != 'y') || !short.TryParse(leg.AsSpan(2), out short value)) return false;
-            parsed = (axis, value);
-            return true;
-        }
     }
 }

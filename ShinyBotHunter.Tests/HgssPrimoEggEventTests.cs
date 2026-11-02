@@ -196,79 +196,52 @@ namespace ShinyBotHunter.Tests
                 HgssPrimoEggEvent.StandFacingPrimo(PrimoEggConfig.Load(PrimoEggConfig.DefaultPath)));
         }
 
-        [Fact]
-        public void RouteLegMacrosFromPrimosTile()
-        {
-            // Each leg from where the one before ended; the door leg ends outside, at (497, 272) in Violet City.
-            (short X, short Y)[] from = [(12, 12), (12, 19), (8, 19), (497, 272), (488, 272), (488, 264), (469, 264)];
-            var legs = PrimoEggConfig.Load(PrimoEggConfig.DefaultPath).Legs;
-
-            string[] macros = legs.Select((leg, i) => HgssPrimoEggEvent.LegMacro(leg, from[i].X, from[i].Y, Table)).ToArray();
-
-            Assert.Equal(
-            [
-                $"M.Down.19.{Table.TrainerY}", $"M.Left.8.{Table.TrainerX}", $"M.Down.272.{Table.TrainerY}", $"M.Left.488.{Table.TrainerX}",
-                $"M.Up.264.{Table.TrainerY}", $"M.Left.469.{Table.TrainerX}", $"M.Up.258.{Table.TrainerY}",
-            ], macros);
-        }
-
-        [Fact]
-        public async Task RouteLegEndsWhenTheCoordinateIsReached()
-        {
-            FakeMemoryClient memory = new();
-            Stand(memory, 158, 12, 19, Direction.Down);
-            FakeBot commands = new(Task.CompletedTask);
-
-            await HgssPrimoEggEvent.WalkLegAsync(new HgssOverworldReader(memory, Table), new ScriptedReader(FieldFree), commands, Table, ('y', 19),
-                TimeSpan.FromMilliseconds(100), CancellationToken.None);
-
-            Assert.Empty(commands.Macros);
-        }
-
         private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
 
-        // Violet City's sign at (488, 263) as observed: script 9, the sign's two natives, no text printer.
-        private static GameSnapshot Sign(uint? native) => new(GameScreen.FieldTask, null, 9, null, RunScripts, native);
-
         [Fact]
-        public async Task RouteLegThatStopsMovingWithTheFieldFreeNamesTheTile()
+        public async Task TheWalkGoesToTheConfigsLineThroughTheNavigator()
         {
+            // The navigator only skips the walk when its destination is the player's tile; any other destination would
+            // reach the test profile's empty map data and throw.
             FakeMemoryClient memory = new();
-            Stand(memory, 158, 8, 19, Direction.Down);
-            FakeBot commands = null!;
-            commands = new(Task.CompletedTask) { Pressed = m => commands.Macros.Add(m) };
+            Stand(memory, 73, 469, 258, Direction.Up);
+            FakeBot bot = new(Task.CompletedTask) { State = new ScriptedReader(FieldFree), Overworld = new HgssOverworldReader(memory, Table) };
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => HgssPrimoEggEvent.WalkLegAsync(
-                new HgssOverworldReader(memory, Table), new ScriptedReader(FieldFree), commands, Table, ('y', 272), TimeSpan.FromMilliseconds(100),
-                CancellationToken.None));
+            await HgssPrimoEggEvent.WalkToLineAsync(bot, new NavigatorEvent(new PokemonStateReader()), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
+                CancellationToken.None);
 
-            Assert.Equal("Route leg y:272 stopped at map 158, tile (8, 19)", ex.Message);
-            Assert.Equal([$"M.Down.272.{Table.TrainerY}", "clear"], commands.Macros);
+            Assert.Empty(bot.Macros);
         }
 
         [Fact]
-        public async Task RouteLegInterruptedByTheSignIsPressedThroughAndResumed()
+        public async Task OnTheLineAfterTheWalkPasses()
         {
             FakeMemoryClient memory = new();
-            Stand(memory, 73, 488, 264, Direction.Up);
-            int legs = 0;
-            FakeBot commands = null!;
-            commands = new(Task.CompletedTask)
-            {
-                Pressed = m =>
-                {
-                    commands.Macros.Add(m);
-                    // The re-issued leg walks; the first one is stuck under the sign.
-                    if (m.StartsWith("M.") && ++legs == 2) memory.Place(Table.TrainerX, BitConverter.GetBytes((uint)469 << 16));
-                }
-            };
-            ScriptedReader game = new(Sign(0x02041455), Sign(0x020415E1), Sign(0x020415E1), Sign(0x02040ECD), FieldFree);
+            Stand(memory, 73, 469, 258, Direction.Up);
 
-            await HgssPrimoEggEvent.WalkLegAsync(new HgssOverworldReader(memory, Table), game, commands, Table, ('x', 469),
-                TimeSpan.FromSeconds(5), CancellationToken.None);
+            await HgssPrimoEggEvent.CheckOnLineAsync(new HgssOverworldReader(memory, Table), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
+                EventState.DecideOverworldAction, CancellationToken.None);
+        }
 
-            string leg = $"M.Left.469.{Table.TrainerX}";
-            Assert.Equal([leg, "clear", "H.A.4;W.20", "H.A.4;W.20", leg], commands.Macros);
+        [Theory]
+        // The route abandoned after the blocked-segment retries: the navigator still hands back DecideOverworldAction.
+        [InlineData(EventState.DecideOverworldAction, 73, 489, 264,
+            "The walk to the line stopped at map 73, tile (489, 264), the navigator in DecideOverworldAction; the line starts at map 73, tile (469, 258).")]
+        // A stale-timeout the navigator parked on.
+        [InlineData(EventState.Waiting, 73, 489, 264,
+            "The walk to the line stopped at map 73, tile (489, 264), the navigator in Waiting; the line starts at map 73, tile (469, 258).")]
+        // No path.
+        [InlineData(EventState.Complete, 158, 12, 12,
+            "The walk to the line stopped at map 158, tile (12, 12), the navigator in Complete; the line starts at map 73, tile (469, 258).")]
+        public async Task AWalkTheNavigatorStoppedNamesWhereItEnded(EventState navigatorState, int map, int x, int y, string expected)
+        {
+            FakeMemoryClient memory = new();
+            Stand(memory, map, x, y, Direction.Up);
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => HgssPrimoEggEvent.CheckOnLineAsync(
+                new HgssOverworldReader(memory, Table), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath), navigatorState, CancellationToken.None));
+
+            Assert.Equal(expected, ex.Message);
         }
 
         // Every party block parses, so the party check counts the blocks the bot returns.

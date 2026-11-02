@@ -23,9 +23,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(10, config.Egg);
             Assert.Equal(218, config.EggSpecies);
             Assert.Equal((158, 12, 12, Direction.Up), (config.StartMapId, config.StartX, config.StartY, config.StartFacingDirection));
-            Assert.Equal(
-                new (char, short)[] { ('y', 19), ('x', 8), ('y', 272), ('x', 488), ('y', 264), ('x', 469), ('y', 258) },
-                config.Legs);
+            Assert.Equal((73, 469, 258), (config.LineMapId, config.LineX, config.LineY));
             Assert.False(config.IsVerticalCorridor);
             Assert.Equal((458, 500), (config.HatchLow, config.HatchHigh));
             Assert.Equal(30000, config.HatchStaleMs);
@@ -51,10 +49,6 @@ namespace ShinyBotHunter.Tests
                 ("startFacing", c => c.StartFacing = "None"),
                 ("hatchAxis", c => c.HatchAxis = "z"),
                 ("hatchLow", c => c.HatchLow = c.HatchHigh),
-                ("routeToLine", c => c.RouteToLine = []),
-                ("routeToLine", c => c.RouteToLine = ["z:3"]),
-                ("routeToLine", c => c.RouteToLine = ["x:"]),
-                ("routeToLine", c => c.RouteToLine = ["y:abc"]),
                 ("egg", c => c.Egg = 11),
                 ("hatchStaleMs", c => c.HatchStaleMs = 0),
             };

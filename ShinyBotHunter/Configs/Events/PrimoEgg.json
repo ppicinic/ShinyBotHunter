@@ -10,17 +10,10 @@
   "startY": 12,
   "startFacing": "Up",
 
-  // From Primo's tile to the pacing line, each leg confirmed by position (docs/research/primo-slugma-egg.md,
-  // "What a bot needs", the walk; measured in the spike, 2026-11-02).
-  "routeToLine": [
-    "y:19",  // inside the Center, down to (12, 19)
-    "x:8",   // left to (8, 19), in front of the door
-    "y:272", // down through the door, out to Violet City (497, 272)
-    "x:488", // west to x 488, where the street ends
-    "y:264", // north to y 264
-    "x:469", // west to x 469, below the Mart door (469, 257)
-    "y:258"  // north onto the line at y 258
-  ],
+  // Where the navigator's walk from Primo's tile ends: the line's east end at the Mart door's column (Violet City, map 73).
+  "lineMapId": 73,
+  "lineX": 469,
+  "lineY": 258,
 
   // The Togepi hunt's line: the street just south of the Mart door, x 458 to 500 at y 258.
   "hatchAxis": "x",
