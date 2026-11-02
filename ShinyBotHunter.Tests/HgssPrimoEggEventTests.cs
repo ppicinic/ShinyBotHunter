@@ -219,23 +219,56 @@ namespace ShinyBotHunter.Tests
             Stand(memory, 158, 12, 19, Direction.Down);
             FakeBot commands = new(Task.CompletedTask);
 
-            await HgssPrimoEggEvent.WalkLegAsync(new HgssOverworldReader(memory, Table), commands, Table, ('y', 19), TimeSpan.FromMilliseconds(100), CancellationToken.None);
+            await HgssPrimoEggEvent.WalkLegAsync(new HgssOverworldReader(memory, Table), new ScriptedReader(FieldFree), commands, Table, ('y', 19),
+                TimeSpan.FromMilliseconds(100), CancellationToken.None);
 
             Assert.Empty(commands.Macros);
         }
 
+        private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
+
+        // Violet City's sign at (488, 263) as observed: script 9, the sign's two natives, no text printer.
+        private static GameSnapshot Sign(uint? native) => new(GameScreen.FieldTask, null, 9, null, RunScripts, native);
+
         [Fact]
-        public async Task RouteLegThatStopsMovingNamesTheTile()
+        public async Task RouteLegThatStopsMovingWithTheFieldFreeNamesTheTile()
         {
             FakeMemoryClient memory = new();
             Stand(memory, 158, 8, 19, Direction.Down);
-            FakeBot commands = new(Task.CompletedTask);
+            FakeBot commands = null!;
+            commands = new(Task.CompletedTask) { Pressed = m => commands.Macros.Add(m) };
 
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => HgssPrimoEggEvent.WalkLegAsync(
-                new HgssOverworldReader(memory, Table), commands, Table, ('y', 272), TimeSpan.FromMilliseconds(100), CancellationToken.None));
+                new HgssOverworldReader(memory, Table), new ScriptedReader(FieldFree), commands, Table, ('y', 272), TimeSpan.FromMilliseconds(100),
+                CancellationToken.None));
 
             Assert.Equal("Route leg y:272 stopped at map 158, tile (8, 19)", ex.Message);
-            Assert.Equal(["clear"], commands.Macros);
+            Assert.Equal([$"M.Down.272.{Table.TrainerY}", "clear"], commands.Macros);
+        }
+
+        [Fact]
+        public async Task RouteLegInterruptedByTheSignIsPressedThroughAndResumed()
+        {
+            FakeMemoryClient memory = new();
+            Stand(memory, 73, 488, 264, Direction.Up);
+            int legs = 0;
+            FakeBot commands = null!;
+            commands = new(Task.CompletedTask)
+            {
+                Pressed = m =>
+                {
+                    commands.Macros.Add(m);
+                    // The re-issued leg walks; the first one is stuck under the sign.
+                    if (m.StartsWith("M.") && ++legs == 2) memory.Place(Table.TrainerX, BitConverter.GetBytes((uint)469 << 16));
+                }
+            };
+            ScriptedReader game = new(Sign(0x02041455), Sign(0x020415E1), Sign(0x020415E1), Sign(0x02040ECD), FieldFree);
+
+            await HgssPrimoEggEvent.WalkLegAsync(new HgssOverworldReader(memory, Table), game, commands, Table, ('x', 469),
+                TimeSpan.FromSeconds(5), CancellationToken.None);
+
+            string leg = $"M.Left.469.{Table.TrainerX}";
+            Assert.Equal([leg, "clear", "H.A.4;W.20", "H.A.4;W.20", leg], commands.Macros);
         }
 
         // Every party block parses, so the party check counts the blocks the bot returns.
