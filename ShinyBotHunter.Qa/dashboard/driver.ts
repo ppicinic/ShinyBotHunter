@@ -86,13 +86,24 @@ export async function shotAll(name: string, pages: Record<string, Page>): Promis
 
 // --- emulator over ApiHawk (position 0 listens on 20000 for commands and 20001 for memory) ---------
 
-async function readMemory(addr: number, length: number): Promise<Buffer> {
+export async function readMemory(addr: number, length: number): Promise<Buffer> {
   const body = Buffer.alloc(9)
   body.writeUInt8(1, 0)
   body.writeUInt32LE(addr, 1)
   body.writeUInt32LE(length, 5)
   const res = await fetch('http://127.0.0.1:20001/', { method: 'POST', body })
   return Buffer.from(await res.arrayBuffer())
+}
+
+/** One byte through ApiHawk cmd 0x02; ApiHawk acknowledges with 0x01 once the frame thread has written it. */
+export async function writeU8(addr: number, value: number): Promise<void> {
+  const body = Buffer.alloc(9)
+  body.writeUInt8(2, 0)
+  body.writeUInt32LE(addr, 1)
+  body.writeUInt32LE(value & 0xff, 5)
+  const res = await fetch('http://127.0.0.1:20001/', { method: 'POST', body })
+  const ack = Buffer.from(await res.arrayBuffer())
+  if (ack.length !== 1 || ack[0] !== 1) throw new Error(`write of ${value} at ${addr.toString(16)} not acknowledged: ${ack.toString('hex')}`)
 }
 
 export async function readU16(addr: number): Promise<number> {
@@ -152,10 +163,12 @@ foreach ($vk in 0x7B,0x10,0x11) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirt
 let recorder: ChildProcess | null = null
 const stopFile = path.join(runDir, 'stop-recorder')
 
-export function startEmulatorRecorder(): void {
+/** Records EmuHawk to `<name>.mp4`; a stop file left by an earlier recording in this run is removed first. */
+export function startEmulatorRecorder(name = 'emulator'): void {
+  fs.rmSync(stopFile, { force: true })
   recorder = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'record-window.ps1'),
-    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, 'emulator.mp4'), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
-  step('emulator recorder started')
+    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, `${name}.mp4`), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
+  step(`emulator recorder started: ${name}.mp4`)
 }
 
 async function shotEmulator(name: string): Promise<void> {
