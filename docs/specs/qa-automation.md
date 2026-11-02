@@ -289,7 +289,7 @@ Preconditions:
 | `hgss-navigate-heal-return` (#140) | navigation | none |
 | `hgss-heal-variants` (#141) | navigation | none; the three heal saves in turn (fainted lead, fainted slot 2, Pokérus), each must end with the bot back on Route 33 and no second nurse conversation (spike 2026-10-22 saw one on the slot-2 save) |
 | `hgss-poison-walk` (#141) | navigation | none; pace the path row on the poison save until the "survived the poisoning" message, which must be cleared and the walk resumed |
-| `hgss-togepi-egg-hatch` | egg | none, or an egg PID patch once mapped |
+| `hgss-togepi-egg-hatch` | egg | none; one full cycle on the shared hatch step ([Primo egg hunt spec](primo-egg-hunt.md), FR-17): steps left counting down, script 2021, No at the nickname, no stall line |
 | `rs-starter-wave-shiny-park` | starter-hunt, bot-engine | RNG freeze, once RS is mapped |
 | `rs-starter-double-find` | starter-hunt (the race the review found) | RNG freeze on two emulators |
 | `api-concurrent-launch` | bot-engine (plan task 2.2) | none; two launches at once |
@@ -308,6 +308,10 @@ Preconditions:
 | `hgss-headbutt-dead-tree` | encounter, headbutt | none; `runMacro` faces the tree at (425, 465), which gives no Pokémon; the event parks in Waiting with the "gave no Pokémon" line and no exception |
 | `hgss-headbutt-greyed` | dashboard, headbutt | none; no party member knows Headbutt; the option is disabled with its reason and an API Start with Headbutt is a 400 |
 | `hgss-headbutt-shiny` | encounter, persistence, headbutt | `hgss-usa-rev0/wild-shiny` armed after two cycles; proves the cheat reaches headbutt encounters and the shiny parks with the alert |
+| `hgss-primo-egg-refusals` | dashboard, egg | none; a full party and a player off Primo's tile are each refused at Run with the spec's sentence ([Primo egg hunt spec](primo-egg-hunt.md)) |
+| `hgss-primo-egg-password` | dashboard, egg | none; the computed password entered through the easy-chat screen, the script variables after each prompt, a Slugma egg in the party |
+| `hgss-primo-egg-hatch` | dashboard, bot-engine, egg, persistence | none; two full cycles: route legs, steps left counting down to the hatch script, No at the nickname question, two Slugma rows with different PIDs, back at Primo after each soft reset |
+| `hgss-primo-egg-shiny` | egg, persistence, discord | the egg's PID rewritten in party RAM to a shiny one (QA tooling, on a throwaway copy of the save); Discord alert, catch recorded, save written, event Complete |
 | `rs-jirachi-setup-refusals` | dashboard, jirachi | none; a rev 0 ROM, a missing save, a full party and a save without the Pokédex each refused at Start with the spec's sentence ([Wishmaker Jirachi spec](wishmaker-jirachi.md)) |
 | `rs-jirachi-soak` | dashboard, bot-engine, jirachi, persistence | none; one unattended hour, at least 20 Jirachi encounters with distinct PIDs, every PID equal to the save's prediction, a "summary on view" line per cycle, no cycle over 300 s, then a cancel during the Dolphin half (FR-19) |
 | `rs-jirachi-shiny` | bot-engine, jirachi, persistence, discord | `rs-sapphire-usa-rev2` seed freeze, generated per run: `jirachi-seed.ts` crafts `qa-jirachi`'s live section 0 to seed `ECDD` (PID `987ED636`, shiny), and the cheat freezes the play time and berry-stamp fields so the bot's own saves keep it. Asserts the encounter row, the Mongo catch, the Discord alert, the event in Waiting and EmuHawk parked at the summary |
@@ -385,6 +389,8 @@ The harness calls the script before launch and keeps its own before-and-after ha
 | `hgss.qa-headbutt` | `HG-Headbutt` | Azalea Town (426, 464) facing Down at headbutt tree 0 (common for trainer ID 15613); lead Slowpoke Lv 25 knowing Headbutt, following; the owner's save | 15613 / 35374 | `hgss-headbutt`, `-sideways`, `-dead-tree`, `-shiny` |
 | `hgss.qa-headbutt-cutin` | `HG-Headbutt-CutIn` | `hgss.qa-headbutt` with party slots 1 and 2 swapped by PKHeX: Typhlosion leads and follows, Slowpoke second knows Headbutt | 15613 / 35374 | `hgss-headbutt-cutin` |
 | `hgss.qa-headbutt-nomove` | `HG-Headbutt-NoMove` | `hgss.qa-headbutt` with Slowpoke's Headbutt replaced by Tackle (PKHeX); no party member knows Headbutt | 15613 / 35374 | `hgss-headbutt-greyed` |
+| `hgss.qa-primo` | `SS-Slugma-Room` | Violet Pokémon Center 1F (map 158) at (12, 12) facing Primo; five Pokémon; the owner's `SS-Slugma` with the sixth member removed by PKHeX; SoulSilver rev 0 | 60647 / 55034 | `hgss-primo-egg-refusals` (moved off the tile), `-password`, `-hatch`, `-shiny` (on a throwaway copy) |
+| `hgss.qa-primo-full` | `SS-Slugma` | as `hgss.qa-primo` with six Pokémon: the owner's save as made | 60647 / 55034 | `hgss-primo-egg-refusals` |
 | `hgss.qa-togepi` | to make | Just before receiving the Togepi egg, party of 5 or fewer | | `hgss-togepi-egg-hatch` |
 | `rs.qa-starter` | to make | Whatever the RS starter hunt expects | | the `rs-starter-*` scenarios |
 | `rs.qa-jirachi` | `Pokemon - Sapphire Version (USA, Europe) (Rev 2)` (`AXPE` revision 2) | Trainer Phil in the field, Pokédex received (flag `0x801`), one party member, play time about 93 h, first-block counter 82; a byte copy of the spike's final hunt save, kept as `../shinybothunterqasaves/rs/qa-jirachi.SaveRAM` | 39541 / 17794 | `rs-jirachi-soak`, `rs-jirachi-shiny` (seed `ECDD` crafted by `jirachi-seed.ts` on a copy) |
