@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button), ShinyBotHunter/Data/HGSS/mapreverselookup.json (key 157), ShinyBotHunter/Service/BotEventRunner.cs (the crashed message), docs/guide/07-when-something-goes-wrong.md, the owner's answers of 2026-10-27 -->
+<!-- Derived from: ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/HgssEggHatch.cs, ShinyBotHunter/Configs/Events/TogepiEgg.json, ShinyBotHunter/BotEvents/EggHuntConfig.cs, ShinyBotHunter/Games/EventRegistry.cs ("HGSS Togepi Egg"), ShinyBotHunter/Service/BotService.cs (StartTogepiEggAsync, EnsurePartyHasRoomForEggAsync), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (Milestone label), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run button), ShinyBotHunter/Data/HGSS/mapreverselookup.json (key 157), ShinyBotHunter/Service/BotEventRunner.cs (the crashed message), docs/guide/07-when-something-goes-wrong.md, the owner's answers of 2026-10-27 -->
 # Togepi egg hunt
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -43,12 +43,11 @@ The walking path and the timings are in a file that comes with the bot. They are
 ## What happens in each attempt?
 
 1. The bot takes the egg. It waits up to 60 seconds for the egg to show up in your party.
-2. It walks back and forth along a straight path until it can no longer move, which is the hatch starting.
-3. It lets the hatch play.
-4. It checks that the egg really hatched. If it is still an egg, something else stopped it moving, and it goes back to walking.
-5. It reads the hatched Pokémon and writes it to the encounter log.
-6. If the Pokémon is shiny, the bot sends a shiny alert to [Discord](../05-discord.md), saves the game, records it as caught, and finishes.
-7. If not, it soft resets and continues the game. The waits while continuing are slightly random, so each attempt plays out differently.
+2. It walks back and forth on the street until the game itself starts the hatch. Every 30 seconds it writes the egg step count to the backend's window.
+3. It presses A at "Oh?", answers No when asked whether to nickname the Pokémon, and waits until you can walk again.
+4. It reads the hatched Pokémon and writes it to the encounter log.
+5. If the Pokémon is shiny, the bot sends a shiny alert to [Discord](../05-discord.md), saves the game, records it as caught, and finishes.
+6. If not, it soft resets and continues the game. The waits while continuing are slightly random, so each attempt plays out differently.
 
 ## What does it log?
 
@@ -61,7 +60,6 @@ The walking path and the timings are in a file that comes with the bot. They are
 
 - **It finishes** when a shiny Togepi hatches. It saves first.
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
-- **It stops** when it cannot read your party after a hatch to confirm it.
 - **It gives up with a message**, as listed below.
 
 These messages show in the backend's window, as `[BotService] Event '<name>' crashed` followed by the message; on the dashboard the emulator just goes idle. See [Where do the bot's messages appear?](../07-when-something-goes-wrong.md#where-do-the-bots-messages-appear). The full-party refusal is the exception: it shows on the dashboard when you press **Run**.
@@ -84,13 +82,17 @@ These messages show in the backend's window, as `[BotService] Event '<name>' cra
 **It means** the bot did not get the egg within 60 seconds. The save is out of step with what the bot expects, or it was not made before the hand-over.
 **Do** load a save made before receiving the egg, in the area where it is given, and start again.
 
-**You see** "Position never stalled within 1800s of pacing."
-**It means** the bot walked for 30 minutes and the egg never hatched.
-**Do** check that the bot is walking where you expect, then see [When something goes wrong](../07-when-something-goes-wrong.md).
-
-**You see** "Position stalled 5 times without the egg ever hatching. Something other than the hatch cutscene keeps blocking movement on this corridor."
-**It means** something kept stopping the bot on its walking path, five times, and it was never the hatch.
+**You see** "Waited for script 2021 while pacing; the day care step counter stayed ... for 30 s" (with the step count in place of the dots).
+**It means** the step count did not change for 30 seconds, so the bot was not taking steps. Something is in the way on its walking path.
 **Do** look at the path in the emulator for anything in the way, then start again.
+
+**You see** "Waited for" followed by a hatch step, such as "the hatch app (overlay 95) to close", and what the bot saw (overlay and cursor).
+**It means** a step of the hatch waited 30 seconds with nothing changing on screen, or a button press did not take after three tries.
+**Do** look at the emulator to see where the hatch stopped, then see [When something goes wrong](../07-when-something-goes-wrong.md).
+
+**You see** "No party slot holds pid ... after the hatch script ended" or "Party slot ... (pid ...) is still an egg after the hatch script ended".
+**It means** the hatch finished but the bot could not find the hatched Pokémon in your party by the egg's PID, or the egg had not hatched.
+**Do** check your party in the emulator, then see [When something goes wrong](../07-when-something-goes-wrong.md).
 
 For anything else, see [When something goes wrong](../07-when-something-goes-wrong.md).
 

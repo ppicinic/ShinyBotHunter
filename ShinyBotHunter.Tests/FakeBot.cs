@@ -17,6 +17,7 @@ namespace ShinyBotHunter.Tests
     public class FakeBot : IBot
     {
         private readonly Task launch;
+        private readonly IGameStateReader? state;
 
         public FakeBot(Task launch, GameProfile? profile = null)
         {
@@ -30,6 +31,14 @@ namespace ShinyBotHunter.Tests
         public GameProfile Profile { get; }
         public IPointerService Addresses => Profile.Addresses(0);
         public string GameFileName => "fake.nds";
+
+        // What a test scripts: the chain reads, the party blocks, and a callback that sees each RunMacroString.
+        public Func<IReadOnlyList<ChainBlockRequest>, ChainBlockResult[]> ChainBlocks { get; init; } = _ => Array.Empty<ChainBlockResult>();
+        public byte[][] PartyBlocks { get; init; } = Array.Empty<byte[]>();
+        public Action<string> Pressed { get; init; } = _ => { };
+
+        // RunRepeatMacro as "RP:" + macro, ClearMacro as "clear". Written and read by the test's one async flow; no lock.
+        public List<string> Macros { get; } = new();
 
         public Task LaunchAsync() => launch;
 
@@ -48,10 +57,10 @@ namespace ShinyBotHunter.Tests
         public void HoldFrames(string button, int frames) { }
         public void Release() { }
         public void Release(string button) { }
-        public void RunMacroString(string macro) { }
-        public void RunRepeatMacro(string macro) { }
+        public void RunMacroString(string macro) => Pressed(macro);
+        public void RunRepeatMacro(string macro) => Macros.Add("RP:" + macro);
         public void RunMacros(params MacroStruct[] macro) { }
-        public void ClearMacro() { }
+        public void ClearMacro() => Macros.Add("clear");
         public Task WaitForMacroAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task FlushSave(CancellationToken ct = default) => Task.CompletedTask;
         public Task StartRecordingAsync(CancellationToken ct = default) => Task.CompletedTask;
@@ -68,11 +77,11 @@ namespace ShinyBotHunter.Tests
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
-            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte[]>());
-        public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default) => Task.FromResult(Array.Empty<ChainBlockResult>());
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(PartyBlocks);
+        public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default) => Task.FromResult(ChainBlocks(blocks));
 
-        // No test that uses FakeBot reads the overworld or the game state.
+        // No test that uses FakeBot reads the overworld.
         public IOverworldReader Overworld => throw new NotImplementedException();
-        public IGameStateReader State => throw new NotImplementedException();
+        public IGameStateReader State { get => state ?? throw new NotImplementedException(); init => state = value; }
     }
 }
