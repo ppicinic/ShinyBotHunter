@@ -13,11 +13,26 @@ export const Y_ADDR = 0x21da6fc
 const ANCHOR_ADDR = 0x21d4158
 const FACING_OFFSET = 0x1dc4
 const FACINGS = ['Up', 'Down', 'Left', 'Right']
-export const MILESTONE = 'Azalea Headbutt'
 // Azalea's headbutt trees give Spearow, Heracross and Aipom.
 export const HEADBUTT_SPECIES = ['21', '214', '190']
 export const HEADBUTT_NAMES = ['Spearow', 'Heracross', 'Aipom']
 const PSQL = 'C:\\Tools\\pgsql\\bin\\psql.exe'
+
+/**
+ * The offered milestone whose Pokémon include all three of Azalea's headbutt species, found by species, not by name,
+ * so any dev milestone for the tree will do. Fails if there is none: make one in the Milestone Editor.
+ */
+export async function headbuttMilestone(card: Locator): Promise<string> {
+  const names = (await card.getByTestId('param-PhaseName').locator('option')
+    .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).filter((v) => v !== '')
+  for (const name of names) {
+    const res = await fetch(`http://localhost:5000/api/phaseinfo/HGSS/${encodeURIComponent(name)}`)
+    if (!res.ok) continue
+    const ids = ((await res.json()).phaseInfo.pokemon as { speciesId: number }[]).map((p) => String(p.speciesId))
+    if (HEADBUTT_SPECIES.every((s) => ids.includes(s))) return name
+  }
+  throw new Error(`no HGSS milestone with ${HEADBUTT_NAMES.join(', ')} among ${names.join(', ')}; make one in the Milestone Editor`)
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 export const backendLog = (): string[] => fs.readFileSync(path.join(runDir, 'backend.log'), 'utf8').split(/\r?\n/)
@@ -108,9 +123,9 @@ const toMs = (text: string): number => Date.parse(text.replace(' ', 'T').replace
 
 export type Row = { species: string; level: number; shiny: boolean; at: number }
 /** The milestone's encounters rows for the ROM since `since`, oldest first; they are written to steps.log. */
-export function encounterRows(env: NodeJS.ProcessEnv, rom: string, since: string): Row[] {
+export function encounterRows(env: NodeJS.ProcessEnv, rom: string, milestone: string, since: string): Row[] {
   const rows = psql(env, `SELECT "Species","Level","IsShiny","Timestamp" FROM encounters WHERE "GameFileName"='${rom}' ` +
-    `AND "Milestone"='${MILESTONE}' AND "Timestamp" >= '${since}' ORDER BY "Timestamp"`)
+    `AND "Milestone"='${milestone}' AND "Timestamp" >= '${since}' ORDER BY "Timestamp"`)
   step(`${rows.length} encounters rows since ${since}: ${rows.join(' ; ')}`)
   return rows.map((l) => {
     const [species, level, shiny, at] = l.split('|')

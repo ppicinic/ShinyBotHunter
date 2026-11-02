@@ -8,7 +8,7 @@ import {
   startEmulatorRecorder, step, stopBackend, stopRecorder, toS16, windowByTitle
 } from './driver'
 import {
-  backendLines, backendLog, CRASHED, encounterRows, MILESTONE, parseFr11, pgEnv, readTile, X_ADDR, Y_ADDR
+  backendLines, backendLog, CRASHED, encounterRows, headbuttMilestone, parseFr11, pgEnv, readTile, X_ADDR, Y_ADDR
 } from './headbutt'
 
 const ROM = 'HG-Headbutt'
@@ -75,9 +75,8 @@ test('HGSS Headbutt on a tree with no Pokémon: one cycle, the player put back, 
 
     // 7. Wild Encounter, ShinyTarget, Headbutt, TrainType left at None. Headbutt must be offered with no workaround.
     await wildPicker.click()
-    const phases = await card.getByTestId('param-PhaseName').locator('option').allTextContents()
-    expect(phases, `no "${MILESTONE}" milestone; make it in the Milestone Editor`).toContain(MILESTONE)
-    await card.getByTestId('param-PhaseName').locator('select').selectOption(MILESTONE)
+    const milestone = await headbuttMilestone(card)
+    await card.getByTestId('param-PhaseName').locator('select').selectOption(milestone)
     await card.getByTestId('param-TargetType').locator('select').selectOption('ShinyTarget')
     const headbutt = card.getByTestId('param-EncounterType').locator('option[value="Headbutt"]')
     await expect(headbutt).toBeAttached({ timeout: 30_000 })
@@ -89,7 +88,7 @@ test('HGSS Headbutt on a tree with no Pokémon: one cycle, the player put back, 
     // The last element is the empty string after the final newline; the first line after the click replaces it.
     const from = backendLog().length - 1
     await card.getByRole('button', { name: 'Run', exact: true }).click()
-    step(`Wild Encounter started at ${runStart}: ${MILESTONE}, ShinyTarget, Headbutt`)
+    step(`Wild Encounter started at ${runStart}: ${milestone}, ShinyTarget, Headbutt`)
     await shotAll('02-running', pages)
     await expect(wildPicker).toHaveCount(0, { timeout: 30_000 })
 
@@ -155,7 +154,7 @@ test('HGSS Headbutt on a tree with no Pokémon: one cycle, the player put back, 
     expect(exitCode, 'backend did not exit within 60 s of "end"').not.toBeNull()
     backend = null
     step(`backend exited with ${exitCode}`)
-    expect(encounterRows(pg, ROM, runStart).length, 'a row from a tree with no Pokémon').toBe(0)
+    expect(encounterRows(pg, ROM, milestone, runStart).length, 'a row from a tree with no Pokémon').toBe(0)
   } finally {
     // Failure path: leave nothing running. A forced kill does not flush SaveRAM.
     await stopRecorder()

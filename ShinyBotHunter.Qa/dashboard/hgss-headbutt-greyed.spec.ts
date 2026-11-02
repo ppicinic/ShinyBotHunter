@@ -7,7 +7,7 @@ import {
   dashboardDir, emuHawkRunning, killEmuHawk, killTree, launchDashboard, readU32, runDir, shotAll, startBackend,
   startEmulatorRecorder, step, stopBackend, stopRecorder, toS16, windowByTitle
 } from './driver'
-import { backendLines, backendLog, MILESTONE, readTile, Y_ADDR } from './headbutt'
+import { backendLines, backendLog, headbuttMilestone, readTile, Y_ADDR } from './headbutt'
 
 // Slowpoke's Headbutt replaced by Tackle: no party member knows Headbutt.
 const ROM = 'HG-Headbutt-NoMove'
@@ -64,8 +64,7 @@ test('HGSS Headbutt with no party member knowing it: the option is greyed with i
     // 7. The Wild Encounter form: Headbutt disabled with the FR-3 sentence in its label, Spin and Run enabled.
     // The party is read with no workaround; the read-failed sentence instead is a product finding, not a pass.
     await wildPicker.click()
-    const phases = await card.getByTestId('param-PhaseName').locator('option').allTextContents()
-    expect(phases, `no "${MILESTONE}" milestone; make it in the Milestone Editor`).toContain(MILESTONE)
+    const milestone = await headbuttMilestone(card)
     const encounterType = card.getByTestId('param-EncounterType')
     const headbutt = encounterType.locator('option[value="Headbutt"]')
     await expect(headbutt).toBeAttached({ timeout: 30_000 })
@@ -84,7 +83,7 @@ test('HGSS Headbutt with no party member knowing it: the option is greyed with i
     const res = await fetch(`${API}/bot/startAction/0`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ EventName: 'Wild Encounter', PhaseName: MILESTONE, TargetType: 'ShinyTarget', EncounterType: 'Headbutt' })
+      body: JSON.stringify({ EventName: 'Wild Encounter', PhaseName: milestone, TargetType: 'ShinyTarget', EncounterType: 'Headbutt' })
     })
     const body = await res.text()
     step(`startAction with Headbutt: ${res.status} "${body}"`)

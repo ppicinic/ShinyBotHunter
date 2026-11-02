@@ -7,7 +7,7 @@ import {
   dashboardDir, emuHawkRunning, killEmuHawk, killTree, launchDashboard, readU32, runDir, shotAll, startBackend,
   startEmulatorRecorder, step, stopBackend, stopRecorder, toS16, windowByTitle
 } from './driver'
-import { backendLines, backendLog, encounterRows, MILESTONE, pgEnv, readTile, watchCycles, Y_ADDR, type Cycle } from './headbutt'
+import { backendLines, backendLog, encounterRows, headbuttMilestone, pgEnv, readTile, watchCycles, Y_ADDR, type Cycle } from './headbutt'
 
 // Typhlosion leads and follows, Slowpoke second knows Headbutt: the cut-in plays and the player never moves.
 const ROM = 'HG-Headbutt-CutIn'
@@ -67,9 +67,8 @@ test('HGSS Headbutt by a non-following member: five cycles, no swap and no retur
 
     // 7. Wild Encounter, ShinyTarget, Headbutt, TrainType left at None. Headbutt must be offered with no workaround.
     await wildPicker.click()
-    const phases = await card.getByTestId('param-PhaseName').locator('option').allTextContents()
-    expect(phases, `no "${MILESTONE}" milestone; make it in the Milestone Editor`).toContain(MILESTONE)
-    await card.getByTestId('param-PhaseName').locator('select').selectOption(MILESTONE)
+    const milestone = await headbuttMilestone(card)
+    await card.getByTestId('param-PhaseName').locator('select').selectOption(milestone)
     await card.getByTestId('param-TargetType').locator('select').selectOption('ShinyTarget')
     const headbutt = card.getByTestId('param-EncounterType').locator('option[value="Headbutt"]')
     await expect(headbutt).toBeAttached({ timeout: 30_000 })
@@ -81,7 +80,7 @@ test('HGSS Headbutt by a non-following member: five cycles, no swap and no retur
     // The last element is the empty string after the final newline; the first line after the click replaces it.
     const from = backendLog().length - 1
     await card.getByRole('button', { name: 'Run', exact: true }).click()
-    step(`Wild Encounter started at ${runStart}: ${MILESTONE}, ShinyTarget, Headbutt`)
+    step(`Wild Encounter started at ${runStart}: ${milestone}, ShinyTarget, Headbutt`)
     await shotAll('02-running', pages)
     await expect(wildPicker).toHaveCount(0, { timeout: 30_000 })
 
@@ -136,7 +135,7 @@ test('HGSS Headbutt by a non-following member: five cycles, no swap and no retur
     }
     // No swap, so every return is none.
     expect(cycles.map((c) => c.fr11!.ret), 'a return that is not none').toEqual(Array(CYCLES + 1).fill('none'))
-    expect(encounterRows(pg, ROM, runStart).length, 'not one row per cycle').toBe(CYCLES)
+    expect(encounterRows(pg, ROM, milestone, runStart).length, 'not one row per cycle').toBe(CYCLES)
   } finally {
     // Failure path: leave nothing running. A forced kill does not flush SaveRAM.
     await stopRecorder()
