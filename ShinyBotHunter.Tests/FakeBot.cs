@@ -18,6 +18,8 @@ namespace ShinyBotHunter.Tests
     {
         private readonly Task launch;
         private readonly IGameStateReader? state;
+        // Set by a test before the bot is used; written and read by the test's one async flow.
+        private IOverworldReader? overworld;
 
         public FakeBot(Task launch, GameProfile? profile = null)
         {
@@ -34,7 +36,7 @@ namespace ShinyBotHunter.Tests
 
         // What a test scripts: the chain reads, the party blocks, and a callback that sees each RunMacroString.
         public Func<IReadOnlyList<ChainBlockRequest>, ChainBlockResult[]> ChainBlocks { get; init; } = _ => Array.Empty<ChainBlockResult>();
-        public byte[][] PartyBlocks { get; init; } = Array.Empty<byte[]>();
+        public byte[][] PartyBlocks { get; set; } = Array.Empty<byte[]>();
         public Action<string> Pressed { get; init; } = _ => { };
 
         // RunRepeatMacro as "RP:" + macro, ClearMacro as "clear". Written and read by the test's one async flow; no lock.
@@ -80,8 +82,8 @@ namespace ShinyBotHunter.Tests
             PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(PartyBlocks);
         public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default) => Task.FromResult(ChainBlocks(blocks));
 
-        // No test that uses FakeBot reads the overworld.
-        public IOverworldReader Overworld => throw new NotImplementedException();
+        // Settable after construction because FakeBotFactory builds the bot; throws when no test placed one.
+        public IOverworldReader Overworld { get => overworld ?? throw new NotImplementedException(); set => overworld = value; }
         public IGameStateReader State { get => state ?? throw new NotImplementedException(); init => state = value; }
     }
 }

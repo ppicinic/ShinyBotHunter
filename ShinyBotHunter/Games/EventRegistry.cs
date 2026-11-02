@@ -69,6 +69,11 @@ namespace ShinyBotHunter.Games
                 new EventArgumentOptions() { Name = "HGSS Togepi Egg", RequiredParameters = ["PhaseName"] },
                 (nameof(GameCapabilities.HasEggs), c => c.HasEggs), OwnsEmulators: false,
                 (s, args, pos) => s.StartTogepiEggAsync(args, pos)),
+            // The route, the pacing line and the timings live in Configs/Events/PrimoEgg.json, so the only thing to pick here is where to log it.
+            new("HGSS Primo Egg",
+                new EventArgumentOptions() { Name = "HGSS Primo Egg", RequiredParameters = ["PhaseName"] },
+                (nameof(GameCapabilities.HasEggs), c => c.HasEggs), OwnsEmulators: false,
+                (s, args, pos) => s.StartPrimoEggAsync(args, pos)),
             new("Resume",
                 new EventArgumentOptions() { Name = "Resume" },
                 null, OwnsEmulators: false, (s, args, pos) => s.ResumeAsync(args, pos)),

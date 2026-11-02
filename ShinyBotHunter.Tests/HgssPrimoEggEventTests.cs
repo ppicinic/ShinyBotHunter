@@ -1,7 +1,16 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Context;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -227,6 +236,59 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("Route leg y:272 stopped at map 158, tile (8, 19)", ex.Message);
             Assert.Equal(["clear"], commands.Macros);
+        }
+
+        // Every party block parses, so the party check counts the blocks the bot returns.
+        private sealed class StubParser : IPokemonParser
+        {
+            public PokemonData? Parse(byte[] raw) => new PokemonData();
+        }
+
+        private static readonly GameProfile EggProfile = new(
+            GameFlavor.HGSS, new GameCapabilities(false, false, true, false, false, false, false), [0], _ => Table, new StubParser(), battleParser: null);
+
+        // A launched bot at position 0 with the given party, and the service whose Run checks see it.
+        private static async Task<(BotService Service, FakeBot Bot)> LaunchWithParty(int partySize)
+        {
+            var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
+            var factory = new FakeBotFactory(settings, Task.CompletedTask, EggProfile);
+            var provider = new ServiceCollection().AddSingleton(new PokemonStateReader()).BuildServiceProvider();
+            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
+            FakeBot bot = factory.Bots[0];
+            bot.PartyBlocks = Enumerable.Range(0, partySize).Select(_ => new byte[0xEC]).ToArray();
+            return (service, bot);
+        }
+
+        private static readonly NewEventArguments RunPrimo = new() { EventName = "HGSS Primo Egg", PhaseName = "Slugma" };
+
+        [Fact]
+        public async Task RunOffPrimosTileIs400WithTheSentence()
+        {
+            var (service, bot) = await LaunchWithParty(5);
+            FakeMemoryClient memory = new();
+            Stand(memory, 158, 12, 13, Direction.Up);
+            bot.Overworld = new HgssOverworldReader(memory, Table);
+
+            var result = await new BotController(service).StartAction(0, RunPrimo);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal("Stand facing Primo in the Violet City Pokémon Center: map 158, tile (12, 12), facing up.", content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task RunWithAFullPartyIs400()
+        {
+            var (service, _) = await LaunchWithParty(6);
+
+            var result = await new BotController(service).StartAction(0, RunPrimo);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Contains("Party is full (6/6)", content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
     }
 }
