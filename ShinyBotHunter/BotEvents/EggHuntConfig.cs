@@ -22,16 +22,6 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         public string ReceiveEggMacro { get; set; } = "ReceiveTogepiEgg";
 
-        /// <summary>
-        /// Plays once the egg flag clears, to progress the hatch cry/animation/nickname prompt through
-        /// to the overworld. A fixed, hand-recorded sequence rather than something polled for -- there
-        /// is no reliable signal in party memory for "the animation is done" the way there is for "it
-        /// started" (see the class doc on <see cref="HgssTogepiEggEvent"/>), so this has to be timed
-        /// against a real hatch rather than detected. The shiny sparkle plays during this animation, so
-        /// IsShiny is read straight off the party mon right after it finishes -- no summary screen.
-        /// </summary>
-        public string HatchAnimationMacro { get; set; } = "HatchEggAnimation";
-
         public string SaveMacro { get; set; } = "SaveGame";
 
         /// <summary>
@@ -84,9 +74,6 @@ namespace ShinyBotHunter.BotEvents
 
         /// <summary>How long to wait for the egg to appear in the party after the receive macro ends.</summary>
         public int EggWaitTimeoutMs { get; set; } = 60000;
-
-        /// <summary>How long to pace before giving up on the egg ever hatching.</summary>
-        public int HatchTimeoutMs { get; set; } = 30 * 60 * 1000;
 
         /// <summary>Time for the console to come back up after a soft reset, before the continue macro.</summary>
         public int SoftResetDelayMs { get; set; } = 15000;
