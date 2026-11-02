@@ -1,9 +1,9 @@
 # Spec: Primo's Slugma egg hunt (HGSS)
 
-Status: Approved for implementation (owner, 2026-11-02); epic and branch `feature/primo-egg-hunt` to be opened by the orchestrator
+Status: Implemented (epic #240, 2026-11-02). FR-1 to FR-17 except FR-13 (removed) and NFR-1, NFR-2 are built; the five QA scenarios passed on `feature/primo-egg-hunt`, run folders in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-primo-egg-hunt-2026-11-02); divergences are in the changelog.
 Last updated: 2026-11-02
 Owner: Phil
-Related: [research: the spike](../research/primo-slugma-egg.md) (the source for every value, rule and timing here), [HGSS state reader spec](hgss-state-reader.md) (the field script chain), [headbutt encounter spec](headbutt-encounter.md) (shares one change to the press loop), the Togepi egg hunt (`HgssTogepiEggEvent`, guide page [Togepi egg](../guide/04-hunts/04-togepi-egg.md)), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md)
+Related: [plan phase 10](../plans/2026-10-cleanup-and-hardening.md#phase-10-primos-slugma-egg-hunt-its-own-spec), [research: the spike](../research/primo-slugma-egg.md) (the source for every value, rule and timing here), [HGSS state reader spec](hgss-state-reader.md) (the field script chain), [headbutt encounter spec](headbutt-encounter.md) (shares one change to the press loop), the Togepi egg hunt (`HgssTogepiEggEvent`, guide page [Togepi egg](../guide/04-hunts/04-togepi-egg.md)), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md)
 
 ## Summary
 
@@ -145,3 +145,14 @@ E1 and E2 run in parallel; E4 after E2 (it needs the step-counter and hatch memb
 - 2026-11-02: first version, from the spike of the same day; walk moved to the Togepi line and the Togepi hunt's migration added at the owner's request; approved.
 - 2026-11-02: FR-13 and E3 removed during decomposition (owner): the egg's cycles byte already exists as `PokemonData.Happiness`, and it reaches 0 with a whole cycle of steps still to walk, so nothing reads it; the pacing log line and the blocked-line timeout use the day care counter alone (FR-9, FR-17). FR-12: one stale key, `hatchStaleMs`.
 - 2026-11-02: FR-8, the walk to the line goes through the navigator rather than fixed legs (#257); FR-12, `routeToLine` replaced by `lineMapId`, `lineX`, `lineY`.
+- 2026-11-02: FR-5, `HgssEasyChatInput.ConfirmAsync` drives Confirm and Yes, so the event never presses inside the app (E2, #242 answer 1); the trainer ID, the password and the variables after each prompt are logged as word ids (E5a, #245 answer 4). FR-6, a missing word stops with its id, not its name (#242 answer 2).
+- 2026-11-02: FR-7, the press list is cached per slot and word, stored only after the slot reads back the word, without retried presses (E2).
+- 2026-11-02: FR-12, `PrimoEgg.json` is loaded once by `BotService.StartPrimoEggAsync`, which needs the start tile for the Run check, and passed to the event; a bad file is a 400 (E5b, #245 answer 3).
+- 2026-11-02: FR-17, the acceptance grep is scoped to the Togepi event, its config, the hatch step and the HGSS macros; `NavigatorEvent`'s walk-leg stall is another rule and stays (#244 answer 1).
+- 2026-11-02: FR-11, the shiny order is alert, `SaveGame`, `AddCaughtPokemonAsync`, `FlushSave`, then a post-save delay kept as a private constant, without the Togepi event's extra 1 s delay (E5a, #245 answer 5).
+- 2026-11-02: FR-15, the predicate is added by this epic (E5a, the headbutt branch's 32e10e6 hunk unchanged); the headbutt epic finds it present.
+- 2026-11-02: the hatch step takes the bot, the pointer service, the `PokemonStateReader` and one stale `TimeSpan`, and reads the party once after the field is free, so the Togepi event's party read retries are gone (#244 answers 2 and 3). A cancel while pacing or hatching now ends with `OperationCanceledException`, where the deleted `WaitForHatchAsync` returned null (E4).
+- 2026-11-02: task split: E3 removed with FR-13; E5 split into E5a (#245) and E5b (#251); E5c (#255) and E5d (#257) added after the first QA pass.
+- 2026-11-02: QA, `hgss.qa-togepi` added to the saves, made by a PKHeX recipe and a placing session recorded in [QA automation](qa-automation.md); the pristine saves live in `../shinybothunterqasaves/hgss/`; the milestones are in Mongo; the shiny scenario's PID rewrite must land between `outcome 5` and `egg in slot` (#246 answers 1 to 4).
+- 2026-11-02: from QA. The first `hgss-primo-egg-hatch` runs (on b1bf50e) stopped on the Violet City signpost, which the fixed `y:264` leg faced; E5c (#255) closed the sign box, and E5d (#257) replaced the legs with the navigator walk, whose A* route never faces the sign. E5d also changed `PathfindingService`: a building exit is overshot in the exit's direction (`ExitDirection`), not the last step's, so a route that reaches the Center's mat from the side walks out through the door. The password run showed that "Is this your answer?" keeps the slots handler 0x021E7AA5, so `ConfirmAsync`'s first A is pressed again once before the app closes; the [research doc](../research/primo-slugma-egg.md) is corrected.
+- 2026-11-02: implemented (epic #240).
