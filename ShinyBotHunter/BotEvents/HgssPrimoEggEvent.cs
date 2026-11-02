@@ -14,7 +14,7 @@ namespace ShinyBotHunter.BotEvents
     /// <summary>
     /// Soft-reset hunt for a shiny from Primo's egg in HGSS (docs/specs/primo-egg-hunt.md,
     /// docs/research/primo-slugma-egg.md): the password from the trainer ID, Primo's two easy-chat prompts, the walk
-    /// to the pacing line, the shared hatch step, then save on a shiny or soft reset and go again.
+    /// to the pacing line through the navigator, the shared hatch step, then save on a shiny or soft reset and go again.
     /// </summary>
     public class HgssPrimoEggEvent : AbstractBotEvent<PokemonData?>
     {
@@ -31,15 +31,6 @@ namespace ShinyBotHunter.BotEvents
         // How long the sub-app's overlay may stay the same while the easy-chat app opens (R36).
         private static readonly TimeSpan EasyChatOpenStale = TimeSpan.FromSeconds(10);
 
-        // How long a route leg may stay on one tile; the spike's rule, which passed the door's warp fade.
-        private static readonly TimeSpan LegStall = TimeSpan.FromMilliseconds(1500);
-
-        // A field script that takes the field during a leg (Violet City's sign at (488, 263), read when Up is still held
-        // as the y:264 leg lands) is closed with a held A: a one-frame T.A does not close the sign's box, H.A.4 does.
-        private const string PressThroughMacro = "H.A.4;W.20";
-        private static readonly TimeSpan PressThroughConfirm = TimeSpan.FromMilliseconds(1500);
-        private const int PressThroughAttempts = 4;
-
         // Safety margin after a save so the flush lands before anything else happens; EggHuntConfig's default.
         private const int PostSaveDelayMs = 10000;
 
@@ -54,6 +45,7 @@ namespace ShinyBotHunter.BotEvents
         // One per run, so its press cache lasts across cycles (FR-7); touched only by this event's own task.
         private readonly HgssEasyChatInput easyChat;
         private readonly HgssEggHatch hatch;
+        private readonly NavigatorEvent navigator;
 
         public HgssPrimoEggEvent(IBot bot, string phase, PrimoEggConfig config, IServiceProvider provider, BotService botService)
         {
@@ -67,6 +59,7 @@ namespace ShinyBotHunter.BotEvents
             this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             this.easyChat = new HgssEasyChatInput(bot, bot, addresses);
             this.hatch = new HgssEggHatch(bot, addresses, reader, TimeSpan.FromMilliseconds(config.HatchStaleMs));
+            this.navigator = new NavigatorEvent(reader);
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)
@@ -85,7 +78,7 @@ namespace ShinyBotHunter.BotEvents
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     uint eggPid = await GetEggAsync(password, cancellationToken);
-                    await WalkToLineAsync(cancellationToken);
+                    await WalkToLineAsync(bot, navigator, config, cancellationToken);
                     await hatch.PaceUntilHatchAsync(BuildPaceMacro(), cancellationToken);
                     PokemonData hatched = await hatch.HatchAsync(eggPid, cancellationToken);
 
@@ -199,16 +192,6 @@ namespace ShinyBotHunter.BotEvents
                         $"Waited for the easy-chat app (overlay {addresses.EasyChatOverlayId}) to open; the sub-app stayed {seen} for {EasyChatOpenStale.TotalSeconds:0} s");
                 }
                 await Task.Delay(Constant.PollIntervalMs, ct);
-            }
-        }
-
-        // From Primo's tile to the pacing line, one confirmed leg at a time (FR-8).
-        private async Task WalkToLineAsync(CancellationToken ct)
-        {
-            await Overworld.WaitForReadyAsync(bot.State, ct);
-            foreach (var leg in config.Legs)
-            {
-                await WalkLegAsync(bot.Overworld, bot.State, bot, addresses, leg, LegStall, ct);
             }
         }
 
@@ -345,84 +328,31 @@ namespace ShinyBotHunter.BotEvents
             return $"map {map}, tile ({x}, {y}), facing {facing.ToString().ToLowerInvariant()}";
         }
 
+        // From Primo's tile to the pacing line (FR-8): the heal flow's return walk, with the line's tile as its destination.
+        internal static async Task WalkToLineAsync(IBot bot, NavigatorEvent navigator, PrimoEggConfig config, CancellationToken ct)
+        {
+            GameState walk = new() { Bot = bot, StartMapId = config.LineMapId, StartX = config.LineX, StartY = config.LineY };
+            walk.State.Push(EventState.ReturnToStart);
+            Console.WriteLine($"[PrimoEgg] walking to the line at map {config.LineMapId}, tile ({config.LineX}, {config.LineY}) through the navigator");
+            await navigator.ExecuteWithResultAsync(walk, ct);
+            await CheckOnLineAsync(bot.Overworld, config, walk.State.Peek(), ct);
+            Console.WriteLine($"[PrimoEgg] on the line at map {config.LineMapId}, tile ({config.LineX}, {config.LineY})");
+        }
+
+        // The navigator hands back DecideOverworldAction for an abandoned route too, so the walk is confirmed by position.
+        internal static async Task CheckOnLineAsync(IOverworldReader overworld, PrimoEggConfig config, EventState navigatorState, CancellationToken ct)
+        {
+            ushort map = await overworld.GetMapIdAsync(ct);
+            (short x, short y) = await overworld.GetPositionAsync(ct);
+            if (map == config.LineMapId && x == config.LineX && y == config.LineY) return;
+            throw new InvalidOperationException(
+                $"The walk to the line stopped at map {map}, tile ({x}, {y}), the navigator in {navigatorState}; " +
+                $"the line starts at map {config.LineMapId}, tile ({config.LineX}, {config.LineY}).");
+        }
+
         // FR-2's sentence, from the config.
         internal static string StandFacingPrimo(PrimoEggConfig config) =>
             $"Stand facing Primo in the Violet City Pokémon Center: map {config.StartMapId}, tile ({config.StartX}, {config.StartY}), " +
             $"facing {config.StartFacingDirection.ToString().ToLowerInvariant()}.";
-
-        // One route leg as an M command, the pace macro's move: hold the direction until the coordinate reads the value.
-        internal static string LegMacro((char Axis, short Value) leg, short x, short y, HgssPointerService addresses)
-        {
-            if (leg.Axis == 'x') return $"M.{(leg.Value < x ? "Left" : "Right")}.{leg.Value}.{addresses.TrainerX}";
-            return $"M.{(leg.Value < y ? "Up" : "Down")}.{leg.Value}.{addresses.TrainerY}";
-        }
-
-        // Runs one leg and confirms it by position. A field script that takes the field meanwhile is pressed through and
-        // the leg re-issued from where the player stands. Throws, after clearing the macro, when the map and tile have not
-        // changed for stall with no script running.
-        internal static async Task WalkLegAsync(
-            IOverworldReader overworld, IGameStateReader game, ICommandClient commands, HgssPointerService addresses, (char Axis, short Value) leg,
-            TimeSpan stall, CancellationToken ct)
-        {
-            ushort map = await overworld.GetMapIdAsync(ct);
-            (short x, short y) = await overworld.GetPositionAsync(ct);
-            commands.RunMacroString(LegMacro(leg, x, y, addresses));
-            Stopwatch still = Stopwatch.StartNew();
-            while ((leg.Axis == 'x' ? x : y) != leg.Value)
-            {
-                if (still.Elapsed >= stall)
-                {
-                    commands.ClearMacro();
-                    throw new InvalidOperationException($"Route leg {leg.Axis}:{leg.Value} stopped at map {map}, tile ({x}, {y})");
-                }
-                await Task.Delay(Constant.PollIntervalMs, ct);
-                GameSnapshot snapshot = await game.ReadAsync(ct);
-                // Script, not Screen: the door's warp shows field tasks and transitions with no script, and is walked through.
-                if (snapshot.Script is not null)
-                {
-                    commands.ClearMacro();
-                    Console.WriteLine($"[PrimoEgg] leg {leg.Axis}:{leg.Value}: the field is busy ({snapshot}); pressing through");
-                    await PressThroughAsync(game, commands, $"the field to be free on leg {leg.Axis}:{leg.Value}", snapshot, ct);
-                    (x, y) = await overworld.GetPositionAsync(ct);
-                    commands.RunMacroString(LegMacro(leg, x, y, addresses));
-                    still.Restart();
-                }
-                ushort nextMap = await overworld.GetMapIdAsync(ct);
-                (short nextX, short nextY) = await overworld.GetPositionAsync(ct);
-                if ((nextMap, nextX, nextY) != (map, x, y)) still.Restart();
-                (map, x, y) = (nextMap, nextX, nextY);
-            }
-            await commands.WaitForMacroAsync(ct);
-            Console.WriteLine($"[PrimoEgg] leg {leg.Axis}:{leg.Value} reached at map {map} ({x}, {y})");
-        }
-
-        // Presses the held A until the field is free, each press confirmed by the snapshot changing. Throws when the
-        // snapshot has not changed for ScriptStale, or when a press is not confirmed after PressThroughAttempts.
-        private static async Task PressThroughAsync(
-            IGameStateReader game, ICommandClient commands, string waitingFor, GameSnapshot snapshot, CancellationToken ct)
-        {
-            GameSnapshot last = snapshot;
-            Stopwatch unchanged = Stopwatch.StartNew();
-            while (snapshot.Screen != GameScreen.FieldFree)
-            {
-                if (snapshot != last)
-                {
-                    last = snapshot;
-                    unchanged.Restart();
-                }
-                if (unchanged.Elapsed >= ScriptStale)
-                {
-                    throw new GameStateTimeoutException(waitingFor, snapshot);
-                }
-                GameSnapshot before = snapshot;
-                await GameStateWait.PressUntilAsync(game, async () =>
-                {
-                    commands.RunMacroString(PressThroughMacro);
-                    await commands.WaitForMacroAsync(ct);
-                }, waitingFor, s => s != before, PressThroughConfirm, PressThroughAttempts, ct);
-                Console.WriteLine($"[PrimoEgg] {PressThroughMacro} for {waitingFor}");
-                snapshot = await game.ReadAsync(ct);
-            }
-        }
     }
 }

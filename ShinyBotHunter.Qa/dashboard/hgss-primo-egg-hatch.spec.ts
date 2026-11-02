@@ -18,7 +18,6 @@ const Y_ADDR = 0x21da6fc
 const PSQL = 'C:\\Tools\\pgsql\\bin\\psql.exe'
 const ACTION = 'HGSS Primo Egg'
 const PHASE = 'Primo Slugma'
-const LEGS = ['y:19', 'x:8', 'y:272', 'x:488', 'y:264', 'x:469', 'y:258']
 const CYCLES = 2
 const MINUTE = 60 * 1000
 const CYCLE_BUDGET = 20 * MINUTE
@@ -26,7 +25,7 @@ const CYCLE_BUDGET = 20 * MINUTE
 const sha256 = (file: string): string => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 const backendLog = (): string[] => fs.readFileSync(path.join(runDir, 'backend.log'), 'utf8').split(/\r?\n/)
 const backendLines = (pattern: RegExp): string[] => backendLog().filter((l) => pattern.test(l))
-// A crash, or a stale-timeout or blocked leg (both end in the crash line, with the reason on the lines after it).
+// A crash, or a stale-timeout or the walk's stop (both end in the crash line, with the reason on the lines after it).
 const failures = (): string[] => backendLines(/\[BotService\] Event '.*' crashed|stalled|stopped at/)
 const hex8 = (pid: number): string => (pid >>> 0).toString(16).toUpperCase().padStart(8, '0')
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -165,11 +164,11 @@ test('HGSS Primo Egg through the dashboard: two full not-shiny cycles, every gat
       const egg = lines[at(/\[PrimoEgg\] egg in slot/)]?.match(/egg in slot 6, pid=([0-9A-F]{8})/)?.[1]
       expect(egg, `cycle ${cycle}: no "egg in slot 6" line`).toBeDefined()
       pids.push(egg!)
-      const legs = lines.flatMap((l) => l.match(/\[PrimoEgg\] leg ([xy]:\d+) reached/)?.[1] ?? [])
-      expect(legs, `cycle ${cycle}: the route legs`).toEqual(LEGS)
       const gates: [string, number][] = [
         ['egg in slot 6', at(/\[PrimoEgg\] egg in slot 6/)],
-        ['leg y:258 reached', at(/\[PrimoEgg\] leg y:258 reached/)],
+        ['navigator path', at(/\[Navigator\] Return path found: /)],
+        ['Center door crossed', at(/\[Navigator\] Portal crossed: /)],
+        ['on the line', at(/\[PrimoEgg\] on the line at map 73, tile \(469, 258\)/)],
         ['day care step counter', at(/\[EggHatch\] day care step counter \d+/)],
         ['A at "Oh?" (script 2021)', at(/\[EggHatch\] H\.A\.4: /)],
         ['A on No', at(/\[EggHatch\] W\.5;H\.A\.4: /)],
@@ -177,6 +176,7 @@ test('HGSS Primo Egg through the dashboard: two full not-shiny cycles, every gat
       ]
       for (const [name, i] of gates) step(`cycle ${cycle}: ${name}: ${i >= 0 ? lines[i].trim() : 'MISSING'}`)
       for (const line of lines.filter((l) => /\[EggHatch\] W\.5;H\.Down\.4: /.test(l))) step(`cycle ${cycle}: cursor to No: ${line.trim()}`)
+      for (const line of lines.filter((l) => /\[Navigator\] Movement blocked/.test(l))) step(`cycle ${cycle}: ${line.trim()}`)
       step(`cycle ${cycle}: ${lines.filter((l) => /\[EggHatch\] day care step counter/.test(l)).length} counter lines`)
       expect(gates.filter(([, i]) => i < 0).map(([name]) => name), `cycle ${cycle}: gate lines missing`).toEqual([])
       const order = gates.map(([, i]) => i)

@@ -39,14 +39,14 @@ How the action form works in general is on [the dashboard page](../03-dashboard.
 |---|---|
 | The milestone the hatched Pokémon are filed under. The hunt does not check the milestone's list: any shiny Slugma ends it. | Milestone |
 
-The walking route, the pacing line and the timings are in a file that comes with the bot. They are not settings for you to change.
+Where the walk ends, the pacing line and the timings are in a file that comes with the bot. They are not settings for you to change.
 
 ## What happens in each attempt?
 
 1. The bot reads your trainer ID and works out the Slugma password from it, once per run. It writes the password to the backend's window as four word numbers.
 2. It talks to Primo and enters the password's two words at each of his two prompts. After each prompt it checks that the game took the words it entered.
 3. It takes the egg and finds it in your party.
-4. It walks out of the Pokémon Center to the street outside the Mart, one stretch at a time, checking it arrived at the end of each. On the way, the Violet City town sign by the street usually pops up; the bot closes it and walks on.
+4. It finds its own way out of the Pokémon Center to the street outside the Mart, going around anything in its way.
 5. It walks back and forth on the street until the game itself starts the hatch. Every 30 seconds it writes the egg step count to the backend's window.
 6. It presses A at "Oh?", answers No when asked whether to nickname the Pokémon, and waits until you can walk again.
 7. It reads the hatched Pokémon and writes it to the encounter log.
@@ -106,8 +106,8 @@ These messages show in the backend's window, as `[BotService] Event '<name>' cra
 **It means** the conversation finished but the bot could not find the Slugma egg in your party.
 **Do** check your party in the emulator, then see [When something goes wrong](../07-when-something-goes-wrong.md).
 
-**You see** "Route leg ... stopped at map ..., tile (..., ...)" (with the stretch, the map and the tile in place of the dots).
-**It means** the walk to the street stopped moving for a second and a half on one stretch. Something is in the way, or a door took longer than usual.
+**You see** "The walk to the line stopped at map ..., tile (..., ...), the navigator in ..." (with the map, the tile and the navigator's state in place of the dots).
+**It means** the bot could not find or finish its way to the street.
 **Do** look at the emulator for anything in the way, then start again from the save in front of Primo.
 
 **You see** "Waited for script 2021 while pacing; the day care step counter stayed ... for 30 s" (with the step count in place of the dots).
