@@ -34,6 +34,12 @@ namespace ShinyBotHunter.BotEvents
         // How long a route leg may stay on one tile; the spike's rule, which passed the door's warp fade.
         private static readonly TimeSpan LegStall = TimeSpan.FromMilliseconds(1500);
 
+        // A field script that takes the field during a leg (Violet City's sign at (488, 263), read when Up is still held
+        // as the y:264 leg lands) is closed with a held A: a one-frame T.A does not close the sign's box, H.A.4 does.
+        private const string PressThroughMacro = "H.A.4;W.20";
+        private static readonly TimeSpan PressThroughConfirm = TimeSpan.FromMilliseconds(1500);
+        private const int PressThroughAttempts = 4;
+
         // Safety margin after a save so the flush lands before anything else happens; EggHuntConfig's default.
         private const int PostSaveDelayMs = 10000;
 
@@ -202,7 +208,7 @@ namespace ShinyBotHunter.BotEvents
             await Overworld.WaitForReadyAsync(bot.State, ct);
             foreach (var leg in config.Legs)
             {
-                await WalkLegAsync(bot.Overworld, bot, addresses, leg, LegStall, ct);
+                await WalkLegAsync(bot.Overworld, bot.State, bot, addresses, leg, LegStall, ct);
             }
         }
 
@@ -351,11 +357,12 @@ namespace ShinyBotHunter.BotEvents
             return $"M.{(leg.Value < y ? "Up" : "Down")}.{leg.Value}.{addresses.TrainerY}";
         }
 
-        // Runs one leg and confirms it by position. Throws, after clearing the macro, when the map and tile have not
-        // changed for stall.
+        // Runs one leg and confirms it by position. A field script that takes the field meanwhile is pressed through and
+        // the leg re-issued from where the player stands. Throws, after clearing the macro, when the map and tile have not
+        // changed for stall with no script running.
         internal static async Task WalkLegAsync(
-            IOverworldReader overworld, ICommandClient commands, HgssPointerService addresses, (char Axis, short Value) leg, TimeSpan stall,
-            CancellationToken ct)
+            IOverworldReader overworld, IGameStateReader game, ICommandClient commands, HgssPointerService addresses, (char Axis, short Value) leg,
+            TimeSpan stall, CancellationToken ct)
         {
             ushort map = await overworld.GetMapIdAsync(ct);
             (short x, short y) = await overworld.GetPositionAsync(ct);
@@ -369,6 +376,17 @@ namespace ShinyBotHunter.BotEvents
                     throw new InvalidOperationException($"Route leg {leg.Axis}:{leg.Value} stopped at map {map}, tile ({x}, {y})");
                 }
                 await Task.Delay(Constant.PollIntervalMs, ct);
+                GameSnapshot snapshot = await game.ReadAsync(ct);
+                // Script, not Screen: the door's warp shows field tasks and transitions with no script, and is walked through.
+                if (snapshot.Script is not null)
+                {
+                    commands.ClearMacro();
+                    Console.WriteLine($"[PrimoEgg] leg {leg.Axis}:{leg.Value}: the field is busy ({snapshot}); pressing through");
+                    await PressThroughAsync(game, commands, $"the field to be free on leg {leg.Axis}:{leg.Value}", snapshot, ct);
+                    (x, y) = await overworld.GetPositionAsync(ct);
+                    commands.RunMacroString(LegMacro(leg, x, y, addresses));
+                    still.Restart();
+                }
                 ushort nextMap = await overworld.GetMapIdAsync(ct);
                 (short nextX, short nextY) = await overworld.GetPositionAsync(ct);
                 if ((nextMap, nextX, nextY) != (map, x, y)) still.Restart();
@@ -376,6 +394,35 @@ namespace ShinyBotHunter.BotEvents
             }
             await commands.WaitForMacroAsync(ct);
             Console.WriteLine($"[PrimoEgg] leg {leg.Axis}:{leg.Value} reached at map {map} ({x}, {y})");
+        }
+
+        // Presses the held A until the field is free, each press confirmed by the snapshot changing. Throws when the
+        // snapshot has not changed for ScriptStale, or when a press is not confirmed after PressThroughAttempts.
+        private static async Task PressThroughAsync(
+            IGameStateReader game, ICommandClient commands, string waitingFor, GameSnapshot snapshot, CancellationToken ct)
+        {
+            GameSnapshot last = snapshot;
+            Stopwatch unchanged = Stopwatch.StartNew();
+            while (snapshot.Screen != GameScreen.FieldFree)
+            {
+                if (snapshot != last)
+                {
+                    last = snapshot;
+                    unchanged.Restart();
+                }
+                if (unchanged.Elapsed >= ScriptStale)
+                {
+                    throw new GameStateTimeoutException(waitingFor, snapshot);
+                }
+                GameSnapshot before = snapshot;
+                await GameStateWait.PressUntilAsync(game, async () =>
+                {
+                    commands.RunMacroString(PressThroughMacro);
+                    await commands.WaitForMacroAsync(ct);
+                }, waitingFor, s => s != before, PressThroughConfirm, PressThroughAttempts, ct);
+                Console.WriteLine($"[PrimoEgg] {PressThroughMacro} for {waitingFor}");
+                snapshot = await game.ReadAsync(ct);
+            }
         }
     }
 }
