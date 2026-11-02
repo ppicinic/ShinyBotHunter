@@ -1,0 +1,40 @@
+{
+  // Primo's egg: 8 Mareep, 9 Wooper, 10 Slugma. The password is computed from this and the save's trainer ID.
+  "eggSpecies": 218,
+  "egg": 10,
+
+  // Facing Primo in the Violet City Pokémon Center (map 158; Primo stands at (12, 11)). The save is made here,
+  // so every soft reset lands here too.
+  "startMapId": 158,
+  "startX": 12,
+  "startY": 12,
+  "startFacing": "Up",
+
+  // From Primo's tile to the pacing line, each leg confirmed by position (docs/research/primo-slugma-egg.md,
+  // "What a bot needs", the walk; measured in the spike, 2026-11-02).
+  "routeToLine": [
+    "y:19",  // inside the Center, down to (12, 19)
+    "x:8",   // left to (8, 19), in front of the door
+    "y:272", // down through the door, out to Violet City (497, 272)
+    "x:488", // west to x 488, where the street ends
+    "y:264", // north to y 264
+    "x:469", // west to x 469, below the Mart door (469, 257)
+    "y:258"  // north onto the line at y 258
+  ],
+
+  // The Togepi hunt's line: the street just south of the Mart door, x 458 to 500 at y 258.
+  "hatchAxis": "x",
+  "hatchLow": 458,
+  "hatchHigh": 500,
+
+  // Macros are looked up by name in Macro/Configs/HGSS.
+  "softResetMacro": "SoftReset",
+  "continueMacro": "ContinueGameWithRandom",
+  "saveMacro": "SaveGame",
+
+  "softResetDelayMs": 15000,
+  "postContinueDelayMs": 4000,
+
+  // How long the day care step counter while pacing, or a hatch wait, may see nothing change.
+  "hatchStaleMs": 30000
+}
