@@ -222,6 +222,117 @@ namespace ShinyBotHunter.Service.Pointers
         // hgss-heal-variants
         public int TextPrinterStateOffset => 0x28;
 
+        // Primo's egg and the egg hatch, docs/research/primo-slugma-egg.md (spike 2026-11-02).
+
+        // FieldSystem.saveData, SaveData * (FS + 0x0C); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int SaveDataOffset => 0x0C;
+
+        // PlayerProfile.id (u16), the visible trainer ID, player_data.h; the secret ID follows (saveData + 0x84); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int TrainerIdOffset => 0x84;
+
+        // Daycare.egg_cycles (u8), the egg step counter, the day care array + 0x1DC (saveData + 0x17E8); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public int EggStepCounterOffset => 0x17E8;
+
+        // ScriptEnvironment's special variables, 14 x u16 from VAR_SPECIAL_x8000 (script.h); 0x800C at + 0xA4 (env + 0x8C);
+        // offset (revision-independent); observed; QA: hgss-primo-egg-password
+        public int ScriptSpecialVarsOffset => 0x8C;
+
+        // scr_seq_T22PC0101_004, Primo's password script, env.script; constant; observed; QA: hgss-primo-egg-password
+        public int PrimoScript => 5;
+
+        // std_hatch_egg (scr_seq_0003_021), env.script of the egg hatch; constant; observed;
+        // QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public int HatchEggScript => 2021;
+
+        // WaitABPress, the native "Oh?" waits in before the hatch; root (revision-dependent; static ARM9, rev 0); observed;
+        // QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public uint WaitABPressNative => 0x02041001;
+
+        // OverlayManager.data, the sub-app's data, the easy-chat and hatch apps' blocks (app + 0x1C; the battle app's is
+        // BattleSystemOffset); offset (revision-independent); observed; QA: hgss-primo-egg-password, hgss-primo-egg-hatch
+        public int AppDataOffset => 0x1C;
+
+        // app.ovyId of the easy-chat app (overlay 102); constant; observed; QA: hgss-primo-egg-password
+        public uint EasyChatOverlayId => 102;
+
+        // app.ovyId of the egg hatch app (overlay 95); constant; observed; QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public uint HatchOverlayId => 95;
+
+        // easy-chat data, the two chosen words (u16 word ids, 0xFFFF when empty), slot i at + 2i (data + 0x10); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatWordsOffset => 0x10;
+
+        // easy-chat data, busy (u8), 1 while the word list scrolls and presses are dropped (data + 0x1C); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatBusyOffset => 0x1C;
+
+        // easy-chat data, the current screen's handler (data + 0x20); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int EasyChatScreenOffset => 0x20;
+
+        // easy-chat data, slot screen cursor row (u8): 0 the slots, 1 Confirm, 2 Cancel (data + 0x4C); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatSlotRowOffset => 0x4C;
+
+        // easy-chat data, slot screen cursor column (u8), the first or second slot (data + 0x4E); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatSlotColumnOffset => 0x4E;
+
+        // easy-chat data, group grid cursor (u8), row x 3 + column, Left and Right wrap within a row (data + 0x50); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatGroupCursorOffset => 0x50;
+
+        // easy-chat data, word list scroll in rows (u16) (data + 0x54); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int EasyChatListScrollOffset => 0x54;
+
+        // easy-chat data, word list maximum scroll in rows (u16) (data + 0x56); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int EasyChatListMaxScrollOffset => 0x56;
+
+        // easy-chat data, word list column (u8) (data + 0x5A); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int EasyChatListColumnOffset => 0x5A;
+
+        // easy-chat data, word list on-screen row (u8), 0 to 4 (data + 0x5B); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-password
+        public int EasyChatListRowOffset => 0x5B;
+
+        // easy-chat data, 12 x u32 words per grid group, 0 when locked (data + 0xA4); offset (revision-independent);
+        // observed; QA: hgss-primo-egg-password
+        public int EasyChatGroupCountsOffset => 0xA4;
+
+        // easy-chat data, 12 x u32 each group's start in the word area, in words (data + 0xD4); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatGroupStartsOffset => 0xD4;
+
+        // easy-chat data, the word area (u16 ids): every unlocked group's list, alphabetical, back to back (data + 0x104);
+        // offset (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatGroupWordsOffset => 0x104;
+
+        // easy-chat screen handler of the two slots, Confirm and Cancel (and "Is this your answer?"); root
+        // (revision-dependent; overlay 102, rev 0); observed; QA: hgss-primo-egg-password
+        public uint EasyChatSlotsScreen => 0x021E7AA5;
+
+        // easy-chat screen handler of the group grid; root (revision-dependent; overlay 102, rev 0); observed;
+        // QA: hgss-primo-egg-password
+        public uint EasyChatGroupScreen => 0x021E8241;
+
+        // easy-chat screen handler of a group's word list; root (revision-dependent; overlay 102, rev 0); observed;
+        // QA: hgss-primo-egg-password
+        public uint EasyChatListScreen => 0x021E87B5;
+
+        // hatch app data, the nickname question's Yes/No menu pointer (data + 0x88); offset (revision-independent); observed
+        // (NULL before the question not checked); QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public int HatchYesNoOffset => 0x88;
+
+        // the hatch Yes/No menu's cursor (u8): 1 Yes, 2 No (menu + 0x19); offset (revision-independent); observed;
+        // QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
+        public int HatchYesNoCursorOffset => 0x19;
+
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 
