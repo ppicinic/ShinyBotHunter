@@ -86,6 +86,7 @@ The bot posts a shiny alert when:
 
 - a wild or chained encounter finds the Pokémon it is hunting;
 - the Togepi egg hunt hatches a shiny;
+- the Primo egg hunt hatches a shiny;
 - the Wishmaker Jirachi hunt gets a shiny Jirachi.
 
 The starter hunts post nothing to Discord.
