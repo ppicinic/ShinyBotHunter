@@ -4,7 +4,7 @@ namespace ShinyBotHunter.Games
     public sealed record GameCapabilities(
         bool HasOverworldNavigation,   // map, position, facing, pathfinding
         bool HasWildEncounters,        // run/spin loops and the battle orchestrator
-        bool HasEggs,                  // Togepi egg event
+        bool HasEggs,                  // Togepi and Primo egg events
         bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
         bool HasSoftResetStarterHunt,  // RS wave hunt
         bool HasShinyStarterHunt,      // HGSS starter hunt
