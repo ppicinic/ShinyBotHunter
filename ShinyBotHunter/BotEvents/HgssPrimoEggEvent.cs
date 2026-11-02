@@ -165,6 +165,7 @@ namespace ShinyBotHunter.BotEvents
             await NavigatorEvent.PressThroughScriptAsync(bot.State, addresses, press, $"Primo's script after prompt {prompt}", ScriptStale, ct, AtMessage(addresses));
             ushort[] vars = await ReadSpecialVarsAsync(bot, addresses, ct);
             CheckWords(vars, prompt, password);
+            Console.WriteLine($"[PrimoEgg] after prompt {prompt}: 0x{0x8000 + first:X4}={vars[first]} 0x{0x8001 + first:X4}={vars[first + 1]}");
             return vars;
         }
 
