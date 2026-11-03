@@ -109,6 +109,8 @@ namespace ShinyBotHunter.Tests
         }
 
         // #262's failed run: the grid A landed and the list took longer than the old 1.5 s gate, which pressed A again.
+        // 50 reads outlast that gate (at most about 45 polls of 33 ms) and stay inside the 3 s transition timeout even
+        // with each poll stretched to Windows' 15.6 ms timer ticks (50 x 47 ms = 2.35 s).
         [Fact]
         public async Task LateScreenChangeIsNotPressedAgain()
         {

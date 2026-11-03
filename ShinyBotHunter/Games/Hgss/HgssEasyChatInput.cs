@@ -14,9 +14,10 @@ namespace ShinyBotHunter.Games.Hgss
         private const int ListColumns = 2;
         private const int ListPage = 5; // on-screen rows, and the rows R and L scroll by
         private const int ConfirmRow = 1;
-        // How long a press's byte may take before the press counts as dropped. Every press but Yes writes its byte 1 to 4
-        // frames after the press (up to 70 ms); the Yes's menu answers 19 to 22 frames late (318 to 385 ms). Measured on
-        // hgss.qa-primo (#264); the margin covers the emulator running slower under the screen recorder.
+        // How long a press's byte may take before the press counts as dropped. Moves and the slots, grid and list A write
+        // theirs 1 to 4 frames after the press (up to 70 ms), the Confirm A its question 3 to 5 frames after it (up to
+        // 85 ms); the Yes's menu answers 19 to 22 frames late (318 to 385 ms). Measured on hgss.qa-primo (#264); the
+        // margin covers the emulator running slower under the screen recorder.
         private const int GateTimeoutMs = 1000;
         // How long the app may take to take input again after a press landed; only throws. Longest observed: the list A,
         // 43 to 45 frames (802 ms) in the #264 probe, and once over 90 frames in the spike.
@@ -196,7 +197,7 @@ namespace ShinyBotHunter.Games.Hgss
         // What a press of the button on the current screen writes (observed in the #264 probe), and the screen it ends on.
         // A writes the screen's step on the frame it is read: slots 4, grid 1, list 3, the next screen following once the
         // app's graphics tasks end (that screen also proves the step). At Confirm it writes step 1, then the question at
-        // + 0x2C 2 to 3 frames later; the question's Yes moves + 0x28 off 1, 19 to 22 frames late, and the app closes.
+        // + 0x2C 3 to 5 frames after the press; the question's Yes moves + 0x28 off 1, 19 to 22 frames late, and the app closes.
         // Anything else moves the current screen's cursor.
         private (string What, Func<byte[]?, string> Value, Func<byte[]?, bool> Landed, string End) GateFor(byte[] block, string button)
         {
