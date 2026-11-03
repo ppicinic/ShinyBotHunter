@@ -57,7 +57,7 @@ namespace ShinyBotHunter.Tests
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
 
-            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg"], names);
+            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg"], names);
         }
 
         [Fact]
@@ -71,7 +71,18 @@ namespace ShinyBotHunter.Tests
             Assert.DoesNotContain("Wild Encounter", names);
             Assert.DoesNotContain("Chained Encounter", names);
             Assert.DoesNotContain("HGSS Togepi Egg", names);
+            Assert.DoesNotContain("HGSS Primo Egg", names);
             Assert.Empty(names);
+        }
+
+        [Fact]
+        public void PrimoEggEntryNeedsAMilestoneAndEggs()
+        {
+            EventRegistration entry = EventRegistry.Get("HGSS Primo Egg");
+
+            Assert.Equal(["PhaseName"], entry.Options.RequiredParameters);
+            Assert.Equal(nameof(GameCapabilities.HasEggs), entry.Requires?.Capability);
+            Assert.False(entry.OwnsEmulators);
         }
 
         [Fact]

@@ -331,6 +331,35 @@ namespace ShinyBotHunter.Service
             return GetBotDashboardState();
         }
 
+        internal async Task<Dictionary<int, EmulatorState>> StartPrimoEggAsync(NewEventArguments args, int pos)
+        {
+            if (args.PhaseName is null)
+            {
+                throw new ArgumentException("PhaseName cannot be null for the Primo egg hunt.");
+            }
+            await EnsurePartyHasRoomForEggAsync(pos);
+            // Loaded once here, because the place check needs the start tile before the event exists.
+            PrimoEggConfig config = PrimoEggConfig.Load(PrimoEggConfig.DefaultPath);
+            IBot bot = slots.Entries[pos].Bot!;
+            if (await HgssPrimoEggEvent.WrongPlaceAsync(bot.Overworld, config, CancellationToken.None) is not null)
+            {
+                throw new InvalidOperationException(HgssPrimoEggEvent.StandFacingPrimo(config));
+            }
+            var eggEvent = new HgssPrimoEggEvent(bot, args.PhaseName, config, provider, this);
+            slots.Entries[pos].GameState = new GameState()
+            {
+                Profile = bot.Profile,
+                BotService = this,
+                Bot = bot,
+                Milestone = args.PhaseName,
+                // GameState requires a target; the event looks only at the egg.
+                Target = new ShinyTarget(),
+            };
+            runner.StartEvent(pos, slots.Entries[pos], eggEvent, slots.Entries[pos].GameState!, $"Primo Egg: {args.PhaseName}", removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
         internal async Task<Dictionary<int, EmulatorState>> ResumeAsync(NewEventArguments args, int pos)
         {
             if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)

@@ -153,4 +153,4 @@ The other settings in the file name the recorded button presses and the timings 
 
 The reasons behind each step are in the [Wishmaker Jirachi spec](../../specs/wishmaker-jirachi.md).
 
-Next: [Discord](../05-discord.md)
+Next: [Primo egg hunt](06-primo-egg.md)
