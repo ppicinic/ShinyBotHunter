@@ -100,6 +100,14 @@ No test base classes, no fixture frameworks, no builder pattern for test data, n
 ### 2.18 Plans are small too
 A plan or spec is subject to the same rules as code. More than about five phases, or a task list longer than the problem statement, is a sign the plan has grown its own requirements. The planning mode exists for the owner to cut the plan, not only to approve it. A doc that nobody will read next month should not be written.
 
+### 2.19 Every press is gated on the byte it writes, and never doubled
+A press into the emulator is one input the game acts on, so it is confirmed the way the game would show it: the memory value that press writes (a cursor, a screen handler, a script variable, a position) changes to what it should within a short wait. Never by time, and never by a byte that merely tends to change around then. The gate for every press is found on the real emulator and named with the press in the research doc; the unit test's fake models that byte. A gate on the wrong byte is not "working through the retry": the retry lands a second press the game also acts on, which is a doubled press and a bug whatever the log says (#260: the Confirm A of the easy-chat app was gated on a handler that never changes, so its retry was the Yes). A retry is allowed only when the gate proves the first press was dropped, which the research doc's pacing section measures. Every wait ends in the awaited state, cancellation, or a stale-timeout that names what it waited for and what it saw.
+
+- Test: for every press in a plan, name the byte that proves it landed and where that was observed. "A until the app closes" is a loop of gated presses only if each A has its own byte; otherwise it is a macro in disguise.
+
+### 2.20 A game event that changes nothing is not an obstacle
+Professor Elm's Pokégear call (HGSS) rings during a walk on a fresh save. Unanswered, it runs no script, moves nothing, and changes no byte the bot watches: walking, routing and pacing continue through it, and there is nothing to dismiss. No code, plan, scenario or failure report treats it as a blocking state (owner, 2026-11-02; the hatch run blamed on it had bumped a signpost). The same goes for any other cosmetic event: a failure attributed to one is re-diagnosed on the emulator before it is written down.
+
 ## 3. Things we do want
 
 So the rules above do not read as "never improve anything":
@@ -124,3 +132,4 @@ Edit this file in the PR that needs the exception, with a one-line reason in the
 
 ## Changelog
 - 2026-10-17: first draft from the 2026-10 code review.
+- 2026-11-02: 2.19 (every press gated on the byte it writes, never doubled; from #260) and 2.20 (Elm's call is not an obstacle), owner.

@@ -504,7 +504,26 @@ namespace ShinyBotHunter.Pathfinding
             IReadOnlyList<int>? destGameMapIds = destBotMapId.HasValue
                 ? mapService.GetGameMapIds(destBotMapId.Value)
                 : null;
-            return CreateMacro(path, destGameMapIds, overshootFinalStep);
+            // A building exit warps on a step into the wall beyond its mat, which need not be the way the route arrived.
+            Direction? overshoot = overshootFinalStep ? ExitDirection(mapService.GetMap(mapId), destX, destY) ?? point.Direction : null;
+            return CreateMacro(path, destGameMapIds, overshoot);
+        }
+
+        // The direction from an exit tile into its one blocked or off-map neighbour; null when that is not exactly one.
+        internal static Direction? ExitDirection(Map map, int x, int y)
+        {
+            (Direction Direction, int X, int Y)[] neighbours =
+            [
+                (Direction.Up, x, y - 1),
+                (Direction.Down, x, y + 1),
+                (Direction.Left, x - 1, y),
+                (Direction.Right, x + 1, y),
+            ];
+            Direction[] walls = neighbours
+                .Where(n => n.Y < 0 || n.Y >= map.Height || n.X < 0 || n.X >= map.Width || map[n.Y, n.X] == Constant.MAP_Blocked)
+                .Select(n => n.Direction)
+                .ToArray();
+            return walls.Length == 1 ? walls[0] : null;
         }
 
         // Scans the 4 tiles adjacent to (nodeX, nodeY) for a portal tile, preferring the
@@ -604,7 +623,7 @@ namespace ShinyBotHunter.Pathfinding
             return $"M.{direction}.{val}.{addr}";
         }
 
-        public string? CreateMacro(IEnumerable<MapPoint> mapPoints, IReadOnlyList<int>? destGameMapIds = null, bool overshootFinalStep = false)
+        public string? CreateMacro(IEnumerable<MapPoint> mapPoints, IReadOnlyList<int>? destGameMapIds = null, Direction? overshoot = null)
         {
             if(mapPoints.Count() < 2)
             {
@@ -844,7 +863,20 @@ namespace ShinyBotHunter.Pathfinding
             }
             string directionAddr2 = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
             int val2 = direction == Direction.Up || direction == Direction.Down ? curY : curX;
-            if (overshootFinalStep)
+            if (overshoot is not null && overshoot != direction)
+            {
+                // The final step runs sideways to the overshoot: finish it, then step through in the overshoot's direction.
+                if (!first)
+                {
+                    sb.Append(";");
+                }
+                sb.Append(FormatMove(direction.ToString(), val2, directionAddr2, null));
+                first = false;
+                direction = overshoot.Value;
+                directionAddr2 = direction == Direction.Up || direction == Direction.Down ? YAddr : XAddr;
+                val2 = direction == Direction.Up || direction == Direction.Down ? curY : curX;
+            }
+            if (overshoot is not null)
                 val2 += (direction == Direction.Down || direction == Direction.Right) ? 1 : -1;
             if (!first)
             {

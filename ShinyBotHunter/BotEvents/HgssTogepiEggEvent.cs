@@ -23,20 +23,11 @@ namespace ShinyBotHunter.BotEvents
     /// in the party already carries the final PID, so its shininess is readable long before it hatches
     /// and the loop could be cut to seconds per attempt -- but no player can see that, so the bot does
     /// not act on it either. It is read straight from party memory right after the animation
-    /// (see <see cref="WaitForHatchAsync"/>) rather than from a summary screen -- the shiny sparkle
+    /// (see <see cref="HgssEggHatch.HatchAsync"/>) rather than from a summary screen -- the shiny sparkle
     /// already plays as part of that animation, so a player watching would have made the same call
     /// already, with no separate screen needed to confirm it a second time.
     ///
-    /// The pacing macro is pure movement (M.Left/M.Right) and never presses a button, so it can never
-    /// progress the hatch animation's own dialogue -- and interleaving button presses into a running
-    /// M. move risks corrupting the movement command itself rather than helping. So hatching is
-    /// detected as a stall (see <see cref="PaceUntilStalledAsync"/>) rather than read from party
-    /// memory, the animation is played blind with a fixed, hand-recorded macro
-    /// (<see cref="EggHuntConfig.HatchAnimationMacro"/>) timed against the real thing, and the egg flag
-    /// is only consulted afterwards, to confirm the stall was real (see
-    /// <see cref="WaitForHatchAsync"/>) -- a false stall (an NPC in the way, a blocked tile, anything
-    /// short of the actual cutscene) just means the animation macro played against the overworld for
-    /// no visible effect, and pacing resumes.
+    /// Pacing ends on field script 2021 and the hatch is answered from memory in <see cref="HgssEggHatch"/>.
     /// </summary>
     public class HgssTogepiEggEvent : AbstractBotEvent<PokemonData?>
     {
@@ -45,36 +36,12 @@ namespace ShinyBotHunter.BotEvents
             NotStarted,
             ReceivingEgg,
             Hatching,
-            HatchAnimation,
             SoftResetting,
             Complete,
         }
 
-        // How long a single party read is retried before the caller is told the read failed. Short:
-        // every caller here is already inside its own polling loop with its own timeout.
-        private const int PartyReadAttempts = 3;
-
-        // How long the read that confirms the hatch is allowed to keep retrying. Much longer than the
-        // default above, because it runs right after the hatch cutscene and has to outlast the
-        // overworld reloading -- during which the party pointer legitimately cannot be read at all.
-        private const int PostHatchPartyReadTimeoutMs = 15000;
-
-        // How often trainer position is polled while pacing, purely to detect a stall. No party read
-        // happens in this loop at all -- just one lightweight coordinate read -- so it can run much
-        // tighter than the party-read polls elsewhere in this class.
-        private const int StallPollIntervalMs = 250;
-
-        // Consecutive identical position reads before pacing is treated as stalled. Walking speed is
-        // comfortably under one StallPollIntervalMs per tile, so three in a row means position has
-        // been frozen for at least ~500-750ms with no tile transition at all -- something a cutscene
-        // taking over causes, ordinary back-and-forth walking does not.
-        private const int StallReadsRequired = 3;
-
-        // How many times a stall is allowed to turn out to be a false positive -- something other than
-        // the actual hatch cutscene blocking movement -- before the event gives up rather than
-        // silently re-pacing forever.
-        private const int MaxFalseHatchRetries = 5;
-
+        // How long a pacing or hatch wait may see nothing change before it gives up.
+        private static readonly TimeSpan HatchStale = TimeSpan.FromSeconds(30);
 
         private readonly IBot bot;
         private readonly GameFlavor flavor;
@@ -86,6 +53,7 @@ namespace ShinyBotHunter.BotEvents
         private readonly BotService botService;
         private readonly EggHuntConfig config;
         private readonly HgssPointerService addresses;
+        private readonly HgssEggHatch hatch;
 
         private EggHuntState state = EggHuntState.NotStarted;
 
@@ -104,6 +72,7 @@ namespace ShinyBotHunter.BotEvents
             // between runs without restarting the server. Throws on anything unmeasured, which is
             // why it happens at construction -- before the dashboard reports the event as started.
             this.config = EggHuntConfig.Load(EggHuntConfig.DefaultPath);
+            this.hatch = new HgssEggHatch(bot, addresses, reader, HatchStale);
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)
@@ -121,8 +90,9 @@ namespace ShinyBotHunter.BotEvents
                     uint eggPid = await ReceiveEggAsync(cancellationToken);
                     if (cancellationToken.IsCancellationRequested) break;
 
-                    PokemonData? hatched = await WaitForHatchAsync(eggPid, cancellationToken);
-                    if (cancellationToken.IsCancellationRequested || hatched is null) break;
+                    SetState(EggHuntState.Hatching);
+                    await hatch.PaceUntilHatchAsync(BuildPaceMacro(), cancellationToken);
+                    PokemonData hatched = await hatch.HatchAsync(eggPid, cancellationToken);
 
                     var persistPokemon = new PersistPokemonData()
                     {
@@ -288,119 +258,6 @@ namespace ShinyBotHunter.BotEvents
             return 0;
         }
 
-        /// <summary>
-        /// Paces the corridor until the trainer's position stalls, on the assumption that the hatch
-        /// cutscene has taken over.
-        ///
-        /// Not a memory read of any kind -- see the class doc for why party data (the egg flag, the
-        /// cycles-remaining byte) can't drive this loop. Ordinary back-and-forth walking never leaves
-        /// position frozen for <see cref="StallReadsRequired"/> consecutive polls; a cutscene taking
-        /// control away from movement does. <see cref="WaitForHatchAsync"/> is what confirms the stall
-        /// was actually the hatch and not something else.
-        /// </summary>
-        private async Task PaceUntilStalledAsync(CancellationToken cancellationToken)
-        {
-            SetState(EggHuntState.Hatching);
-            string runMacro = BuildPaceMacro();
-            Console.WriteLine($"[TogepiEgg] Pacing: {runMacro}");
-            bot.RunRepeatMacro(runMacro);
-
-            var sw = Stopwatch.StartNew();
-            int? lastPos = null;
-            int consecutiveSame = 0;
-            try
-            {
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var position = await bot.Overworld.GetPositionAsync(cancellationToken);
-                    int pos = config.IsVerticalCorridor ? position.Y : position.X;
-                    if (pos == lastPos)
-                    {
-                        consecutiveSame++;
-                        if (consecutiveSame >= StallReadsRequired)
-                        {
-                            Console.WriteLine($"[TogepiEgg] Position stalled at {pos} after {sw.ElapsedMilliseconds / 1000}s of pacing -- assuming the hatch cutscene took over.");
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        lastPos = pos;
-                        consecutiveSame = 1;
-                    }
-                    if (sw.ElapsedMilliseconds > config.HatchTimeoutMs)
-                    {
-                        throw new InvalidOperationException(
-                            $"Position never stalled within {config.HatchTimeoutMs / 1000}s of pacing. Check hatchAxis/hatchLow/hatchHigh in the egg hunt config against the corridor the receive macro leaves the bot on.");
-                    }
-                    await Task.Delay(StallPollIntervalMs, cancellationToken);
-                }
-            }
-            finally
-            {
-                bot.ClearMacro();
-                await bot.WaitForMacroAsync();
-            }
-        }
-
-        /// <summary>
-        /// Plays the recorded hatch-animation macro straight through. Fixed and hand-timed against a
-        /// real hatch rather than polled for -- there is nothing in party memory this event trusts to
-        /// mark the animation's end (see the note on <see cref="EggHuntConfig.HatchAnimationMacro"/>).
-        /// </summary>
-        private async Task PlayHatchAnimationAsync(CancellationToken cancellationToken)
-        {
-            SetState(EggHuntState.HatchAnimation);
-            bot.RunMacroString(MacroRegistry.Instance.GetMacro(flavor, config.HatchAnimationMacro));
-            await bot.WaitForMacroAsync(cancellationToken);
-        }
-
-        /// <summary>
-        /// Paces until a stall, plays the hatch animation, then confirms the stall was real by checking
-        /// the egg flag afterwards -- no extra wait needed here, since HatchEggAnimation's own trailing
-        /// steps already settle the field before WaitForMacroAsync returns. A false stall (an NPC in
-        /// the way, a blocked tile, anything short of the actual cutscene) just means that macro played
-        /// against the overworld to no visible effect; pacing simply resumes.
-        /// </summary>
-        /// <returns>
-        /// The hatched pokemon, read directly from party memory once the egg flag is confirmed clear.
-        /// No summary screen is opened for this -- the shiny sparkle plays as part of the animation
-        /// macro that already ran, so reading IsShiny here uses the same visible cue a player watching
-        /// that animation would, just without the extra screen. Null if the party could not be read to
-        /// confirm the hatch at all.
-        /// </returns>
-        private async Task<PokemonData?> WaitForHatchAsync(uint eggPid, CancellationToken cancellationToken)
-        {
-            for (int attempt = 1; attempt <= MaxFalseHatchRetries; attempt++)
-            {
-                await PaceUntilStalledAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return null;
-
-                await PlayHatchAnimationAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return null;
-
-                // Generous timeout: the animation macro's own trailing wait is not necessarily long
-                // enough for the overworld to finish reloading, and the party pointer is unreadable
-                // until it has. Failing here would throw away a completed hatch, so it waits properly
-                // rather than giving up after a few frames.
-                PokemonData? mon = FindByPid(
-                    await ReadPartyAsync(cancellationToken, PostHatchPartyReadTimeoutMs, "post-hatch party read"),
-                    eggPid);
-                if (mon is null)
-                {
-                    Console.WriteLine("[TogepiEgg] Could not confirm the hatch (party unreadable).");
-                    return null;
-                }
-                if (!mon.IsEgg)
-                {
-                    return mon;
-                }
-                Console.WriteLine($"[TogepiEgg] Still an egg after the hatch animation macro -- the stall was a false positive (attempt {attempt}/{MaxFalseHatchRetries}). Resuming pacing.");
-            }
-            throw new InvalidOperationException(
-                $"Position stalled {MaxFalseHatchRetries} times without the egg ever hatching. Something other than the hatch cutscene keeps blocking movement on this corridor.");
-        }
-
         private async Task SaveAndFinishAsync(PersistPokemonData persistPokemon)
         {
             Console.WriteLine($"[TogepiEgg] Shiny {persistPokemon.PokemonData.Name}. Saving.");
@@ -442,41 +299,6 @@ namespace ShinyBotHunter.BotEvents
                 return $"M.Up.{config.HatchLow}.{addresses.TrainerY};M.Down.{config.HatchHigh}.{addresses.TrainerY}";
             }
             return $"M.Left.{config.HatchLow}.{addresses.TrainerX};M.Right.{config.HatchHigh}.{addresses.TrainerX}";
-        }
-
-        private static PokemonData? FindByPid(PokemonData?[]? party, uint pid)
-        {
-            if (party is null) return null;
-            foreach (var mon in party)
-            {
-                if (mon is not null && mon.PID == pid) return mon;
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Retries <see cref="TryReadPartyAsync"/> until it produces a clean read or
-        /// <paramref name="timeoutMs"/> elapses.
-        ///
-        /// The default is sized for a torn mid-write read, which clears in a frame or two. Callers
-        /// reading right after a cutscene need far longer: the party pointer is not stable until the
-        /// overworld has finished loading back in (HATCHEGGTASKSTATE_LOAD_OVERWORLD), and until then
-        /// every read legitimately fails. Those callers pass their own timeout.
-        /// </summary>
-        private async Task<PokemonData?[]?> ReadPartyAsync(CancellationToken cancellationToken, int timeoutMs = PartyReadAttempts * Constant.PollIntervalMs, string what = "party read")
-        {
-            var sw = Stopwatch.StartNew();
-            int attempts = 0;
-            do
-            {
-                PokemonData?[]? party = await TryReadPartyAsync();
-                attempts++;
-                if (party is not null) return party;
-                await Task.Delay(Constant.PollIntervalMs, cancellationToken);
-            } while (sw.ElapsedMilliseconds < timeoutMs && !cancellationToken.IsCancellationRequested);
-
-            Console.WriteLine($"[TogepiEgg] Could not get a clean {what} after {attempts} attempts over {sw.ElapsedMilliseconds}ms.");
-            return null;
         }
 
         /// <summary>
