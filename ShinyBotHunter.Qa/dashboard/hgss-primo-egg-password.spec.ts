@@ -4,16 +4,21 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import {
-  dashboardDir, emuHawkRunning, killEmuHawk, killTree, launchDashboard, readMemory, readU32, runDir, shotAll,
+  dashboardDir, emuHawkRunning, killEmuHawk, killTree, launchDashboard, readMemory, readU16, readU32, runDir, shotAll,
   startBackend, startEmulatorRecorder, step, stopBackend, stopRecorder, toS16, windowByTitle
 } from './driver'
 import { decodeMon, MON_SIZE } from './egg-pid'
+import { encodePrimoPassword } from './primo-password'
 
-// hgss.qa-primo: five Pokémon, facing Primo; trainer ID 60647 asks for KLUTZ, TEACHER / DARK, STEADFAST.
-const ROM = 'SS-Slugma-Room'
+// The save is named by QA_PRIMO_ROM (hgss.qa-primo and its trainer-ID copies): five Pokémon, facing Primo. The
+// password is computed from the trainer ID read in RAM.
+const ROM = process.env.QA_PRIMO_ROM ?? 'SS-Slugma-Room'
 const SAVE = path.join('C:\\BizHawk-2.11', 'NDS', 'SaveRAM', `${ROM}.SaveRAM`)
 const ANCHOR_ADDR = 0x21d4158
 const Y_ADDR = 0x21da6fc
+// The trainer ID: [[anchor] + 0x0C] + 0x84, u16 (read table R31, FR-4).
+const SAVE_DATA_OFFSET = 0x0c
+const TRAINER_ID_OFFSET = 0x84
 // The party, from the anchor: count at -0x23F44, records of 0xEC bytes from -0x23F40 (the spike's egg.py).
 const PARTY_COUNT_OFFSET = -0x23f44
 const PARTY_OFFSET = -0x23f40
@@ -22,7 +27,6 @@ const SPECIAL_VARS_CHAIN = [0x10, 0x0c]
 const SPECIAL_VARS_OFFSET = 0x8c
 const ACTION = 'HGSS Primo Egg'
 const PHASE = 'Primo Slugma'
-const PASSWORD = [1085, 1337, 981, 1062]
 const MINUTE = 60 * 1000
 
 const sha256 = (file: string): string => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
@@ -90,6 +94,10 @@ test('HGSS Primo Egg through the dashboard: the password entered, the script var
     await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * 60 * 1000 })
     startEmulatorRecorder()
     await expect.poll(async () => toS16(await readU32(Y_ADDR)), { timeout: 60_000, intervals: [500] }).toBeGreaterThan(0)
+    const saveData = await readU32((await readU32(ANCHOR_ADDR)) + SAVE_DATA_OFFSET)
+    const trainerId = await readU16(saveData + TRAINER_ID_OFFSET)
+    const password = encodePrimoPassword(trainerId, 10) // egg 10: Slugma
+    step(`${ROM}: trainer ID ${trainerId} from RAM, password ${password.join(' ')}`)
     await shotAll('01-launched', pages)
 
     // 5. Run HGSS Primo Egg.
@@ -102,7 +110,8 @@ test('HGSS Primo Egg through the dashboard: the password entered, the script var
     // 6. The password from the trainer ID (FR-3, FR-4).
     const passwordLine = await waitForLine(/\[PrimoEgg\] trainer ID/, 2 * MINUTE)
     step(`logged: ${passwordLine}`)
-    expect(passwordLine, 'not the password for trainer ID 60647').toContain('[PrimoEgg] trainer ID 60647, password 1085 1337 / 981 1062')
+    expect(passwordLine, `not the password for trainer ID ${trainerId}`)
+      .toContain(`[PrimoEgg] trainer ID ${trainerId}, password ${password[0]} ${password[1]} / ${password[2]} ${password[3]}`)
 
     // 7. After each confirm, the scenario's own read of the script variables, then the event's line (FR-5).
     for (const prompt of [1, 2]) {
@@ -116,17 +125,17 @@ test('HGSS Primo Egg through the dashboard: the password entered, the script var
       const deadline = Date.now() + 10_000
       while (Date.now() < deadline) {
         vars = await readSpecialVars()
-        if (vars && vars[first] === PASSWORD[first] && vars[first + 1] === PASSWORD[first + 1]) break
+        if (vars && vars[first] === password[first] && vars[first + 1] === password[first + 1]) break
         await sleep(250)
       }
       step(`prompt ${prompt}: special variables 0x8000.. ${JSON.stringify(vars)}`)
       expect(vars?.slice(first, first + 2), `0x${(0x8000 + first).toString(16)} and the next do not read prompt ${prompt}'s words`)
-        .toEqual(PASSWORD.slice(first, first + 2))
+        .toEqual(password.slice(first, first + 2))
       await shotAll(`0${prompt + 1}-prompt-${prompt}`, pages)
       const after = await waitForLine(new RegExp(`\\[PrimoEgg\\] after prompt ${prompt}:`), MINUTE)
       step(`logged: ${after}`)
       const [a, b] = [(0x8000 + first).toString(16).toUpperCase(), (0x8001 + first).toString(16).toUpperCase()]
-      expect(after, `the event's prompt ${prompt} line`).toContain(`0x${a}=${PASSWORD[first]} 0x${b}=${PASSWORD[first + 1]}`)
+      expect(after, `the event's prompt ${prompt} line`).toContain(`0x${a}=${password[first]} 0x${b}=${password[first + 1]}`)
     }
 
     // 8. Outcome 5 (the party count after the egg), then the egg.
