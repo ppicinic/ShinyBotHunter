@@ -1,7 +1,7 @@
 # Spec: Primo's Slugma egg hunt (HGSS)
 
-Status: Implemented (epic #240, 2026-11-02). FR-1 to FR-17 except FR-13 (removed) and NFR-1, NFR-2 are built; the five QA scenarios passed on `feature/primo-egg-hunt`, run folders in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-primo-egg-hunt-2026-11-02); divergences are in the changelog. Required before the branch reaches `main` (owner, 2026-11-02): E8 (#260, Confirm's A gated on the byte the question writes; no doubled press) and E9 (the password scenario on two more saves with other trainer and secret IDs).
-Last updated: 2026-11-02
+Status: Implemented (epic #240, 2026-11-02). FR-1 to FR-17 except FR-13 (removed) and NFR-1, NFR-2 are built. The five QA scenarios passed on `feature/primo-egg-hunt`, and `hgss-primo-egg-hatch` and `-shiny` passed again on 8daeb74; run folders are in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-primo-egg-hunt-2026-11-02), divergences in the changelog. The tasks the owner required before `main` (2026-11-02) are merged: E8 (#263, Confirm's A gated on the byte the question writes), E9 (#262, the password proved on trainer IDs 12345 and 65535) and E10 (#265, every easy-chat press waits for the app to take input).
+Last updated: 2026-11-03
 Owner: Phil
 Related: [plan phase 10](../plans/2026-10-cleanup-and-hardening.md#phase-10-primos-slugma-egg-hunt-its-own-spec), [research: the spike](../research/primo-slugma-egg.md) (the source for every value, rule and timing here), [HGSS state reader spec](hgss-state-reader.md) (the field script chain), [headbutt encounter spec](headbutt-encounter.md) (shares one change to the press loop), the Togepi egg hunt (`HgssTogepiEggEvent`, guide page [Togepi egg](../guide/04-hunts/04-togepi-egg.md)), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md)
 
@@ -131,10 +131,11 @@ Saves (added to the QA save table): `hgss.qa-primo` = the owner's `SS-Slugma` wi
 | E5d | #257. FR-8, FR-12: the walk through the navigator, the fixed legs and the sign handling deleted; a building exit overshot in the exit's direction | `BotEvents/HgssPrimoEggEvent.cs`, `BotEvents/PrimoEggConfig.cs`, `Configs/Events/PrimoEgg.json`, `Pathfinding/PathfindingService.cs`, `ShinyBotHunter.Qa/dashboard/hgss-primo-egg-hatch.spec.ts`, `docs/guide/04-hunts/06-primo-egg.md`, tests |
 | E6 | QA: the five scenarios, the PID rewrite helper, the saves and their rows | `ShinyBotHunter.Qa/dashboard/hgss-primo-egg*.spec.ts`, `hgss-togepi-egg-hatch.spec.ts`, `docs/specs/qa-automation.md` |
 | E7 | Close-out: architecture sentence, this spec's status, plan notes | `docs/**` |
-| E8 | #260. FR-5: Confirm's A gated on the byte the question's opening writes, found on the emulator; the Yes A on the app closing; no press answered by its retry; the research doc's Confirm rows | `Games/Hgss/HgssEasyChatInput.cs`, `docs/research/primo-slugma-egg.md`, tests |
+| E8 | #260. FR-5: Confirm's A gated on the byte the question's opening writes, found on the emulator; the Yes A on the app closing, superseded by E10; no press answered by its retry; the research doc's Confirm rows | `Games/Hgss/HgssEasyChatInput.cs`, `Service/Pointers/HgssPointerService.cs`, `docs/research/primo-slugma-egg.md`, `docs/specs/hgss-state-reader.md`, tests |
 | E9 | FR-3, FR-5 against the game on other trainer IDs: two more saves (`hgss.qa-primo-tid2`, `-tid3`, PKHeX copies of `hgss.qa-primo` with other trainer and secret IDs), `hgss-primo-egg-password` parameterised by save, run on all three; the password lines must match `PrimoPassword.Encode` and outcome 5 on each | `ShinyBotHunter.Qa/dashboard/hgss-primo-egg-password.spec.ts`, `docs/specs/qa-automation.md` |
+| E10 | #264. FR-5, FR-6: every press sent only while the app takes input and confirmed by the step byte it writes; the Yes on +0x28 leaving 1; a landed A's screen change awaited up to 3 s, never pressed again; from a frame-by-frame probe after E9's first run pressed the grid A again | `Games/Hgss/HgssEasyChatInput.cs`, `docs/research/primo-slugma-egg.md`, `docs/specs/hgss-state-reader.md`, tests |
 
-E1 and E2 run in parallel; E4 after E2 (it needs the step-counter and hatch members); E5a after E2 and E4; E5b after E5a; E6 after E5b; E5c after E6's first QA pass, E5d after E5c; E7 after E6; E8 and E9 after E7, E9's runs on E8's tip.
+E1 and E2 run in parallel; E4 after E2 (it needs the step-counter and hatch members); E5a after E2 and E4; E5b after E5a; E6 after E5b; E5c after E6's first QA pass, E5d after E5c; E7 after E6; E8 and E9 after E7, E9's runs on E8's tip; E10 after E9, from its first run's retried press (#262).
 
 ## Open questions
 
@@ -163,3 +164,5 @@ E1 and E2 run in parallel; E4 after E2 (it needs the step-counter and hatch memb
 - 2026-11-02: implemented (epic #240).
 - 2026-11-02: FR-5, Confirm's A gated on the question handler at +0x2C (0x021E8D95) with its step at +0x28 reading 1, and the first press of each prompt on the opening handler at +0x2C clearing (E8, #260).
 - 2026-11-03: FR-5 and FR-6, every easy-chat press waits for the app to take input and an A is gated on the step it writes; a slow screen change is awaited, never pressed again; the Yes on +0x28 leaving 1 (E10, #264, from a frame-by-frame probe).
+- 2026-11-03: QA, `hgss-primo-egg-password` picks its save with `QA_PRIMO_ROM` and computes the words from the trainer ID in RAM; passed on trainer IDs 60647, 12345 and 65535 (E9, #261, #262).
+- 2026-11-03: status, E8 to E10 merged and `hgss-primo-egg-hatch` and `-shiny` rerun on 8daeb74; task split, E10 added (E11, #266).
