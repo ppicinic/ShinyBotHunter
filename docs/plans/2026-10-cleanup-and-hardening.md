@@ -176,6 +176,17 @@ A new HGSS action, beside the Togepi egg hunt: Primo's computed password entered
 | 10.9 | The password on other trainer IDs (E9) | Two PKHeX copies of `hgss.qa-primo` with other trainer and secret IDs; `hgss-primo-egg-password` parameterised by save and run on all three | 10.8 | S |
 | 10.10 | Easy-chat presses on the app's input (E10, #264) | Every `HgssEasyChatInput` press sent only while the app takes input and confirmed by the step byte it writes; a landed A's screen change awaited, never pressed again (principle 2.19); a frame-by-frame probe first; `hgss-primo-egg-password` run five times | 10.9 | S/M |
 
+### Phase 11: Pathfinder map data, flag routes and HMs (its own spec)
+The HGSS map data rebuilt from the `pokeheartgold` checkout by the shipped scripts (three overworld maps corrected, an orphan dropped, two crashes in the graph step fixed); NPCs that exist only while a script flag is clear become flag-gated tiles and the graph's edges carry the flags they need; the navigator builds its capability from the party's moves and the badge bytes and uses all seven field moves through one gated field-move step, proved live on each; two tile rules fixed on the way (rock-climb walls, waterfall brinks). Spiked 2026-11-03 ([research](../research/pathfinder-maps-flags-hms.md)); designed in the [pathfinder spec](../specs/pathfinder-maps-flags-hms.md).
+
+| # | Task | Deliverable | Depends on | Size |
+|---|---|---|---|---|
+| 11.1 | Rebuild from the checkout (P1) | `--generatemapdatahgss <decompDir> <outputDir>`: NARC unpack, matrices and headers from the checkout, exact event files, the rock-climb and brink tile rules, the graph step on a clean folder; `Data/HGSS` regenerated; tests on fixtures | — | M |
+| 11.2 | Flag-gated routes (P2) | `MAP_FlaggedNpc`, `flagged.json`, the flag-aware A* and Dijkstra, `Edge.RequiredFlags` in `graph.bin`, the flags read at save data + 0x10D4; tests | 11.1 | L |
+| 11.3 | HMs (P3) | `Capability` from party moves and the badge bytes, `HgssFieldMove` (turn, held A, script id, menu, texts, field free, position and avatar state after), the walk split at each HM action, warp exits, the timed HM strings in `CreateMacro` deleted; tests | 11.1 | L |
+| 11.4 | QA and guide (P4) | `hgss-hm-rocksmash`, `-cut`, `-surf`, `-strength`, `-waterfall`, `-rockclimb`, `-whirlpool`, `-refused`, `hgss-flag-route`, `hgss-map-rebuild`; saves `hgss.qa-hm`, `-mortar`, `-r27`; the wild encounter and install guide pages | 11.2, 11.3 | M |
+| 11.5 | Close-out (P5) | Architecture row and setup line, spec status, implementation notes here | 11.4 | S |
+
 ## Testing strategy
 - Phases 0, 1, 2, 4: `Scripts/ci-local.ps1` green, plus the new tests named in each row.
 - Once 4b.1 and 4b.3 exist: `ci-local.ps1 -Qa` runs the scenarios mapped to the change, and the PR links the run folder.
