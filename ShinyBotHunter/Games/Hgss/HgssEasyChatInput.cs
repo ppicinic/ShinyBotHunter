@@ -62,9 +62,11 @@ namespace ShinyBotHunter.Games.Hgss
             byte[] block = await WaitForSlotsAsync(ct);
             while (block[addresses.EasyChatSlotRowOffset] != ConfirmRow)
                 block = (await PressAsync(block[addresses.EasyChatSlotRowOffset] < ConfirmRow ? "Down" : "Up", ct))!;
+            Stopwatch clock = Stopwatch.StartNew();
             await PressAsync("A", ct);
+            double question = clock.Elapsed.TotalSeconds;
             await PressAsync("A", ct);
-            Console.WriteLine("[EasyChat] confirmed");
+            Console.WriteLine($"[EasyChat] confirmed (question open {question:F1} s after the Confirm A, app closed {clock.Elapsed.TotalSeconds:F1} s after it)");
         }
 
         private async Task<(string[] Buttons, byte[] Block)> BuildAsync(int slot, ushort word, byte[] block, CancellationToken ct)
@@ -130,7 +132,8 @@ namespace ShinyBotHunter.Games.Hgss
         }
 
         // One press, confirmed by the gate the screen and the button call for, pressed again at most three times; then
-        // the busy byte must clear. Returns the last read, null once the app has closed.
+        // the busy byte must clear, unless the question runs at + 0x2C (the screen's step at + 0x1C is then paused).
+        // Returns the last read, null once the app has closed.
         private async Task<byte[]?> PressAsync(string button, CancellationToken ct)
         {
             byte[] start = await ReadAsync(ct) ?? throw new InvalidOperationException($"[EasyChat] {button}: the easy-chat app is not open");
@@ -160,7 +163,7 @@ namespace ShinyBotHunter.Games.Hgss
 
             if (block == null) return null;
             Stopwatch busy = Stopwatch.StartNew();
-            while (block == null || block[addresses.EasyChatBusyOffset] != 0)
+            while (block == null || block[addresses.EasyChatBusyOffset] != 0 && BitConverter.ToUInt32(block, addresses.EasyChatQuestionOffset) == 0)
             {
                 if (busy.ElapsedMilliseconds >= GateTimeoutMs)
                     throw new InvalidOperationException($"[EasyChat] the busy byte did not clear within 1.5 s after {button}");
@@ -170,25 +173,30 @@ namespace ShinyBotHunter.Games.Hgss
             return block;
         }
 
-        // What a press of the button on the current screen must change: A moves between the three screens (or, at
-        // Confirm, leaves the slots screen); anything else moves the current screen's cursor. A on any other screen
-        // is Yes at "Is this your answer?", and closes the app.
+        // What a press of the button on the current screen must change: A moves between the three screens, or at
+        // Confirm opens "Is this your answer?" at + 0x2C and its Yes/No (+ 0x28 = 1); anything else moves the current
+        // screen's cursor. With the question open, A is Yes and closes the app.
         private (string What, Func<byte[]?, string> Value, string? Expect) GateFor(byte[] block, string button)
         {
+            if (BitConverter.ToUInt32(block, addresses.EasyChatQuestionOffset) == addresses.EasyChatQuestionScreen)
+                return ("app", b => b == null ? Closed : "open", Closed);
             uint screen = BitConverter.ToUInt32(block, addresses.EasyChatScreenOffset);
             if (screen == addresses.EasyChatSlotsScreen)
             {
                 if (button != "A") return ("slot cursor", SlotCursor, null);
-                return ("screen", Screen, block[addresses.EasyChatSlotRowOffset] == ConfirmRow ? null : Hex(addresses.EasyChatGroupScreen));
+                return block[addresses.EasyChatSlotRowOffset] == ConfirmRow
+                    ? ("question", Question, $"{Hex(addresses.EasyChatQuestionScreen)} step 1")
+                    : ("screen", Screen, Hex(addresses.EasyChatGroupScreen));
             }
             if (screen == addresses.EasyChatGroupScreen)
                 return button == "A" ? ("screen", Screen, Hex(addresses.EasyChatListScreen)) : ("grid cursor", GridCursor, null);
-            if (screen == addresses.EasyChatListScreen)
-                return button == "A" ? ("screen", Screen, Hex(addresses.EasyChatSlotsScreen)) : ("list cursor", ListCursor, null);
-            return ("app", b => b == null ? Closed : "open", Closed);
+            return button == "A" ? ("screen", Screen, Hex(addresses.EasyChatSlotsScreen)) : ("list cursor", ListCursor, null);
         }
 
         private string Screen(byte[]? b) => b == null ? Closed : Hex(BitConverter.ToUInt32(b, addresses.EasyChatScreenOffset));
+
+        private string Question(byte[]? b) => b == null ? Closed :
+            $"{Hex(BitConverter.ToUInt32(b, addresses.EasyChatQuestionOffset))} step {b[addresses.EasyChatQuestionStepOffset]}";
 
         private string SlotCursor(byte[]? b) =>
             b == null ? Closed : $"({b[addresses.EasyChatSlotRowOffset]}, {b[addresses.EasyChatSlotColumnOffset]})";
@@ -200,7 +208,8 @@ namespace ShinyBotHunter.Games.Hgss
 
         private static string Hex(uint value) => $"0x{value:X8}";
 
-        // Waits for the slots screen with nothing scrolling; a failed read counts as not yet.
+        // Waits for the slots screen with nothing scrolling and no handler at + 0x2C (the app's opening one runs there
+        // first, instead of the screen); a failed read counts as not yet.
         private async Task<byte[]> WaitForSlotsAsync(CancellationToken ct)
         {
             Stopwatch clock = Stopwatch.StartNew();
@@ -208,10 +217,10 @@ namespace ShinyBotHunter.Games.Hgss
             {
                 byte[]? block = await ReadAsync(ct);
                 if (block != null && BitConverter.ToUInt32(block, addresses.EasyChatScreenOffset) == addresses.EasyChatSlotsScreen
-                    && block[addresses.EasyChatBusyOffset] == 0)
+                    && block[addresses.EasyChatBusyOffset] == 0 && BitConverter.ToUInt32(block, addresses.EasyChatQuestionOffset) == 0)
                     return block;
                 if (clock.ElapsedMilliseconds >= OpenTimeoutMs)
-                    throw new InvalidOperationException($"[EasyChat] the slots screen did not appear within 10 s (screen {Screen(block)})");
+                    throw new InvalidOperationException($"[EasyChat] the slots screen did not appear within 10 s (screen {Screen(block)}, + 0x2C {Question(block)})");
                 await Task.Delay(Constant.PollIntervalMs, ct);
             }
         }

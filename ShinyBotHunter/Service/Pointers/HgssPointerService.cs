@@ -273,6 +273,15 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-primo-egg-password
         public int EasyChatScreenOffset => 0x20;
 
+        // easy-chat data, the question's step (u8), 1 while the question's Yes/No reads input (data + 0x28); offset
+        // (revision-independent); observed; QA: hgss-primo-egg-password
+        public int EasyChatQuestionStepOffset => 0x28;
+
+        // easy-chat data, the handler that runs instead of + 0x20 while set (u32): 0x021E8D61 while the app opens,
+        // EasyChatQuestionScreen once Confirm is pressed, 0 otherwise (data + 0x2C); offset (revision-independent);
+        // observed; QA: hgss-primo-egg-password
+        public int EasyChatQuestionOffset => 0x2C;
+
         // easy-chat data, slot screen cursor row (u8): 0 the slots, 1 Confirm, 2 Cancel (data + 0x4C); offset
         // (revision-independent); observed; QA: hgss-primo-egg-password
         public int EasyChatSlotRowOffset => 0x4C;
@@ -313,9 +322,13 @@ namespace ShinyBotHunter.Service.Pointers
         // offset (revision-independent); observed; QA: hgss-primo-egg-password
         public int EasyChatGroupWordsOffset => 0x104;
 
-        // easy-chat screen handler of the two slots, Confirm and Cancel, kept by "Is this your answer?" until the A on
-        // Yes (the A at Confirm leaves it unchanged); root (revision-dependent; overlay 102, rev 0); observed; QA: hgss-primo-egg-password
+        // easy-chat screen handler of the two slots, Confirm and Cancel; kept while "Is this your answer?" runs at
+        // + 0x2C; root (revision-dependent; overlay 102, rev 0); observed; QA: hgss-primo-egg-password
         public uint EasyChatSlotsScreen => 0x021E7AA5;
+
+        // easy-chat "Is this your answer?" handler, set at + 0x2C by the A at Confirm; root (revision-dependent;
+        // overlay 102, rev 0); observed; QA: hgss-primo-egg-password
+        public uint EasyChatQuestionScreen => 0x021E8D95;
 
         // easy-chat screen handler of the group grid; root (revision-dependent; overlay 102, rev 0); observed;
         // QA: hgss-primo-egg-password

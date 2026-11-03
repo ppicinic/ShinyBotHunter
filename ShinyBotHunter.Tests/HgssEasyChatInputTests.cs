@@ -119,15 +119,41 @@ namespace ShinyBotHunter.Tests
             Assert.False(app.Open);
         }
 
+        [Fact]
+        public async Task DroppedConfirmIsPressedAgainOnce()
+        {
+            FakeEasyChatApp app = new(grid: 0);
+            app.Drops["A"] = 1;
+            HgssEasyChatInput input = new(app.Memory, app, Table);
+
+            await input.ConfirmAsync(CancellationToken.None);
+
+            Assert.Equal(new[] { "Down", "A", "A", "A" }, app.Presses);
+            Assert.False(app.Open);
+        }
+
+        [Fact]
+        public async Task FirstPressWaitsForTheOpeningHandler()
+        {
+            FakeEasyChatApp app = new(grid: 0, opening: true);
+            HgssEasyChatInput input = new(app.Memory, app, Table);
+            using CancellationTokenSource cts = new(300);
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => input.EnterAsync(0, Klutz, cts.Token));
+
+            Assert.Empty(app.Presses);
+        }
+
         // The easy-chat app as the research doc describes it, over placed memory: each H.<button>.4 macro is applied
-        // at once and the state written back.
+        // at once and the state written back. While a handler is set at + 0x2C it runs instead of the screen's: the
+        // opening one drops every press, the question's takes the A on Yes and closes the app.
         private sealed class FakeEasyChatApp : ICommandClient
         {
             private const uint Fs = 0x02100000;
             private const uint Sub0 = 0x02110000;
             private const uint App = 0x02120000;
             private const uint Data = 0x02130000;
-            private const uint AnswerScreen = 0x021E8D1D;
+            private const uint OpeningHandler = 0x021E8D61;
 
             public FakeMemoryClient Memory { get; } = new();
             public List<string> Presses { get; } = new();
@@ -137,15 +163,18 @@ namespace ShinyBotHunter.Tests
             public bool Open { get; private set; }
 
             private readonly int startGrid;
+            private readonly bool startOpening;
             private readonly int[] counts = new int[12];
             private readonly int[] starts = new int[12];
             private readonly ushort[] area;
-            private uint screen;
+            private uint screen, question;
+            private int busy, questionStep;
             private int slotRow, slotColumn, grid, scroll, maxScroll, listRow, listColumn;
 
-            public FakeEasyChatApp(int grid)
+            public FakeEasyChatApp(int grid, bool opening = false)
             {
                 startGrid = grid;
+                startOpening = opening;
                 // Ten filler words a group, but 130 in Status and 100 in Lifestyle so the lists scroll far enough.
                 for (int g = 0; g < 12; g++)
                 {
@@ -176,6 +205,9 @@ namespace ShinyBotHunter.Tests
             {
                 Open = true;
                 screen = Table.EasyChatSlotsScreen;
+                question = startOpening ? OpeningHandler : 0;
+                questionStep = startOpening ? 1 : 0;
+                busy = 0;
                 slotRow = slotColumn = scroll = maxScroll = listRow = listColumn = 0;
                 grid = startGrid;
                 Words[0] = Words[1] = 0xFFFF;
@@ -192,10 +224,11 @@ namespace ShinyBotHunter.Tests
                     Drops[button] = drops - 1;
                     return;
                 }
-                if (screen == Table.EasyChatSlotsScreen) Slots(button);
+                if (question == Table.EasyChatQuestionScreen) Question(button);
+                else if (question == OpeningHandler) return;
+                else if (screen == Table.EasyChatSlotsScreen) Slots(button);
                 else if (screen == Table.EasyChatGroupScreen) Grid(button);
                 else if (screen == Table.EasyChatListScreen) List(button);
-                else if (button == "A") Open = false;
                 Write();
             }
 
@@ -204,7 +237,19 @@ namespace ShinyBotHunter.Tests
                 if (button == "Down") slotRow = Math.Min(slotRow + 1, 2);
                 else if (button == "Up") slotRow = Math.Max(slotRow - 1, 0);
                 else if (button is "Left" or "Right") slotColumn = 1 - slotColumn;
-                else if (button == "A") screen = slotRow == 0 ? Table.EasyChatGroupScreen : AnswerScreen;
+                else if (button == "A" && slotRow == 0) screen = Table.EasyChatGroupScreen;
+                else if (button == "A")
+                {
+                    question = Table.EasyChatQuestionScreen;
+                    questionStep = 1;
+                    busy = 3;
+                }
+            }
+
+            // Yes is highlighted; its A closes the app.
+            private void Question(string button)
+            {
+                if (button == "A") Open = false;
             }
 
             private void Grid(string button)
@@ -240,7 +285,10 @@ namespace ShinyBotHunter.Tests
                 Memory.Place((uint)(Sub0 + Table.SubAppOffset), BitConverter.GetBytes(Open ? App : 0u));
                 Memory.Place((uint)(Data + Table.EasyChatWordsOffset), BitConverter.GetBytes(Words[0]));
                 Memory.Place((uint)(Data + Table.EasyChatWordsOffset + 2), BitConverter.GetBytes(Words[1]));
+                Memory.Place((uint)(Data + Table.EasyChatBusyOffset), new[] { (byte)busy });
                 Memory.Place((uint)(Data + Table.EasyChatScreenOffset), BitConverter.GetBytes(screen));
+                Memory.Place((uint)(Data + Table.EasyChatQuestionStepOffset), new[] { (byte)questionStep });
+                Memory.Place((uint)(Data + Table.EasyChatQuestionOffset), BitConverter.GetBytes(question));
                 Memory.Place((uint)(Data + Table.EasyChatSlotRowOffset), new[] { (byte)slotRow });
                 Memory.Place((uint)(Data + Table.EasyChatSlotColumnOffset), new[] { (byte)slotColumn });
                 Memory.Place((uint)(Data + Table.EasyChatGroupCursorOffset), new[] { (byte)grid });
