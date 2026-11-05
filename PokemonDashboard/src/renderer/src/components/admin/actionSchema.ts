@@ -92,6 +92,24 @@ export function gamesFor(schema: EventArgumentOptions, games: GameRomInfo[]): Ga
   return games.filter((g) => g.flavor === filter.flavor && (!filter.testedOnly || g.revisionSupport === 'Tested'))
 }
 
+const ENCOUNTER_TYPE_OPTIONS: EncounterType[] = ['Spin', 'Run', 'Headbutt']
+
+/** The encounter-type dropdown for one schema: each choice, with any the schema's disabledChoices names
+ *  disabled and its reason in the label (Chromium shows no tooltip on a disabled option), and the
+ *  selection to keep, which is '' when the selected choice is now disabled. */
+export function encounterTypeChoices(
+  schema: EventArgumentOptions,
+  selected: string | undefined
+): { options: { value: EncounterType; label: string; disabled: boolean }[]; selected: string } {
+  const reasons = schema.disabledChoices?.EncounterType ?? {}
+  const options = ENCOUNTER_TYPE_OPTIONS.map((value) => {
+    const reason = reasons[value]
+    return { value, label: reason ? `${value} (${reason})` : value, disabled: reason !== undefined }
+  })
+  const keep = selected ?? ''
+  return { options, selected: reasons[keep] !== undefined ? '' : keep }
+}
+
 /** Maps one form's parameter values onto the JSON body of an encounter leg. */
 /**
  * Parameter names buildLegBody knows how to place. Anything outside this set is passed through

@@ -252,7 +252,7 @@ export type ConditionType = 'Eq' | 'Neq'
 export type TrainType = 'None' | 'Standard' | 'Switch'
 
 // Matches C# EncounterType enum
-export type EncounterType = 'Spin' | 'Run'
+export type EncounterType = 'Spin' | 'Run' | 'Headbutt'
 
 export interface Condition {
   conditionType: ConditionType
@@ -279,6 +279,8 @@ export interface EventArgumentOptions {
   legCondition?: Condition
   // When present, the GameName dropdown offers only the ROMs this admits.
   gameFilter?: GameFilter | null
+  // Parameter name to choice to the reason it is unavailable; null when nothing is disabled.
+  disabledChoices?: Record<string, Record<string, string>> | null
 }
 
 // Matches C# GameFilter in BotDtos.cs. testedOnly admits only ROMs whose revisionSupport is "Tested".

@@ -16,7 +16,7 @@ namespace ShinyBotHunter.Service
     /// <summary>One occupied party slot, as offered to the dashboard for picking a switch-train battler.</summary>
     public record PartySlotInfo(int Slot, string Name, int Level, int Hp, int MaxHp, bool IsShiny);
 
-    public class EventArgumentOptions
+    public record EventArgumentOptions
     {
         public string Name { get; set; } = null!;
         public string[]? RequiredParameters { get; set; }
@@ -31,6 +31,9 @@ namespace ShinyBotHunter.Service
         // When set, only the ROMs that match are offered for GameName, and Start refuses any other.
         // Null means every ROM.
         public GameFilter? GameFilter { get; set; }
+        // Parameter name -> choice -> the reason it cannot be picked on this bot. Null when nothing
+        // is disabled. Set only on per-request copies, never on the registry's own options.
+        public Dictionary<string, Dictionary<string, string>>? DisabledChoices { get; set; }
     }
 
     public class GameFilter

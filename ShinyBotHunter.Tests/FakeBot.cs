@@ -79,7 +79,16 @@ namespace ShinyBotHunter.Tests
         public Task<ushort> ReadUShortViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult((ushort)0);
         public Task<uint> ReadUIntViaPointerAsync(uint anchorAddress, params int[] hopOffsets) => Task.FromResult(0u);
         public Task<byte[][]> ReadValidatedPartyAsync(uint anchorAddress, int countOffset, int slotsOffset, int slotSize, int slotStride, int maxSlots, int maxRetryFrames,
-            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default) => Task.FromResult(PartyBlocks);
+            PartyAddressing addressing = PartyAddressing.Anchor, PokemonScheme scheme = PokemonScheme.Gen4, CancellationToken ct = default)
+        {
+            PartyReads++;
+            return PartyReadError is { } error ? Task.FromException<byte[][]>(error) : Task.FromResult(PartyBlocks);
+        }
+
+        /// <summary>When set, a party read fails with this instead of returning <see cref="PartyBlocks"/>.</summary>
+        public Exception? PartyReadError { get; set; }
+        public int PartyReads { get; private set; }
+
         public Task<ChainBlockResult[]> ReadChainBlocksAsync(IReadOnlyList<ChainBlockRequest> blocks, int retryFrames = 0, CancellationToken ct = default) => Task.FromResult(ChainBlocks(blocks));
 
         // Settable after construction because FakeBotFactory builds the bot; throws when no test placed one.

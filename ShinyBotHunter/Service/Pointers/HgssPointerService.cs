@@ -184,6 +184,10 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-poison-walk
         public int SurvivePoisoningScript => 2003;
 
+        // std_field_headbutt (include/constants/std_script.h:646), env.script of the headbutt tree's script; constant; observed;
+        // QA: hgss-headbutt
+        public int HeadbuttScript => 10014;
+
         // ov01_021EF348 (from ScrCmd_NPCMsg), a message printing or waiting at the arrow; root (revision-dependent;
         // overlay 1, rev 0); observed; QA: hgss-heal-variants, hgss-poison-walk
         public uint PrintingNative => 0x021EF349;

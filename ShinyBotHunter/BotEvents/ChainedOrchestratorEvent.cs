@@ -105,7 +105,7 @@ namespace ShinyBotHunter.BotEvents
         /// dirty and deliberately preserves the start tile, bot, and pending evolutions, which belong
         /// to the chain as a whole rather than to one leg.
         /// </summary>
-        private static void ApplyLeg(GameState state, EventLeg leg)
+        internal static void ApplyLeg(GameState state, EventLeg leg)
         {
             state.Target = leg.Target;
             state.Milestone = leg.PhaseName;
@@ -123,6 +123,10 @@ namespace ShinyBotHunter.BotEvents
             state.NavigationPathIndex = 0;
             // Built from the trainer's live position on first use, and this leg's ranges may differ.
             state.EncounterMacros.Remove("Run");
+            foreach (string key in state.EncounterMacros.Keys.Where(k => k.StartsWith("Headbutt:")).ToList())
+            {
+                state.EncounterMacros.Remove(key);
+            }
         }
     }
 }
