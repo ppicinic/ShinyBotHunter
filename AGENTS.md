@@ -46,6 +46,8 @@ When `Scripts/ci-local.ps1` exists, run that instead; it is the definition of "C
 13. **Tests are plain.** Arrange, act, assert. No test base classes, fixture frameworks, builders, or a mock per interface. `FakeMemoryClient` is the model.
 14. **Do not touch adjacent code.** No renames, reformatting, comment rewrites, or doc generation for code the task did not change.
 15. **Prefer deleting.** A PR that fixes the issue with net negative lines is the default good outcome.
+16. **Every press is gated on the byte it writes; no press is doubled.** A press into the emulator is confirmed by the memory value that press changes, found on the real emulator and named in the research doc, never by time. A retry is only for a press the byte proves was dropped; a gate on the wrong byte that "works through the retry" is a doubled press and a bug (#260). Every wait ends in the awaited state, cancellation or a stale-timeout naming what it saw.
+17. **Elm's Pokégear call is not an obstacle.** Unanswered it runs no script and blocks no walk, route or pacing; nothing dismisses it, and no failure is blamed on it without the emulator showing the cause.
 
 ## Workflow
 

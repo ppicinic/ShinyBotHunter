@@ -61,7 +61,7 @@ namespace ShinyBotHunter.Tests
             var service = new BotService(settings, factory, provider, null!, null!, null!);
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             FakeBot bot = factory.Bots[0];
-            bot.Party = party;
+            bot.PartyBlocks = party;
             return (service, bot);
         }
 
@@ -153,7 +153,7 @@ namespace ShinyBotHunter.Tests
         {
             var (service, bot) = await LaunchAsync(WithoutHeadbutt);
             await service.GetBotActionsAsync(0);
-            bot.Party = WithHeadbutt;
+            bot.PartyBlocks = WithHeadbutt;
 
             await service.ReloadPartyAsync(0);
             var actions = await service.GetBotActionsAsync(0);
@@ -183,7 +183,7 @@ namespace ShinyBotHunter.Tests
         {
             var (service, bot) = await LaunchAsync(WithHeadbutt);
             await service.GetBotActionsAsync(0);
-            bot.Party = WithoutHeadbutt;
+            bot.PartyBlocks = WithoutHeadbutt;
             var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Headbutt };
 
             var result = await new BotController(service).StartAction(0, args);
@@ -200,7 +200,7 @@ namespace ShinyBotHunter.Tests
         {
             var (service, bot) = await LaunchAsync(WithHeadbutt);
             await service.GetBotActionsAsync(0);
-            bot.Party = WithoutHeadbutt;
+            bot.PartyBlocks = WithoutHeadbutt;
             var args = new NewEventArguments
             {
                 EventName = "Chained Encounter",

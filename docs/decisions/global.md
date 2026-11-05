@@ -1,7 +1,7 @@
 # Decisions: Global
 
 Status: Living document
-Last updated: 2026-10-17
+Last updated: 2026-11-02
 
 Project-wide decisions that are not tied to one feature. Feature-specific decisions live in their own file in this folder (for example `persistence.md`, `bot-engine.md`, `dashboard.md`), created when the first decision for that area is made. A decision is never deleted; when it changes, mark the old section **Superseded** and link to the new one.
 
@@ -245,3 +245,42 @@ A hunt does what a human would do, visibly. Before the bot reads a Pokémon from
 - The Wishmaker Jirachi hunt opens the result in EmuHawk and shows the summary every cycle (its spec's G6, NFR-4, FR-17); about 40 s per cycle.
 - A new hunt's spec states where in its cycle the Pokémon is on screen and which memory read follows; a plan that logs from a file alone is rejected at plan review.
 - QA evidence includes a screen recording of at least one cycle when the presses change.
+
+---
+
+## Every emulator press is gated on the byte it writes; a doubled press is a bug
+
+Status: Accepted
+Date: 2026-11-02 (owner)
+
+### Context
+The Primo egg epic (#240) entered the easy-chat password on memory gates. QA found (#260) that `HgssEasyChatInput.ConfirmAsync` gated the Confirm A on the screen handler leaving the slots value, which the "Is this your answer?" question never does, so every Confirm timed out and was pressed again, and the retry landed on Yes. The hunt worked, the log said "pressing again", and the second A was in truth an unconfirmed press the game acted on. Earlier hunts had hand-timed macros for the same reason.
+
+### Options
+- **A. Accept retries as a safety net.** A gate that is wrong or loose still gets through; the cost is a press the game acts on without the bot knowing which one.
+- **B. One gate per press, on the byte that press writes.** The byte is found on the emulator; a retry only when that byte proves the press was dropped.
+
+### Decision
+Option B, as engineering principle 2.19 and AGENTS.md rule 16. Every press names the byte that proves it landed; a wait ends in the awaited state, cancellation or a stale-timeout naming what it saw; a press that "works through the retry" is a bug to fix, not a log line to live with. #260 is required before the Primo branch reaches `main`.
+
+### Consequences
+- A plan lists, per press, the byte and where it was observed; the planner holds a plan that cannot.
+- Research docs record the gate with the press; a QA run that logs "pressing again" on every cycle is a failed gate, not a pass.
+- `MaxPresses`-style retry limits stay as the last resort for a dropped press; they do not excuse a wrong gate.
+
+---
+
+## Professor Elm's Pokégear call is not an obstacle
+
+Status: Accepted
+Date: 2026-11-02 (owner)
+
+### Context
+A QA runner's report on the first `hgss-primo-egg-hatch` failure blamed Elm's Pokégear call ringing during the walk. The call is cosmetic: unanswered, it runs no script, moves nothing and changes no byte the bot reads, so walking, routing and pacing continue through it. The emulator showed the real cause, the Violet City signpost at (488, 263) read by a held Up.
+
+### Decision
+No code, plan, scenario or report treats the call as a blocking state or dismisses it. A failure attributed to it, or to any other event that changes nothing in memory, is re-diagnosed on the emulator before it is written down (principle 2.20).
+
+### Consequences
+- The Primo and Togepi walks have no call handling and never will.
+- A subagent's root cause is verified on the emulator before the orchestrator repeats it.

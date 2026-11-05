@@ -104,6 +104,7 @@ The actions, in the order the dashboard lists them. "Start Action" is the list o
 | Wild Encounter | Emulator | **Milestone**; **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin or Run); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level**. Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
 | Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
 | HGSS Togepi Egg | Emulator | **Milestone** | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
+| HGSS Primo Egg | Emulator | **Milestone** | [Primo egg hunt](04-hunts/06-primo-egg.md) |
 | Resume | Emulator | None | [Resume a hunt that is waiting](#resume-a-hunt-that-is-waiting) |
 
 ## Make a milestone

@@ -158,5 +158,22 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("M.Right.3.35497716.35471704.142756.7.9", warpMove);
             Assert.Equal("M.Up.2.35497724", plainMove);
         }
+
+        [Fact]
+        public void ASidewaysApproachToABuildingExitOvershootsThroughTheDoor()
+        {
+            // The Pokémon Center's exit as in the HGSS data: the mat at (8, 19), the wall below it, floor on the other sides.
+            var map = new Map(height: 21, width: 16);
+            for (int x = 0; x < 16; x++) map[20, x] = Constant.MAP_Blocked;
+            map[19, 8] = Constant.MAP_Portal2;
+            // From Primo's tile: down to the exit's row, then left onto the mat.
+            MapPoint[] route = [new(Direction.Up) { X = 12, Y = 12 }, new(Direction.Down) { X = 12, Y = 19 }, new(Direction.Left) { X = 8, Y = 19 }];
+
+            Direction? exit = PathfindingService.ExitDirection(map, 8, 19);
+            string? macro = ServiceFor(map).CreateMacro(route, destGameMapIds: [73], overshoot: exit);
+
+            Assert.Equal(Direction.Down, exit);
+            Assert.Equal("M.Down.19.35497724;M.Left.8.35497716;M.Down.20.35497724.35471704.142756.73", macro);
+        }
     }
 }

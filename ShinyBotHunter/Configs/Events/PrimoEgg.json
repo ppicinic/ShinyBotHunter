@@ -1,0 +1,33 @@
+{
+  // Primo's egg: 8 Mareep, 9 Wooper, 10 Slugma. The password is computed from this and the save's trainer ID.
+  "eggSpecies": 218,
+  "egg": 10,
+
+  // Facing Primo in the Violet City Pokémon Center (map 158; Primo stands at (12, 11)). The save is made here,
+  // so every soft reset lands here too.
+  "startMapId": 158,
+  "startX": 12,
+  "startY": 12,
+  "startFacing": "Up",
+
+  // Where the navigator's walk from Primo's tile ends: the line's east end at the Mart door's column (Violet City, map 73).
+  "lineMapId": 73,
+  "lineX": 469,
+  "lineY": 258,
+
+  // The Togepi hunt's line: the street just south of the Mart door, x 458 to 500 at y 258.
+  "hatchAxis": "x",
+  "hatchLow": 458,
+  "hatchHigh": 500,
+
+  // Macros are looked up by name in Macro/Configs/HGSS.
+  "softResetMacro": "SoftReset",
+  "continueMacro": "ContinueGameWithRandom",
+  "saveMacro": "SaveGame",
+
+  "softResetDelayMs": 15000,
+  "postContinueDelayMs": 4000,
+
+  // How long the day care step counter while pacing, or a hatch wait, may see nothing change.
+  "hatchStaleMs": 30000
+}
