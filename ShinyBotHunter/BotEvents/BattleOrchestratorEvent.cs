@@ -53,7 +53,7 @@ namespace ShinyBotHunter.BotEvents
         private const int MaxSwitchAttempts = 3;
 
         // "What will X do?" prints after ctx.sel turns 1 and before the player's controller builds the battle menu, so Run and
-        // Fight wait for its printer to be seen (within 1 s of the menu state; past it the wait falls through), then to
+        // Fight wait for its printer to be seen (within 1 s of the turn's first menu snapshot; past it the wait falls through), then to
         // clear; 15 s stale, as the prompt waits (battle_controller_player.c, SSI_STATE_1 after ov12_02262B80).
         private static readonly TimeSpan MenuMessageSeenWithin = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan MenuMessageStale = TimeSpan.FromSeconds(15);
@@ -61,6 +61,11 @@ namespace ShinyBotHunter.BotEvents
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
         // sequence, so a field is enough; reset per battle in PokemonDataPending.
         private int switchAttempts = 0;
+
+        // When this turn's battle menu was first seen, so Run and Fight count MenuMessageSeenWithin from it. Same reasoning
+        // as switchAttempts: one instance serves one bot's battles in sequence. Started in PokemonDataPending and
+        // WaitForMoveEnd, cleared once a press leaves the menu.
+        private Stopwatch? menuSince;
         public BattleOrchestratorEvent(PokemonPersistenceService persistenceService, IOptions<ApplicationSettings> appSettings, DiscordBotService discordBotService, PokemonStateReader reader,
                                         PokemonMetadataService metadataService, SmogonDamageService damageService, ShinyAlertService shinyAlertService, IServiceProvider provider)
         {
@@ -141,8 +146,12 @@ namespace ShinyBotHunter.BotEvents
 
         private async Task Flee(GameState state, CancellationToken ct)
         {
+            Stopwatch timer = Stopwatch.StartNew();
             await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
-                MenuMessageSeenWithin, MenuMessageStale, ct);
+                MenuMessageSeenWithin, MenuMessageStale, ct, menuSince);
+            menuSince = null;
+            long waitMs = timer.ElapsedMilliseconds;
+            timer.Restart();
             int presses = 0;
             GameSnapshot left = await GameStateWait.PressUntilAsync(state.Bot.State, async () =>
             {
@@ -150,7 +159,7 @@ namespace ShinyBotHunter.BotEvents
                 state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.Run.3");
                 await state.Bot.WaitForMacroAsync(ct);
             }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
-            Console.WriteLine($"[Battle] Run left the menu after {presses} press(es): {left}");
+            Console.WriteLine($"[Battle] Run left the menu after {presses} press(es), {waitMs} ms before the first press, {timer.ElapsedMilliseconds} ms to leave: {left}");
             state.SwapState(EventState.WaitForMovesEnd);
         }
 
@@ -167,6 +176,10 @@ namespace ShinyBotHunter.BotEvents
                 return;
             }
 
+            if (end.Screen == GameScreen.BattleMenu)
+            {
+                menuSince = Stopwatch.StartNew();
+            }
             var battleState = await reader.GetPokemonBattleState(state.Bot, ct: ct);
             if (end.Screen == GameScreen.BattleMenu)
             {
@@ -255,14 +268,18 @@ namespace ShinyBotHunter.BotEvents
                     state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.{moveStr}");
                     await state.Bot.WaitForMacroAsync(ct);
                 };
+                Stopwatch timer = Stopwatch.StartNew();
                 await GameStateWait.WaitForPrinterSeenThenClearedAsync(state.Bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu,
-                    MenuMessageSeenWithin, MenuMessageStale, ct);
+                    MenuMessageSeenWithin, MenuMessageStale, ct, menuSince);
+                menuSince = null;
+                long waitMs = timer.ElapsedMilliseconds;
+                timer.Restart();
                 // The Fight press passes through BattleTurn before the move list is up, so only the list confirms it.
                 await GameStateWait.PressUntilAsync(state.Bot.State, press, "the Fight press to open the move list",
                     s => s.Screen == GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
                 GameSnapshot chosen = await GameStateWait.PressUntilAsync(state.Bot.State, press, $"the {moveStr} press to leave the move list",
                     s => s.Screen != GameScreen.BattleMoveList, TimeSpan.FromMilliseconds(1000), 3, ct);
-                Console.WriteLine($"[Battle] {moveStr} chosen after {presses} press(es): {chosen}");
+                Console.WriteLine($"[Battle] {moveStr} chosen after {presses} press(es), {waitMs} ms before the first press, {timer.ElapsedMilliseconds} ms to leave: {chosen}");
                 state.State.Pop();
                 state.State.Push(EventState.WaitForMovesEnd);
             }
@@ -286,6 +303,7 @@ namespace ShinyBotHunter.BotEvents
             string battlerName = state.BattleState.PartyPokemon[battlerIndex].Name;
 
             string macro = MacroRegistry.Instance.GetMacro(state.GameFlavor, SwitchSlotMacros[state.SwitchSlot!.Value]);
+            menuSince = null;
             state.Bot.RunMacroString(macro);
             await state.Bot.WaitForMacroAsync(ct);
 
@@ -390,6 +408,7 @@ namespace ShinyBotHunter.BotEvents
             try
             {
                 await GameStateWait.UntilAsync(bot.State, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromSeconds(30), ct);
+                menuSince = Stopwatch.StartNew();
             }
             finally
             {
