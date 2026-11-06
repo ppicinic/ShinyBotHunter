@@ -2,6 +2,7 @@
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Util;
+using System.Diagnostics;
 using System.Text;
 
 namespace ShinyBotHunter.BotEvents
@@ -37,6 +38,7 @@ namespace ShinyBotHunter.BotEvents
                 state.SwapState(EventState.Waiting);
                 return false;
             }
+            Stopwatch sinceReady = Stopwatch.StartNew();
 
             Direction facing = await bot.Overworld.GetFacingAsync(cancellationToken);
             string macro = GetSpinMacro(facing);
@@ -55,7 +57,7 @@ namespace ShinyBotHunter.BotEvents
             }
             await bot.WaitForMacroAsync();
 
-            Console.WriteLine("Found battle");
+            Console.WriteLine($"[Spin] Found battle after {sinceReady.ElapsedMilliseconds} ms");
             // The orchestrator expects the encounter event to advance the state itself, the same
             // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
             // the stack, so the next loop spun again on top of the battle instead of fighting it.
