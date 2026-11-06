@@ -91,6 +91,34 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
         }
 
+        // A zero window never waits to see a printer: with none up, the first menu snapshot is returned at once.
+        [Fact]
+        public async Task ZeroWindowWithNoPrinterReturnsTheFirstScreenSnapshot()
+        {
+            int reads = 0;
+            ScriptedReader reader = new(() => { reads++; return Screen(GameScreen.BattleMenu); });
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.Zero, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+            Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
+            Assert.Equal(2, reads);
+        }
+
+        // A zero window still waits out a printer that is up at the first menu snapshot.
+        [Fact]
+        public async Task ZeroWindowStillWaitsForAPrinterThatIsUp()
+        {
+            GameSnapshot menu = Screen(GameScreen.BattleMenu);
+            Queue<GameSnapshot> snapshots = new([menu with { TextPrinter = 0 }, menu with { TextPrinter = 0 }, menu with { Script = 1 }]);
+            ScriptedReader reader = new(() => snapshots.Count > 1 ? snapshots.Dequeue() : snapshots.Peek());
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.Zero, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+            Assert.Equal(menu with { Script = 1 }, snapshot);
+        }
+
         // The caller saw the menu before the window passed; with no printer the wait returns at its first read of each step.
         [Fact]
         public async Task PrinterWindowFromEarlierStartFallsThroughAtOnce()

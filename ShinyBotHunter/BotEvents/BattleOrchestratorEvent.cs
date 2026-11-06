@@ -52,10 +52,11 @@ namespace ShinyBotHunter.BotEvents
 
         private const int MaxSwitchAttempts = 3;
 
-        // "What will X do?" prints after ctx.sel turns 1 and before the player's controller builds the battle menu, so Run and
-        // Fight wait for its printer to be seen (within 1 s of the turn's first menu snapshot; past it the wait falls through), then to
-        // clear; 15 s stale, as the prompt waits (battle_controller_player.c, SSI_STATE_1 after ov12_02262B80).
-        private static readonly TimeSpan MenuMessageSeenWithin = TimeSpan.FromSeconds(1);
+        // "What will X do?" prints and clears before ctx.sel turns 1 (probe 2026-11-06, hgss-state-reader.md changelog: the
+        // printer was gone 0.9 s before the turn's first menu snapshot), so Run and Fight do not wait to see its printer: a
+        // zero window presses after the frame-counted W.10 unless a printer is still up, which is then waited out; 15 s
+        // stale, as the prompt waits. The 1 s window (#160) could never see the message and cost a second on every Run (#270).
+        private static readonly TimeSpan MenuMessageSeenWithin = TimeSpan.Zero;
         private static readonly TimeSpan MenuMessageStale = TimeSpan.FromSeconds(15);
 
         // Attempts spent on the current battle's switch. One instance serves one bot's battles in
@@ -152,14 +153,22 @@ namespace ShinyBotHunter.BotEvents
             menuSince = null;
             long waitMs = timer.ElapsedMilliseconds;
             timer.Restart();
-            int presses = 0;
-            GameSnapshot left = await GameStateWait.PressUntilAsync(state.Bot.State, async () =>
+            // The menu accepts input somewhere between 10 frames and about 1 s after its first snapshot, and nothing readable
+            // says when (hgss-state-reader.md changelog, 2026-11-06): a single press at W.10 was lost two times in three, and
+            // the retry's 500 ms confirm then cost more than the press saved. So Run repeats every 13 frames until the screen
+            // leaves the menu; the touch is harmless on the screens that follow ("Got away safely!").
+            GameSnapshot left;
+            state.Bot.RunRepeatMacro($"{GameStateWait.BattleMenuWait}S.Run.3");
+            try
             {
-                presses++;
-                state.Bot.RunMacroString($"{GameStateWait.BattleMenuWait}S.Run.3");
-                await state.Bot.WaitForMacroAsync(ct);
-            }, "the Run press to leave the battle menu", s => s.Screen != GameScreen.BattleMenu, TimeSpan.FromMilliseconds(500), 3, ct);
-            Console.WriteLine($"[Battle] Run left the menu after {presses} press(es), {waitMs} ms before the first press, {timer.ElapsedMilliseconds} ms to leave: {left}");
+                left = await GameStateWait.UntilAsync(state.Bot.State, "the Run presses to leave the battle menu",
+                    s => s.Screen != GameScreen.BattleMenu, MenuMessageStale, ct);
+            }
+            finally
+            {
+                state.Bot.ClearMacro();
+            }
+            Console.WriteLine($"[Battle] Run left the menu: {waitMs} ms before the first press, {timer.ElapsedMilliseconds} ms to leave: {left}");
             state.SwapState(EventState.WaitForMovesEnd);
         }
 

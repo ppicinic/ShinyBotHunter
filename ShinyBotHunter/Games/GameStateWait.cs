@@ -34,7 +34,9 @@ namespace ShinyBotHunter.Games
         // For a menu the game builds only once the message above it has printed (the battle menu's "What will X do?", the
         // getter's Yes/No questions): waits until the printer is seen at the screen, or seenWithin has passed there (a
         // message that printed between two polls), then until the screen shows no printer. Returns that snapshot. A caller
-        // that saw the screen first passes its stopwatch as atScreenSince.
+        // that saw the screen first passes its stopwatch as atScreenSince. A zero seenWithin skips the first wait: the
+        // screen alone is enough, and only a printer that is up at it is waited out (the battle menu, whose message prints
+        // before the screen exists).
         public static async Task<GameSnapshot> WaitForPrinterSeenThenClearedAsync(
             IGameStateReader reader, string waitingFor, Func<GameSnapshot, bool> atScreen, TimeSpan seenWithin, TimeSpan stale, CancellationToken ct,
             Stopwatch? atScreenSince = null)
