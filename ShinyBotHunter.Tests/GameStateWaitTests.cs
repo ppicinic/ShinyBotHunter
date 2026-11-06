@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ShinyBotHunter.Games;
 
 namespace ShinyBotHunter.Tests
@@ -88,6 +89,58 @@ namespace ShinyBotHunter.Tests
                 reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(5), CancellationToken.None);
 
             Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
+        }
+
+        // The caller saw the menu before the window passed; with no printer the wait returns at its first read of each step.
+        [Fact]
+        public async Task PrinterWindowFromEarlierStartFallsThroughAtOnce()
+        {
+            int reads = 0;
+            ScriptedReader reader = new(() => { reads++; return Screen(GameScreen.BattleMenu); });
+            Stopwatch menuSince = Stopwatch.StartNew();
+            await Task.Delay(150);
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(5), CancellationToken.None, menuSince);
+
+            Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
+            Assert.Equal(2, reads);
+        }
+
+        // The window has passed, but a printer that is up is still waited out.
+        [Fact]
+        public async Task PrinterWindowFromEarlierStartStillWaitsForThePrinter()
+        {
+            GameSnapshot menu = Screen(GameScreen.BattleMenu);
+            Queue<GameSnapshot> snapshots = new([menu with { TextPrinter = 0 }, menu with { TextPrinter = 0 }, menu with { Script = 1 }]);
+            ScriptedReader reader = new(() => snapshots.Count > 1 ? snapshots.Dequeue() : snapshots.Peek());
+            Stopwatch menuSince = Stopwatch.StartNew();
+            await Task.Delay(150);
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(5), CancellationToken.None, menuSince);
+
+            Assert.Equal(menu with { Script = 1 }, snapshot);
+        }
+
+        // Without a start the window counts from the first menu snapshot the wait reads, not from its first read.
+        [Fact]
+        public async Task PrinterWindowWithoutStartCountsFromFirstScreenSnapshot()
+        {
+            int reads = 0;
+            int menuReads = 0;
+            ScriptedReader reader = new(() =>
+            {
+                if (++reads <= 3) return Screen(GameScreen.BattleTurn);
+                menuReads++;
+                return Screen(GameScreen.BattleMenu);
+            });
+
+            GameSnapshot snapshot = await GameStateWait.WaitForPrinterSeenThenClearedAsync(
+                reader, "the battle menu", s => s.Screen == GameScreen.BattleMenu, TimeSpan.FromMilliseconds(200), TimeSpan.FromSeconds(5), CancellationToken.None);
+
+            Assert.Equal(Screen(GameScreen.BattleMenu), snapshot);
+            Assert.True(menuReads > 2);
         }
 
         [Fact]
