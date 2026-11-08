@@ -1,0 +1,19 @@
+{
+  // Take once this many Pickup members hold an item; 0 takes only when every one of them does.
+  "pickupTakeAt": 0,
+
+  // DS bottom-screen touches, (x, y), from docs/research/pickup.md: POKéMON on the start menu, the six party slots,
+  // ITEM on the context menu, TAKE on the Item sub-menu, CANCEL on the party list.
+  "pokemonTouch": [44, 77],
+  "slotTouches": [[63, 27], [191, 27], [63, 77], [191, 77], [63, 123], [191, 123]],
+  "itemTouch": [191, 106],
+  "takeTouch": [191, 66],
+  "cancelTouch": [227, 178],
+
+  // How long each wait may see nothing change: the start menu after X, the party menu after POKéMON, every step
+  // inside the party menu, and the field free after CANCEL.
+  "startMenuStaleMs": 5000,
+  "partyMenuStaleMs": 10000,
+  "stepStaleMs": 5000,
+  "fieldFreeStaleMs": 10000
+}
