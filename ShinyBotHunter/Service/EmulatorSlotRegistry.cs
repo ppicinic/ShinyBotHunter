@@ -11,7 +11,7 @@ namespace ShinyBotHunter.Service
         // Entries or a field of a BotAndOrEvent: BotService.ExecuteNewBotOrSpecialEvent,
         // BotService.ExecuteEvent, BotEventRunner.CancelAsync (reached through
         // BotService.CancelBotOrEventAsync), the teardown in BotEventRunner.RunEventAsync, and the
-        // HeadbuttRefusal fill in BotService.GetBotActionsAsync and clear in
+        // PartyRead fill in BotService.GetBotActionsAsync and clear in
         // BotService.ReloadPartyAsync. Each
         // holds the gate across its whole check-then-act sequence. Readers
         // (BotService.GetBotDashboardState, GetAvailableActions, GetBotAt, HasRunningEvent,
@@ -75,9 +75,9 @@ namespace ShinyBotHunter.Service
 
         // Guarded like the entry's other fields: written only under the gate, read lock-free once
         // into a local. Null means not read since the bot became idle; a task whose result is null
-        // means a party member knows Headbutt; any other result is the reason the dashboard shows. A
-        // failed read is dropped once awaited, so it is retried.
-        public Task<string?>? HeadbuttRefusal { get; set; }
+        // means the read failed or the party was empty, and it is dropped once awaited, so it is
+        // retried. Both the Headbutt and the Pickup answers come from it.
+        public Task<PokemonState?>? PartyRead { get; set; }
         public string GetName(int pos)
         {
             return EventName is not null ? EventName : $"Bot {pos}";
