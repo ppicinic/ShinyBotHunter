@@ -1,6 +1,6 @@
 # Spec: Pickup mode (HGSS)
 
-Status: In progress (epic on branch feature/pickup-mode, 2026-11-08); from the spike of 2026-11-06 to 07.
+Status: Implemented (epic #273, 2026-11-08): FR-1 to FR-11 and NFR-1, NFR-2, PRs #280, #281, #282, #283, #284 on feature/pickup-mode, and #285 (QA tooling: the RAM party read retried on a torn record). All three QA scenarios passed on f72c233; run folders are in the research doc's [Evidence](../research/pickup.md#evidence) and on the epic. Divergences are under [What diverged](#what-diverged).
 Last updated: 2026-11-08
 Owner: Phil
 Related: [research: the spike](../research/pickup.md) (the source for every value, timing and rule here), [headbutt encounter spec](headbutt-encounter.md) (the greyed-out choice and the party-read cache this reuses), [HGSS state reader spec](hgss-state-reader.md) (the sub-app reads), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the guide page [Wild encounters](../guide/04-hunts/01-wild-encounter.md)
@@ -88,15 +88,29 @@ stateDiagram-v2
 
 | Scenario | Save | Steps | Pass when |
 |---|---|---|---|
-| `hgss-pickup` | `hgss.qa-pickup` (Typhlosion Lv 37 leading, five Aipom with Pickup, empty-handed) | Launch + Continue; Wild Encounter, Route 33, ShinyTarget, Run, xRange 3, train Standard, target level 101, Pickup on; run until three trips have happened or 30 won battles | every won battle logs the `[Pickup]` count; each trip ends field free with every held item taken (party read in the log and through `getParty`); no stop; save equals `.bak`; trips under 15 s |
+| `hgss-pickup` | `hgss.qa-pickup` (Typhlosion Lv 37 leading, five Aipom with Pickup, empty-handed) | Launch + Continue; Wild Encounter, Route 33, ShinyTarget, Run, xRange 3, train Standard, target level 101, Pickup on; run until three trips have happened or 30 won battles | every won battle logs the `[Pickup]` count; each trip ends field free with every held item taken (the party read in the log, and the party in RAM read through `egg-pid.ts`'s `decodeMon`; `getParty` carries no held item or ability); no stop; save equals `.bak`; trips under 15 s |
 | `hgss-pickup-take` | `hgss.qa-pickup-held` (the same, five items in hand) | Launch + Continue; the same action; the first decision must be a trip before the first encounter | five takes logged in order, field free, party empty, under 15 s |
 | `hgss-pickup-greyed` | `hgss.qa-route33` (no Pickup member) | Dashboard: Wild Encounter with train Standard; API: Start with Pickup and with `TrainType` `None` | the checkbox is disabled with the ability sentence; the two API Starts are 400 with the FR-2 texts |
+
+## What diverged
+
+Where the build differs from this spec as approved (2026-11-07). The requirements and design above stay as written; this list keeps the record.
+
+- FR-5, FR-9: no flee skip. A fled battle cannot change a held item. So `OrchestratorEvent.PickupSlotsDue` runs on every pass through `DecideOverworldAction`, including the first one before any battle, and there is no won or fled flag. The count line is logged per decision, not per won battle (#283).
+- Where it lives, FR-5: `PickupTakeEvent` is not pushed and popped. `DecideOverworldAction` awaits it inline with the event's cancellation token, and there is no new `EventState`. A stop clears the macro and parks the orchestrator in `Waiting`, with the sentence logged as a `[Pickup]` line. Resume returns to the decision, which reads the party again (#283).
+- FR-6: the trip first waits for the field free (`fieldFreeStaleMs`), because `BattleComplete` can come while a field task runs, and that task would confirm the X. The spec gives no stale-timeout for the per-slot waits; they use `stepStaleMs`, 5 s. `Pickup.json` holds `startMenuStaleMs` 5000, `partyMenuStaleMs` 10000, `stepStaleMs` 5000 and `fieldFreeStaleMs` 10000 (#283).
+- FR-7: `{item}` reads `item {id}`, the item number, because there is no item-name table: "Pickup: {name} still holds item {id} after the take; check the Pokémon menu." A stale-timeout stop is `Pickup: Waited for {step}; the game state stayed {snapshot}` (`GameStateTimeoutException`) (#283).
+- FR-9: the lines are `[Pickup] held H of M pickup members; trip|no trip`, `[Pickup] took item I from slot N (name)`, `[Pickup] trip took T ms`, and the stop lines. A slot holding mail is not visited. It logs `[Pickup] slot N (name) holds mail, item I; not visited` and then gets the FR-7 still-holds stop (#283).
+- FR-8: `OtherApp` also carries `TextPrinter` (`pr.state` of slot 0), which is what FR-6's take-message gate reads. The `app` block was already 0x20 bytes, which is `AppDataOffset + 4`, so it was not grown (#280).
+- FR-4: the checkbox's helper `pickupChoice` is in `components/admin/actionSchema.ts`, and `ActionParamFields.tsx` calls it. `buildLegBody` sends `pickup` only while Train Type is not None, so a box that was ticked and then hidden is not sent (#282).
+- QA: the scenarios read party RAM through `pickup.ts` and `egg-pid.ts`'s `decodeMon`, not through `getParty`, because `getParty` carries no held item or ability. The QA table above now says so (#284).
 
 ## Open questions
 
 - Whether a fainted Pickup member still rolls (the decomp checks species, egg and item only). Not needed for the mode; worth a line in the research doc when seen.
-- The threshold's unit: a count of held members (as written) or a share of the Pickup members. A count is simpler and the party is at most six.
+- The threshold's unit: a count of held members (as written) or a share of the Pickup members. A count is simpler and the party is at most six. Answered: a count; `pickupTakeAt` is 0 to 6 (`PickupConfig.Validate`).
 
 ## Changelog
 
 - 2026-11-07: first draft, from the spike.
+- 2026-11-08: Implemented (PRs #280 to #284, QA tooling #285); What diverged added; the QA table's party check reads RAM, not getParty.
