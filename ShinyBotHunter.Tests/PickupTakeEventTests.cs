@@ -187,5 +187,50 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("Pickup: Aipom still holds item 137 after the take; check the Pokémon menu.", park);
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
+
+        private static GameState PickupOn() => new() { Pickup = true };
+
+        [Fact]
+        public void AllHeldIsDue()
+        {
+            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 26), Member("Aipom", 53, 79));
+
+            Assert.Equal([1, 2, 3], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
+        }
+
+        [Fact]
+        public void PartialIsNotDueAtTheDefault()
+        {
+            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 79));
+
+            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
+        }
+
+        [Fact]
+        public void PartialIsDueAtTheThreshold()
+        {
+            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 79));
+
+            Assert.Equal([1, 3], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 2));
+            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 3));
+        }
+
+        [Fact]
+        public void PickupOffIsNeverDue()
+        {
+            PokemonState party = Party(Member("Aipom", 53, 17), Member("Aipom", 53, 26));
+
+            Assert.Empty(OrchestratorEvent.PickupSlotsDue(new GameState(), party, 0));
+        }
+
+        [Fact]
+        public void ANonPickupHolderIsNotCounted()
+        {
+            // A lead holding Leftovers (234) is neither a member nor a slot to visit.
+            PokemonState party = Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 17), Member("Aipom", 53, 26));
+
+            Assert.Equal([1, 2], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
+            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 0)), 1));
+        }
     }
 }
