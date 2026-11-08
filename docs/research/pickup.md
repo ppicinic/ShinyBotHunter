@@ -22,7 +22,7 @@ On a copy of the owner's Route 33 save with five Aipom carrying Pickup behind a 
 - The roll walks the whole party, not the battlers: each member whose ability is Pickup (53), that is not an egg and holds nothing, gets `Random % 10 == 0` (10 %). Participation is not required.
 - On a hit, `rnd = Random % 100` and `tier = (level - 1) / 10` (capped at 9). The nine common items are `sPickupTable1[tier + j]` for the first `j` with `sPickupWeightTable[j] > rnd`, weights `30, 40, 50, 60, 70, 80, 90, 94, 98`: 30 / 10 / 10 / 10 / 10 / 10 / 10 / 4 / 4 %. `rnd` 99 gives `sPickupTable2[tier]`, 98 gives `sPickupTable2[tier + 1]`: 1 % each.
 - `sPickupTable1` (18): Potion, Antidote, Super Potion, Great Ball, Repel, Escape Rope, Full Heal, Hyper Potion, Ultra Ball, Revive, Rare Candy, Sun Stone, Moon Stone, Heart Scale, Full Restore, Max Revive, PP Up, Max Elixir. `sPickupTable2` (11): Hyper Potion, Nugget, King's Rock, Full Restore, Ether, Iron Ball, TM56, Elixir, TM86, Leftovers, TM26.
-- The tier window slides one item per 10 levels. Rare Candy is the 4 % item at Lv 21–30, 10 % at Lv 41–80 and 30 % at Lv 91–100; Leftovers is a 1 % item at Lv 81–100. The five observed items sit where the tables put them (the King's Rock is the Lv 11–20 tier's 1 % entry).
+- The tier window slides one item per 10 levels. Rare Candy is the 4 % item at Lv 21–40 and the 10 % item at Lv 41–100. No tier reaches its 30 % first slot, since that would need tier 10 and the cap is 9. Leftovers is a 1 % item at Lv 81–100. The five observed items sit where the tables put them (the King's Rock is the Lv 11–20 tier's 1 % entry). (Corrected 2026-11-08: this line said 30 % at Lv 91–100, which these tables do not give; #279.)
 - Honey Gather runs in the same loop (Honey only).
 
 Expected yield with five empty-handed Pickup Pokémon: `1 − 0.9^5 = 41 %` of won battles give at least one item, 0.5 items per battle on average while all five are empty; the run's 5 in 19 is in line with that as the empty count fell. Items held stop the roll, so the menu trip is what keeps the rate up.
@@ -68,9 +68,17 @@ Five takes and the exit: 10.4 s. Which slots to visit comes from the party read 
 - After each `BattleComplete`, read the party (already done in `DecideOverworldAction`) and count members with Pickup holding an item. Visit the menu when all of them hold something, or when the count reaches a threshold the operator sets; every trip costs about 2 s plus 1.4 s per Pokémon, against 30 s per battle, so even a trip per battle would cost under 10 %. Holding is what costs: each held item removes a 10 % roll from every later battle.
 - The take event is a field task like the heal walk: X, POKéMON, then per held slot the four touches above, gated on `app.state`, `partyMonIndex` and the printer, then CANCEL and the field-free wait. The state reader needs one addition: the party menu's `app.state` and `partyMonIndex` behind an `OtherApp` snapshot (or a new screen for it), the way the easy-chat and hatch apps were added for the Primo egg.
 - The ability has to be checked, not assumed: Aipom and most Pickup species carry it on a 50/50 slot. The party read has `Ability`; a pickup mode should refuse a party with no Pickup member and report which members count.
-- Level picks the loot. For Rare Candy, Lv 41–80 Pickup Pokémon give 10 % of hits, Lv 91–100 30 %; for Leftovers only Lv 81–100 (1 %). Levelling the Aipom is itself possible with the same train mode (switch training).
+- Level picks the loot. For Rare Candy, Lv 41–100 Pickup Pokémon give it on 10 % of hits (Lv 21–40, 4 %); for Leftovers only Lv 81–100 (1 %). Levelling the Aipom is itself possible with the same train mode (switch training).
 - Not measured here: the bag's behaviour at 999 of one item (Take then fails?), and whether a Pickup member that faints still rolls (the decomp checks only species, egg and item, so it should).
 
 ## Evidence
 
 Run logs and screenshots were kept locally on the dev PC (the probe scripts, the Fight run's backend log with the per-battle item column, the party-menu screenshots at each state). The two saves are in `../shinybothunterqasaves/hgss/`.
+
+Implementation QA ran on the feature tip f72c233 (epic #273). The run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/` on the dev PC (gitignored):
+
+- `hgss-pickup-greyed`: `20261108-151247-hgss-route33-dashboard`
+- `hgss-pickup-take`: `20261108-151341-hgss-route33-dashboard`, one trip of five takes in 11 432 ms
+- `hgss-pickup`: `20261108-151447-hgss-route33-dashboard`, 30 won battles and 2 trips (after battles 13 and 30) of five takes each, in 11 125 ms and 11 037 ms
+
+Every trip was under NFR-1's 15 s, about 1 s over the probe's 10.4 s.
