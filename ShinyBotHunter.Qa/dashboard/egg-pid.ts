@@ -40,6 +40,8 @@ function plainBlocks(raw: Buffer): Buffer {
 export interface Mon {
   pid: number
   species: number
+  heldItem: number
+  ability: number
   isEgg: boolean
   tid: number
   sid: number
@@ -58,6 +60,8 @@ export function decodeMon(raw: Buffer): Mon {
   return {
     pid,
     species: plain.readUInt16LE(0x00),
+    heldItem: plain.readUInt16LE(0x02),
+    ability: plain.readUInt8(0x0d),
     isEgg: ((ivWord >>> 30) & 1) === 1,
     tid,
     sid,
