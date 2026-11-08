@@ -43,15 +43,21 @@ export function parseTrip(line: string): number | null {
 export type PartyMon = { slot: number; species: number; ability: number; heldItem: number }
 /** The party from RAM through egg-pid.ts's decodeMon, slots 1-based; fails on a bad checksum, naming the slot. */
 export async function readPartyRam(): Promise<PartyMon[]> {
-  const anchor = await readU32(ANCHOR_ADDR)
-  const count = (await readMemory(anchor + PARTY_COUNT_OFFSET, 1))[0]
-  const party: PartyMon[] = []
-  for (let i = 0; i < count; i++) {
-    const mon = decodeMon(await readMemory(anchor + PARTY_OFFSET + i * MON_SIZE, MON_SIZE))
-    if (!mon.checksumValid) throw new Error(`party slot ${i + 1} read from RAM has a bad checksum`)
-    party.push({ slot: i + 1, species: mon.species, ability: mon.ability, heldItem: mon.heldItem })
+  // A plain read can tear a record the game is updating (the bot's own read is the validated one), so retry the whole read.
+  for (let attempt = 1; ; attempt++) {
+    const anchor = await readU32(ANCHOR_ADDR)
+    const count = (await readMemory(anchor + PARTY_COUNT_OFFSET, 1))[0]
+    const party: PartyMon[] = []
+    let badSlot = 0
+    for (let i = 0; i < count && badSlot === 0; i++) {
+      const mon = decodeMon(await readMemory(anchor + PARTY_OFFSET + i * MON_SIZE, MON_SIZE))
+      if (!mon.checksumValid) badSlot = i + 1
+      else party.push({ slot: i + 1, species: mon.species, ability: mon.ability, heldItem: mon.heldItem })
+    }
+    if (badSlot === 0) return party
+    if (attempt === 10) throw new Error(`party slot ${badSlot} read from RAM has a bad checksum`)
+    await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  return party
 }
 
 /** The 1-based slots of the Pickup members holding an item. */
