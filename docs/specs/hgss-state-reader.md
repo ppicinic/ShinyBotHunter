@@ -110,7 +110,7 @@ What `HgssFieldSystemStateReader` returns, from which fields, and its status in 
 | `Transitioning` | a block the snapshot needs is not `Ok` (FR-3) | | by construction |
 | `FieldFree` | `app == 0 && taskman == 0 && mapReady == 1 && paused == 0` | | observed around battles; scripts, menus, warps not yet |
 | `FieldTask` | `app == 0 && taskman != 0 && mapReady == 1` | `TaskFunction = [taskman + 4]`; while it is `Task_RunScripts` (`0x0203FF45`), also `Script = env.script` and `Native = ctx.native` of the innermost live context when its mode is 2 (S4), and `TextPrinter` (S6, below) | observed: encounter start `020551B9`, leaving `02055245`, wild encounter `02050661`, returning `0205528D`, `020552D5`; scripts and their natives (research doc, field scripts) |
-| `OtherApp` | `app != 0 && ovyId != 12` | | decomp only |
+| `OtherApp` | `app != 0 && ovyId != 12` | `AppState = app.state`; `PartyMonIndex = [[app + 0x1C] + 0xC65]` (null when `[app + 0x1C]` is NULL); `TextPrinter` = `pr.state` of slot 0 (S6) | decomp only |
 | `BattleStarting` | `ovyId == 12 && state < 9` | | observed (3, 8) |
 | `Evolution` | `ovyId == 12 && state == 14` | `Prompt = [[app.setup + 0x198] + 0x64]` (`evo.state`, every value); at `evo.state` 23 only, `SummaryState = [[evo + 0x38] + 0x14]` (the summary app's proc_state); `TextPrinter` (S6, below) | 14 observed; 13 is the evolution check every battle end passes through (seen on a flee, 2026-10-22); `Prompt` observed 2026-10-23 (research); `SummaryState` 8 and 9 observed (research, the forget-move list) |
 | `BattleOver` | `ovyId == 12 && (state > 9 && state != 14)`, or `state == 9 && command == 45` | `Outcome` from `[BS + 0x2420]` | 45 observed; outcome 1 and 5 observed |
@@ -126,7 +126,7 @@ Precedence inside `state == 9`: command 45, then the getter prompts (11/13, 21, 
 
 ### The walk
 
-One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these fourteen blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset); all but `printer` start from `0x021D4158`:
+One `ReadChainBlocksAsync` request per snapshot, every block from the same frame, no exceptions on the happy path. The reader caches nothing: every block is addressed from the static root, so a moved `FS` or `sub0` is picked up on the next snapshot without a recovery path. The request asks for these fifteen blocks (hops as the opcode defines them: each hop reads a pointer at the current address and adds the offset); all but `printer` start from `0x021D4158`:
 
 | Block | Chain from `0x021D4158` | Length | Used for |
 |---|---|---|---|
@@ -144,6 +144,7 @@ One `ReadChainBlocksAsync` request per snapshot, every block from the same frame
 | `ctx2` | `0x10, 0x0C, 0x40, 0` | 8 | as `ctx0` |
 | `summary` | `0, 4, 0x18, 0x198, 0x38, 0x14` | 4 | summary proc_state |
 | `printer` | from `0x021D1F74` (`sTextPrinterTasks`): `0x10, 0x28` | 1 | `pr.state` of slot 0; also used on `BattleMenu` and `BattleMoveLearnPrompt` |
+| `partyMenu` | `0, 4, 0x1C, 0xC65` | 1 | `partyMonIndex` of the party menu, on `OtherApp` only; NULL data gives null |
 
 Hop lists are written as the opcode takes them: hop *n* reads the pointer at the current address and adds its offset, so `0, 4, 0` is "read `FS` at the anchor, read `sub0` at `FS` and step to `sub0 + 4`, read `app` there and step to `app + 0`".
 
@@ -215,6 +216,8 @@ Every read the bot makes on HGSS today, from the research doc's appendix and the
 | R36 | app.ovyId (as R1) `== 102` and `== 95` | `HgssPrimoEggEvent`, `HgssEggHatch` | the easy-chat app; the hatch app | new (Primo egg spec FR-5, FR-10): the prompt opened; the A at "Oh?" was taken | observed | `hgss-primo-egg-password`, `hgss-primo-egg-hatch`, `hgss-togepi-egg-hatch` |
 | R37 | easy-chat data `[[[FS + 0] + 4] + 0x1C]`: words + 0x10, busy + 0x1C, screen + 0x20 (`0x021E7AA5` slots, `0x021E8241` grid, `0x021E87B5` list), question step + 0x28 and handler + 0x2C (`0x021E8D61` while the app opens, `0x021E8D95` "Is this your answer?"), slot cursor + 0x4C/+ 0x4E, grid cursor + 0x50, list + 0x54/+ 0x56/+ 0x5A/+ 0x5B, group counts + 0xA4, starts + 0xD4, words + 0x104 | `HgssEasyChatInput` | the easy-chat app's state, one chain block per poll | new (Primo egg spec FR-6): every press sent only while the app takes input (+ 0x1C = 0 with no handler at + 0x2C, or the question with + 0x28 = 1) and confirmed within 1 s by the byte it writes (a move its cursor, an A the step 4, 1 or 3 or the screen after it, Confirm + 0x2C = `0x021E8D95`, Yes + 0x28 leaving 1 or the app closed), pressed again only when that byte proves the press was dropped; the screen change after a landed A awaited up to 3 s and never retried (#264); the word's index from the app's own group lists; the slot read back | observed | `hgss-primo-egg-password` |
 | R38 | hatch Yes/No `[[hatch data + 0x88] + 0x19]` (u8) | `HgssEggHatch` | the nickname question's cursor: 1 Yes, 2 No | new (Primo egg spec FR-10): Down until 2, then A | 1 and 2 observed; NULL before the question not checked | `hgss-primo-egg-hatch`, `hgss-togepi-egg-hatch` |
+| R39 | app.state (as R4, `app + 0x14`) while `OtherApp` | `HgssFieldSystemStateReader` (`OtherApp`'s `AppState`); `PickupTakeEvent` | the party menu's `PartyMenuState`: 1 the list, 2 the context menu, 15 the Item sub-menu, 17 the "Received the X from Y." message; `app.ovyId` is `0xFFFFFFFF` for this app and does not identify it | new (Pickup spec FR-6, FR-8): every touch of the take loop confirmed by the state it leads to; the take message confirmed with R28's printer (slot 0) on `OtherApp` | 1, 2, 15, 17 observed (28 reached by a dropped A) | `hgss-pickup`, `hgss-pickup-take` |
+| R40 | partyMonIndex `[[[[FS + 0] + 4] + 0x1C] + 0xC65]` (u8) | `HgssFieldSystemStateReader` (`OtherApp`'s `PartyMonIndex`, `partyMenu` block); `PickupTakeEvent` | `PartyMenu.partyMonIndex`, the highlighted slot 0-5; a NULL data pointer gives null | new (Pickup spec FR-6, FR-8): the slot touch confirmed by the index | 0-5 observed | `hgss-pickup`, `hgss-pickup-take` |
 
 Rows R1 to R10 are the whole of what changes. R11 and R12 only gain a timeout. R13 is a non-read recorded so nobody re-derives it. R14 to R17 are listed so the table is the complete inventory FR-9 demands.
 
@@ -306,7 +309,7 @@ Every task that touched a read, a wait or a press ran its scenarios on the real 
 | `HgssFieldSystemStateReaderTests.<Screen>` one per state-table row, scripted memory | FR-1 |
 | `HgssFieldSystemStateReaderTests.OneRequestOnEveryScreen` | FR-2 |
 | `HgssFieldSystemStateReaderTests.BadPointerAtEachHop` (each hop) | FR-3 |
-| `HgssFieldSystemStateReaderTests.RequestIsTheFourteenBlocksOfTheWalk` | FR-2, the block table |
+| `HgssFieldSystemStateReaderTests.RequestIsTheFifteenBlocksOfTheWalk` | FR-2, the block table |
 | `NavigatorEventTests` over a fake `IGameStateReader` sequence of natives (the Pokérus trace, poison, the wait-button natives, no-press natives, the menu after the Yes, the missed menu, stale, a Yes that does not land) | R18, R19 |
 | `GameStateWaitTests.UntilReturnsOnMatch`, `.UntilThrowsWhenStale`, `.StaleCountsSameScriptAsUnchanged`, `.PressRetriesThenThrows` | FR-5, FR-6 |
 | `LevelUpFlowTests` over a fake `IGameStateReader` sequence 11 → 13 → 21 → 34 → menu, and the evolution scene 2 → 3 → … → 8 → … → 12 → 13 → 14 → 15 → 17 → 19 → 20 → 21 → 32 … 36 → 13 → 40, and the yes path 21 → 22 → 23 (summary 0, 1, 8, 9) → 24 → 26 … 31 → 37 → 38 → 13 → 40 with slot 2 | FR-7, FR-8 |
