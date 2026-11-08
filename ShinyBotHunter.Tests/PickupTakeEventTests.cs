@@ -79,11 +79,12 @@ namespace ShinyBotHunter.Tests
         }
 
         // One held slot's four presses as the game answers them: the context menu on the slot, the Item menu, the message
-        // printing then at the arrow, the list again.
+        // printing then at the arrow, the list again. Each answer starts on a snapshot that does not confirm the press, so a
+        // press made without its wait is seen on that one in SeenAtPress.
         private static GameSnapshot[][] TakeSlot(int i) =>
         [
             [App(1, 0), App(2, i)],
-            [App(15, i)],
+            [App(2, i), App(15, i)],
             [App(17, i, 0), App(17, i, 2)],
             [App(17, i, 2), App(1, i)],
         ];
@@ -92,7 +93,7 @@ namespace ShinyBotHunter.Tests
         public async Task TakesTwoHeldSlotsWithEveryPressConfirmed()
         {
             MenuGame game = new(Free,
-                [[StartMenu], [App(0), App(1, 0)], .. TakeSlot(1), .. TakeSlot(3), [App(1, 3), App(32, 3), Free]]);
+                [[Free, StartMenu], [App(0), App(1, 0)], .. TakeSlot(1), .. TakeSlot(3), [App(1, 3), App(32, 3), Free]]);
             PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 26));
             GameState state = Deciding();
             List<string> calls = [];
@@ -102,6 +103,8 @@ namespace ShinyBotHunter.Tests
 
             Assert.Null(park);
             Assert.Equal([X, Pokemon, Slot[1], Item, Take, A, Slot[3], Item, Take, A, Cancel], game.Macros);
+            // The confirming snapshot each press's wait saw before the press.
+            Assert.Equal([Free, StartMenu, App(1, 0), App(2, 1), App(15, 1), App(17, 1, 2), App(1, 1), App(2, 3), App(15, 3), App(17, 3, 2), App(1, 3)], game.SeenAtPress);
             Assert.Empty(calls);
             Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
