@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/HeadbuttEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (encounter type choices), docs/specs/headbutt-encounter.md (FR-3 to FR-9), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/HeadbuttEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (encounter type choices), docs/specs/headbutt-encounter.md (FR-3 to FR-9), docs/specs/pickup-mode.md (FR-2 to FR-7), docs/research/pickup.md, PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync) -->
 # Wild and chained encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -51,8 +51,9 @@ How the action form works in general is on [the dashboard page](../03-dashboard.
 | How to meet wild Pokémon. **Run**: walk back and forth in a straight line. **Spin**: turn on the spot. **Headbutt**: headbutt the tree you are facing. | Encounter Type |
 | How many tiles to walk each way from home, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
 | Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting. The Pokémon in the first slot still earns experience. | Train Type |
-| The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. | Target Level |
+| The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it; use that to farm items with Pickup. | Target Level (101 = no end) |
 | The party slot of the Pokémon that fights in Switch training, from 2 to 6. Shown only for Switch. It starts at 2. | Battler |
+| Whether to take the items your Pickup Pokémon find. Shown when Train Type is not None. Greyed out when no Pokémon in your party has the Pickup ability. See [Farming items with Pickup](#farming-items-with-pickup). | Pickup |
 
 A shiny Pokémon that the hunt is not looking for is treated like any other wild Pokémon: the bot runs from it, or fights it when training.
 
@@ -92,6 +93,33 @@ It runs from any wild battle on the way there and back. Those Pokémon are still
 
 With Train Type None the bot never heals, because it never fights.
 
+## Farming items with Pickup
+
+Pokémon with the Pickup ability sometimes find an item after a battle. With **Pickup** ticked, the bot fights as Train Type says, and takes the items into your bag so the Pokémon can find more.
+
+What your party needs:
+
+- **A lead that wins.** The Pokémon in your first party slot (or the Battler, in Switch training) must knock the wild Pokémon out. Nothing is found after a battle the bot ran from.
+- **Pokémon with the Pickup ability,** in any party slot. They do not have to fight.
+
+How finding works:
+
+- After each won battle, each Pickup Pokémon that holds nothing has a 1 in 10 chance to find an item.
+- A Pokémon that already holds an item finds nothing. That is why the bot takes the items.
+- What it finds depends on its level. At low levels it is mostly Potions, Antidotes, Super Potions, Great Balls, Repels and Escape Ropes. Higher levels give better items: Rare Candy starts to appear from level 21 and is more common from level 41. Leftovers appear, rarely, from level 81.
+
+To farm:
+
+1. Pick a Train Type other than None.
+   You see the **Pickup** box.
+2. Tick **Pickup**.
+3. Set **Target Level (101 = no end)** to 101, so the hunt does not end on its own.
+4. Press **Run**.
+
+The box is greyed out with "No Pokémon in your party has the Pickup ability." after it when no Pokémon in your party has the ability. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
+
+What a trip looks like: by default, once every Pickup Pokémon holds an item, the bot opens the Pokémon menu after a won battle, takes each Pokémon's item into the bag, closes the menu, and goes back to the grass. The items stay in your bag.
+
 ## What does it log?
 
 Every wild Pokémon goes into the encounter log with the game, the milestone, the Pokémon, the time and the game file. A Pokémon you are hunting for is added to your caught Pokémon once you have caught it and pressed **Resume**. [Your data](../06-your-data.md) explains where these are kept.
@@ -114,7 +142,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 
 - **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough.
 - **It finishes where it stands.** It could not find a way home, or a way to a Pokémon Center.
-- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on (see [If it stops early](#if-it-stops-early)).
+- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
 ## If it stops early
@@ -170,6 +198,22 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **You see** the bot waiting with a message naming a tile and a facing.
 **It means** after a battle the bot could not get you back to the tile you started on, facing the tree, even after a second try, or you ended up more than one step from the start tile, which a diagonal tile is too.
 **Do** cancel the hunt, put your character back on the start tile facing the tree, and start it again.
+
+**You see** Run refused with "Pickup needs a train mode: the Pokémon must be knocked out, not fled from."
+**It means** Pickup is ticked but Train Type is None, so every battle would be run from and nothing would be found.
+**Do** pick Standard or Switch, or untick Pickup.
+
+**You see** Run refused with "No Pokémon in your party has the Pickup ability."
+**It means** the bot read your party when you pressed Run and no Pokémon in it has the ability. The greyed-out box can be out of date if you changed your party in the game.
+**Do** put a Pokémon with Pickup in your party, or untick Pickup.
+
+**You see** the bot waiting, and the backend's window shows "Pickup: N still holds X after the take; check the Pokémon menu." with a Pokémon for N and an item for X.
+**It means** the bot went through the Pokémon menu, but that Pokémon still has its item.
+**Do** cancel the hunt, take the item yourself in the emulator's Pokémon menu, close the menu, and start the hunt again.
+
+**You see** the bot waiting, and the backend's window shows a `[Pickup]` message naming a step of the trip and what the game showed.
+**It means** the game did not reach the next screen of the trip in time, for example a message stayed on screen.
+**Do** cancel the hunt, close any menu or message in the emulator until your character stands in the field, and start the hunt again.
 
 For anything else, including the bot waiting because the game stopped changing, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
