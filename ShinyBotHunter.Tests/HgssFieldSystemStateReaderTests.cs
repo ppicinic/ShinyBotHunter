@@ -48,7 +48,7 @@ namespace ShinyBotHunter.Tests
             uint env = Env, uint envCheck = Magic, ushort scriptId = 0,
             uint scriptCtx0 = 0, byte mode0 = 0, uint native0 = 0,
             uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0,
-            uint printerTask = 0, byte printerState = 0, byte evoPrinter = 0, byte envPrinter = 0)
+            uint printerTask = 0, byte printerState = 0, byte evoPrinter = 0, byte envPrinter = 0, byte partyMonIndex = 0)
         {
             FakeMemoryClient memory = new();
             memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
@@ -87,6 +87,8 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(Printer, Table.TextPrinterStateOffset), [printerState]);
             memory.Place(At(Evo, Table.EvolutionPrinterOffset), [evoPrinter]);
             memory.Place(At(Env, Table.ScriptPrinterOffset), [envPrinter]);
+            // app + 0x1C is the BattleSystem in a battle and the app's data otherwise; the tests place both at Bs.
+            memory.Place(At(Bs, Table.PartyMenuMonIndexOffset), [partyMonIndex]);
             return memory;
         }
 
@@ -180,6 +182,43 @@ namespace ShinyBotHunter.Tests
             GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 3));
 
             Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+        }
+
+        [Fact]
+        public async Task OtherAppCarriesThePartyMenuStateAndIndex()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 15, partyMonIndex: 3));
+
+            Assert.Equal(new GameSnapshot(GameScreen.OtherApp, null, null, null, null, AppState: 15, PartyMonIndex: 3), snapshot);
+        }
+
+        [Fact]
+        public async Task OtherAppWithNullDataHasNoPartyMonIndex()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 1, bs: 0));
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(1, snapshot.AppState);
+            Assert.Null(snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task OtherAppWithDataOutOfRangeIsTransitioning()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 1, bs: OutOfRange));
+
+            Assert.Equal(GameScreen.Transitioning, snapshot.Screen);
+        }
+
+        [Fact]
+        public async Task OtherAppCarriesTheTextPrinter()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 17, printerTask: PrinterTask, printerState: 2));
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(17, snapshot.AppState);
+            Assert.Equal(2, snapshot.TextPrinter);
+            Assert.True(snapshot.AtTextArrow());
         }
 
         [Theory]
@@ -475,23 +514,23 @@ namespace ShinyBotHunter.Tests
 
         // The spec's block table, written out as literals so a mixed-up member shows here.
         [Fact]
-        public async Task RequestIsTheFourteenBlocksOfTheWalk()
+        public async Task RequestIsTheFifteenBlocksOfTheWalk()
         {
             FakeMemoryClient memory = Memory();
 
             await SnapshotOf(memory);
 
             IReadOnlyList<ChainBlockRequest> blocks = memory.ChainReads[0].Blocks;
-            Assert.Equal([.. Enumerable.Repeat(0x021D4158u, 13), 0x021D1F74u], blocks.Select(block => block.Anchor));
+            Assert.Equal([.. Enumerable.Repeat(0x021D4158u, 13), 0x021D1F74u, 0x021D4158u], blocks.Select(block => block.Anchor));
             Assert.Equal(
                 new int[][]
                 {
                     [0], [0, 0], [0x10, 0], [0, 4, 0], [0, 4, 0x1C, 0x30, 0], [0, 4, 0x1C, 0x30, 0x178, 0x28], [0, 4, 0x1C, 0x2420], [0, 4, 0x18, 0x198, 0],
                     [0x10, 0x0C, 0], [0x10, 0x0C, 0x38, 0], [0x10, 0x0C, 0x3C, 0], [0x10, 0x0C, 0x40, 0], [0, 4, 0x18, 0x198, 0x38, 0x14],
-                    [0x10, 0x28],
+                    [0x10, 0x28], [0, 4, 0x1C, 0xC65],
                 },
                 blocks.Select(block => block.Hops));
-            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x66, 0x0C, 8, 8, 8, 4, 1], blocks.Select(block => block.Length));
+            Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x66, 0x0C, 8, 8, 8, 4, 1, 1], blocks.Select(block => block.Length));
         }
 
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
