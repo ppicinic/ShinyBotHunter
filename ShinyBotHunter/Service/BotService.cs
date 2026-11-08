@@ -285,11 +285,11 @@ namespace ShinyBotHunter.Service
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
-            // A fresh read, not the cached answer, which may predate a party change.
-            if (args.EncounterType == EncounterType.Headbutt && HeadbuttRefusal(await ReadPartyAsync(slots.Entries[pos].Bot!)) is { } reason)
+            if (args.Pickup == true && (args.TrainType ?? TrainType.None) == TrainType.None)
             {
-                throw new ArgumentException(reason);
+                throw new ArgumentException(PickupNeedsTrainMode);
             }
+            await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
             var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
@@ -306,11 +306,11 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException("At least one leg must be supplied for Chained Encounter.");
             }
-            // A fresh read, not the cached answer, which may predate a party change.
-            if (args.Legs.Any(l => l.EncounterType == EncounterType.Headbutt) && HeadbuttRefusal(await ReadPartyAsync(slots.Entries[pos].Bot!)) is { } reason)
+            if (args.Legs.Any(l => l.Pickup == true && (l.TrainType ?? TrainType.None) == TrainType.None))
             {
-                throw new ArgumentException(reason);
+                throw new ArgumentException(PickupNeedsTrainMode);
             }
+            await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.Legs.Any(l => l.EncounterType == EncounterType.Headbutt), args.Legs.Any(l => l.Pickup == true));
             // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
             // after leg 1 has already been running for an hour.
             var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor)).ToList();
@@ -554,6 +554,7 @@ namespace ShinyBotHunter.Service
 
         private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
         private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
+        private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
 
         /// <summary>
         /// The live party, or null when it could not be read or is empty. Never faults: a failed
@@ -608,6 +609,27 @@ namespace ShinyBotHunter.Service
                 }
             }
             return NoPickupMember;
+        }
+
+        /// <summary>
+        /// Throws the Headbutt reason, then the Pickup reason, for the checks asked for. A fresh read,
+        /// not the cached one, which may predate a party change; no read when neither is asked.
+        /// </summary>
+        private async Task RefuseFromFreshPartyAsync(IBot bot, bool headbutt, bool pickup)
+        {
+            if (!headbutt && !pickup)
+            {
+                return;
+            }
+            PokemonState? party = await ReadPartyAsync(bot);
+            if (headbutt && HeadbuttRefusal(party) is { } headbuttReason)
+            {
+                throw new ArgumentException(headbuttReason);
+            }
+            if (pickup && PickupRefusal(party) is { } pickupReason)
+            {
+                throw new ArgumentException(pickupReason);
+            }
         }
 
         /// <summary>
