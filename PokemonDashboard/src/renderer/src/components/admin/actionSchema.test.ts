@@ -6,7 +6,9 @@ import {
   getParamLabel,
   initialParamsFor,
   isConditionMet,
+  LEG_PARAM_KEYS,
   legsVisible,
+  pickupChoice,
   requiredParamsFilled,
   visibleConditionalsOf,
   visibleParamNames
@@ -17,6 +19,7 @@ describe('getParamLabel', () => {
   it('maps a known parameter to its display label', () => {
     expect(getParamLabel('PhaseName')).toBe('Milestone')
     expect(getParamLabel('SwitchSlot')).toBe('Battler')
+    expect(getParamLabel('TargetLevel')).toBe('Target Level (101 = no end)')
   })
 
   it('returns an unknown parameter unchanged', () => {
@@ -204,6 +207,18 @@ describe('buildLegBody', () => {
     expect(buildLegBody({ TrainType: 'Standard', SwitchSlot: '3' })).toEqual({ trainType: 'Standard' })
   })
 
+  it('sends pickup as a boolean and omits it when unset', () => {
+    expect(buildLegBody({ TrainType: 'Standard', Pickup: 'true' })).toEqual({ trainType: 'Standard', pickup: true })
+    expect(buildLegBody({ TrainType: 'Standard', Pickup: 'false' })).toEqual({ trainType: 'Standard', pickup: false })
+    expect(buildLegBody({ TrainType: 'Standard', Pickup: '' })).toEqual({ trainType: 'Standard' })
+    expect(buildLegBody({ TrainType: 'Standard' })).toEqual({ trainType: 'Standard' })
+    expect(buildLegBody({ TrainType: 'None', Pickup: 'true' })).toEqual({ trainType: 'None' })
+  })
+
+  it('LEG_PARAM_KEYS has Pickup', () => {
+    expect(LEG_PARAM_KEYS.has('Pickup')).toBe(true)
+  })
+
   it("passes params outside LEG_PARAM_KEYS through, skipping blanks and turning 'true'/'false' into booleans", () => {
     expect(buildLegBody({ Extra: 'abc', Flag: 'true', Off: 'false', Empty: '' })).toEqual({
       Extra: 'abc',
@@ -253,5 +268,37 @@ describe('encounterTypeChoices', () => {
     expect(encounterTypeChoices(disabled, 'Headbutt').selected).toBe('')
     expect(encounterTypeChoices(disabled, 'Run').selected).toBe('Run')
     expect(encounterTypeChoices(disabled, undefined).selected).toBe('')
+  })
+})
+
+describe('pickupChoice', () => {
+  const reason = 'No Pokémon in your party has the Pickup ability.'
+  const disabled: EventArgumentOptions = { name: 'Wild Encounter', disabledChoices: { Pickup: { true: reason } } }
+
+  it('is enabled and labelled Pickup without disabledChoices', () => {
+    for (const schema of [{ name: 'Wild Encounter' }, { name: 'Wild Encounter', disabledChoices: null }]) {
+      expect(pickupChoice(schema, undefined)).toEqual({ label: 'Pickup', disabled: false, checked: false })
+    }
+  })
+
+  it('is disabled with the reason in the label', () => {
+    const choice = pickupChoice(disabled, undefined)
+
+    expect(choice.label).toBe(`Pickup (${reason})`)
+    expect(choice.disabled).toBe(true)
+  })
+
+  it('uses the disabledChoices of the leg schema', () => {
+    const action: EventArgumentOptions = { name: 'Chained Encounter', legParameters: { ...disabled, name: 'Leg' } }
+
+    expect(pickupChoice(action.legParameters!, undefined).disabled).toBe(true)
+    expect(pickupChoice(action, undefined).disabled).toBe(false)
+  })
+
+  it('clears a checked box that is now disabled', () => {
+    expect(pickupChoice(disabled, 'true').checked).toBe(false)
+    expect(pickupChoice({ name: 'Wild Encounter' }, 'true').checked).toBe(true)
+    expect(pickupChoice({ name: 'Wild Encounter' }, undefined).checked).toBe(false)
+    expect(pickupChoice({ name: 'Wild Encounter' }, 'false').checked).toBe(false)
   })
 })

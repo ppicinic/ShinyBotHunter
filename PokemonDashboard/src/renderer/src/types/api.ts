@@ -300,6 +300,8 @@ export interface NewEventLegArguments {
   targetLevel?: number
   // 1-based party slot of the battler to swap to, Switch train mode only
   switchSlot?: number
+  // Take the Pickup Pokémon's held items after a won battle; sent only with a train mode
+  pickup?: boolean
 }
 
 // Matches C# PartySlotInfo record in BotService.cs (GET /api/bot/getParty/{pos})
