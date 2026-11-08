@@ -87,7 +87,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state);
+                    await DecideOverworldAction(state, cancellationToken);
                 }
                 else if(topState == EventState.Encountering)
                 {
@@ -242,7 +242,7 @@ namespace ShinyBotHunter.BotEvents
             state.MilestoneComplete = complete;
         }
 
-        private async Task DecideOverworldAction(GameState state)
+        private async Task DecideOverworldAction(GameState state, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -280,6 +280,17 @@ namespace ShinyBotHunter.BotEvents
 
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
             {
+                if (state.Pickup)
+                {
+                    // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
+                    PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
+                    List<int> slots = PickupSlotsDue(state, pokeState, config.PickupTakeAt);
+                    // The trip is awaited inline; a stop has already parked the stack in Waiting.
+                    if (slots.Count > 0 && !await new PickupTakeEvent(state.Bot, reader, config, pokeState, slots).ExecuteWithResultAsync(state, cancellationToken))
+                    {
+                        return;
+                    }
+                }
                 state.BattleMode = state.OriginalBattleMode;
                 state.SwapState(EventState.Encountering);
             }
@@ -288,6 +299,34 @@ namespace ShinyBotHunter.BotEvents
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
+        }
+
+        // The 0-based slots of the Pickup members holding an item when a trip is due (FR-5), otherwise none: due when every
+        // Pickup member holds one, or at least takeAt do when takeAt is above 0. Runs on every decision, the first included.
+        internal static List<int> PickupSlotsDue(GameState state, PokemonState party, int takeAt)
+        {
+            if (!state.Pickup)
+            {
+                return [];
+            }
+            List<int> held = [];
+            int members = 0;
+            for (int i = 0; i < party.PartySize; i++)
+            {
+                PokemonData member = party.PartyPokemon[i]!;
+                if (member.Ability != PickupTakeEvent.AbilityPickup)
+                {
+                    continue;
+                }
+                members++;
+                if (member.HeldItem != 0)
+                {
+                    held.Add(i);
+                }
+            }
+            bool due = held.Count > 0 && (held.Count == members || (takeAt > 0 && held.Count >= takeAt));
+            Console.WriteLine($"[Pickup] held {held.Count} of {members} pickup members; {(due ? "trip" : "no trip")}");
+            return due ? held : [];
         }
 
         /// <summary>
