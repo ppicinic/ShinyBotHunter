@@ -245,6 +245,19 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void EncounterPickupIsConditionalOnATrainMode()
+        {
+            EventArgumentOptions[] schemas = [EventRegistry.Get("Wild Encounter").Options, EventRegistry.Get("Chained Encounter").Options.LegParameters!];
+
+            foreach (EventArgumentOptions schema in schemas)
+            {
+                ConditionalParameters pickup = schema.ConditionalParameters.Single(cp => cp.Name == "Pickup");
+                Assert.Equal((ConditionType.Neq, "TrainType", "None"), (pickup.Condition.ConditionType, pickup.Condition.Name, pickup.Condition.Value));
+                Assert.True(pickup.HideIfConditionNotMet);
+            }
+        }
+
+        [Fact]
         public void OnlyTheLegsThatHaveAConditionAreGated()
         {
             // Chained encounters predate modes and must keep offering their legs unconditionally.

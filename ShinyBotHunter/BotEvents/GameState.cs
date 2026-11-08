@@ -58,6 +58,8 @@ namespace ShinyBotHunter.BotEvents
         public Dictionary<int, Dictionary<(int X, int Y), int>> TilePenalties { get; } = new Dictionary<int, Dictionary<(int X, int Y), int>>();
         public TrainType TrainType { get; set; } = TrainType.None;
         public int? TargetLevel { get; set; } = null;
+        // Set per leg; read by the orchestrator after a won battle to decide on a Pickup trip.
+        public bool Pickup { get; set; } = false;
         public bool TrainingComplete { get; set; } = false;
         // 1-based party slot of the battler we switch to. Only set when TrainType is Switch.
         public int? SwitchSlot { get; set; } = null;

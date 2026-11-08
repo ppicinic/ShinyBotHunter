@@ -500,7 +500,8 @@ namespace ShinyBotHunter.Service
                 new EncounterParams(args.EncounterType.Value, yRange, xRange),
                 trainType,
                 trainType != TrainType.None ? args.TargetLevel : null,
-                switchSlot);
+                switchSlot,
+                args.Pickup ?? false);
         }
 
         private GameState NewGameStateForLeg(int pos, EventLeg leg)
@@ -514,6 +515,7 @@ namespace ShinyBotHunter.Service
                 Milestone = leg.PhaseName,
                 Bot = slots.Entries[pos].Bot!,
                 TrainType = leg.TrainType,
+                Pickup = leg.Pickup,
                 TargetLevel = leg.TargetLevel,
                 SwitchSlot = leg.SwitchSlot,
             };

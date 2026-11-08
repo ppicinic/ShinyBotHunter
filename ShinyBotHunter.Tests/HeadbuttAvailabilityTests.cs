@@ -221,6 +221,18 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void ChainedLegCarriesPickup()
+        {
+            var state = new GameState();
+
+            ChainedOrchestratorEvent.ApplyLeg(state, new EventLeg(null!, "a", new EncounterParams(EncounterType.Spin), TrainType.Standard, 101, null, Pickup: true));
+            Assert.True(state.Pickup);
+            ChainedOrchestratorEvent.ApplyLeg(state, new EventLeg(null!, "b", new EncounterParams(EncounterType.Spin), TrainType.Standard, 101, null));
+
+            Assert.False(state.Pickup);
+        }
+
+        [Fact]
         public async Task StartWithHeadbuttWhenThePartyCannotBeRead_Is400WithTheReadSentence()
         {
             var (service, bot) = await LaunchAsync(WithHeadbutt);
