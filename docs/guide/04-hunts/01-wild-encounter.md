@@ -207,13 +207,13 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **It means** the bot read your party when you pressed Run and no Pokémon in it has the ability. The greyed-out box can be out of date if you changed your party in the game.
 **Do** put a Pokémon with Pickup in your party, or untick Pickup.
 
-**You see** the bot waiting, and the backend's window shows "Pickup: N still holds X after the take; check the Pokémon menu." with a Pokémon for N and an item for X.
+**You see** the bot waiting, and the backend's window shows "Pickup: P still holds item N after the take; check the Pokémon menu." with a Pokémon for P and the item's number for N.
 **It means** the bot went through the Pokémon menu, but that Pokémon still has its item.
-**Do** cancel the hunt, take the item yourself in the emulator's Pokémon menu, close the menu, and start the hunt again.
+**Do** take the item yourself in the emulator's Pokémon menu, close the menu, and press **Resume**. The bot reads your party again and carries on.
 
 **You see** the bot waiting, and the backend's window shows a `[Pickup]` message naming a step of the trip and what the game showed.
 **It means** the game did not reach the next screen of the trip in time, for example a message stayed on screen.
-**Do** cancel the hunt, close any menu or message in the emulator until your character stands in the field, and start the hunt again.
+**Do** close any menu or message in the emulator until your character stands in the field, and press **Resume**. The bot reads your party again and carries on.
 
 For anything else, including the bot waiting because the game stopped changing, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
