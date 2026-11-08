@@ -1,7 +1,7 @@
 # Spec: Pickup mode (HGSS)
 
-Status: Draft, from the spike of 2026-11-06 to 07; nothing implemented.
-Last updated: 2026-11-07
+Status: In progress (epic on branch feature/pickup-mode, 2026-11-08); from the spike of 2026-11-06 to 07.
+Last updated: 2026-11-08
 Owner: Phil
 Related: [research: the spike](../research/pickup.md) (the source for every value, timing and rule here), [headbutt encounter spec](headbutt-encounter.md) (the greyed-out choice and the party-read cache this reuses), [HGSS state reader spec](hgss-state-reader.md) (the sub-app reads), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the guide page [Wild encounters](../guide/04-hunts/01-wild-encounter.md)
 
