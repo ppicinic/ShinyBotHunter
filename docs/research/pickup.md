@@ -82,3 +82,11 @@ Implementation QA ran on the feature tip f72c233 (epic #273). The run folders ar
 - `hgss-pickup`: `20261108-151447-hgss-route33-dashboard`, 30 won battles and 2 trips (after battles 13 and 30) of five takes each, in 11 125 ms and 11 037 ms
 
 Every trip was under NFR-1's 15 s, about 1 s over the probe's 10.4 s.
+
+The revised build (the menu opened after every won battle, the party read at the list; PRs #290, #291) ran on d6b1a2d, 2026-11-09:
+
+- `hgss-pickup-greyed`: `20261109-072947-hgss-route33-dashboard`
+- `hgss-pickup-take`: `20261109-073032-hgss-route33-dashboard`, the first visit took five in 10 407 ms
+- `hgss-pickup`: `20261109-073128-hgss-route33-dashboard`, 30 won battles, 31 visits (one at the start), 13 with takes, 19 items; visits from 3.4 s (nothing to take) to 8.1 s (three takes)
+
+So a look costs about 3.5 s per battle, and the farm yielded 19 items in 30 battles against the first build's 10 (two trips at "all held"), because no Aipom sat holding an item for long.
