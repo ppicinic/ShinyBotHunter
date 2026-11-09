@@ -244,6 +244,7 @@ A hunt does what a human would do, visibly. Before the bot reads a Pokémon from
 ### Consequences
 - The Wishmaker Jirachi hunt opens the result in EmuHawk and shows the summary every cycle (its spec's G6, NFR-4, FR-17); about 40 s per cycle.
 - A new hunt's spec states where in its cycle the Pokémon is on screen and which memory read follows; a plan that logs from a file alone is rejected at plan review.
+- The same holds for a decision, not only a log line (owner, 2026-11-09, on the Pickup mode QA video): something a player could only know by looking (whether a Pokémon picked up an item) is decided with the screen that shows it open, and the memory read is taken there. The first Pickup build (#273) counted held items from the post-battle party read and opened the menu only when it already knew; a plan that decides from a memory read with nothing on screen is rejected at plan review.
 - QA evidence includes a screen recording of at least one cycle when the presses change.
 
 ---
