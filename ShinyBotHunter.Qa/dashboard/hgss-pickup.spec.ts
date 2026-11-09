@@ -9,8 +9,8 @@ import {
 } from './driver'
 import { backendLines, backendLog, CRASHED, Y_ADDR } from './headbutt'
 import {
-  ABILITY_PICKUP, checkDecisions, fillPickupForm, parseHeld, parseTrip, pickupHolders, PICKUP_HELD, PICKUP_STOP, readPartyRam,
-  type Held
+  ABILITY_PICKUP, checkDecisions, fillPickupForm, parseHeld, parseTrip, pickupHolders, PICKUP_HELD, PICKUP_STOP, PICKUP_TRIP,
+  readPartyRam, type Held
 } from './pickup'
 
 // hgss.qa-pickup: Typhlosion Lv 37 leading, five Aipom with Pickup in slots 2 to 6, nothing held.
@@ -20,8 +20,7 @@ const LEAD_NAME = 'Typhlosion'
 const PICKUP_SLOTS = [2, 3, 4, 5, 6]
 const PHASE_TITLE = 'HGSS — Route 33'
 const MINUTE = 60 * 1000
-// The epic's stop rule: three trips or 30 won battles, whichever comes first.
-const TRIPS = 3
+// The epic's stop rule: the visit after the 30th won battle.
 const BATTLES = 30
 
 const sha256 = (file: string): string => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
@@ -33,7 +32,7 @@ async function readParty(): Promise<PartySlot[]> {
   return res.ok ? ((await res.json()) as PartySlot[]) : []
 }
 
-test('HGSS Pickup farm on Route 33: a count line after every won battle, every trip takes every item, cancel', async () => {
+test('HGSS Pickup farm on Route 33: a visit after every won battle, every visit takes every item, cancel', async () => {
   test.setTimeout(45 * MINUTE)
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
@@ -130,12 +129,13 @@ test('HGSS Pickup farm on Route 33: a count line after every won battle, every t
     await expect(wildPicker).toHaveCount(0, { timeout: 30_000 })
     await shotAll('03-farming', pages)
 
-    // 9. Watch backend.log every 250 ms until three trips or 30 won battles. A 30th decision that is a trip runs on
-    // to its trip line, so the cancel never lands inside the menu. Fails at once on a crash, a stop, a stale wait, a
-    // park, or 3 minutes without a BattleComplete (a stall).
+    // 9. Watch backend.log every 250 ms until the trip line of the visit after the 30th won battle. That line comes
+    // after CANCEL and the field-free wait, so the cancel never lands inside the menu. At every visit's trip line, RAM
+    // holds no item on a Pickup member and the visit kept to its NFR-1 bound. Fails at once on a crash, a stop, a
+    // stale wait, a park, or 3 minutes without a BattleComplete (a stall).
     let scanned = from
     let battles = 0
-    let trips = 0
+    let visits = 0
     let afterBattle = false
     let lastBattleAt = Date.now()
     let last: Held | null = null
@@ -160,16 +160,16 @@ test('HGSS Pickup farm on Route 33: a count line after every won battle, every t
             afterBattle = false
             step(`battle ${battles}: ${line}`)
           }
-          if (battles >= BATTLES && !held.trip) endAt = i
         }
         const ms = parseTrip(line)
         if (ms !== null) {
-          trips++
+          visits++
           const now = await readPartyRam()
-          step(`trip ${trips}: ${ms} ms; party RAM ${JSON.stringify(now)}`)
-          expect(ms, `trip ${trips} took 15 s or more (NFR-1)`).toBeLessThan(15_000)
-          expect(pickupHolders(now), `Pickup members still holding an item after trip ${trips}`).toEqual([])
-          if (trips >= TRIPS || battles >= BATTLES) endAt = i
+          step(`visit ${visits}: ${JSON.stringify(last)}, ${ms} ms; party RAM ${JSON.stringify(now)}`)
+          const bound = last!.take ? 15_000 : 6_000
+          expect(ms, `visit ${visits} (${last!.take ? 'take' : 'nothing to take'}) took ${bound} ms or more (NFR-1)`).toBeLessThan(bound)
+          expect(pickupHolders(now), `Pickup members still holding an item after visit ${visits}`).toEqual([])
+          if (battles >= BATTLES) endAt = i
         }
       }
       scanned = Math.max(scanned, log.length - 1)
@@ -182,53 +182,60 @@ test('HGSS Pickup farm on Route 33: a count line after every won battle, every t
       }
       await sleep(250)
     }
-    const endedOnTrip = parseTrip(backendLog()[endAt]) !== null
 
     // 10. Cancel the event at once: a battle takes about 30 s, so no new roll lands before the memory check.
     await card.getByRole('button', { name: 'Cancel', exact: true }).click()
     await card.getByRole('button', { name: 'Yes', exact: true }).click()
     await expect(wildPicker).toBeVisible({ timeout: 60_000 })
-    step(`event cancelled; ${trips} trips in ${battles} won battles, ended on ${endedOnTrip ? 'a trip' : `${BATTLES} battles`}`)
+    step(`event cancelled after visit ${visits}, the one after won battle ${battles}`)
     await shotAll('05-event-cancelled', pages)
 
-    // 11. Every decision from the Run click to the end line: one count line after every battle; a trip takes exactly
-    // the count it logged, in ascending Pickup slots, and logs its time before any battle starts; a no-trip has
-    // fewer held than members (PickupTakeAt 0).
+    // 11. Every decision from the Run click to the end line: the first visit, before any battle, has nothing to take;
+    // after every battle one visit, its count line and its trip line with no battle between them; a take visit takes
+    // exactly the count it logged, in ascending Pickup slots, under 15 s; a visit with nothing to take is under 6 s.
     const log = backendLog().slice(0, endAt + 1)
-    const first = parseHeld(log.slice(from).find((l) => PICKUP_HELD.test(l))!)
-    expect(first, 'the first decision').toEqual({ held: 0, members: 5, trip: false })
+    const run = log.slice(from)
+    const first = parseHeld(run.find((l) => PICKUP_HELD.test(l))!)
+    expect(first, 'the first visit').toEqual({ held: 0, members: 5, take: false })
+    const firstTripAt = run.findIndex((l) => PICKUP_TRIP.test(l))
+    const firstBattleAt = run.findIndex((l) => l.includes('[Orchestrator] State: BattleStart'))
+    expect(firstTripAt, 'the first visit ends before the first BattleStart').toBeLessThan(firstBattleAt)
+    expect(parseTrip(run[firstTripAt])!, 'the first visit took 6 s or more (NFR-1)').toBeLessThan(6_000)
     const decisions = checkDecisions(log, from)
     expect(decisions.length, 'decisions after a battle').toBe(battles)
     decisions.forEach((d, i) => {
       const name = `decision ${i + 1} (${d.lines.join(' | ')})`
       expect(d.held.members, `${name}: Pickup members`).toBe(5)
-      if (d.held.trip) {
+      expect(d.held.take, `${name}: take against held`).toBe(d.held.held > 0)
+      const visit = d.lines.slice(d.lines.findIndex((l) => PICKUP_HELD.test(l)), d.lines.findIndex((l) => PICKUP_TRIP.test(l)))
+      expect(visit.filter((l) => l.includes('[Orchestrator] State: BattleStart')), `${name}: a battle in the visit`).toEqual([])
+      if (d.held.take) {
         const slots = d.took.map((t) => t.slot)
         expect(slots.length, `${name}: takes`).toBe(d.held.held)
         expect(slots, `${name}: slots not ascending`).toEqual([...slots].sort((a, b) => a - b))
         expect(slots.every((s) => PICKUP_SLOTS.includes(s)), `${name}: a take from a slot without Pickup`).toBe(true)
-        expect(d.tripMs, `${name}: no trip line`).not.toBeNull()
-        const afterHeld = d.lines.slice(d.lines.findIndex((l) => PICKUP_HELD.test(l)))
-        expect(afterHeld.filter((l) => l.includes('[Orchestrator] State: BattleStart')), `${name}: a battle in the trip`).toEqual([])
+        expect(d.tripMs, `${name}: 15 s or more (NFR-1)`).toBeLessThan(15_000)
       } else {
-        expect(d.held.held, `${name}: no trip with every member holding`).toBeLessThan(d.held.members)
-        expect(d.took, `${name}: a take without a trip`).toEqual([])
+        expect(d.held.held, `${name}: held with nothing to take`).toBe(0)
+        expect(d.took, `${name}: a take with nothing to take`).toEqual([])
+        expect(d.tripMs, `${name}: 6 s or more (NFR-1)`).toBeLessThan(6_000)
       }
     })
     expect(backendLines(PICKUP_STOP, from), 'a [Pickup] stop').toEqual([])
     expect(backendLines(CRASHED, from), 'a crash').toEqual([])
 
-    // 12. The party after the cancel: the same members, and memory agrees with the last decision.
+    // 12. The party after the cancel: the same members, none of the Pickup members holding.
     const partyAfter = await readParty()
     step(`party after: ${JSON.stringify(partyAfter)}`)
     expect(partyAfter.map((p) => p.name), 'the party changed').toEqual(party.map((p) => p.name))
     const ramAfter = await readPartyRam()
     step(`party RAM after the cancel: ${JSON.stringify(ramAfter)}`)
-    const heldNow = pickupHolders(ramAfter).length
-    expect(heldNow, `Pickup members holding an item, against the last decision ${JSON.stringify(last)}`).toBe(endedOnTrip ? 0 : last!.held)
+    expect(pickupHolders(ramAfter), 'Pickup members holding an item after the cancel').toEqual([])
     await expect.poll(encounterCount, { timeout: 60_000, intervals: [1000] }).toBeGreaterThan(before)
     step(`Route 33 encounters now: ${await encounterCount()}`)
-    step(`trip count: ${trips}`)
+    const takeVisits = decisions.filter((d) => d.held.take).length
+    const takes = decisions.reduce((n, d) => n + d.took.length, 0)
+    step(`${battles} won battles, ${visits} visits, ${takeVisits} with takes, ${takes} items`)
 
     // 13. One more cancel removes the bot and closes the emulator.
     await card.getByRole('button', { name: 'Cancel', exact: true }).click()
