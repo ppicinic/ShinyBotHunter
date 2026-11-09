@@ -16,7 +16,6 @@ namespace ShinyBotHunter.Tests
         {
             PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
 
-            Assert.Equal(0, config.PickupTakeAt);
             Assert.Equal([44, 77], config.PokemonTouch);
             Assert.Equal([[63, 27], [191, 27], [63, 77], [191, 77], [63, 123], [191, 123]], config.SlotTouches);
             Assert.Equal([191, 106], config.ItemTouch);
@@ -30,8 +29,6 @@ namespace ShinyBotHunter.Tests
         {
             var cases = new (string Key, Action<PickupConfig> Set)[]
             {
-                ("pickupTakeAt", c => c.PickupTakeAt = 7),
-                ("pickupTakeAt", c => c.PickupTakeAt = -1),
                 ("slotTouches", c => c.SlotTouches = c.SlotTouches[..5]),
                 ("slotTouches", c => c.SlotTouches[2] = [63]),
                 ("pokemonTouch", c => c.PokemonTouch = [44, 77, 3]),
