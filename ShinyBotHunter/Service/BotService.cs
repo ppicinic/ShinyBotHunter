@@ -569,7 +569,7 @@ namespace ShinyBotHunter.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BotService] Could not read the party to check for Headbutt: {ex}");
+                Console.WriteLine($"[BotService] Could not read the party for the Headbutt and Pickup checks: {ex}");
                 return null;
             }
             // A game in the field always has a party member; none means the title screen.
