@@ -284,9 +284,8 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
                     PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
-                    List<int> slots = PickupSlotsDue(state, pokeState, config.PickupTakeAt);
-                    // The trip is awaited inline; a stop has already parked the stack in Waiting.
-                    if (slots.Count > 0 && !await new PickupTakeEvent(state.Bot, reader, config, pokeState, slots).ExecuteWithResultAsync(state, cancellationToken))
+                    // The visit is awaited inline; a stop has already parked the stack in Waiting.
+                    if (!await new PickupTakeEvent(state.Bot, reader, config).ExecuteWithResultAsync(state, cancellationToken))
                     {
                         return;
                     }
@@ -299,34 +298,6 @@ namespace ShinyBotHunter.BotEvents
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
-        }
-
-        // The 0-based slots of the Pickup members holding an item when a trip is due (FR-5), otherwise none: due when every
-        // Pickup member holds one, or at least takeAt do when takeAt is above 0. Runs on every decision, the first included.
-        internal static List<int> PickupSlotsDue(GameState state, PokemonState party, int takeAt)
-        {
-            if (!state.Pickup)
-            {
-                return [];
-            }
-            List<int> held = [];
-            int members = 0;
-            for (int i = 0; i < party.PartySize; i++)
-            {
-                PokemonData member = party.PartyPokemon[i]!;
-                if (member.Ability != PickupTakeEvent.AbilityPickup)
-                {
-                    continue;
-                }
-                members++;
-                if (member.HeldItem != 0)
-                {
-                    held.Add(i);
-                }
-            }
-            bool due = held.Count > 0 && (held.Count == members || (takeAt > 0 && held.Count >= takeAt));
-            Console.WriteLine($"[Pickup] held {held.Count} of {members} pickup members; {(due ? "trip" : "no trip")}");
-            return due ? held : [];
         }
 
         /// <summary>

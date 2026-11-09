@@ -35,6 +35,8 @@ namespace ShinyBotHunter.Tests
             // Written and read by the test's one async flow; no lock.
             public List<string> Macros { get; } = [];
             public List<GameSnapshot> SeenAtPress { get; } = [];
+            // The snapshot the last ReadAsync returned, so a party read can tell what was on screen.
+            public GameSnapshot? LastRead { get; private set; }
 
             public Task Run(string macro)
             {
@@ -44,7 +46,19 @@ namespace ShinyBotHunter.Tests
                 return Task.CompletedTask;
             }
 
-            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(current.Count > 1 ? current.Dequeue() : current.Peek());
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                GameSnapshot read = current.Count > 1 ? current.Dequeue() : current.Peek();
+                LastRead = read;
+                return Task.FromResult(read);
+            }
+        }
+
+        // Answers each party read with the next party, the last one repeating.
+        private static Func<Task<PokemonState>> Reads(params PokemonState[] parties)
+        {
+            Queue<PokemonState> queue = new(parties);
+            return () => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
         }
 
         private static PickupConfig Config(int stepStaleMs = 2000, int fieldFreeStaleMs = 2000) => new()
@@ -94,14 +108,22 @@ namespace ShinyBotHunter.Tests
         {
             MenuGame game = new(Free,
                 [[Free, StartMenu], [App(0), App(1, 0)], .. TakeSlot(1), .. TakeSlot(3), [App(1, 3), App(32, 3), Free]]);
-            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 26));
+            PokemonState held = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 26));
             GameState state = Deciding();
             List<string> calls = [];
+            List<(int Presses, GameSnapshot? Showing)> reads = [];
+            // The held party only with the list on screen after exactly X and POKéMON; a read made anywhere else sees nothing held.
+            Func<Task<PokemonState>> readParty = () =>
+            {
+                reads.Add((game.Macros.Count, game.LastRead));
+                return Task.FromResult(game.Macros.Count == 2 && game.LastRead == App(1, 0) ? held : Empty());
+            };
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), party, [1, 3], game.Run, () => calls.Add("clear"),
-                () => Task.FromResult(Empty()), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), readParty, CancellationToken.None);
 
             Assert.Null(park);
+            // The decision read at the list before any slot touch, then the re-read after CANCEL.
+            Assert.Equal([(2, App(1, 0)), (11, Free)], reads);
             Assert.Equal([X, Pokemon, Slot[1], Item, Take, A, Slot[3], Item, Take, A, Cancel], game.Macros);
             // The confirming snapshot each press's wait saw before the press.
             Assert.Equal([Free, StartMenu, App(1, 0), App(2, 1), App(15, 1), App(17, 1, 2), App(1, 1), App(2, 3), App(15, 3), App(17, 3, 2), App(1, 3)], game.SeenAtPress);
@@ -114,10 +136,8 @@ namespace ShinyBotHunter.Tests
         {
             MenuGame game = new(Free,
                 [[StartMenu], [App(1, 0)], [App(2, 0)], [App(15, 0)], [App(17, 0, 0), App(17, 0, 0), App(17, 0, 0), App(17, 0, 2)], [App(1, 0)], [Free]]);
-            PokemonState party = Party(Member("Aipom", 53, 17));
-
-            string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(), party, [0], game.Run, () => { },
-                () => Task.FromResult(Party(Member("Aipom", 53, 0))), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(), game.Run, () => { },
+                Reads(Party(Member("Aipom", 53, 17)), Party(Member("Aipom", 53, 0))), CancellationToken.None);
 
             Assert.Null(park);
             Assert.Single(game.Macros, A);
@@ -132,8 +152,8 @@ namespace ShinyBotHunter.Tests
             GameState state = Deciding();
             List<EventState> topAtClear = [];
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(stepStaleMs: 50), Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17)),
-                [1], game.Run, () => topAtClear.Add(state.State.Peek()), () => Task.FromResult(Empty()), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(stepStaleMs: 50), game.Run, () => topAtClear.Add(state.State.Peek()),
+                Reads(Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17)), Empty()), CancellationToken.None);
 
             Assert.NotNull(park);
             Assert.StartsWith("Pickup: Waited for slot 2's Item menu", park);
@@ -149,13 +169,15 @@ namespace ShinyBotHunter.Tests
             MenuGame game = new(StartMenu);
             GameState state = Deciding();
             List<string> calls = [];
+            int reads = 0;
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(fieldFreeStaleMs: 50), Party(Member("Aipom", 53, 17)), [0],
-                game.Run, () => calls.Add("clear"), () => Task.FromResult(Empty()), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(fieldFreeStaleMs: 50), game.Run, () => calls.Add("clear"),
+                () => { reads++; return Task.FromResult(Party(Member("Aipom", 53, 17))); }, CancellationToken.None);
 
             Assert.NotNull(park);
             Assert.StartsWith("Pickup: Waited for the field free before the Pickup trip", park);
             Assert.Empty(game.Macros);
+            Assert.Equal(0, reads);
             Assert.Equal(["clear"], calls);
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
@@ -167,8 +189,8 @@ namespace ShinyBotHunter.Tests
             GameState state = Deciding();
             List<EventState> topAtClear = [];
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), Party(Member("Aipom", 53, 17)), [0], game.Run,
-                () => topAtClear.Add(state.State.Peek()), () => Task.FromResult(Party(Member("Aipom", 53, 17))), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run,
+                () => topAtClear.Add(state.State.Peek()), Reads(Party(Member("Aipom", 53, 17))), CancellationToken.None);
 
             Assert.Equal("Pickup: Aipom still holds item 17 after the take; check the Pokémon menu.", park);
             Assert.Equal([EventState.DecideOverworldAction], topAtClear);
@@ -183,57 +205,41 @@ namespace ShinyBotHunter.Tests
             PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 137));
             GameState state = Deciding();
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), party, [1], game.Run, () => { },
-                () => Task.FromResult(party), CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => { }, Reads(party), CancellationToken.None);
 
             Assert.Equal([X, Pokemon, Cancel], game.Macros);
             Assert.Equal("Pickup: Aipom still holds item 137 after the take; check the Pokémon menu.", park);
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
 
-        private static GameState PickupOn() => new() { Pickup = true };
-
         [Fact]
-        public void AllHeldIsDue()
+        public async Task NothingHeldIsXPokemonCancel()
         {
-            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 26), Member("Aipom", 53, 79));
+            MenuGame game = new(Free, [[Free, StartMenu], [App(0), App(1, 0)], [App(1, 0), App(32, 0), Free]]);
+            GameState state = Deciding();
+            List<string> calls = [];
 
-            Assert.Equal([1, 2, 3], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), Reads(Empty()), CancellationToken.None);
+
+            Assert.Null(park);
+            Assert.Equal([X, Pokemon, Cancel], game.Macros);
+            Assert.Equal([Free, StartMenu, App(1, 0)], game.SeenAtPress);
+            Assert.Empty(calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
 
         [Fact]
-        public void PartialIsNotDueAtTheDefault()
-        {
-            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 79));
-
-            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
-        }
-
-        [Fact]
-        public void PartialIsDueAtTheThreshold()
-        {
-            PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 79));
-
-            Assert.Equal([1, 3], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 2));
-            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 3));
-        }
-
-        [Fact]
-        public void PickupOffIsNeverDue()
-        {
-            PokemonState party = Party(Member("Aipom", 53, 17), Member("Aipom", 53, 26));
-
-            Assert.Empty(OrchestratorEvent.PickupSlotsDue(new GameState(), party, 0));
-        }
-
-        [Fact]
-        public void ANonPickupHolderIsNotCounted()
+        public async Task ANonPickupHolderIsNotVisited()
         {
             // A lead holding Leftovers (234) is neither a member nor a slot to visit.
-            PokemonState party = Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 17), Member("Aipom", 53, 26));
+            MenuGame game = new(Free, [[Free, StartMenu], [App(0), App(1, 0)], .. TakeSlot(1), [App(1, 1), App(32, 1), Free]]);
 
-            Assert.Equal([1, 2], OrchestratorEvent.PickupSlotsDue(PickupOn(), party, 0));
-            Assert.Empty(OrchestratorEvent.PickupSlotsDue(PickupOn(), Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 0)), 1));
+            string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(), game.Run, () => { },
+                Reads(Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 17)), Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 0))),
+                CancellationToken.None);
+
+            Assert.Null(park);
+            Assert.Equal([X, Pokemon, Slot[1], Item, Take, A, Cancel], game.Macros);
         }
     }
 }
