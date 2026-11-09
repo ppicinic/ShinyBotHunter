@@ -1,6 +1,6 @@
-// The pieces the hgss-pickup scenarios share (#278): the [Pickup] lines P4 logs (OrchestratorEvent.PickupSlotsDue and
-// PickupTakeEvent.TakeAsync), the party read from RAM, the Wild Encounter form and the decision windows. The regexes
-// change together with P4's lines, so they live here once; the HGSS frame (launch, cancel, teardown) stays copied in
+// The pieces the hgss-pickup scenarios share (#278, #289): the [Pickup] lines PickupTakeEvent.TakeAsync logs on every
+// visit, the party read from RAM, the Wild Encounter form and the decision windows. The regexes change together with
+// those lines, so they live here once; the HGSS frame (launch, cancel, teardown) stays copied in
 // each spec, as the other specs do.
 import { expect, type Locator } from '@playwright/test'
 import { readMemory, readU32 } from './driver'
@@ -13,20 +13,21 @@ const ANCHOR_ADDR = 0x21d4158
 const PARTY_COUNT_OFFSET = -0x23f44
 const PARTY_OFFSET = -0x23f40
 
-// Every decision with Pickup on, the first included; a heal decision logs none, its later return decision logs one.
-export const PICKUP_HELD = /\[Pickup\] held (\d+) of (\d+) pickup members; (trip|no trip)/
+// Every visit writes it at the party list, the first visit included; a heal decision makes no visit, its later return
+// decision does.
+export const PICKUP_HELD = /\[Pickup\] held (\d+) of (\d+) pickup members; (take|nothing to take)/
 // One per take, the slot 1-based.
 export const PICKUP_TOOK = /\[Pickup\] took item (\d+) from slot (\d+) \((.*)\)/
-// After the field-free wait that follows CANCEL, before the post-trip party read.
+// Every visit's end: after the field-free wait that follows CANCEL, before the post-visit party read.
 export const PICKUP_TRIP = /\[Pickup\] trip took (\d+) ms/
 // The still-holds stop and the stale stops. Matched up to "Pickup: " so the é of the still-holds sentence, which
 // backend.log (the redirected console) may not carry, cannot hide it.
 export const PICKUP_STOP = /\[Pickup\] Pickup: /
 
-export type Held = { held: number; members: number; trip: boolean }
+export type Held = { held: number; members: number; take: boolean }
 export function parseHeld(line: string): Held | null {
   const m = PICKUP_HELD.exec(line)
-  return m ? { held: Number(m[1]), members: Number(m[2]), trip: m[3] === 'trip' } : null
+  return m ? { held: Number(m[1]), members: Number(m[2]), take: m[3] === 'take' } : null
 }
 
 export type Took = { item: number; slot: number; name: string }
@@ -94,11 +95,12 @@ export async function fillPickupForm(card: Locator, { pickup }: { pickup: boolea
   return { label, disabled }
 }
 
-export type Decision = { held: Held; took: Took[]; tripMs: number | null; lines: string[] }
+export type Decision = { held: Held; took: Took[]; tripMs: number; lines: string[] }
 /**
  * The decision after each battle in `log` from line `from`: the `[Pickup]` and `[Orchestrator] State:` lines between
  * a `BattleComplete` and the next `Encountering` (a battle during a heal walk stays in the same window), the open last
- * window included. Each window must hold exactly one count line; fails with the window's lines otherwise.
+ * window included. Each window must hold exactly one count line and one `trip took` line; fails with the window's
+ * lines otherwise.
  */
 export function checkDecisions(log: string[], from: number): Decision[] {
   const windows: string[][] = []
@@ -115,7 +117,8 @@ export function checkDecisions(log: string[], from: number): Decision[] {
   return windows.map((lines, i) => {
     const held = lines.map(parseHeld).filter((h) => h !== null)
     if (held.length !== 1) throw new Error(`decision ${i + 1} has ${held.length} [Pickup] count lines: ${lines.join(' | ')}`)
-    const trip = lines.map(parseTrip).find((ms) => ms !== null)
-    return { held: held[0], took: lines.map(parseTook).filter((t) => t !== null), tripMs: trip ?? null, lines }
+    const trips = lines.map(parseTrip).filter((ms) => ms !== null)
+    if (trips.length !== 1) throw new Error(`decision ${i + 1} has ${trips.length} [Pickup] trip lines: ${lines.join(' | ')}`)
+    return { held: held[0], took: lines.map(parseTook).filter((t) => t !== null), tripMs: trips[0], lines }
   })
 }

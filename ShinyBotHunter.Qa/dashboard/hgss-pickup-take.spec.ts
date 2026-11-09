@@ -29,7 +29,7 @@ async function readParty(): Promise<PartySlot[]> {
 }
 const namesAndLevels = (party: PartySlot[]): string[] => party.map((p) => `${p.slot} ${p.name} Lv ${p.level}`)
 
-test('HGSS Pickup with five items in hand: the first decision is a trip that takes all five in slot order, cancel', async () => {
+test('HGSS Pickup with five items in hand: the first visit, before any encounter, takes all five in slot order, cancel', async () => {
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
   // Before the try, so the finally block never kills an emulator this run did not start.
@@ -104,7 +104,7 @@ test('HGSS Pickup with five items in hand: the first decision is a trip that tak
     await expect(wildPicker).toHaveCount(0, { timeout: 30_000 })
     await shotAll('03-started', pages)
 
-    // 9. Watch backend.log until the first trip line; fail at once on a crash, a stop, a stale wait or a park.
+    // 9. Watch backend.log until the first visit's trip line; fail at once on a crash, a stop, a stale wait or a park.
     let tripAt = -1
     const deadline = Date.now() + 3 * MINUTE
     while (tripAt < 0) {
@@ -126,11 +126,11 @@ test('HGSS Pickup with five items in hand: the first decision is a trip that tak
     step(`party RAM after the trip: ${JSON.stringify(afterTrip)}`)
     await shotAll('04-trip-done', pages)
 
-    // 10. The first decision is a trip before any encounter, its five takes in slot order with the save's items.
+    // 10. The first visit comes before any encounter, its five takes in slot order with the save's items.
     const lines = backendLog().slice(from, tripAt + 1)
     const pickupLines = lines.filter((l) => l.includes('[Pickup]'))
     for (const line of pickupLines) step(`backend: ${line}`)
-    expect(parseHeld(pickupLines[0]), `the first [Pickup] line: ${pickupLines[0]}`).toEqual({ held: 5, members: 5, trip: true })
+    expect(parseHeld(pickupLines[0]), `the first [Pickup] line: ${pickupLines[0]}`).toEqual({ held: 5, members: 5, take: true })
     expect(lines.filter((l) => /\[Orchestrator\] State: (Encountering|BattleStart)/.test(l)), 'an encounter before the trip').toEqual([])
     const took = lines.map(parseTook).filter((t) => t !== null)
     expect(took.map((t) => ({ slot: t.slot, item: t.item })), 'the takes, in order').toEqual(expected)
@@ -139,7 +139,7 @@ test('HGSS Pickup with five items in hand: the first decision is a trip that tak
     expect(ms, 'the trip took 15 s or more (NFR-1)').toBeLessThan(15_000)
     expect(pickupHolders(afterTrip), 'Pickup members still holding an item after the trip').toEqual([])
 
-    // 11. The event's own post-trip read passed: the decision goes on to Encountering with no stop.
+    // 11. The event's own post-visit read passed: the decision goes on to Encountering with no stop.
     await expect.poll(() => backendLines(/\[Orchestrator\] State: Encountering|\[Pickup\] Pickup: /, tripAt).length,
       { timeout: 30_000, intervals: [250] }).toBeGreaterThan(0)
     expect(backendLines(PICKUP_STOP, tripAt), 'a stop after the trip').toEqual([])
