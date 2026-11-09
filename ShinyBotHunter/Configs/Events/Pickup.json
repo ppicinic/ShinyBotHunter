@@ -1,7 +1,4 @@
 {
-  // Take once this many Pickup members hold an item; 0 takes only when every one of them does.
-  "pickupTakeAt": 0,
-
   // DS bottom-screen touches, (x, y), from docs/research/pickup.md: POKéMON on the start menu, the six party slots,
   // ITEM on the context menu, TAKE on the Item sub-menu, CANCEL on the party list.
   "pokemonTouch": [44, 77],

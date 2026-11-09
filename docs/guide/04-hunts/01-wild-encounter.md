@@ -118,7 +118,7 @@ To farm:
 
 The box is greyed out with "No Pokémon in your party has the Pickup ability." after it when no Pokémon in your party has the ability. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
 
-What a trip looks like: by default, once every Pickup Pokémon holds an item, the bot opens the Pokémon menu after a won battle, takes each Pokémon's item into the bag, closes the menu, and goes back to the grass. The items stay in your bag.
+What a trip looks like: after every won battle, and once when the hunt starts, the bot opens the Pokémon menu and looks at the party list as you would (a Pokémon holding an item has an item icon on its card). It takes each held item into the bag, closes the menu, and goes back to the grass. That costs about 3 s per battle when nothing was found, and about 11 s when five items are taken. The items stay in your bag.
 
 ## What does it log?
 

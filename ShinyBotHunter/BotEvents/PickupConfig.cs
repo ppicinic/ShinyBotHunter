@@ -3,15 +3,12 @@ using System.Text.Json;
 namespace ShinyBotHunter.BotEvents
 {
     /// <summary>
-    /// The Pickup trip's measured values (docs/research/pickup.md): when to take, the party menu's touch targets and the
+    /// The Pickup trip's measured values (docs/research/pickup.md): the party menu's touch targets and the
     /// stale-timeouts. Loaded at the decision, so a value can be corrected against a running game without a build.
     /// </summary>
     public class PickupConfig
     {
         public const string DefaultPath = "./Configs/Events/Pickup.json";
-
-        /// <summary>Take once this many Pickup members hold an item; 0 takes only when every one of them does.</summary>
-        public int PickupTakeAt { get; set; }
 
         /// <summary>Touch targets as (x, y) on the DS bottom screen.</summary>
         public int[] PokemonTouch { get; set; } = [];
@@ -50,10 +47,6 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         public void Validate(string path)
         {
-            if (PickupTakeAt is < 0 or > 6)
-            {
-                throw new InvalidOperationException($"{path}: pickupTakeAt must be 0 to 6, got {PickupTakeAt}.");
-            }
             if (SlotTouches.Length != 6)
             {
                 throw new InvalidOperationException($"{path}: slotTouches must hold six touches, got {SlotTouches.Length}.");

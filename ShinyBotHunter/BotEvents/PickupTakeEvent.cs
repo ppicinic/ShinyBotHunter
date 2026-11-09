@@ -7,8 +7,8 @@ using System.Diagnostics;
 
 namespace ShinyBotHunter.BotEvents
 {
-    // One Pickup trip (docs/specs/pickup-mode.md, FR-6 and FR-7): from the field free, X, POKéMON, then per held slot the
-    // slot, ITEM, TAKE and A, then CANCEL back to the field free. Every press is confirmed by the next snapshot on
+    // One Pickup visit after every decision (docs/specs/pickup-mode.md, FR-6 and FR-7): from the field free, X, POKéMON,
+    // then, with the slots read at the list, per held slot the slot, ITEM, TAKE and A, then CANCEL back to the field free. Every press is confirmed by the next snapshot on
     // app.state, partyMonIndex or the printer; nothing is retried. Every stop clears the macro and parks in Waiting with
     // the reason logged, as HeadbuttEncounterEvent parks.
     public class PickupTakeEvent : AbstractBotEvent<bool>
@@ -19,16 +19,12 @@ namespace ShinyBotHunter.BotEvents
         private readonly IBot bot;
         private readonly PokemonStateReader reader;
         private readonly PickupConfig config;
-        private readonly PokemonState party;
-        private readonly IReadOnlyList<int> slots;
 
-        public PickupTakeEvent(IBot bot, PokemonStateReader reader, PickupConfig config, PokemonState party, IReadOnlyList<int> slots)
+        public PickupTakeEvent(IBot bot, PokemonStateReader reader, PickupConfig config)
         {
             this.bot = bot;
             this.reader = reader;
             this.config = config;
-            this.party = party;
-            this.slots = slots;
         }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -38,16 +34,15 @@ namespace ShinyBotHunter.BotEvents
                 bot.RunMacroString(macro);
                 await bot.WaitForMacroAsync(cancellationToken);
             };
-            string? park = await TakeAsync(state, bot.State, (HgssPointerService)bot.Addresses, config, party, slots, run, bot.ClearMacro,
+            string? park = await TakeAsync(state, bot.State, (HgssPointerService)bot.Addresses, config, run, bot.ClearMacro,
                 () => reader.GetPartyState(bot), cancellationToken);
             return park is null;
         }
 
-        // The trip over the 0-based party slots. Returns null when every Pickup member is empty-handed afterwards, with the
+        // The visit. Returns null when every Pickup member is empty-handed afterwards, with the
         // state stack untouched, otherwise the reason the event parked in Waiting.
         internal static async Task<string?> TakeAsync(
-            GameState state, IGameStateReader game, HgssPointerService addresses, PickupConfig config, PokemonState party,
-            IReadOnlyList<int> slots, Func<string, Task> run, Action clear, Func<Task<PokemonState>> readParty, CancellationToken ct)
+            GameState state, IGameStateReader game, HgssPointerService addresses, PickupConfig config, Func<string, Task> run, Action clear, Func<Task<PokemonState>> readParty, CancellationToken ct)
         {
             Stopwatch trip = Stopwatch.StartNew();
             try
@@ -63,6 +58,25 @@ namespace ShinyBotHunter.BotEvents
                 await run(Touch(config.PokemonTouch));
                 await GameStateWait.UntilAsync(game, "the party menu after POKéMON",
                     s => s.Screen == GameScreen.OtherApp && s.AppState == addresses.PartyMenuList, Stale(config.PartyMenuStaleMs), ct);
+
+                // The list is on screen, with an item icon on each holder's card: the party is read here, not before.
+                PokemonState party = await readParty();
+                List<int> slots = [];
+                int members = 0;
+                for (int i = 0; i < party.PartySize; i++)
+                {
+                    PokemonData member = party.PartyPokemon[i]!;
+                    if (member.Ability != AbilityPickup)
+                    {
+                        continue;
+                    }
+                    members++;
+                    if (member.HeldItem != 0)
+                    {
+                        slots.Add(i);
+                    }
+                }
+                Console.WriteLine($"[Pickup] held {slots.Count} of {members} pickup members; {(slots.Count > 0 ? "take" : "nothing to take")}");
 
                 TimeSpan step = Stale(config.StepStaleMs);
                 foreach (int i in slots)
