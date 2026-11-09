@@ -14,7 +14,8 @@ namespace ShinyBotHunter.BotEvents
         EncounterParams EncounterParams,
         TrainType TrainType,
         int? TargetLevel,
-        int? SwitchSlot);
+        int? SwitchSlot,
+        bool Pickup = false);
 
     /// <summary>
     /// Runs a sequence of orchestrator legs back to back over one shared GameState, so a run like
@@ -110,6 +111,7 @@ namespace ShinyBotHunter.BotEvents
             state.Target = leg.Target;
             state.Milestone = leg.PhaseName;
             state.TrainType = leg.TrainType;
+            state.Pickup = leg.Pickup;
             state.TargetLevel = leg.TrainType != TrainType.None ? leg.TargetLevel : null;
             state.SwitchSlot = leg.SwitchSlot;
             state.TrainingComplete = false;

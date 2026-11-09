@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
-import { encounterTypeChoices, getParamLabel, isConditionMet } from './actionSchema'
+import { encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
@@ -36,6 +36,10 @@ export function ActionParamFields({
   useEffect(() => {
     if (params['EncounterType'] && encounter.selected !== params['EncounterType']) onChange('EncounterType', '')
   }, [encounter.selected, params['EncounterType']])
+  const pickup = pickupChoice(schema, params['Pickup'])
+  useEffect(() => {
+    if (params['Pickup'] === 'true' && !pickup.checked) onChange('Pickup', 'false')
+  }, [pickup.checked, params['Pickup']])
   const visibleConditionals = (schema.conditionalParameters ?? []).filter((cp: ConditionalParameter) => {
     return isConditionMet(cp.condition, params) || !cp.hideIfConditionNotMet
   })
@@ -145,8 +149,18 @@ export function ActionParamFields({
             const isBattlerPicker = cp.name === 'SwitchSlot' && party !== undefined && party.length > 0
             return (
               <div key={cp.name} data-testid={`param-${cp.name}`} className="flex items-center gap-2 mt-0.5">
-                <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(cp.name)}</label>
-                {isBattlerPicker ? (
+                <label className="text-xs text-slate-500 w-20 flex-shrink-0">
+                  {cp.name === 'Pickup' ? pickup.label : getParamLabel(cp.name)}
+                </label>
+                {cp.name === 'Pickup' ? (
+                  <input
+                    type="checkbox"
+                    checked={pickup.checked}
+                    onChange={(e) => onChange(cp.name, e.target.checked ? 'true' : 'false')}
+                    disabled={!condMet || pickup.disabled}
+                    className="w-4 h-4 accent-indigo-500 disabled:opacity-40"
+                  />
+                ) : isBattlerPicker ? (
                   <select
                     value={params[cp.name] ?? '2'}
                     onChange={(e) => onChange(cp.name, e.target.value)}
@@ -165,6 +179,7 @@ export function ActionParamFields({
                     value={params[cp.name] ?? '0'}
                     onChange={(e) => onChange(cp.name, e.target.value)}
                     disabled={!condMet}
+                    max={cp.name === 'TargetLevel' ? 101 : undefined}
                     placeholder="0"
                     className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
                   />

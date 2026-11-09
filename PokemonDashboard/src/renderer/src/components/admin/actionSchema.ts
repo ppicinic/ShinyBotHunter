@@ -10,7 +10,7 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   xRange: 'X Range',
   yRange: 'Y Range',
   TrainType: 'Train Type',
-  TargetLevel: 'Target Level',
+  TargetLevel: 'Target Level (101 = no end)',
   SwitchSlot: 'Battler',
   Mode: 'Game',
 }
@@ -110,6 +110,18 @@ export function encounterTypeChoices(
   return { options, selected: reasons[keep] !== undefined ? '' : keep }
 }
 
+/** The Pickup checkbox for one schema: disabled with its reason in the label when the schema's
+ *  disabledChoices names Pickup "true", and checked only while the value is "true" and the box is
+ *  enabled, so a box that becomes disabled is cleared. */
+export function pickupChoice(
+  schema: EventArgumentOptions,
+  value: string | undefined
+): { label: string; disabled: boolean; checked: boolean } {
+  const reason = schema.disabledChoices?.Pickup?.['true']
+  const disabled = reason !== undefined
+  return { label: disabled ? `Pickup (${reason})` : 'Pickup', disabled, checked: value === 'true' && !disabled }
+}
+
 /** Maps one form's parameter values onto the JSON body of an encounter leg. */
 /**
  * Parameter names buildLegBody knows how to place. Anything outside this set is passed through
@@ -117,7 +129,7 @@ export function encounterTypeChoices(
  * previously such a parameter rendered an input and was then silently dropped on submit.
  */
 export const LEG_PARAM_KEYS = new Set([
-  'PhaseName', 'TargetType', 'EncounterType', 'xRange', 'yRange', 'TrainType', 'TargetLevel', 'SwitchSlot'
+  'PhaseName', 'TargetType', 'EncounterType', 'xRange', 'yRange', 'TrainType', 'TargetLevel', 'SwitchSlot', 'Pickup'
 ])
 
 export function buildLegBody(params: Record<string, string>): NewEventLegArguments {
@@ -145,6 +157,10 @@ export function buildLegBody(params: Record<string, string>): NewEventLegArgumen
   }
   if (params['TrainType'] === 'Switch' && params['SwitchSlot'] !== undefined && params['SwitchSlot'] !== '') {
     leg.switchSlot = parseInt(params['SwitchSlot'], 10)
+  }
+  // Pickup shows only with a train mode, so a box ticked and then hidden by TrainType None is not sent.
+  if (params['TrainType'] !== 'None' && params['Pickup'] !== undefined && params['Pickup'] !== '') {
+    leg.pickup = params['Pickup'] === 'true'
   }
   // Same rule as the flat forms: anything the allowlist does not model goes through under its own
   // name, so a schema with new leg parameters works without another silent-drop bug here.

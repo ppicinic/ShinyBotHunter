@@ -29,6 +29,7 @@ namespace ShinyBotHunter.Tests
                 Move2 = BitConverter.ToUInt16(raw, 2),
                 Move3 = BitConverter.ToUInt16(raw, 4),
                 Move4 = BitConverter.ToUInt16(raw, 6),
+                Ability = raw.Length > 8 ? raw[8] : (byte)0,
             };
         }
 
@@ -41,6 +42,8 @@ namespace ShinyBotHunter.Tests
 
         private const string NoHeadbutt = "No Pokémon in your party knows Headbutt.";
         private const string ReadFailed = "The party could not be read; try again once the game is in the field.";
+        private const string NoPickup = "No Pokémon in your party has the Pickup ability.";
+        private const string NeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
 
         private static readonly NewEventArguments LaunchBot = new() { EventName = "Launch Bot", GameName = "fake.nds" };
 
@@ -49,6 +52,9 @@ namespace ShinyBotHunter.Tests
 
         private static readonly byte[][] WithoutHeadbutt = [Moves(33, 45, 0, 0), Moves(10, 0, 0, 0)];
         private static readonly byte[][] WithHeadbutt = [Moves(33, 45, 0, 0), Moves(10, 0, 0, 0), Moves(52, 43, 98, 29)];
+        // ABILITY_PICKUP is 53; the fourth member is party slot 4.
+        private static readonly byte[] PickupMember = [.. Moves(10, 0, 0, 0), 53];
+        private static readonly byte[][] WithBoth = [.. WithHeadbutt, PickupMember];
 
         private static async Task<(BotService Service, FakeBot Bot)> LaunchAsync(byte[][] party)
         {
@@ -71,7 +77,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task HeadbuttAsSlotThreesFourthMove_IsEnabled()
         {
-            var (service, _) = await LaunchAsync(WithHeadbutt);
+            var (service, _) = await LaunchAsync(WithBoth);
 
             var actions = await service.GetBotActionsAsync(0);
 
@@ -101,6 +107,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["EncounterType"]["Headbutt"]);
             Assert.Equal(ReadFailed, Chained(actions).LegParameters!.DisabledChoices!["EncounterType"]["Headbutt"]);
+            Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["Pickup"]["true"]);
             await service.GetBotActionsAsync(0);
             Assert.Equal(2, bot.PartyReads);
         }
@@ -114,6 +121,7 @@ namespace ShinyBotHunter.Tests
             await service.GetBotActionsAsync(0);
 
             Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["EncounterType"]["Headbutt"]);
+            Assert.Equal(ReadFailed, Wild(actions).DisabledChoices!["Pickup"]["true"]);
             Assert.Equal(2, bot.PartyReads);
         }
 
@@ -134,18 +142,18 @@ namespace ShinyBotHunter.Tests
             var slots = new EmulatorSlotRegistry(2);
             var runner = new BotEventRunner(slots, () => Task.CompletedTask);
             var state = new GameState();
-            var entry = new BotAndOrEvent(new FakeBot(Task.CompletedTask)) { GameState = state, HeadbuttRefusal = Task.FromResult<string?>(NoHeadbutt) };
+            var entry = new BotAndOrEvent(new FakeBot(Task.CompletedTask)) { GameState = state, PartyRead = Task.FromResult<PokemonState?>(new PokemonState()) };
             slots.Entries[0] = entry;
 
             await slots.Gate.WaitAsync();
             runner.StartEvent(0, entry, new ThrowingEvent(), state, "Route 33", removeWhenDone: false);
-            Assert.Null(entry.HeadbuttRefusal);
-            entry.HeadbuttRefusal = Task.FromResult<string?>(NoHeadbutt);
+            Assert.Null(entry.PartyRead);
+            entry.PartyRead = Task.FromResult<PokemonState?>(new PokemonState());
             Task running = entry.EventTask!;
             slots.Gate.Release();
             await running;
 
-            Assert.Null(entry.HeadbuttRefusal);
+            Assert.Null(entry.PartyRead);
         }
 
         [Fact]
@@ -153,13 +161,48 @@ namespace ShinyBotHunter.Tests
         {
             var (service, bot) = await LaunchAsync(WithoutHeadbutt);
             await service.GetBotActionsAsync(0);
-            bot.PartyBlocks = WithHeadbutt;
+            bot.PartyBlocks = WithBoth;
 
             await service.ReloadPartyAsync(0);
             var actions = await service.GetBotActionsAsync(0);
 
             Assert.Null(Wild(actions).DisabledChoices);
             Assert.Equal(3, bot.PartyReads);
+        }
+
+        [Fact]
+        public async Task PickupInSlotFour_EnablesIt()
+        {
+            var (service, _) = await LaunchAsync([.. WithoutHeadbutt, Moves(33, 0, 0, 0), PickupMember]);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.False(Wild(actions).DisabledChoices!.ContainsKey("Pickup"));
+            Assert.True(Wild(actions).DisabledChoices!.ContainsKey("EncounterType"));
+        }
+
+        [Fact]
+        public async Task NoPickupMember_DisablesPickupWithTheSentence()
+        {
+            var (service, _) = await LaunchAsync(WithHeadbutt);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(NoPickup, Wild(actions).DisabledChoices!["Pickup"]["true"]);
+            Assert.Equal(NoPickup, Chained(actions).LegParameters!.DisabledChoices!["Pickup"]["true"]);
+            Assert.False(Wild(actions).DisabledChoices!.ContainsKey("EncounterType"));
+        }
+
+        [Fact]
+        public async Task OneReadServesBothAnswers()
+        {
+            var (service, bot) = await LaunchAsync(WithoutHeadbutt);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(NoHeadbutt, Wild(actions).DisabledChoices!["EncounterType"]["Headbutt"]);
+            Assert.Equal(NoPickup, Wild(actions).DisabledChoices!["Pickup"]["true"]);
+            Assert.Equal(1, bot.PartyReads);
         }
 
         [Fact]
@@ -218,6 +261,124 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(NoHeadbutt, content.Content);
             Assert.Equal(2, bot.PartyReads);
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        private static NewEventArguments WildPickup(TrainType trainType) => new()
+        {
+            EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Spin,
+            TrainType = trainType, TargetLevel = 101, Pickup = true,
+        };
+
+        private static NewEventArguments ChainedPickup(TrainType trainType, EncounterType encounterType) => new()
+        {
+            EventName = "Chained Encounter",
+            Legs =
+            [
+                new() { PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Spin },
+                new() { PhaseName = "y", TargetType = "ShinyTarget", EncounterType = encounterType, TrainType = trainType, TargetLevel = 101, Pickup = true },
+            ],
+        };
+
+        [Fact]
+        public async Task StartWildEncounterWithPickupAndNoTrainMode_Is400WithoutARead()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+
+            var result = await new BotController(service).StartAction(0, WildPickup(TrainType.None));
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NeedsTrainMode, content.Content);
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartChainedEncounterWithAPickupLegAndNoTrainMode_Is400WithoutARead()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+
+            var result = await new BotController(service).StartAction(0, ChainedPickup(TrainType.None, EncounterType.Headbutt));
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NeedsTrainMode, content.Content);
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartWildEncounterWithPickupAndNoPickupMember_ReadsFreshAndIs400()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+            await service.GetBotActionsAsync(0);
+            bot.PartyBlocks = WithHeadbutt;
+
+            var result = await new BotController(service).StartAction(0, WildPickup(TrainType.Standard));
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NoPickup, content.Content);
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartChainedEncounterWithAPickupLegAndNoPickupMember_ReadsFreshAndIs400()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+            await service.GetBotActionsAsync(0);
+            bot.PartyBlocks = WithHeadbutt;
+
+            var result = await new BotController(service).StartAction(0, ChainedPickup(TrainType.Standard, EncounterType.Spin));
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal(NoPickup, content.Content);
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task StartChainedEncounterWithPickupInSlotFour_Starts()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+            var args = new NewEventArguments
+            {
+                EventName = "Chained Encounter",
+                Legs = [new() { PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Headbutt, TrainType = TrainType.Standard, TargetLevel = 101, Pickup = true }],
+            };
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            Assert.IsType<OkObjectResult>(result.Result);
+            Assert.Equal(1, bot.PartyReads);
+        }
+
+        [Fact]
+        public async Task StartWildEncounterWithPickupInSlotFour_PassesTheGuards()
+        {
+            var (service, bot) = await LaunchAsync(WithBoth);
+
+            var result = await new BotController(service).StartAction(0, WildPickup(TrainType.Standard));
+
+            // The stub provider cannot build the event, so it fails after the guards.
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.DoesNotContain(NeedsTrainMode, content.Content);
+            Assert.DoesNotContain(NoPickup, content.Content);
+            Assert.Equal(1, bot.PartyReads);
+        }
+
+        [Fact]
+        public void ChainedLegCarriesPickup()
+        {
+            var state = new GameState();
+
+            ChainedOrchestratorEvent.ApplyLeg(state, new EventLeg(null!, "a", new EncounterParams(EncounterType.Spin), TrainType.Standard, 101, null, Pickup: true));
+            Assert.True(state.Pickup);
+            ChainedOrchestratorEvent.ApplyLeg(state, new EventLeg(null!, "b", new EncounterParams(EncounterType.Spin), TrainType.Standard, 101, null));
+
+            Assert.False(state.Pickup);
         }
 
         [Fact]

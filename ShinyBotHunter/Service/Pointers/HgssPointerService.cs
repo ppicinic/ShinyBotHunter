@@ -350,6 +350,25 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
         public int HatchYesNoCursorOffset => 0x19;
 
+        // The party menu, docs/research/pickup.md "The party menu, from the decomp and the probe" (spike 2026-11-06 to 07).
+        // Its app.ovyId reads 0xFFFFFFFF (FS_OVERLAY_ID_NONE), so no overlay id constant.
+
+        // PartyMenu.partyMonIndex (u8), the highlighted party slot 0-5, in the party menu's data (data + 0xC65; data is
+        // [app + 0x1C], AppDataOffset); offset (revision-independent); observed; QA: hgss-pickup
+        public int PartyMenuMonIndexOffset => 0xC65;
+
+        // PartyMenuState 1, app.state of the party menu's list (pick a Pokémon); constant; observed; QA: hgss-pickup
+        public int PartyMenuList => 1;
+
+        // PartyMenuState 2, app.state of the context menu (Summary, Switch, Item, Quit); constant; observed; QA: hgss-pickup
+        public int PartyMenuContextMenu => 2;
+
+        // PartyMenuState 15, app.state of the Item sub-menu (Give / Take); constant; observed; QA: hgss-pickup
+        public int PartyMenuItemMenu => 15;
+
+        // PartyMenuState 17, app.state of the "Received the X from Y." message; constant; observed; QA: hgss-pickup
+        public int PartyMenuTakeMessage => 17;
+
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 

@@ -50,6 +50,7 @@ namespace ShinyBotHunter.Games.Hgss
         private const int FirstScriptContextBlock = 9;
         private const int SummaryBlock = 12;
         private const int PrinterBlock = 13;
+        private const int PartyMenuBlock = 14;
 
         // The one sTextPrinterTasks slot read; every message observed used it (pointer-discovery.md, "Text printer state").
         private const byte ReadPrinterSlot = 0;
@@ -79,6 +80,7 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + 2 * ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, a.EvolutionSummaryOffset, a.OverlayProcStateOffset], 4),
                 new(a.TextPrinterTasks, [a.TextPrinterTaskDataOffset, a.TextPrinterStateOffset], 1),
+                new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppDataOffset, a.PartyMenuMonIndexOffset], 1),
             ];
         }
 
@@ -112,7 +114,7 @@ namespace ShinyBotHunter.Games.Hgss
 
             if (!Ok(r[AppBlock])) return Snapshot(GameScreen.Transitioning);
             byte[] app = r[AppBlock].Bytes;
-            if (U32(app, addresses.AppOverlayIdOffset) != addresses.BattleOverlayId) return Snapshot(GameScreen.OtherApp);
+            if (U32(app, addresses.AppOverlayIdOffset) != addresses.BattleOverlayId) return OtherApp(app, r[PartyMenuBlock], r[PrinterBlock]);
             uint state = U32(app, addresses.AppStateOffset);
             if (state < BattleMain) return Snapshot(GameScreen.BattleStarting);
             if (state == EvolutionMain)
@@ -206,6 +208,21 @@ namespace ShinyBotHunter.Games.Hgss
             if (!Ok(block)) return false;
             printer = block.Bytes[0];
             return true;
+        }
+
+        // The party menu's state, highlighted slot and slot 0's printer (research/pickup.md, "The party menu"); filled on
+        // every other app, since the party menu's ovyId (0xFFFFFFFF) does not identify it. A NULL data pointer gives no
+        // index (FR-3).
+        private GameSnapshot OtherApp(byte[] app, ChainBlockResult partyMenu, ChainBlockResult printerBlock)
+        {
+            if (!Ok(partyMenu) && partyMenu.Status != ChainBlockStatus.NullPointer) return Snapshot(GameScreen.Transitioning);
+            if (!TryTextPrinter(printerBlock, ReadPrinterSlot, out int? printer)) return Snapshot(GameScreen.Transitioning);
+            return Snapshot(GameScreen.OtherApp) with
+            {
+                AppState = (int)U32(app, addresses.AppStateOffset),
+                PartyMonIndex = Ok(partyMenu) ? partyMenu.Bytes[0] : null,
+                TextPrinter = printer,
+            };
         }
 
         // Outcome is null when its block failed or the byte is outside 1 to 5 (the 0x40 and 0x80

@@ -87,7 +87,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state);
+                    await DecideOverworldAction(state, cancellationToken);
                 }
                 else if(topState == EventState.Encountering)
                 {
@@ -242,7 +242,7 @@ namespace ShinyBotHunter.BotEvents
             state.MilestoneComplete = complete;
         }
 
-        private async Task DecideOverworldAction(GameState state)
+        private async Task DecideOverworldAction(GameState state, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -280,6 +280,16 @@ namespace ShinyBotHunter.BotEvents
 
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
             {
+                if (state.Pickup)
+                {
+                    // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
+                    PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
+                    // The visit is awaited inline; a stop has already parked the stack in Waiting.
+                    if (!await new PickupTakeEvent(state.Bot, reader, config).ExecuteWithResultAsync(state, cancellationToken))
+                    {
+                        return;
+                    }
+                }
                 state.BattleMode = state.OriginalBattleMode;
                 state.SwapState(EventState.Encountering);
             }

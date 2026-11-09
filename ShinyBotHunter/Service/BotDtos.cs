@@ -79,6 +79,7 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+        public bool? Pickup { get; set; }
 
         // Starter-hunt queue entries. Each entry picks its own ROM and label, the way chained
         // encounter legs each pick their own phase.
@@ -103,6 +104,7 @@ namespace ShinyBotHunter.Service
         public TrainType? TrainType { get; set; }
         public int? TargetLevel { get; set; }
         public int? SwitchSlot { get; set; }
+        public bool? Pickup { get; set; }
         /// <summary>Which starter to take, for the shiny starter hunt.</summary>
         public string? Starter { get; set; }
         /// <summary>How many emulators the shiny starter hunt should run at once.</summary>
@@ -127,6 +129,7 @@ namespace ShinyBotHunter.Service
                 TrainType = TrainType,
                 TargetLevel = TargetLevel,
                 SwitchSlot = SwitchSlot,
+                Pickup = Pickup,
             };
         }
     }
