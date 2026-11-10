@@ -40,6 +40,7 @@ namespace ShinyBotHunter
             services.GetRequiredService<IEncounterDao>().Init();
             await services.GetRequiredService<PokemonMetadataService>().InitAsync();
             await services.GetRequiredService<PhaseInfoService>().InitAsync();
+            await services.GetRequiredService<AdminService>().InitAsync();
             await services.GetRequiredService<RomInfoService>().InitAsync();
             services.GetRequiredService<NotificationService>().Init();
             services.GetRequiredService<MongoCaughtPokemonDao>().Init();

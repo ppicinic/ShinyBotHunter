@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Bson;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -125,6 +126,7 @@ namespace ShinyBotHunter.Tests
             TaskCompletionSource firstSaveReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
             AdminService service = new(
                 _ => Task.CompletedTask,
+                () => Task.FromResult<DashboardConfig?>(null),
                 async config =>
                 {
                     bool isFirst;
@@ -137,7 +139,8 @@ namespace ShinyBotHunter.Tests
                     {
                         await firstSaveReleased.Task;
                     }
-                });
+                },
+                NullLogger.Instance);
 
             Task first = service.SubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
             Task second = service.UpdateRecentEncounterCount(25);
@@ -152,10 +155,123 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(25, saves[1].RecentEncounterCount);
         }
 
-        private static AdminService Service(List<DashboardConfig> pushes, List<DashboardConfig> saves)
+        [Fact]
+        public async Task DefaultsBeforeAnyChange()
+        {
+            List<DashboardConfig> pushes = [];
+            AdminService service = Service(pushes, []);
+
+            await service.InitAsync();
+            await service.UpdateDashboardsAsync();
+
+            DashboardConfig pushed = Assert.Single(pushes);
+            Assert.Empty(pushed.GamePhases);
+            Assert.Equal(10, pushed.RecentEncounterCount);
+            Assert.Equal("midnight", pushed.Appearance.Default.Theme);
+            Assert.Null(pushed.Appearance.Default.Night);
+            Assert.Equal("07:00", pushed.Appearance.DayStart);
+            Assert.Equal("19:00", pushed.Appearance.NightStart);
+            Assert.Empty(pushed.Appearance.Windows);
+        }
+
+        [Fact]
+        public async Task InitRestoresTheSavedConfig()
+        {
+            GamePhase johto = new(GameFlavor.HGSS, "Johto Starters", "HeartGold");
+            GamePhase hoenn = new(GameFlavor.RS, "Hoenn Starters", "Ruby");
+            var saved = new DashboardConfig([johto, hoenn])
+            {
+                RecentEncounterCount = 25,
+                Appearance = new Appearance
+                {
+                    DayStart = "06:30",
+                    NightStart = "20:00",
+                    Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
+                    Windows =
+                    {
+                        ["admin"] = new ThemeChoice { Theme = "christmas" },
+                        ["pickup:Ruby"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
+                    },
+                },
+            };
+            List<DashboardConfig> pushes = [];
+            AdminService service = Service(pushes, [], saved);
+
+            await service.InitAsync();
+            await service.UpdateDashboardsAsync();
+
+            DashboardConfig pushed = Assert.Single(pushes);
+            Assert.Equal([johto, hoenn], pushed.GamePhases.OrderBy(p => p.game));
+            Assert.Equal(25, pushed.RecentEncounterCount);
+            AssertSameAppearance(saved.Appearance, pushed.Appearance);
+        }
+
+        [Fact]
+        public async Task UnknownThemeIdFallsBackToMidnight()
+        {
+            var saved = new DashboardConfig([])
+            {
+                Appearance = new Appearance
+                {
+                    Default = new ThemeChoice { Theme = "emerald", Night = "hgss-dusk" },
+                    Windows = { ["recent"] = new ThemeChoice { Theme = "ruby", Night = "bogus" } },
+                },
+            };
+            List<DashboardConfig> pushes = [];
+            AdminService service = Service(pushes, [], saved);
+
+            await service.InitAsync();
+            await service.UpdateDashboardsAsync();
+
+            Appearance appearance = Assert.Single(pushes).Appearance;
+            Assert.Equal("midnight", appearance.Default.Theme);
+            Assert.Equal("hgss-dusk", appearance.Default.Night);
+            Assert.Equal("ruby", appearance.Windows["recent"].Theme);
+            Assert.Equal("midnight", appearance.Windows["recent"].Night);
+        }
+
+        [Fact]
+        public async Task MalformedTimeFallsBackToTheDefault()
+        {
+            List<DashboardConfig> pushes = [];
+            AdminService badDay = Service(pushes, [], new DashboardConfig([]) { Appearance = new Appearance { DayStart = "7pm", NightStart = "20:00" } });
+            AdminService badNight = Service(pushes, [], new DashboardConfig([]) { Appearance = new Appearance { DayStart = "06:00", NightStart = "25:00" } });
+
+            await badDay.InitAsync();
+            await badDay.UpdateDashboardsAsync();
+            await badNight.InitAsync();
+            await badNight.UpdateDashboardsAsync();
+
+            Assert.Equal("07:00", pushes[0].Appearance.DayStart);
+            Assert.Equal("20:00", pushes[0].Appearance.NightStart);
+            Assert.Equal("06:00", pushes[1].Appearance.DayStart);
+            Assert.Equal("19:00", pushes[1].Appearance.NightStart);
+        }
+
+        [Fact]
+        public async Task OverrideForAGoneWindowStaysSaved()
+        {
+            var saved = new DashboardConfig([])
+            {
+                Appearance = new Appearance { Windows = { ["pickup:Gone"] = new ThemeChoice { Theme = "ruby" } } },
+            };
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> saves = [];
+            AdminService service = Service(pushes, saves, saved);
+
+            await service.InitAsync();
+            await service.SubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
+
+            Assert.Equal("ruby", Assert.Single(pushes).Appearance.Windows["pickup:Gone"].Theme);
+            Assert.Equal("ruby", Assert.Single(saves).Appearance.Windows["pickup:Gone"].Theme);
+        }
+
+        private static AdminService Service(List<DashboardConfig> pushes, List<DashboardConfig> saves, DashboardConfig? saved = null)
             => new(
                 config => { pushes.Add(config); return Task.CompletedTask; },
-                config => { saves.Add(config); return Task.CompletedTask; });
+                () => Task.FromResult(saved),
+                config => { saves.Add(config); return Task.CompletedTask; },
+                NullLogger.Instance);
 
         private static void AssertSameAppearance(Appearance expected, Appearance actual)
         {
