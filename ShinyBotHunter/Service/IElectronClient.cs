@@ -15,6 +15,7 @@ namespace ShinyBotHunter.Service
         public GamePhase[] GamePhases { get; private set; }
         public int RecentEncounterCount { get; set; }
         public Appearance Appearance { get; set; } = new();
+        public string[] PickupGameFiles { get; set; } = [];
     }
 
     // The dashboard themes (docs/specs/dashboard-alive.md FR-12): the day and night times, the default choice and the per-window overrides.
