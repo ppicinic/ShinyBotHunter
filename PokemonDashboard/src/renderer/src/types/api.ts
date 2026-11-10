@@ -1,3 +1,5 @@
+import type { Appearance } from '../../../shared/windowContracts'
+
 // ============================================================
 // Static App Config (loaded from config.json via IPC)
 // ============================================================
@@ -29,6 +31,8 @@ export interface DashboardConfig {
   // C# GamePhase[] — each has game (GameFlavor enum) and phase (string)
   gamePhases: ActiveSubscription[]
   recentEncounterCount: number
+  // null until the backend's first push
+  appearance: Appearance | null
 }
 
 // ============================================================

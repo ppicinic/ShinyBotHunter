@@ -21,9 +21,24 @@ export interface PhaseWindowRequest {
   gameName?: string | null
 }
 
+// The dashboard themes (docs/specs/dashboard-alive.md FR-12); mirrors C# Appearance in IElectronClient.cs.
+export interface ThemeChoice {
+  theme: string
+  night?: string
+}
+
+export interface Appearance {
+  dayStart: string
+  nightStart: string
+  default: ThemeChoice
+  windows: Record<string, ThemeChoice>
+}
+
 export interface SharedDashboardConfig {
   gamePhases: PhaseWindowRequest[]
   recentEncounterCount: number
+  // null until the backend's first push
+  appearance: Appearance | null
 }
 
 export type ConnectionState = 'connected' | 'disconnected' | 'reconnecting'
