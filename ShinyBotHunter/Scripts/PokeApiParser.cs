@@ -639,6 +639,18 @@ namespace ShinyBotHunter.Scripts
             Console.WriteLine("Saved to MongoDB successfully!");
 
             await ConvertWikidexClipsAsync(client, femaleFromClip);
+
+            // FR-2a: the stills left without an animation, read from the disk.
+            foreach (string folder in animatedFolders)
+            {
+                var stills = Directory.GetFiles($"{rootSpriteDirectory}/{folder}", "*.png").Select(Path.GetFileNameWithoutExtension).ToList();
+                var left = stills.Where(still => !File.Exists($"{rootSpriteDirectory}/Animated/{folder}/{still}.gif")).ToList();
+                Console.WriteLine($"Animated/{folder}: {stills.Count - left.Count} of {stills.Count}");
+                foreach (string? still in left)
+                {
+                    Console.WriteLine($"  {still}");
+                }
+            }
         }
 
         public async Task ScrapeItemSprites()
