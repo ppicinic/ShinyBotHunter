@@ -5,8 +5,12 @@ using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 namespace ShinyBotHunter.Scripts
 {
@@ -15,7 +19,11 @@ namespace ShinyBotHunter.Scripts
     internal record PokemonDexEntry(string name, string url);
     internal record PokemonSpecies(string name, string url);
     internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms, LearnedMoves[] moves);
-    internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female);
+    internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female, SpriteOther? other, SpriteVersions? versions);
+    internal record SpriteOther(PokemonSprite? showdown);
+    internal record SpriteVersions([property: JsonPropertyName("generation-v")] SpriteGenV? GenerationV);
+    internal record SpriteGenV([property: JsonPropertyName("black-white")] SpriteBlackWhite? BlackWhite);
+    internal record SpriteBlackWhite(PokemonSprite? animated);
     internal record PokemonForm(string name, string url);
     internal record PokemonFormData(string name, VersionGroup version_group, PokemonSprite sprites);
     internal record VersionGroup(string name, string url);
@@ -63,6 +71,164 @@ namespace ShinyBotHunter.Scripts
 
                     // Write the bytes to a local file
                     await File.WriteAllBytesAsync(filePath, imageBytes);
+                }
+            }
+        }
+
+        private async Task DownloadAnimatedAsync(string? url, string folder, string name)
+        {
+            if (url is not null)
+            {
+                await DownloadImageAsync(url, $"{rootSpriteDirectory}/Animated/{folder}/{name}.gif");
+            }
+        }
+
+        // FR-2 and FR-3: the animated GIF for one still, first hit wins. Generations 1 to 5 prefer the
+        // black-white pixel animation, 6 to 9 Showdown's. A form with no animation of its own takes its
+        // Pokemon's (c) unless Showdown has it under its own name (d). A female-only species, which
+        // PokeAPI marks by front_female equal to front_default, takes the ordinary animation as female.
+        internal static string? AnimatedSpriteUrl(string form, int speciesId, PokemonSprite own, PokemonSprite? owner, bool shiny, bool female)
+        {
+            string? Field(PokemonSprite? sprite) => sprite is null ? null : (shiny, female) switch
+            {
+                (false, false) => sprite.front_default,
+                (true, false) => sprite.front_shiny,
+                (false, true) => sprite.front_female,
+                (true, true) => sprite.front_shiny_female,
+            };
+            string? Sources(PokemonSprite? sprite)
+            {
+                string? blackWhite = Field(sprite?.versions?.GenerationV?.BlackWhite?.animated);
+                string? showdown = Field(sprite?.other?.showdown);
+                return speciesId <= 649 ? blackWhite ?? showdown : showdown ?? blackWhite;
+            }
+
+            string? showdownName = ShowdownAniName(form);
+            string? url = Sources(own)
+                ?? (showdownName is null ? Sources(owner) : null)
+                ?? (showdownName is not null && !female ? $"https://play.pokemonshowdown.com/sprites/{(shiny ? "ani-shiny" : "ani")}/{showdownName}.gif" : null);
+            if (url is null && female && own.front_female == own.front_default)
+            {
+                return AnimatedSpriteUrl(form, speciesId, own, owner, shiny, female: false);
+            }
+            return url;
+        }
+
+        // Showdown's ani folder name for the forms PokeAPI has no animation for.
+        internal static string? ShowdownAniName(string form)
+        {
+            if (form == "furfrou-la-reine") return "furfrou-lareine";
+            if (form == "maushold-family-of-three") return "maushold";
+            string[] parts = form.Split('-');
+            if (parts.Length == 5 && parts[0] == "alcremie" && parts[4] == "sweet")
+            {
+                return parts[3] == "strawberry" ? $"alcremie-{parts[1]}{parts[2]}" : $"alcremie-{parts[1]}{parts[2]}-{parts[3]}";
+            }
+            return null;
+        }
+
+        // FR-2 (e): the forms with no animation in PokeAPI or on Showdown, and their Wikidex Scarlet/Violet
+        // model clips (normal, shiny), with the height the GIF is scaled to so it sits with the others.
+        internal static readonly Dictionary<string, (string Normal, string Shiny, int Height)> WikidexClips = new()
+        {
+            ["iron-treads"] = ("Ferrodada EP.gif", "Ferrodada EP variocolor.gif", 70),
+            ["iron-bundle"] = ("Ferrosaco EP.gif", "Ferrosaco EP variocolor.gif", 85),
+            ["iron-jugulis"] = ("Ferrocuello EP.gif", "Ferrocuello EP variocolor.gif", 110),
+            ["iron-leaves"] = ("Ferroverdor EP.gif", "Ferroverdor EP variocolor.gif", 110),
+            ["iron-boulder"] = ("Ferromole EP.webm", "Ferromole EP variocolor.webm", 100),
+            ["iron-crown"] = ("Ferrotesta EP.webm", "Ferrotesta EP variocolor.webm", 105),
+            ["ogerpon"] = ("Ogerpon máscara turquesa EP.webm", "Ogerpon máscara turquesa EP variocolor.webm", 85),
+            ["ogerpon-wellspring-mask"] = ("Ogerpon máscara fuente EP.webm", "Ogerpon máscara fuente EP variocolor.webm", 85),
+            ["ogerpon-hearthflame-mask"] = ("Ogerpon máscara horno EP.webm", "Ogerpon máscara horno EP variocolor.webm", 85),
+            ["ogerpon-cornerstone-mask"] = ("Ogerpon máscara cimiento EP.webm", "Ogerpon máscara cimiento EP variocolor.webm", 85),
+            ["pecharunt"] = ("Pecharunt (abierto) EP.webm", "Pecharunt (abierto) EP variocolor.webm", 60),
+        };
+
+        // FR-2 (e): converts the Wikidex clips of the table's forms that have no GIF yet with ffmpeg,
+        // cropped to the Pokemon over every frame. Without ffmpeg on the PATH it says so and skips.
+        private async Task ConvertWikidexClipsAsync(HttpClient client, HashSet<string> femaleFromClip)
+        {
+            var forms = WikidexClips.Keys
+                .Where(form => !File.Exists($"{rootSpriteDirectory}/Animated/Default/{form}.gif") || !File.Exists($"{rootSpriteDirectory}/Animated/Shiny/{form}.gif"))
+                .ToList();
+            if (forms.Count == 0) return;
+
+            string? ffmpeg = Environment.GetEnvironmentVariable("PATH")!
+                .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(dir => Path.Combine(dir, "ffmpeg.exe"))
+                .FirstOrDefault(File.Exists);
+            if (ffmpeg is null)
+            {
+                Console.WriteLine($"ffmpeg not found on the PATH: skipped the Wikidex clips (step e) for: {String.Join(", ", forms)}");
+                return;
+            }
+
+            // One MediaWiki query for every clip. Wikidex answers with the titles normalized to "Archivo:".
+            var titles = forms.SelectMany(form => new[] { WikidexClips[form].Normal, WikidexClips[form].Shiny }).Select(file => $"File:{file}");
+            var response = await client.GetFromJsonAsync<JsonElement>(
+                $"https://www.wikidex.net/api.php?action=query&prop=imageinfo&iiprop=url&format=json&titles={Uri.EscapeDataString(String.Join("|", titles))}");
+            var query = response.GetProperty("query");
+            var askedAs = query.GetProperty("normalized").EnumerateArray()
+                .ToDictionary(entry => entry.GetProperty("to").GetString()!, entry => entry.GetProperty("from").GetString()!);
+            var clipUrls = new Dictionary<string, string>();
+            foreach (var page in query.GetProperty("pages").EnumerateObject())
+            {
+                string title = page.Value.GetProperty("title").GetString()!;
+                if (!page.Value.TryGetProperty("imageinfo", out var imageInfo))
+                {
+                    throw new Exception($"Wikidex has no file {title}");
+                }
+                clipUrls[askedAs[title]] = imageInfo[0].GetProperty("url").GetString()!;
+            }
+
+            async Task<string> RunFfmpegAsync(string form, List<string> arguments)
+            {
+                var start = new ProcessStartInfo(ffmpeg) { RedirectStandardError = true, UseShellExecute = false };
+                start.ArgumentList.Add("-hide_banner");
+                arguments.ForEach(start.ArgumentList.Add);
+                using var process = Process.Start(start)!;
+                string stderr = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception($"ffmpeg failed on {form} (exit {process.ExitCode}): {stderr[^Math.Min(500, stderr.Length)..]}");
+                }
+                return stderr;
+            }
+
+            foreach (string form in forms)
+            {
+                var clip = WikidexClips[form];
+                foreach (var (file, folder) in new[] { (clip.Normal, "Default"), (clip.Shiny, "Shiny") })
+                {
+                    string gif = $"{rootSpriteDirectory}/Animated/{folder}/{form}.gif";
+                    if (File.Exists(gif)) continue;
+                    string temp = Path.Combine(Path.GetTempPath(), file);
+                    await DownloadImageAsync(clipUrls[$"File:{file}"], temp);
+                    var input = new List<string>();
+                    if (file.EndsWith(".webm"))
+                    {
+                        // The WebM alpha plane is only decoded by libvpx-vp9.
+                        input.AddRange(new[] { "-c:v", "libvpx-vp9" });
+                    }
+                    input.AddRange(new[] { "-i", temp });
+
+                    string detect = await RunFfmpegAsync(form, [.. input, "-vf", "alphaextract,cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
+                    var crops = Regex.Matches(detect, @"crop=(\d+:\d+:\d+:\d+)");
+                    if (crops.Count == 0)
+                    {
+                        throw new Exception($"ffmpeg found no crop for {form}: {detect[^Math.Min(500, detect.Length)..]}");
+                    }
+                    string crop = crops[^1].Groups[1].Value;
+                    await RunFfmpegAsync(form, ["-y", .. input, "-filter_complex",
+                        $"crop={crop},fps=20,scale=-2:{clip.Height}:flags=lanczos,split[a][b];[a]palettegen=reserve_transparent=1:max_colors=127[p];[b][p]paletteuse=alpha_threshold=110:dither=none",
+                        "-loop", "0", gif]);
+                    File.Delete(temp);
+                }
+                if (femaleFromClip.Contains(form))
+                {
+                    File.Copy($"{rootSpriteDirectory}/Animated/Default/{form}.gif", $"{rootSpriteDirectory}/Animated/Female_Default/{form}.gif", overwrite: true);
+                    File.Copy($"{rootSpriteDirectory}/Animated/Shiny/{form}.gif", $"{rootSpriteDirectory}/Animated/Female_Shiny/{form}.gif", overwrite: true);
                 }
             }
         }
@@ -266,6 +432,14 @@ namespace ShinyBotHunter.Scripts
             "sinistcha-masterpiece"
         };
 
+            string[] animatedFolders = { "Default", "Shiny", "Female_Default", "Female_Shiny" };
+            foreach (string folder in animatedFolders)
+            {
+                Directory.CreateDirectory($"{rootSpriteDirectory}/Animated/{folder}");
+            }
+            // Female-only forms with no animation anywhere but Wikidex: their female GIFs are copied from the clips.
+            var femaleFromClip = new HashSet<string>();
+
             for (int i = 0; i < entries.results.Length; i++)
             {
                 string name = entries.results[i].name;
@@ -273,6 +447,7 @@ namespace ShinyBotHunter.Scripts
 
                 if (pokemon == null) continue;
                 if (pokemon.name.EndsWith("-totem") || (pokemon.name.EndsWith("-meteor") && pokemon.name.StartsWith("minior")) || skipPokemon.Contains(pokemon.name) || pokemon.name.Contains("-mega") || pokemon.name.Contains("-gmax")) { continue; }
+                int speciesId = Int32.Parse(pokemon.species.url.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]);
 
                 if (cache.ContainsKey(pokemon.species.name))
                 {
@@ -324,6 +499,8 @@ namespace ShinyBotHunter.Scripts
                             {
                                 await DownloadImageAsync(form.sprites.front_default, $"{rootSpriteDirectory}/Default/{form.name}.png");
                                 await DownloadImageAsync(form.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{form.name}.png");
+                                await DownloadAnimatedAsync(AnimatedSpriteUrl(form.name, speciesId, form.sprites, pokemon.sprites, shiny: false, female: false), "Default", form.name);
+                                await DownloadAnimatedAsync(AnimatedSpriteUrl(form.name, speciesId, form.sprites, pokemon.sprites, shiny: true, female: false), "Shiny", form.name);
                             }
                             catch (Exception)
                             {
@@ -378,16 +555,27 @@ namespace ShinyBotHunter.Scripts
                     {
                         await DownloadImageAsync(pokemon.sprites.front_female, $"{rootSpriteDirectory}/Female_Default/{pokemon.name}.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny_female, $"{rootSpriteDirectory}/Female_Shiny/{pokemon.name}.png");
+                        string? femaleUrl = AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: true);
+                        await DownloadAnimatedAsync(femaleUrl, "Female_Default", pokemon.name);
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: true), "Female_Shiny", pokemon.name);
+                        if (femaleUrl is null && pokemon.sprites.front_female == pokemon.sprites.front_default)
+                        {
+                            femaleFromClip.Add(pokemon.name);
+                        }
                     }
                     if (pokemon.name == "oinkologne-female")
                     {
                         await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Female_Default/oinkologne-male.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Female_Shiny/oinkologne-male.png");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: false), "Female_Default", "oinkologne-male");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: false), "Female_Shiny", "oinkologne-male");
                     }
                     else
                     {
                         await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Default/{pokemon.name}.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{pokemon.name}.png");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: false), "Default", pokemon.name);
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: false), "Shiny", pokemon.name);
                     }
                 }
                 catch (Exception)
@@ -449,6 +637,20 @@ namespace ShinyBotHunter.Scripts
             }
             await collection.BulkWriteAsync(updateList);
             Console.WriteLine("Saved to MongoDB successfully!");
+
+            await ConvertWikidexClipsAsync(client, femaleFromClip);
+
+            // FR-2a: the stills left without an animation, read from the disk.
+            foreach (string folder in animatedFolders)
+            {
+                var stills = Directory.GetFiles($"{rootSpriteDirectory}/{folder}", "*.png").Select(Path.GetFileNameWithoutExtension).ToList();
+                var left = stills.Where(still => !File.Exists($"{rootSpriteDirectory}/Animated/{folder}/{still}.gif")).ToList();
+                Console.WriteLine($"Animated/{folder}: {stills.Count - left.Count} of {stills.Count}");
+                foreach (string? still in left)
+                {
+                    Console.WriteLine($"  {still}");
+                }
+            }
         }
 
         public async Task ScrapeItemSprites()
