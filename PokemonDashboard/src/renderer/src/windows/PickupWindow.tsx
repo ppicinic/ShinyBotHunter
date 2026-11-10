@@ -23,7 +23,10 @@ export function PickupWindow({ gameFileName }: PickupWindowProps): JSX.Element {
     <div className="window-root h-screen">
       <div className="dashboard-card h-full flex flex-col">
         <div className="card-header window-drag-region">
-          <span className="card-header-title">Pickup: {gameFileName}</span>
+          <div>
+            <span className="text-xs text-slate-500 mr-2">{gameFileName}</span>
+            {tally && <span className="card-header-title">{tally.milestone}</span>}
+          </div>
           <WindowCloseButton />
         </div>
         <div className="flex-1 overflow-auto px-2 py-1">
