@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import * as api from '../services/apiClient'
 import { IpcSignalRService } from '../services/ipcSignalRService'
+import { applyTheme, windowNameFromSearch } from '../utils/theme'
 import type {
   AppConfig,
   DashboardConfig,
@@ -184,6 +185,13 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
       return [...kept, ...added]
     })
   }, [dashboardConfig])
+
+  // Follow the pushed appearance; before the first push the window keeps its remembered theme
+  useEffect(() => {
+    if (dashboardConfig.appearance) {
+      applyTheme(dashboardConfig.appearance, windowNameFromSearch(window.location.search))
+    }
+  }, [dashboardConfig.appearance])
 
   // Trim recentEncounters when recentEncounterCount changes
   useEffect(() => {
