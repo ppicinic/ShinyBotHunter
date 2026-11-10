@@ -79,7 +79,7 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 1. Starts Discord and the encounter DAO's background writer.
 2. Loads metadata caches: Pokemon metadata (Mongo), phase definitions (`Phases/**/*.json` merged into Mongo), ROM inventory (hashes every file under `ROMBaseDirectory`).
 3. Starts the persistence service's two channel consumers and the bot service.
-4. Setup commands (`--parsepokeapi`, `--generatemapdatahgss <romDataDir> <decompDir> <headerCsv> <outputDir>`) run from `Tools/SetupCommands.cs` before the host is built; otherwise runs the web host and blocks on `Console.ReadLine` until `end`.
+4. Setup commands (`--parsepokeapi`, which also fetches the item sprites, `--parseitemsprites` for the item sprites alone, `--generatemapdatahgss <romDataDir> <decompDir> <headerCsv> <outputDir>`) run from `Tools/SetupCommands.cs` before the host is built; otherwise runs the web host and blocks on `Console.ReadLine` until `end`.
 
 Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is the **game profile**: `Startup` registers one `GameProfiles` singleton built from `HgssProfile.Create` and `RsProfile.Create`, and every per-flavor part (address table, parsers, capabilities, map data, readers) is reached through `bot.Profile`. The HGSS profile loads `Data/HGSS` when `GameProfiles` is first resolved. Adding a game flavor means one `Create` method composing its parts, plus macros and phase JSON (section 11).
 
@@ -267,3 +267,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-11-02: section 7 and axis 2 updated for the Primo egg hunt and the shared hatch step (epic #240).
 - 2026-11-08: section 7 and axis 2 updated for Pickup mode (PickupTakeEvent, PartyRead; epic #273).
 - 2026-11-10: the Pickup items windows, `bot/getPickupItems` and the `ReceivePickupItems` push (epic #292).
+- 2026-11-10: section 4 lists `--parseitemsprites`, the item sprites for the Pickup items windows (epic #292).

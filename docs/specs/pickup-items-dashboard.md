@@ -1,7 +1,7 @@
 # Spec: Pickup items dashboard
 
 Status: In progress (approved by the owner 2026-11-10; feature/pickup-items).
-Last updated: 2026-11-10 (item sprites added, awaiting go-ahead)
+Last updated: 2026-11-10 (item sprites built, I4 #302 and I5 #303)
 Owner: Phil
 Related: [Pickup mode spec](pickup-mode.md) (the takes this counts), [the dashboard guide page](../guide/03-dashboard.md), [Wild encounters guide page](../guide/04-hunts/01-wild-encounter.md), [feature workflow](feature-workflow.md)
 
@@ -93,6 +93,7 @@ Where the build differs from this spec as approved (2026-11-10). The requirement
 - FR-6: no dashboard sort or total helper and no Vitest for one. The backend sends the items sorted with the total (FR-4), so the window shows them as received (#297).
 - FR-6, FR-7: the main process holds the tallies (fetched by the GET when the switch goes on, then each push) and the switch's state; the windows read main's copy over the IPC invoke `get-pickup-items` and the broadcast `pickup-items`, and the Dashboard Config tab reads the switch over `get-pickup-windows` on mount, because the tab unmounts when it is not shown (#297).
 - FR-6: Pickup windows closed by hand have their own set, apart from the phase windows', so a phase sync cannot reopen them (#297).
+- FR-9: `--parsepokeapi` calls the item step from `SetupCommands` after `ScrapePokeApi()` returns, which leaves that method unchanged. The first run on the dev PC, 2026-11-10, wrote 514 pictures with no failures and no item lacking a sprite; `Items/17.png` is the Potion and `Items/221.png` King's Rock (#302).
 - QA: `hgss-pickup-items-window` also waits for a later take with the window open and checks the push reached it, for at most 10 won battles (#298).
 
 ## Open questions
