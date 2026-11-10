@@ -40,6 +40,12 @@ namespace ShinyBotHunter.Persistence.MongoDb
         internal static DashboardConfig FromDocument(BsonDocument document)
         {
             document.Remove("_id");
+            // A document saved before the Pickup list has no element, and the driver builds DashboardConfig through its constructor,
+            // so a missing element would load as null rather than the initializer's empty array.
+            if (!document.Contains("PickupGameFiles"))
+            {
+                document["PickupGameFiles"] = new BsonArray();
+            }
             return BsonSerializer.Deserialize<DashboardConfig>(document);
         }
     }

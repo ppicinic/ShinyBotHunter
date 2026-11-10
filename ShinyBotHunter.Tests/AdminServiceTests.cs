@@ -1,9 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
@@ -26,6 +29,7 @@ namespace ShinyBotHunter.Tests
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
                     Windows = { ["phase:RS:Hoenn%20Starters:Ruby"] = new ThemeChoice { Theme = "ruby" } },
                 },
+                PickupGameFiles = ["HG-Pickup-Held"],
             };
 
             JsonNode json = JsonNode.Parse(JsonSerializer.Serialize(config, options))!;
@@ -43,6 +47,7 @@ namespace ShinyBotHunter.Tests
             JsonObject window = appearance["windows"]!["phase:RS:Hoenn%20Starters:Ruby"]!.AsObject();
             Assert.Equal("ruby", (string?)window["theme"]);
             Assert.False(window.ContainsKey("night"));
+            Assert.Equal("HG-Pickup-Held", (string?)json["pickupGameFiles"]![0]);
         }
 
         [Fact]
@@ -66,6 +71,7 @@ namespace ShinyBotHunter.Tests
                         ["phase:RS:Hoenn%20Starters:Ruby.v1"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
                     },
                 },
+                PickupGameFiles = ["A", "B"],
             };
 
             BsonDocument document = MongoDashboardConfigDao.ToDocument(config);
@@ -75,6 +81,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(config.GamePhases, loaded.GamePhases);
             Assert.Equal(25, loaded.RecentEncounterCount);
             AssertSameAppearance(config.Appearance, loaded.Appearance);
+            Assert.Equal(["A", "B"], loaded.PickupGameFiles);
         }
 
         [Fact]
@@ -86,6 +93,17 @@ namespace ShinyBotHunter.Tests
             DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
 
             Assert.True(loaded.Appearance.Animations);
+        }
+
+        [Fact]
+        public void SavedDocumentWithoutPickupGameFilesLoadsAsEmpty()
+        {
+            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { PickupGameFiles = ["HG-Test"] });
+            document.Remove("PickupGameFiles");
+
+            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
+
+            Assert.Empty(loaded.PickupGameFiles);
         }
 
         [Fact]
@@ -117,6 +135,83 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(saves[3].GamePhases);
             Assert.Equal(25, saves[3].RecentEncounterCount);
             Assert.Same(appearance, saves[3].Appearance);
+        }
+
+        [Fact]
+        public async Task PickupGameFilesAddOnceAndRemove()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> saves = [];
+            AdminService service = Service(pushes, saves);
+
+            await service.AddPickupGameFileAsync("A");
+            await service.AddPickupGameFileAsync("A");
+            await service.AddPickupGameFileAsync("B");
+            await service.RemovePickupGameFileAsync("A");
+            await service.RemovePickupGameFileAsync("A");
+
+            Assert.Equal(3, saves.Count);
+            Assert.Equal(3, pushes.Count);
+            Assert.Equal(["A"], saves[0].PickupGameFiles);
+            Assert.Equal(["A", "B"], saves[1].PickupGameFiles);
+            Assert.Equal(["B"], saves[2].PickupGameFiles);
+            foreach (DashboardConfig saved in saves)
+            {
+                Assert.Empty(saved.GamePhases);
+                Assert.Equal(10, saved.RecentEncounterCount);
+                Assert.Equal("midnight", saved.Appearance.Default.Theme);
+                Assert.Empty(saved.Appearance.Windows);
+            }
+        }
+
+        [Fact]
+        public async Task AddingAnUnknownGameFileIsA400()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> saves = [];
+            string dir = Path.Combine(Path.GetTempPath(), "sbh-admin-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                AdminController controller = Controller(Service(pushes, saves), dir);
+
+                IActionResult result = await controller.AddPickupGameFile("Nope");
+
+                Assert.IsType<BadRequestObjectResult>(result);
+                Assert.Empty(saves);
+                Assert.Empty(pushes);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        [Fact]
+        public async Task AddingAKnownGameFileSavesItsHandle()
+        {
+            List<DashboardConfig> saves = [];
+            string dir = Path.Combine(Path.GetTempPath(), "sbh-admin-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                byte[] rom = new byte[0x200];
+                "POKEMON TEST"u8.ToArray().CopyTo(rom, 0xA0);
+                "AXVE"u8.ToArray().CopyTo(rom, 0xAC);
+                "01"u8.ToArray().CopyTo(rom, 0xB0);
+                rom[0xB2] = 0x96;
+                File.WriteAllBytes(Path.Combine(dir, "HG-Test.gba"), rom);
+                AdminController controller = Controller(Service([], saves), dir);
+
+                IActionResult result = await controller.AddPickupGameFile("hg-test");
+
+                Assert.IsType<OkResult>(result);
+                Assert.Equal(["HG-Test"], Assert.Single(saves).PickupGameFiles);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
         }
 
         [Fact]
@@ -186,6 +281,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("19:00", pushed.Appearance.NightStart);
             Assert.True(pushed.Appearance.Animations);
             Assert.Empty(pushed.Appearance.Windows);
+            Assert.Empty(pushed.PickupGameFiles);
         }
 
         [Fact]
@@ -208,6 +304,7 @@ namespace ShinyBotHunter.Tests
                         ["pickup:Ruby"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
                     },
                 },
+                PickupGameFiles = ["HG-Test", "Ruby"],
             };
             List<DashboardConfig> pushes = [];
             AdminService service = Service(pushes, [], saved);
@@ -219,6 +316,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([johto, hoenn], pushed.GamePhases.OrderBy(p => p.game));
             Assert.Equal(25, pushed.RecentEncounterCount);
             AssertSameAppearance(saved.Appearance, pushed.Appearance);
+            Assert.Equal(["HG-Test", "Ruby"], pushed.PickupGameFiles);
         }
 
         [Fact]
@@ -287,6 +385,14 @@ namespace ShinyBotHunter.Tests
                 () => Task.FromResult(saved),
                 config => { saves.Add(config); return Task.CompletedTask; },
                 NullLogger.Instance);
+
+        // PhaseInfoService is null: the Pickup endpoints do not use it, and a real one builds a MongoClient.
+        private static AdminController Controller(AdminService service, string romDir)
+        {
+            var roms = new RomInfoService(Options.Create(new ApplicationSettings { ROMBaseDirectory = romDir + Path.DirectorySeparatorChar }), NullLogger<RomInfoService>.Instance);
+            roms.InitAsync().GetAwaiter().GetResult();
+            return new AdminController(service, null!, roms, Options.Create(new ApplicationSettings()));
+        }
 
         private static void AssertSameAppearance(Appearance expected, Appearance actual)
         {

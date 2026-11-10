@@ -15,6 +15,7 @@ namespace ShinyBotHunter.Service
         public GamePhase[] GamePhases { get; private set; }
         public int RecentEncounterCount { get; set; }
         public Appearance Appearance { get; set; } = new();
+        public string[] PickupGameFiles { get; set; } = [];
     }
 
     // The dashboard themes (docs/specs/dashboard-alive.md FR-12): the day and night times, the default choice and the per-window overrides.
@@ -35,7 +36,7 @@ namespace ShinyBotHunter.Service
     }
 
     // One game file's Pickup tally: the GET body's entries and the push payload.
-    public record PickupItemsResponse(string GameFileName, string Milestone, int Total, List<PickupItemCount> Items);
+    public record PickupItemsResponse(string GameFileName, string Milestone, List<PickupItemCount> Items);
     public record PickupItemCount(int Id, string Name, int Count);
 
     public interface IElectronClient
