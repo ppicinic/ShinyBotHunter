@@ -44,6 +44,9 @@ namespace ShinyBotHunter.Controllers
             return Ok(state);
         }
 
+        [HttpGet("bot/getPickupItems")]
+        public ActionResult<List<PickupItemsResponse>> GetPickupItems([FromServices] PickupTally pickupTally) => Ok(pickupTally.Read());
+
         [HttpGet("bot/getBotActions/{pos}")]
         public async Task<ActionResult<EventArgumentOptions>> GetBotActions(int pos)
         {
