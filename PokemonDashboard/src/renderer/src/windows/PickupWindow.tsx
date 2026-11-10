@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { WindowCloseButton } from '../components/WindowChrome'
+import { useAppContext } from '../context/AppContext'
+import * as api from '../services/apiClient'
 import { pickupWindowTitle, type PickupTally } from '../../../shared/windowContracts'
 
 interface PickupWindowProps {
@@ -7,17 +9,32 @@ interface PickupWindowProps {
 }
 
 export function PickupWindow({ gameFileName }: PickupWindowProps): JSX.Element {
+  const { config } = useAppContext()
   const [tally, setTally] = useState<PickupTally | null>(null)
 
   useEffect(() => {
     document.title = pickupWindowTitle(gameFileName)
+  }, [gameFileName])
+
+  useEffect(() => {
+    if (!config?.apiUrl) return
     // Listen before the first load so a push between the two is not missed.
     const unsubscribe = window.api.onPickupItems((pushed) => {
       if (pushed.gameFileName === gameFileName) setTally(pushed)
     })
-    window.api.getPickupItems(gameFileName).then(setTally)
+    api.getPickupItems(config.apiUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server returned ${r.status}`)
+        return r.json()
+      })
+      .then((tallies: PickupTally[]) => {
+        const loaded = tallies.find((t) => t.gameFileName === gameFileName) ?? null
+        // The tally only grows between bot restarts, so a pushed one is never older than the load.
+        setTally((prev) => prev ?? loaded)
+      })
+      .catch((err) => console.error('Failed to load Pickup items:', err))
     return unsubscribe
-  }, [gameFileName])
+  }, [config?.apiUrl, gameFileName])
 
   return (
     <div className="window-root h-screen">

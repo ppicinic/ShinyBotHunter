@@ -17,9 +17,6 @@ declare global {
       setWindowBounds: (name: string, bounds: Partial<WindowBounds>) => Promise<WindowInfo[]>
       getSignalRState: () => Promise<SignalRSnapshot>
       request: (method: string, url: string, body?: string) => Promise<{ status: number; body: string }>
-      setPickupWindows: (on: boolean) => Promise<void>
-      getPickupWindows: () => Promise<boolean>
-      getPickupItems: (gameFileName: string) => Promise<PickupTally | null>
       onWindowBoundsChanged: (cb: (windows: WindowInfo[]) => void) => () => void
       onSignalRConnectionState: (cb: (state: ConnectionState) => void) => () => void
       onDashboardConfig: (cb: (config: SharedDashboardConfig) => void) => () => void

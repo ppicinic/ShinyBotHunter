@@ -40,6 +40,7 @@ export interface SharedDashboardConfig {
   recentEncounterCount: number
   // null until the backend's first push
   appearance: Appearance | null
+  pickupGameFiles: string[]
 }
 
 export type ConnectionState = 'connected' | 'disconnected' | 'reconnecting'
@@ -83,9 +84,6 @@ export const IPC = {
   signalREncounters: 'signalr-encounters',
   signalRDashboardState: 'signalr-dashboard-state',
   apiRequest: 'api-request',
-  setPickupWindows: 'set-pickup-windows',
-  getPickupWindows: 'get-pickup-windows',
-  getPickupItems: 'get-pickup-items',
   pickupItems: 'pickup-items'
 } as const
 

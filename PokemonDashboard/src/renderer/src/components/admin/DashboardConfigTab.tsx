@@ -14,7 +14,7 @@ export function DashboardConfigTab(): JSX.Element {
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [recentCount, setRecentCount] = useState<number>(dashboardConfig.recentEncounterCount)
   const [loading, setLoading] = useState(false)
-  const [pickupWindowsOn, setPickupWindowsOn] = useState(false)
+  const [selectedPickupGameFile, setSelectedPickupGameFile] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -41,11 +41,6 @@ export function DashboardConfigTab(): JSX.Element {
       .then((data: GameRomInfo[]) => setAllGames(data))
       .catch((err) => console.error('Failed to load games:', err))
   }, [apiUrl])
-
-  // The tab unmounts when not shown; main owns the switch, so read it back on every mount
-  useEffect(() => {
-    window.api.getPickupWindows().then(setPickupWindowsOn)
-  }, [])
 
   // Keep recentCount in sync when dashboardConfig updates from SignalR
   useEffect(() => {
@@ -109,11 +104,26 @@ export function DashboardConfigTab(): JSX.Element {
     }
   }
 
-  const handlePickupWindowsChange = async (on: boolean): Promise<void> => {
+  const handleAddPickupGameFile = async (): Promise<void> => {
     setLoading(true)
     try {
-      await window.api.setPickupWindows(on)
-      setPickupWindowsOn(on)
+      const res = await api.addPickupGameFile(apiUrl, selectedPickupGameFile)
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      showFeedback(`Added a Pickup items window for ${selectedPickupGameFile}`)
+      setSelectedPickupGameFile('')
+    } catch (err) {
+      showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRemovePickupGameFile = async (gameFile: string): Promise<void> => {
+    setLoading(true)
+    try {
+      const res = await api.removePickupGameFile(apiUrl, gameFile)
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      showFeedback(`Removed the Pickup items window for ${gameFile}`)
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
     } finally {
@@ -123,6 +133,7 @@ export function DashboardConfigTab(): JSX.Element {
 
   const availableGames = Object.keys(metadata?.games ?? {})
   const availablePhases = selectedGame ? (metadata?.games[selectedGame]?.phases ?? []) : []
+  const pickupChoices = allGames.filter((g) => !dashboardConfig.pickupGameFiles.includes(g.handle))
 
   return (
     <div className="p-3 space-y-4">
@@ -240,15 +251,46 @@ export function DashboardConfigTab(): JSX.Element {
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
           Pickup Items Windows
         </h3>
-        <label className="flex items-center gap-2 text-sm text-white">
-          <input
-            type="checkbox"
-            checked={pickupWindowsOn}
-            disabled={loading}
-            onChange={(e) => handlePickupWindowsChange(e.target.checked)}
-          />
-          Pickup items windows
-        </label>
+        {dashboardConfig.pickupGameFiles.length === 0 ? (
+          <p className="text-slate-500 text-sm">No Pickup items windows.</p>
+        ) : (
+          <ul className="space-y-1">
+            {dashboardConfig.pickupGameFiles.map((gameFile) => (
+              <li
+                key={gameFile}
+                className="flex items-center justify-between bg-card-border/30 rounded px-3 py-1.5"
+              >
+                <span className="text-sm text-white">{gameFile}</span>
+                <button
+                  onClick={() => handleRemovePickupGameFile(gameFile)}
+                  disabled={loading}
+                  className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="flex gap-2 flex-wrap mt-2">
+          <select
+            value={selectedPickupGameFile}
+            onChange={(e) => setSelectedPickupGameFile(e.target.value)}
+            className="flex-1 bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+          >
+            <option value="">Choose a game file</option>
+            {pickupChoices.map((g) => (
+              <option key={g.handle} value={g.handle}>{romLabel(g)}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleAddPickupGameFile}
+            disabled={loading || !selectedPickupGameFile}
+            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded transition-colors"
+          >
+            Add
+          </button>
+        </div>
       </div>
 
       {/* Feedback */}

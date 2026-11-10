@@ -6,14 +6,11 @@ import { flushLayout, loadLayout } from './layoutStore'
 import { getSnapshot, startSignalR, stopSignalR } from './signalRClient'
 import {
   bootstrapWindows,
-  getPickupTally,
-  getPickupWindowsOn,
   listWindows,
-  setPickupWindowsOn,
   setWindowBounds,
   type MainConfig
 } from './windowManager'
-import { IPC, type PickupTally, type WindowBounds } from '../shared/windowContracts'
+import { IPC, type WindowBounds } from '../shared/windowContracts'
 
 const isDev = process.env.NODE_ENV === 'development'
 
@@ -111,24 +108,6 @@ app.whenReady().then(() => {
       body
     })
     return { status: res.status, body: await res.text() }
-  })
-
-  ipcMain.handle(IPC.setPickupWindows, async (_event, on: unknown) => {
-    if (typeof on !== 'boolean') throw new Error('Pickup windows switch must be a boolean')
-    if (!on) {
-      setPickupWindowsOn(false)
-      return
-    }
-    const res = await net.fetch(`${config.apiUrl}/api/bot/getPickupItems`)
-    if (!res.ok) throw new Error(`getPickupItems returned ${res.status}`)
-    setPickupWindowsOn(true, (await res.json()) as PickupTally[])
-  })
-
-  ipcMain.handle(IPC.getPickupWindows, () => getPickupWindowsOn())
-
-  ipcMain.handle(IPC.getPickupItems, (_event, gameFileName: unknown) => {
-    if (typeof gameFileName !== 'string') throw new Error('Game file name must be a string')
-    return getPickupTally(gameFileName)
   })
 
   startSignalR(config.backendUrl)
