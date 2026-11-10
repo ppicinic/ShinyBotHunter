@@ -19,9 +19,7 @@ namespace ShinyBotHunter.Tests
 
             List<PickupItemsResponse> read = tally.Read();
             Assert.Equal(["A", "B"], read.Select(r => r.GameFileName));
-            Assert.Equal(3, read[0].Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 2), new PickupItemCount(50, "Rare Candy", 1)], read[0].Items);
-            Assert.Equal(1, read[1].Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1)], read[1].Items);
         }
 
@@ -34,10 +32,10 @@ namespace ShinyBotHunter.Tests
             List<PickupItemsResponse> first = tally.Read();
             await tally.RecordAsync("A", "M", 17);
             List<PickupItemsResponse> second = tally.Read();
+            Assert.Equal([new PickupItemCount(17, "Potion", 1)], first[0].Items);
             first[0].Items.Clear();
             List<PickupItemsResponse> third = tally.Read();
 
-            Assert.Equal(1, first[0].Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 2)], second[0].Items);
             Assert.Equal([new PickupItemCount(17, "Potion", 2)], third[0].Items);
         }
@@ -69,7 +67,6 @@ namespace ShinyBotHunter.Tests
 
             List<PickupItemsResponse> read = tally.Read();
             Assert.Equal("Route 34", read[0].Milestone);
-            Assert.Equal(2, read[0].Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1), new PickupItemCount(50, "Rare Candy", 1)], read[0].Items);
             Assert.Equal("Lake", read[1].Milestone);
             Assert.Equal("Route 34", pushes[^1].Milestone);
@@ -95,7 +92,6 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(2, pushes.Count);
             PickupItemsResponse push = pushes[1];
             Assert.Equal("A", push.GameFileName);
-            Assert.Equal(1, push.Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1)], push.Items);
         }
     }

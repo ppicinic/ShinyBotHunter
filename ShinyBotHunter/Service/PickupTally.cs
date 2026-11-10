@@ -65,7 +65,7 @@ namespace ShinyBotHunter.Service
                 .OrderByDescending(r => r.Count)
                 .ThenBy(r => r.Name, StringComparer.Ordinal)
                 .ToList();
-            return new PickupItemsResponse(gameFileName, milestone, rows.Sum(r => r.Count), rows);
+            return new PickupItemsResponse(gameFileName, milestone, rows);
         }
     }
 }
