@@ -49,6 +49,7 @@ async function startBackend(): Promise<ChildProcess> {
     }
     await sleep(2000)
   }
+  killTree(proc.pid!)
   throw new Error('backend did not answer on localhost:5000 within 4 minutes')
 }
 
@@ -106,6 +107,19 @@ async function post(route: string, body: unknown): Promise<void> {
   expect(res.ok, `POST ${route} returned ${res.status}`).toBe(true)
 }
 
+const ADMIN_TITLE = 'Pokemon Dashboard — Admin'
+const RECENT_TITLE = 'Pokemon Dashboard — Recent Encounters'
+const pad = (n: number): string => String(n).padStart(2, '0')
+const hhmm = (ms: number): string => {
+  const d = new Date(ms)
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+async function shots(name: string, pages: Record<string, Page>): Promise<void> {
+  for (const [window, page] of Object.entries(pages)) await page.screenshot({ path: path.join(runDir, `${name}-${window}.png`) })
+  step(`screenshots ${name}`)
+}
+
 const DEFAULT_APPEARANCE = { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {} }
 
 // The sample encounters, as the spike's demo3.js builds them: [formCode, shiny].
@@ -159,8 +173,9 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
     step(`milestone A "${PHASE_A}", milestone B "${PHASE_B}" with game file ${DOTTED}`)
 
     app = await launch()
-    const admin = await windowByTitle(app, 'Pokemon Dashboard — Admin', 60_000)
-    const recent = await windowByTitle(app, 'Pokemon Dashboard — Recent Encounters', 60_000)
+    // Reassigned after each restart.
+    let admin = await windowByTitle(app, ADMIN_TITLE, 60_000)
+    let recent = await windowByTitle(app, RECENT_TITLE, 60_000)
     await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
     // Shown only once a pushed config with appearance has arrived.
     await expect(admin.locator('[data-window="default"]')).toBeVisible({ timeout: 30_000 })
@@ -181,10 +196,10 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
     await add.locator('select').nth(0).selectOption('HGSS')
     await add.locator('select').nth(1).selectOption(PHASE_A)
     await add.getByRole('button', { name: 'Add', exact: true }).click()
-    const milestoneA = await windowByTitle(app, `HGSS — ${PHASE_A}`, 30_000)
+    let milestoneA = await windowByTitle(app, `HGSS — ${PHASE_A}`, 30_000)
     // Milestone B through the endpoint: the dropdown lists only ROM handles, and none here holds a dot.
     await post('/subcribeGamePhase', { game: 'HGSS', phase: PHASE_B, gameName: DOTTED })
-    const milestoneB = await windowByTitle(app, `HGSS — ${PHASE_B} (${DOTTED})`, 30_000)
+    let milestoneB = await windowByTitle(app, `HGSS — ${PHASE_B} (${DOTTED})`, 30_000)
     // Both windows' phase-info loads also refill Recent from the database; let them finish first.
     await sleep(5000)
     step('milestone windows A and B open')
@@ -250,6 +265,144 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
     await recent.screenshot({ path: path.join(runDir, '01-sprites-recent.png') })
     await milestoneA.screenshot({ path: path.join(runDir, '01-sprites-milestone.png') })
     step('screenshots 01-sprites')
+
+    // --- themes: every change through the Appearance section --------------------------------------
+    const A = phaseName('HGSS', PHASE_A, null)
+    const B = phaseName('HGSS', PHASE_B, DOTTED)
+    const PICKUP = `pickup:${enc(DOTTED)}`
+    const row = (name: string) => admin.locator(`[data-window="${name}"]`)
+    const select = (name: string, aria: 'Theme' | 'Night theme') => row(name).locator(`select[aria-label="${aria}"]`)
+    const nightBox = (name: string) => row(name).locator('input[aria-label="Switch at night"]')
+    // A POST that failed shows "Server returned N" in the tab's feedback box.
+    const noServerError = (): Promise<void> => expect(admin.getByText(/Server returned/)).toHaveCount(0)
+    const pick = async (name: string, aria: 'Theme' | 'Night theme', option: string | { label: string }, value: string): Promise<void> => {
+      await select(name, aria).selectOption(option)
+      await expect(select(name, aria)).toHaveValue(value, { timeout: 30_000 })
+      await noServerError()
+      step(`${name}: ${aria} ${value || 'Default'}`)
+    }
+    // Checked after the target changed plus 2 s, so a late push would have landed.
+    const unchanged = async (expected: [Page, string][]): Promise<void> => {
+      await sleep(2000)
+      for (const [page, id] of expected) expect(await theme(page), `${page.url()} keeps ${id}`).toBe(id)
+    }
+
+    // Default.
+    await pick('default', 'Theme', 'hgss-drift', 'hgss-drift')
+    for (const [name, page] of [['admin', admin], ['recent', recent], [A, milestoneA], [B, milestoneB], [PICKUP, pickup]] as const) {
+      await expectTheme(page, 'hgss-drift')
+      expect(await page.evaluate((k) => localStorage.getItem(k), `dashboard-theme:${name}`), `remembered theme of ${name}`).toBe('hgss-drift')
+    }
+
+    // An override on A, then Default puts it back.
+    await pick(A, 'Theme', 'ruby', 'ruby')
+    await expectTheme(milestoneA, 'ruby')
+    await unchanged([[admin, 'hgss-drift'], [recent, 'hgss-drift'], [milestoneB, 'hgss-drift'], [pickup, 'hgss-drift']])
+    await pick(A, 'Theme', { label: 'Default' }, '')
+    await expectTheme(milestoneA, 'hgss-drift')
+
+    // An override on B, the dotted window key, kept for the restarts.
+    await pick(B, 'Theme', 'sapphire', 'sapphire')
+    await expectTheme(milestoneB, 'sapphire')
+    await unchanged([[milestoneA, 'hgss-drift'], [recent, 'hgss-drift'], [pickup, 'hgss-drift']])
+
+    // The Admin row.
+    await pick('admin', 'Theme', 'christmas', 'christmas')
+    await expectTheme(admin, 'christmas')
+    await unchanged([[recent, 'hgss-drift'], [milestoneA, 'hgss-drift'], [pickup, 'hgss-drift'], [milestoneB, 'sapphire']])
+    await shots('02-overrides', { admin, recent, milestoneA, milestoneB, pickup })
+
+    // The night switch on Recent. The box is disabled while the row is on Default, so the theme comes first.
+    await pick('recent', 'Theme', 'christmas', 'christmas')
+    await nightBox('recent').click()
+    await expect(nightBox('recent')).toBeChecked({ timeout: 30_000 })
+    const now = Date.now()
+    const boundary = Math.ceil(now / 60_000) * 60_000 + 60_000 // 60 to 120 s ahead, on a minute
+    for (const [label, value] of [['Day starts', hhmm(now - 60_000)], ['Night starts', hhmm(boundary)]]) {
+      const input = admin.locator(`input[aria-label="${label}"]`)
+      await input.fill(value)
+      await expect(input).toHaveValue(value, { timeout: 30_000 })
+      await noServerError()
+      step(`${label} ${value}`)
+    }
+    await pick('recent', 'Night theme', 'christmas-night', 'christmas-night')
+    await expectTheme(recent, 'christmas')
+    expect(Date.now(), 'the boundary passed during setup; rerun').toBeLessThan(boundary - 5_000)
+    await recent.evaluate(() => { (window as any).__qaAlive = 1 })
+    let navigations = 0
+    recent.on('framenavigated', () => navigations++)
+    const others = (): Promise<string[]> => Promise.all([admin, milestoneA, milestoneB, pickup].map(theme))
+    const before = await others()
+    const appearance = (): Promise<unknown> => admin.evaluate(() => (window as any).api.getSignalRState().then((s: any) => s.dashboardConfig.appearance))
+    const set = await appearance()
+    // Keys typed on this PC during the wait would land in Admin's last focused select and change the appearance:
+    // blur it and give the focus to Recent, which has no inputs.
+    await admin.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await app.evaluate(({ BrowserWindow }, title) => BrowserWindow.getAllWindows().find((w) => w.getTitle() === title)?.focus(), RECENT_TITLE)
+    step(`waiting for the night boundary at ${new Date(boundary).toISOString()}; appearance ${JSON.stringify(set)}`)
+    await expect.poll(() => theme(recent), { timeout: boundary - Date.now() + 20_000, intervals: [250] }).toBe('christmas-night')
+    const switchedAt = Date.now()
+    step(`Recent switched to christmas-night ${switchedAt - boundary} ms after the boundary`)
+    expect(switchedAt, 'Recent switched before the boundary').toBeGreaterThanOrEqual(boundary - 1_000)
+    expect(await recent.evaluate(() => (window as any).__qaAlive), 'Recent reloaded at the switch').toBe(1)
+    expect(navigations, 'Recent navigated at the switch').toBe(0)
+    // The scenario changes nothing during the wait; a change here came from input into the windows (keep hands off them).
+    expect(await appearance(), 'the appearance changed during the wait, not by the scenario').toEqual(set)
+    expect(await others(), 'Admin, A, B and Pickup at the switch').toEqual(before)
+    await shots('03-night', { recent })
+
+    // --- back after a restart of the dashboard, then of the backend --------------------------------
+    const expectSaved = async (name: string): Promise<void> => {
+      admin = await windowByTitle(app!, ADMIN_TITLE, 60_000)
+      recent = await windowByTitle(app!, RECENT_TITLE, 60_000)
+      milestoneA = await windowByTitle(app!, `HGSS — ${PHASE_A}`, 60_000)
+      milestoneB = await windowByTitle(app!, `HGSS — ${PHASE_B} (${DOTTED})`, 60_000)
+      await expect.poll(async () => {
+        const state = await admin.evaluate(() => (window as any).api.getSignalRState())
+        return state.dashboardConfig.gamePhases
+          .map((p: { game: string; phase: string; gameName?: string | null }) => [p.game, p.phase, p.gameName ?? null])
+          .sort()
+      }, { timeout: 30_000, message: 'subscriptions' }).toEqual([['HGSS', PHASE_A, null], ['HGSS', PHASE_B, DOTTED]].sort())
+      await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
+      await expect(row('default')).toBeVisible({ timeout: 30_000 })
+      await expect(select('default', 'Theme')).toHaveValue('hgss-drift', { timeout: 30_000 })
+      await expect(select('admin', 'Theme')).toHaveValue('christmas')
+      await expect(select('recent', 'Theme')).toHaveValue('christmas')
+      await expect(nightBox('recent')).toBeChecked()
+      await expect(select('recent', 'Night theme')).toHaveValue('christmas-night')
+      await expect(select(B, 'Theme')).toHaveValue('sapphire')
+      await expect(select(A, 'Theme')).toHaveValue('')
+      await expectTheme(admin, 'christmas')
+      await expectTheme(recent, 'christmas-night')
+      await expectTheme(milestoneA, 'hgss-drift')
+      await expectTheme(milestoneB, 'sapphire')
+      await shots(name, { admin, recent, milestoneA, milestoneB })
+    }
+
+    await app.close()
+    app = await launch()
+    step('dashboard restarted')
+    await expectSaved('04-after-dashboard-restart')
+
+    // The dashboard is closed while the backend restarts, so what it shows next comes from the saved document.
+    await app.close()
+    app = null
+    const stopped = await stopBackend(backend)
+    backend = null
+    expect(stopped, 'the backend exited on "end" within 60 s').toBe(true)
+    backend = await startBackend()
+    app = await launch()
+    step('backend and dashboard restarted')
+    await expectSaved('05-after-backend-restart')
+
+    // --- one screenshot per theme, ending on Midnight with no overrides ----------------------------
+    for (const name of ['admin', 'recent', B]) await pick(name, 'Theme', { label: 'Default' }, '')
+    for (const id of THEMES) {
+      await pick('default', 'Theme', id, id)
+      for (const page of [recent, admin, milestoneA]) await expectTheme(page, id)
+      await sleep(2000) // the drift and the snow show
+      await shots(id, { recent, admin, milestone: milestoneA })
+    }
   } finally {
     if (backend && (await answers())) {
       try {
