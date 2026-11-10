@@ -7,8 +7,11 @@ import {
   RECENT_WINDOW,
   phaseWindowName,
   phaseWindowTitle,
+  pickupWindowName,
+  pickupWindowTitle,
   type CardKind,
   type PhaseWindowRequest,
+  type PickupTally,
   type WindowBounds,
   type WindowInfo
 } from '../shared/windowContracts'
@@ -38,10 +41,17 @@ const managerClosing = new Set<string>()
 const resizeDebounceTimers = new Map<string, NodeJS.Timeout>()
 let mainConfig: MainConfig | null = null
 
+// The Pickup items state below is touched only on the main-process event loop (IPC handlers
+// and SignalR callbacks), so it needs no lock.
+let pickupWindowsOn = false
+const pickupTallies = new Map<string, PickupTally>()
+const closedPickupByUser = new Set<string>()
+
 const DEFAULTS: Record<CardKind, { width: number; height: number; minWidth: number; minHeight: number }> = {
   admin: { width: 820, height: 900, minWidth: 520, minHeight: 480 },
   recent: { width: 480, height: 700, minWidth: 360, minHeight: 280 },
-  phase: { width: 640, height: 520, minWidth: 360, minHeight: 280 }
+  phase: { width: 640, height: 520, minWidth: 360, minHeight: 280 },
+  pickup: { width: 360, height: 420, minWidth: 280, minHeight: 200 }
 }
 
 export function broadcast(channel: string, payload: unknown): void {
@@ -161,6 +171,9 @@ function openCardWindow({ name, kind, title, query }: OpenCardWindowOptions): vo
     if (kind === 'phase' && !managerClosing.has(name)) {
       closedByUser.add(name)
     }
+    if (kind === 'pickup' && !managerClosing.has(name)) {
+      closedPickupByUser.add(name)
+    }
     managerClosing.delete(name)
   })
 
@@ -222,6 +235,49 @@ export function syncPhaseWindows(requests: PhaseWindowRequest[]): void {
         phase: request.phase,
         ...(request.gameName ? { gameName: request.gameName } : {})
       }
+    })
+  }
+}
+
+export function setPickupWindowsOn(on: boolean, tallies: PickupTally[] = []): void {
+  pickupWindowsOn = on
+  for (const tally of tallies) pickupTallies.set(tally.gameFileName, tally)
+  syncPickupWindows()
+}
+
+export function receivePickupTally(tally: PickupTally): void {
+  pickupTallies.set(tally.gameFileName, tally)
+  broadcast(IPC.pickupItems, tally)
+  syncPickupWindows()
+}
+
+export function getPickupTally(gameFileName: string): PickupTally | null {
+  return pickupTallies.get(gameFileName) ?? null
+}
+
+function syncPickupWindows(): void {
+  const desired = new Set(pickupWindowsOn ? [...pickupTallies.keys()].map(pickupWindowName) : [])
+
+  for (const [name, { win, kind }] of open) {
+    if (kind === 'pickup' && !desired.has(name)) {
+      managerClosing.add(name)
+      if (!win.isDestroyed()) win.close()
+    }
+  }
+
+  if (!pickupWindowsOn) {
+    closedPickupByUser.clear()
+    return
+  }
+
+  for (const gameFileName of pickupTallies.keys()) {
+    const name = pickupWindowName(gameFileName)
+    if (open.has(name) || closedPickupByUser.has(name)) continue
+    openCardWindow({
+      name,
+      kind: 'pickup',
+      title: pickupWindowTitle(gameFileName),
+      query: { card: 'pickup', game: gameFileName }
     })
   }
 }

@@ -3,6 +3,7 @@ import { IPC } from '../shared/windowContracts'
 import type {
   ConnectionState,
   EncountersPayload,
+  PickupTally,
   SharedDashboardConfig,
   SignalRSnapshot,
   WindowBounds,
@@ -25,9 +26,13 @@ contextBridge.exposeInMainWorld('api', {
   getSignalRState: (): Promise<SignalRSnapshot> => ipcRenderer.invoke(IPC.getSignalRState),
   request: (method: string, url: string, body?: string): Promise<{ status: number; body: string }> =>
     ipcRenderer.invoke(IPC.apiRequest, method, url, body),
+  setPickupWindows: (on: boolean): Promise<void> => ipcRenderer.invoke(IPC.setPickupWindows, on),
+  getPickupItems: (gameFileName: string): Promise<PickupTally | null> =>
+    ipcRenderer.invoke(IPC.getPickupItems, gameFileName),
   onWindowBoundsChanged: on<WindowInfo[]>(IPC.windowBoundsChanged),
   onSignalRConnectionState: on<ConnectionState>(IPC.signalRConnectionState),
   onDashboardConfig: on<SharedDashboardConfig>(IPC.signalRDashboardConfig),
   onEncounters: on<EncountersPayload>(IPC.signalREncounters),
-  onDashboardState: on<unknown>(IPC.signalRDashboardState)
+  onDashboardState: on<unknown>(IPC.signalRDashboardState),
+  onPickupItems: on<PickupTally>(IPC.pickupItems)
 })
