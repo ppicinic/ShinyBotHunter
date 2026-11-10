@@ -1,9 +1,12 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
@@ -158,6 +161,56 @@ namespace ShinyBotHunter.Tests
                 Assert.Equal(10, saved.RecentEncounterCount);
                 Assert.Equal("midnight", saved.Appearance.Default.Theme);
                 Assert.Empty(saved.Appearance.Windows);
+            }
+        }
+
+        [Fact]
+        public async Task AddingAnUnknownGameFileIsA400()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> saves = [];
+            string dir = Path.Combine(Path.GetTempPath(), "sbh-admin-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                AdminController controller = Controller(Service(pushes, saves), dir);
+
+                IActionResult result = await controller.AddPickupGameFile("Nope");
+
+                Assert.IsType<BadRequestObjectResult>(result);
+                Assert.Empty(saves);
+                Assert.Empty(pushes);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        [Fact]
+        public async Task AddingAKnownGameFileSavesItsHandle()
+        {
+            List<DashboardConfig> saves = [];
+            string dir = Path.Combine(Path.GetTempPath(), "sbh-admin-tests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                byte[] rom = new byte[0x200];
+                "POKEMON TEST"u8.ToArray().CopyTo(rom, 0xA0);
+                "AXVE"u8.ToArray().CopyTo(rom, 0xAC);
+                "01"u8.ToArray().CopyTo(rom, 0xB0);
+                rom[0xB2] = 0x96;
+                File.WriteAllBytes(Path.Combine(dir, "HG-Test.gba"), rom);
+                AdminController controller = Controller(Service([], saves), dir);
+
+                IActionResult result = await controller.AddPickupGameFile("hg-test");
+
+                Assert.IsType<OkResult>(result);
+                Assert.Equal(["HG-Test"], Assert.Single(saves).PickupGameFiles);
+            }
+            finally
+            {
+                Directory.Delete(dir, recursive: true);
             }
         }
 
@@ -332,6 +385,14 @@ namespace ShinyBotHunter.Tests
                 () => Task.FromResult(saved),
                 config => { saves.Add(config); return Task.CompletedTask; },
                 NullLogger.Instance);
+
+        // PhaseInfoService is null: the Pickup endpoints do not use it, and a real one builds a MongoClient.
+        private static AdminController Controller(AdminService service, string romDir)
+        {
+            var roms = new RomInfoService(Options.Create(new ApplicationSettings { ROMBaseDirectory = romDir + Path.DirectorySeparatorChar }), NullLogger<RomInfoService>.Instance);
+            roms.InitAsync().GetAwaiter().GetResult();
+            return new AdminController(service, null!, roms, Options.Create(new ApplicationSettings()));
+        }
 
         private static void AssertSameAppearance(Appearance expected, Appearance actual)
         {

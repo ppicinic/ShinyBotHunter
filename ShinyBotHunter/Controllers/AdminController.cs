@@ -49,6 +49,27 @@ namespace ShinyBotHunter.Controllers
             return Ok();
         }
 
+        // Saves the ROM's own handle, since GetByHandle matches case-insensitively.
+        [HttpPost("admin/pickupGameFiles/add")]
+        public async Task<IActionResult> AddPickupGameFile([FromBody] string gameFileName)
+        {
+            RomInfo? rom = romInfoService.GetByHandle(gameFileName);
+            if (rom == null)
+            {
+                return BadRequest($"Unknown game file {gameFileName}");
+            }
+            await adminService.AddPickupGameFileAsync(rom.Handle);
+            return Ok();
+        }
+
+        // No ROM check, so a game file whose ROM has left the folder can still be removed.
+        [HttpPost("admin/pickupGameFiles/remove")]
+        public async Task<IActionResult> RemovePickupGameFile([FromBody] string gameFileName)
+        {
+            await adminService.RemovePickupGameFileAsync(gameFileName);
+            return Ok();
+        }
+
         [HttpGet("metadata")]
         public ActionResult<AdminMetadata> GetMetadata()
         {
