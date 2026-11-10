@@ -1,5 +1,5 @@
 // Measures what each dashboard animation costs on the built dashboard: every CSS animation off against as built.
-// See docs/specs/dashboard-animation-cost.md. Run: node measure-animations.js [row filter]
+// See docs/specs/dashboard-animation-cost.md. Run: node measure-animations.js [row filter] [--samples=N]
 const { spawn, execFileSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
@@ -13,6 +13,8 @@ if (!fs.existsSync(path.join(dash, 'out', 'main', 'index.js'))) {
 const port = 9351
 const SETTLE_MS = 3000
 const SAMPLE_S = 10
+const SAMPLES = Number((process.argv.find((a) => a.startsWith('--samples=')) || '--samples=3').slice(10))
+const filter = process.argv.slice(2).find((a) => !a.startsWith('--'))
 const STILL = '*,*::before,*::after{animation:none!important}'
 
 const stills = ['eevee', 'chansey', 'rattata', 'hoppip', 'spearow', 'zubat'].map((n) => ({ src: `sprite://local/Shiny/${n}.png`, star: true }))
@@ -31,7 +33,7 @@ const lines = [
   ['Stars on 6 shiny stills (Midnight)', 'midnight', stills],
   ['6 GIF sprites (Midnight)', 'midnight', gifs],
   ['Everything (Christmas Night, 6 shiny GIFs)', 'christmas-night', gifStars]
-].filter(([name]) => !process.argv[2] || name.toLowerCase().includes(process.argv[2].toLowerCase()))
+].filter(([name]) => !filter || name.toLowerCase().includes(filter.toLowerCase()))
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'sbh-measure-'))
 const env = { ...process.env, NODE_ENV: 'development' }
@@ -53,12 +55,14 @@ process.on('SIGINT', () => { cleanup(); process.exit(130) })
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const ps = (cmd) => execFileSync('powershell', ['-NoProfile', '-Command', cmd], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 
-// CPU seconds so far of the dashboard's own processes, by pid.
+// CPU seconds so far and process type (main, renderer, gpu, other) of the dashboard's own processes, by pid.
 function cpuSeconds() {
-  const rows = JSON.parse(ps("Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | Select-Object ProcessId,ParentProcessId,KernelModeTime,UserModeTime | ConvertTo-Json -Compress"))
+  const rows = JSON.parse(ps("Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" | Select-Object ProcessId,ParentProcessId,KernelModeTime,UserModeTime,CommandLine | ConvertTo-Json -Compress"))
   const out = {}
   for (const r of [rows].flat()) {
-    if (r.ProcessId === child.pid || r.ParentProcessId === child.pid) out[r.ProcessId] = (Number(r.KernelModeTime) + Number(r.UserModeTime)) / 1e7
+    if (r.ProcessId !== child.pid && r.ParentProcessId !== child.pid) continue
+    const type = r.ProcessId === child.pid ? 'main' : /--type=renderer/.test(r.CommandLine) ? 'renderer' : /--type=gpu-process/.test(r.CommandLine) ? 'gpu' : 'other'
+    out[r.ProcessId] = { s: (Number(r.KernelModeTime) + Number(r.UserModeTime)) / 1e7, type }
   }
   return out
 }
@@ -78,10 +82,13 @@ async function sample() {
   const gpu = gpuUse(Object.keys(before))
   const after = cpuSeconds()
   const secs = (Date.now() - t0) / 1000
-  let cpu = 0
-  for (const [pid, s] of Object.entries(after)) if (before[pid] !== undefined) cpu += ((s - before[pid]) / secs) * 100
-  return { cpu, gpu }
+  const byType = { renderer: 0, gpu: 0, main: 0, other: 0 }
+  for (const [pid, p] of Object.entries(after)) if (before[pid] !== undefined) byType[p.type] += ((p.s - before[pid].s) / secs) * 100
+  return { cpu: byType.renderer + byType.gpu + byType.main + byType.other, gpu, byType }
 }
+
+const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+const spread = (xs) => `${median(xs).toFixed(1)} (${Math.min(...xs).toFixed(1)}-${Math.max(...xs).toFixed(1)})`
 
 const probe = `window.__probe = (theme, css, sprites) => {
   document.documentElement.dataset.theme = theme
@@ -142,19 +149,27 @@ async function main() {
   }
 
   const first = await check('start', null)
-  console.log(`windows: ${first.map((s) => `${s.title} ${s.size}`).join(', ')}; sample ${SAMPLE_S} s after ${SETTLE_MS / 1000} s settle`)
-  console.log("CPU is percent of one core, the dashboard's own processes; GPU is the sum of its GPU engine use")
+  console.log(`windows: ${first.map((s) => `${s.title} ${s.size}`).join(', ')}; ${SAMPLES} samples per cell of ${SAMPLE_S} s, each after ${SETTLE_MS / 1000} s settle, still and as built alternating`)
+  console.log("CPU is percent of one core, the dashboard's own processes; GPU is the sum of its GPU engine use; each cell is median (min-max)")
+  console.log('built r/g/m/o splits the median as-built sample by process: renderer, gpu, main, other')
   const w = Math.max(...lines.map(([name]) => name.length))
-  const row = (cells) => console.log(cells.map((c, i) => (i ? String(c).padStart(i === 5 ? 10 : 12) : c.padEnd(w))).join(' | '))
-  row(['What', 'CPU still', 'CPU as built', 'GPU still', 'GPU as built', 'running'])
+  const row = (cells) => console.log(cells.map((c, i) => (i ? String(c).padStart(i === 6 ? 7 : 18) : c.padEnd(w))).join(' | '))
+  row(['What', 'CPU still', 'CPU as built', 'GPU still', 'GPU as built', 'built r/g/m/o', 'running'])
   for (const [name, theme, sprites] of lines) {
-    await set(theme, STILL, sprites)
-    const still = await sample()
-    await check(name, sprites)
-    await set(theme, '', sprites)
-    const built = await sample()
-    const running = (await check(name, sprites)).map((s) => s.running).join('+')
-    row([name, still.cpu.toFixed(1), built.cpu.toFixed(1), still.gpu.toFixed(1), built.gpu.toFixed(1), running])
+    const still = []
+    const built = []
+    let running = ''
+    for (let i = 0; i < SAMPLES; i++) {
+      await set(theme, STILL, sprites)
+      still.push(await sample())
+      await check(name, sprites)
+      await set(theme, '', sprites)
+      built.push(await sample())
+      running = (await check(name, sprites)).map((s) => s.running).join('+')
+    }
+    const mid = built.find((b) => b.cpu === median(built.map((x) => x.cpu)))
+    const split = Object.values(mid.byType).map((c) => c.toFixed(1)).join('/')
+    row([name, spread(still.map((x) => x.cpu)), spread(built.map((x) => x.cpu)), spread(still.map((x) => x.gpu)), spread(built.map((x) => x.gpu)), split, running])
   }
 }
 
