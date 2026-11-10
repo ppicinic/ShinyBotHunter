@@ -73,3 +73,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sprite-stage, .sprite-stage img, .sprite-sparkle::before, .sprite-sparkle::after { animation: none !important; }
 }
+
+/* The Admin Animations switch: the stars stay shown, still; the drop-in and idle movement keep running. */
+:root[data-animations='off'] .sprite-sparkle::before,
+:root[data-animations='off'] .sprite-sparkle::after { animation: none !important; }
