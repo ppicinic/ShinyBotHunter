@@ -1,6 +1,7 @@
 import * as signalR from '@microsoft/signalr'
 import {
   IPC,
+  type Appearance,
   type ConnectionState,
   type PhaseWindowRequest,
   type PickupTally,
@@ -11,7 +12,8 @@ import { broadcast, receivePickupTally, syncPhaseWindows } from './windowManager
 
 const emptyDashboardConfig: SharedDashboardConfig = {
   gamePhases: [],
-  recentEncounterCount: 0
+  recentEncounterCount: 0,
+  appearance: null
 }
 
 let connection: signalR.HubConnection | null = null
@@ -99,6 +101,7 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
     (rawConfig: {
       gamePhases: Array<{ game: string; phase: string; gameFileName?: string | null }>
       recentEncounterCount: number
+      appearance: Appearance
     }) => {
       const config: SharedDashboardConfig = {
         gamePhases: (rawConfig.gamePhases ?? []).map((gp) => ({
@@ -106,7 +109,8 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
           phase: gp.phase,
           gameName: gp.gameFileName ?? null
         })),
-        recentEncounterCount: rawConfig.recentEncounterCount ?? 0
+        recentEncounterCount: rawConfig.recentEncounterCount ?? 0,
+        appearance: rawConfig.appearance
       }
       lastDashboardConfig = config
 

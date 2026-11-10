@@ -1,3 +1,4 @@
+import type { Appearance } from '../../../shared/windowContracts'
 import type { PhaseInfo } from '../types/api'
 
 // Every request the dashboard makes to the backend, one function per endpoint. Each goes through
@@ -26,6 +27,10 @@ export function unsubscribeGamePhase(apiUrl: string, body: { game: string; phase
 
 export function updateRecentEncounterCount(apiUrl: string, count: number): Promise<Response> {
   return request('POST', `${apiUrl}/api/updateRecentEncounterConfig`, count)
+}
+
+export function setAppearance(apiUrl: string, appearance: Appearance): Promise<Response> {
+  return request('POST', `${apiUrl}/api/admin/appearance`, appearance)
 }
 
 export function getTopLevelActions(apiUrl: string): Promise<Response> {

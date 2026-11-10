@@ -148,6 +148,7 @@ function openCardWindow({ name, kind, title, query }: OpenCardWindowOptions): vo
   })
 
   open.set(name, { win, kind, title })
+  broadcast(IPC.windowBoundsChanged, listWindows())
 
   win.on('ready-to-show', () => {
     win.show()
@@ -175,6 +176,7 @@ function openCardWindow({ name, kind, title, query }: OpenCardWindowOptions): vo
       closedPickupByUser.add(name)
     }
     managerClosing.delete(name)
+    broadcast(IPC.windowBoundsChanged, listWindows())
   })
 
   const qs = new URLSearchParams(query).toString()
