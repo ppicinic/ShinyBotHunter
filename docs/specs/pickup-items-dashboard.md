@@ -113,6 +113,10 @@ QA ran on the feature tip 174f5e7 plus the switch-wait fix in the commit that ad
 - Save equals `.bak` after every run.
 - The item sprite fetch (FR-9) ran once on the dev PC: 514 pictures, no failures.
 
+## 2026-11-10: the switch is replaced
+
+[Add Pickup items windows per game file](pickup-windows-add.md) replaces this spec's switch (G2, G3, FR-7): the windows are added per game file in the Admin window and saved with the dashboard config. With the switch go the main process's copy of the tallies and the `get-pickup-items` and `get-pickup-windows` IPC calls; each window loads its own tally through `GET /api/bot/getPickupItems`. The total line (FR-6) is deleted: a tile is the item's picture and count, with the name as its tooltip.
+
 ## Open questions
 
 - None blocking. The planner confirms the PKHeX.Core call for the HGSS item list and the game-file value.

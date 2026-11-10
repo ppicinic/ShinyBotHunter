@@ -33,12 +33,24 @@ export function setAppearance(apiUrl: string, appearance: Appearance): Promise<R
   return request('POST', `${apiUrl}/api/admin/appearance`, appearance)
 }
 
+export function addPickupGameFile(apiUrl: string, gameFile: string): Promise<Response> {
+  return request('POST', `${apiUrl}/api/admin/pickupGameFiles/add`, gameFile)
+}
+
+export function removePickupGameFile(apiUrl: string, gameFile: string): Promise<Response> {
+  return request('POST', `${apiUrl}/api/admin/pickupGameFiles/remove`, gameFile)
+}
+
 export function getTopLevelActions(apiUrl: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/getTopLevelActions`)
 }
 
 export function getDashboardState(apiUrl: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/bot/getDashboardState`)
+}
+
+export function getPickupItems(apiUrl: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/bot/getPickupItems`)
 }
 
 export function getBotActions(apiUrl: string, pos: number): Promise<Response> {

@@ -11,7 +11,6 @@ import {
   pickupWindowTitle,
   type CardKind,
   type PhaseWindowRequest,
-  type PickupTally,
   type WindowBounds,
   type WindowInfo
 } from '../shared/windowContracts'
@@ -41,10 +40,7 @@ const managerClosing = new Set<string>()
 const resizeDebounceTimers = new Map<string, NodeJS.Timeout>()
 let mainConfig: MainConfig | null = null
 
-// The Pickup items state below is touched only on the main-process event loop (IPC handlers
-// and SignalR callbacks), so it needs no lock.
-let pickupWindowsOn = false
-const pickupTallies = new Map<string, PickupTally>()
+// Touched only on the main-process event loop (window events and SignalR callbacks), so it needs no lock.
 const closedPickupByUser = new Set<string>()
 
 const DEFAULTS: Record<CardKind, { width: number; height: number; minWidth: number; minHeight: number }> = {
@@ -241,28 +237,8 @@ export function syncPhaseWindows(requests: PhaseWindowRequest[]): void {
   }
 }
 
-export function setPickupWindowsOn(on: boolean, tallies: PickupTally[] = []): void {
-  pickupWindowsOn = on
-  for (const tally of tallies) pickupTallies.set(tally.gameFileName, tally)
-  syncPickupWindows()
-}
-
-export function getPickupWindowsOn(): boolean {
-  return pickupWindowsOn
-}
-
-export function receivePickupTally(tally: PickupTally): void {
-  pickupTallies.set(tally.gameFileName, tally)
-  broadcast(IPC.pickupItems, tally)
-  syncPickupWindows()
-}
-
-export function getPickupTally(gameFileName: string): PickupTally | null {
-  return pickupTallies.get(gameFileName) ?? null
-}
-
-function syncPickupWindows(): void {
-  const desired = new Set(pickupWindowsOn ? [...pickupTallies.keys()].map(pickupWindowName) : [])
+export function syncPickupWindows(gameFiles: string[]): void {
+  const desired = new Map(gameFiles.map((gameFileName) => [pickupWindowName(gameFileName), gameFileName]))
 
   for (const [name, { win, kind }] of open) {
     if (kind === 'pickup' && !desired.has(name)) {
@@ -271,13 +247,11 @@ function syncPickupWindows(): void {
     }
   }
 
-  if (!pickupWindowsOn) {
-    closedPickupByUser.clear()
-    return
+  for (const name of closedPickupByUser) {
+    if (!desired.has(name)) closedPickupByUser.delete(name)
   }
 
-  for (const gameFileName of pickupTallies.keys()) {
-    const name = pickupWindowName(gameFileName)
+  for (const [name, gameFileName] of desired) {
     if (open.has(name) || closedPickupByUser.has(name)) continue
     openCardWindow({
       name,

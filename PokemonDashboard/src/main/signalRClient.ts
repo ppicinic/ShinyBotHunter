@@ -8,12 +8,13 @@ import {
   type SharedDashboardConfig,
   type SignalRSnapshot
 } from '../shared/windowContracts'
-import { broadcast, receivePickupTally, syncPhaseWindows } from './windowManager'
+import { broadcast, syncPhaseWindows, syncPickupWindows } from './windowManager'
 
 const emptyDashboardConfig: SharedDashboardConfig = {
   gamePhases: [],
   recentEncounterCount: 0,
-  appearance: null
+  appearance: null,
+  pickupGameFiles: []
 }
 
 let connection: signalR.HubConnection | null = null
@@ -102,6 +103,7 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
       gamePhases: Array<{ game: string; phase: string; gameFileName?: string | null }>
       recentEncounterCount: number
       appearance: Appearance
+      pickupGameFiles: string[]
     }) => {
       const config: SharedDashboardConfig = {
         gamePhases: (rawConfig.gamePhases ?? []).map((gp) => ({
@@ -110,7 +112,8 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
           gameName: gp.gameFileName ?? null
         })),
         recentEncounterCount: rawConfig.recentEncounterCount ?? 0,
-        appearance: rawConfig.appearance
+        appearance: rawConfig.appearance,
+        pickupGameFiles: rawConfig.pickupGameFiles
       }
       lastDashboardConfig = config
 
@@ -120,6 +123,7 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
 
       broadcast(IPC.signalRDashboardConfig, config)
       syncPhaseWindows(config.gamePhases)
+      syncPickupWindows(config.pickupGameFiles)
     }
   )
 
@@ -128,7 +132,7 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
   })
 
   hub.on('ReceivePickupItems', (tally: PickupTally) => {
-    receivePickupTally(tally)
+    broadcast(IPC.pickupItems, tally)
   })
 
   hub.onreconnecting(() => {
