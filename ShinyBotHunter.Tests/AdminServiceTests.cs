@@ -37,6 +37,7 @@ namespace ShinyBotHunter.Tests
             JsonNode appearance = json["appearance"]!;
             Assert.Equal("07:00", (string?)appearance["dayStart"]);
             Assert.Equal("19:00", (string?)appearance["nightStart"]);
+            Assert.True((bool?)appearance["animations"]);
             Assert.Equal("hgss-drift", (string?)appearance["default"]!["theme"]);
             Assert.Equal("hgss-dusk", (string?)appearance["default"]!["night"]);
             JsonObject window = appearance["windows"]!["phase:RS:Hoenn%20Starters:Ruby"]!.AsObject();
@@ -57,6 +58,7 @@ namespace ShinyBotHunter.Tests
                 {
                     DayStart = "06:30",
                     NightStart = "20:00",
+                    Animations = false,
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
                     Windows =
                     {
@@ -73,6 +75,17 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(config.GamePhases, loaded.GamePhases);
             Assert.Equal(25, loaded.RecentEncounterCount);
             AssertSameAppearance(config.Appearance, loaded.Appearance);
+        }
+
+        [Fact]
+        public void SavedDocumentWithoutAnimationsLoadsAsOn()
+        {
+            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = false } });
+            document["Appearance"].AsBsonDocument.Remove("Animations");
+
+            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
+
+            Assert.True(loaded.Appearance.Animations);
         }
 
         [Fact]
@@ -171,6 +184,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(pushed.Appearance.Default.Night);
             Assert.Equal("07:00", pushed.Appearance.DayStart);
             Assert.Equal("19:00", pushed.Appearance.NightStart);
+            Assert.True(pushed.Appearance.Animations);
             Assert.Empty(pushed.Appearance.Windows);
         }
 
@@ -186,6 +200,7 @@ namespace ShinyBotHunter.Tests
                 {
                     DayStart = "06:30",
                     NightStart = "20:00",
+                    Animations = false,
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
                     Windows =
                     {
@@ -277,6 +292,7 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Equal(expected.DayStart, actual.DayStart);
             Assert.Equal(expected.NightStart, actual.NightStart);
+            Assert.Equal(expected.Animations, actual.Animations);
             AssertSameChoice(expected.Default, actual.Default);
             Assert.Equal(expected.Windows.Keys.Order(), actual.Windows.Keys.Order());
             foreach ((string name, ThemeChoice choice) in expected.Windows)
