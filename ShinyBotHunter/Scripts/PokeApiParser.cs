@@ -72,6 +72,14 @@ namespace ShinyBotHunter.Scripts
             }
         }
 
+        private async Task DownloadAnimatedAsync(string? url, string folder, string name)
+        {
+            if (url is not null)
+            {
+                await DownloadImageAsync(url, $"{rootSpriteDirectory}/Animated/{folder}/{name}.gif");
+            }
+        }
+
         // FR-2 and FR-3: the animated GIF for one still, first hit wins. Generations 1 to 5 prefer the
         // black-white pixel animation, 6 to 9 Showdown's. A form with no animation of its own takes its
         // Pokemon's (c) unless Showdown has it under its own name (d). A female-only species, which
@@ -315,6 +323,14 @@ namespace ShinyBotHunter.Scripts
             "sinistcha-masterpiece"
         };
 
+            string[] animatedFolders = { "Default", "Shiny", "Female_Default", "Female_Shiny" };
+            foreach (string folder in animatedFolders)
+            {
+                Directory.CreateDirectory($"{rootSpriteDirectory}/Animated/{folder}");
+            }
+            // Female-only forms with no animation anywhere but Wikidex: their female GIFs are copied from the clips.
+            var femaleFromClip = new HashSet<string>();
+
             for (int i = 0; i < entries.results.Length; i++)
             {
                 string name = entries.results[i].name;
@@ -322,6 +338,7 @@ namespace ShinyBotHunter.Scripts
 
                 if (pokemon == null) continue;
                 if (pokemon.name.EndsWith("-totem") || (pokemon.name.EndsWith("-meteor") && pokemon.name.StartsWith("minior")) || skipPokemon.Contains(pokemon.name) || pokemon.name.Contains("-mega") || pokemon.name.Contains("-gmax")) { continue; }
+                int speciesId = Int32.Parse(pokemon.species.url.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]);
 
                 if (cache.ContainsKey(pokemon.species.name))
                 {
@@ -373,6 +390,8 @@ namespace ShinyBotHunter.Scripts
                             {
                                 await DownloadImageAsync(form.sprites.front_default, $"{rootSpriteDirectory}/Default/{form.name}.png");
                                 await DownloadImageAsync(form.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{form.name}.png");
+                                await DownloadAnimatedAsync(AnimatedSpriteUrl(form.name, speciesId, form.sprites, pokemon.sprites, shiny: false, female: false), "Default", form.name);
+                                await DownloadAnimatedAsync(AnimatedSpriteUrl(form.name, speciesId, form.sprites, pokemon.sprites, shiny: true, female: false), "Shiny", form.name);
                             }
                             catch (Exception)
                             {
@@ -427,16 +446,27 @@ namespace ShinyBotHunter.Scripts
                     {
                         await DownloadImageAsync(pokemon.sprites.front_female, $"{rootSpriteDirectory}/Female_Default/{pokemon.name}.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny_female, $"{rootSpriteDirectory}/Female_Shiny/{pokemon.name}.png");
+                        string? femaleUrl = AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: true);
+                        await DownloadAnimatedAsync(femaleUrl, "Female_Default", pokemon.name);
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: true), "Female_Shiny", pokemon.name);
+                        if (femaleUrl is null && pokemon.sprites.front_female == pokemon.sprites.front_default)
+                        {
+                            femaleFromClip.Add(pokemon.name);
+                        }
                     }
                     if (pokemon.name == "oinkologne-female")
                     {
                         await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Female_Default/oinkologne-male.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Female_Shiny/oinkologne-male.png");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: false), "Female_Default", "oinkologne-male");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: false), "Female_Shiny", "oinkologne-male");
                     }
                     else
                     {
                         await DownloadImageAsync(pokemon.sprites.front_default, $"{rootSpriteDirectory}/Default/{pokemon.name}.png");
                         await DownloadImageAsync(pokemon.sprites.front_shiny, $"{rootSpriteDirectory}/Shiny/{pokemon.name}.png");
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: false, female: false), "Default", pokemon.name);
+                        await DownloadAnimatedAsync(AnimatedSpriteUrl(pokemon.name, speciesId, pokemon.sprites, null, shiny: true, female: false), "Shiny", pokemon.name);
                     }
                 }
                 catch (Exception)
