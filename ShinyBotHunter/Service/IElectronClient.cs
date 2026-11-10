@@ -22,6 +22,7 @@ namespace ShinyBotHunter.Service
     {
         public string DayStart { get; set; } = "07:00";
         public string NightStart { get; set; } = "19:00";
+        public bool Animations { get; set; } = true;
         public ThemeChoice Default { get; set; } = new() { Theme = "midnight" };
         public Dictionary<string, ThemeChoice> Windows { get; set; } = new();
     }
