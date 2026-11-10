@@ -67,6 +67,7 @@ export const IPC = {
   signalRDashboardState: 'signalr-dashboard-state',
   apiRequest: 'api-request',
   setPickupWindows: 'set-pickup-windows',
+  getPickupWindows: 'get-pickup-windows',
   getPickupItems: 'get-pickup-items',
   pickupItems: 'pickup-items'
 } as const

@@ -7,6 +7,7 @@ import { getSnapshot, startSignalR, stopSignalR } from './signalRClient'
 import {
   bootstrapWindows,
   getPickupTally,
+  getPickupWindowsOn,
   listWindows,
   setPickupWindowsOn,
   setWindowBounds,
@@ -122,6 +123,8 @@ app.whenReady().then(() => {
     if (!res.ok) throw new Error(`getPickupItems returned ${res.status}`)
     setPickupWindowsOn(true, (await res.json()) as PickupTally[])
   })
+
+  ipcMain.handle(IPC.getPickupWindows, () => getPickupWindowsOn())
 
   ipcMain.handle(IPC.getPickupItems, (_event, gameFileName: unknown) => {
     if (typeof gameFileName !== 'string') throw new Error('Game file name must be a string')

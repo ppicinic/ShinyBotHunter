@@ -41,6 +41,11 @@ export function DashboardConfigTab(): JSX.Element {
       .catch((err) => console.error('Failed to load games:', err))
   }, [apiUrl])
 
+  // The tab unmounts when not shown; main owns the switch, so read it back on every mount
+  useEffect(() => {
+    window.api.getPickupWindows().then(setPickupWindowsOn)
+  }, [])
+
   // Keep recentCount in sync when dashboardConfig updates from SignalR
   useEffect(() => {
     setRecentCount(dashboardConfig.recentEncounterCount)

@@ -245,6 +245,10 @@ export function setPickupWindowsOn(on: boolean, tallies: PickupTally[] = []): vo
   syncPickupWindows()
 }
 
+export function getPickupWindowsOn(): boolean {
+  return pickupWindowsOn
+}
+
 export function receivePickupTally(tally: PickupTally): void {
   pickupTallies.set(tally.gameFileName, tally)
   broadcast(IPC.pickupItems, tally)
