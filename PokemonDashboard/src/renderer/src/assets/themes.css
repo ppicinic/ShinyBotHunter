@@ -16,3 +16,239 @@
   --panel: var(--card-border);
   --scroll-thumb: 61 61 107; --scroll-thumb-hover: 90 90 158;
 }
+
+/* HGSS Gold and Silver */
+:root[data-theme='hgss-drift'] {
+  --bg: 23 23 28;
+  --card-bg: 23 23 28;
+  --card-header: 138 106 28;
+  --card-border: 91 83 64;
+  --panel: 0 0 0;
+  --cell: rgb(255 255 255 / 0.08);
+  --ink: 251 246 233;
+  --n-100: 240 235 223; --n-200: 224 220 209; --n-300: 202 198 189; --n-400: 171 167 160; --n-500: 135 132 128; --n-600: 99 97 96; --n-700: 77 75 75; --n-800: 57 55 57; --n-900: 41 40 43;
+  --accent-500: 142 106 21; --accent-600: 148 105 12; --accent-700: 122 86 8;
+  --accent-2: 238 241 245;
+  --scroll-thumb: 91 83 64; --scroll-thumb-hover: 139 132 115;
+  --header-fill: linear-gradient(100deg, #b8860b, #f3d57a 22%, #c9952a 40%, #9aa3b0 62%, #eef1f5 80%, #8f98a6);
+  --header-title: 29 22 6;
+  --header-size: 250% 100%;
+  --header-anim: theme-drift 24s ease-in-out infinite alternate;
+  --card-fill: linear-gradient(120deg, #3a2a06, #17171c 30%, #232a36 55%, #17171c 78%, #3a2a06);
+  --card-fill-size: 400% 400%;
+  --card-fill-anim: theme-drift 36s ease-in-out infinite alternate;
+}
+
+/* HGSS Dusk */
+:root[data-theme='hgss-dusk'] {
+  --bg: 19 18 16;
+  --card-bg: 19 18 16;
+  --card-header: 27 25 22;
+  --card-border: 58 53 41;
+  --cell: rgb(255 255 255 / 0.07);
+  --ink: 245 241 230;
+  --n-100: 234 230 220; --n-200: 219 215 205; --n-300: 197 193 184; --n-400: 166 163 154; --n-500: 149 146 138; --n-600: 96 93 87; --n-700: 74 72 66; --n-800: 54 52 47; --n-900: 39 37 33;
+  --accent-500: 136 103 25; --accent-600: 122 92 22; --accent-700: 102 77 18;
+  --accent-2: 201 206 214;
+  --scroll-thumb: 58 53 41; --scroll-thumb-hover: 114 109 98;
+  --header-fill: linear-gradient(90deg, #e3b341, #c9ced6) bottom no-repeat, #1b1916;
+  --header-title: 240 214 138;
+  --header-size: 100% 2px, auto;
+  --card-glow: radial-gradient(closest-side, rgb(227 179 65 / 0.34), transparent), radial-gradient(closest-side, rgb(170 190 220 / 0.28), transparent);
+  --card-glow-size: 70% 70%, 80% 80%;
+  --card-glow-anim: theme-orbit 30s ease-in-out infinite;
+}
+
+/* Ruby and Sapphire: the header shows half the gradient, so it always holds one ruby and one sapphire peak. */
+:root[data-theme='rs-drift'] {
+  --bg: 23 22 28;
+  --card-bg: 23 22 28;
+  --card-header: 90 42 138;
+  --card-border: 74 63 82;
+  --panel: 0 0 0;
+  --cell: rgb(255 255 255 / 0.08);
+  --ink: 248 245 251;
+  --n-100: 237 234 240; --n-200: 221 219 225; --n-300: 199 197 203; --n-400: 168 166 173; --n-500: 133 131 138; --n-600: 98 96 103; --n-700: 76 74 82; --n-800: 56 54 62; --n-900: 40 39 47;
+  --accent-500: 224 0 37; --accent-600: 194 24 58; --accent-700: 156 18 48;
+  --accent-2: 58 123 255;
+  --scroll-thumb: 74 63 82; --scroll-thumb-hover: 126 118 133;
+  --header-fill: linear-gradient(100deg, #8f0f22, #ea0023 10%, #c2183a 20%, #5a2a8a 25%, #1f4fd0 30%, #0a6bff 40%, #1238a0 45%, #5a2a8a 50%, #8f0f22 55%, #ea0023 60%, #c2183a 70%, #5a2a8a 75%, #1f4fd0 80%, #0a6bff 90%, #1238a0);
+  --header-title: 255 255 255;
+  --header-size: 200% 100%;
+  --header-anim: theme-drift 24s ease-in-out infinite alternate;
+  --card-fill: linear-gradient(120deg, #3d0812, #17161c 30%, #101c3e 55%, #17161c 78%, #3d0812);
+  --card-fill-size: 400% 400%;
+  --card-fill-anim: theme-drift 36s ease-in-out infinite alternate;
+}
+
+/* Ruby */
+:root[data-theme='ruby'] {
+  --bg: 36 5 11;
+  --card-bg: 36 5 11;
+  --card-header: 125 12 28;
+  --card-border: 106 36 52;
+  --panel: 0 0 0;
+  --cell: rgb(255 255 255 / 0.08);
+  --ink: 255 244 245;
+  --n-100: 244 232 234; --n-200: 229 216 218; --n-300: 208 193 195; --n-400: 178 160 163; --n-500: 144 122 127; --n-600: 110 85 91; --n-700: 89 61 68; --n-800: 70 40 48; --n-900: 55 24 32;
+  --accent-500: 225 0 37; --accent-600: 194 24 58; --accent-700: 156 18 48;
+  --accent-2: 255 194 204;
+  --scroll-thumb: 106 36 52; --scroll-thumb-hover: 151 98 110;
+  --header-fill: linear-gradient(100deg, #7d0c1c, #e2223e 30%, #ea002a 48%, #c2183a 60%, #7d0c1c);
+  --header-title: 255 255 255;
+  --header-size: 260% 100%;
+  --header-anim: theme-drift 20s ease-in-out infinite alternate;
+  --card-fill: linear-gradient(120deg, #24050b, #5a0d1c 35%, #3a0a26 65%, #24050b);
+  --card-fill-size: 300% 300%;
+  --card-fill-anim: theme-drift 34s ease-in-out infinite alternate;
+}
+
+/* Sapphire */
+:root[data-theme='sapphire'] {
+  --bg: 5 13 38;
+  --card-bg: 5 13 38;
+  --card-header: 12 42 128;
+  --card-border: 36 64 126;
+  --panel: 0 0 0;
+  --cell: rgb(255 255 255 / 0.08);
+  --ink: 242 247 255;
+  --n-100: 230 236 245; --n-200: 214 220 231; --n-300: 191 197 210; --n-400: 158 165 182; --n-500: 121 129 149; --n-600: 84 93 117; --n-700: 61 70 97; --n-800: 40 50 78; --n-900: 24 34 64;
+  --accent-500: 0 108 226; --accent-600: 37 99 235; --accent-700: 29 78 216;
+  --accent-2: 207 227 255;
+  --scroll-thumb: 36 64 126; --scroll-thumb-hover: 98 119 165;
+  --header-fill: linear-gradient(100deg, #0c2a80, #2f6fe0 30%, #076bff 48%, #1f4fd0 60%, #0c2a80);
+  --header-title: 255 255 255;
+  --header-size: 260% 100%;
+  --header-anim: theme-drift 20s ease-in-out infinite alternate;
+  --card-fill: linear-gradient(120deg, #050d26, #0e2a6a 35%, #0a1a52 65%, #050d26);
+  --card-fill-size: 300% 300%;
+  --card-fill-anim: theme-drift 34s ease-in-out infinite alternate;
+}
+
+/* Christmas Pine */
+:root[data-theme='christmas'] {
+  --bg: 10 28 18;
+  --card-bg: 10 28 18;
+  --card-header: 140 24 36;
+  --card-border: 44 84 56;
+  --panel: 0 0 0;
+  --cell: rgb(255 255 255 / 0.08);
+  --ink: 255 250 240;
+  --n-100: 243 239 229; --n-200: 226 224 214; --n-300: 202 203 192; --n-400: 169 173 162; --n-500: 131 139 128; --n-600: 92 104 93; --n-700: 69 83 72; --n-800: 47 64 52; --n-900: 30 49 37;
+  --accent-500: 222 36 36; --accent-600: 198 40 40; --accent-700: 159 29 29;
+  --accent-2: 242 193 78;
+  --scroll-thumb: 44 84 56; --scroll-thumb-hover: 107 134 111;
+  --header-fill: repeating-linear-gradient(135deg, #8c1824 0 14px, #78121e 14px 28px);
+  --header-title: 255 240 214;
+  --card-fill: linear-gradient(120deg, #0a1c12, #133021 50%, #0a1c12);
+  --card-fill-size: 250% 250%;
+  --card-fill-anim: theme-drift 30s ease-in-out infinite alternate;
+}
+
+/* Christmas Night */
+:root[data-theme='christmas-night'] {
+  --bg: 8 18 38;
+  --card-bg: 8 18 38;
+  --card-header: 15 61 42;
+  --card-border: 39 64 106;
+  --cell: rgb(255 255 255 / 0.09);
+  --ink: 246 249 255;
+  --n-100: 234 238 245; --n-200: 218 222 231; --n-300: 195 200 210; --n-400: 162 169 182; --n-500: 146 153 168; --n-600: 88 97 117; --n-700: 65 75 97; --n-800: 44 55 78; --n-900: 28 39 64;
+  --accent-500: 147 106 11; --accent-600: 131 95 10; --accent-700: 111 80 8;
+  --accent-2: 226 61 61;
+  --scroll-thumb: 39 64 106; --scroll-thumb-hover: 101 120 151;
+  --header-fill: linear-gradient(90deg, #0f3d2a, #14553a 50%, #0f3d2a);
+  --header-title: 255 233 176;
+  --card-fill: linear-gradient(180deg, #081226, #0e2140 55%, #1a2b3a);
+  --card-glow: radial-gradient(closest-side, rgb(242 193 78 / 0.22), transparent);
+  --card-glow-size: 120% 60%;
+  --card-glow-anim: theme-breathe 8s ease-in-out infinite;
+}
+
+/* The moving parts: a ground wider than the window that slides, two glows that circle, snow, string lights. */
+@keyframes theme-drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
+@keyframes theme-orbit {
+  0%, 100% { background-position: 0% 0%, 100% 100%; }
+  50% { background-position: 60% 40%, 40% 60%; }
+}
+@keyframes theme-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* Each loop moves exactly one tile down, so the restart does not jump. */
+@keyframes theme-snow { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, var(--snow-tile), 0); } }
+
+/* Snow: three layers with prime tile sizes wider than a window and their own speeds, so no grid shows. */
+:root[data-theme='christmas'] body::before, :root[data-theme='christmas-night'] body::before,
+:root[data-theme='christmas'] body::after, :root[data-theme='christmas-night'] body::after,
+:root[data-theme='christmas'] #root::after, :root[data-theme='christmas-night'] #root::after {
+  content: '';
+  position: fixed;
+  pointer-events: none;
+  z-index: 50;
+  animation: theme-snow linear infinite;
+}
+:root[data-theme='christmas'] body::before, :root[data-theme='christmas-night'] body::before {
+  inset: -457px 0 0 0;
+  --snow-tile: 457px;
+  background-image:
+    radial-gradient(1.5px 1.5px at 337px 79px, #fff, transparent),
+    radial-gradient(1px 1px at 341px 200px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1.5px 1.5px at 21px 382px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 80px 172px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 123px 103px, rgb(255 255 255 / 0.9), transparent),
+    radial-gradient(1px 1px at 238px 356px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(1.5px 1.5px at 230px 66px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(1px 1px at 157px 357px, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 175px 283px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(1px 1px at 7px 168px, rgb(255 255 255 / 0.6), transparent);
+  background-size: 383px 457px;
+  animation-duration: 14s;
+}
+:root[data-theme='christmas'] body::after, :root[data-theme='christmas-night'] body::after {
+  inset: -613px 0 0 0;
+  --snow-tile: 613px;
+  background-image:
+    radial-gradient(2.5px 2.5px at 282px 172px, rgb(255 255 255 / 0.8), transparent),
+    radial-gradient(2px 2px at 159px 263px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(2.5px 2.5px at 53px 335px, rgb(255 255 255 / 0.7), transparent),
+    radial-gradient(2px 2px at 286px 530px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(2.5px 2.5px at 213px 41px, rgb(255 255 255 / 0.75), transparent),
+    radial-gradient(2px 2px at 431px 402px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(2.5px 2.5px at 497px 148px, rgb(255 255 255 / 0.7), transparent);
+  background-size: 541px 613px;
+  animation-duration: 20s;
+}
+:root[data-theme='christmas'] #root::after, :root[data-theme='christmas-night'] #root::after {
+  inset: -797px 0 0 0;
+  --snow-tile: 797px;
+  background-image:
+    radial-gradient(3.5px 3.5px at 36px 131px, rgb(255 255 255 / 0.6), transparent),
+    radial-gradient(3px 3px at 476px 646px, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(3.5px 3.5px at 562px 321px, rgb(255 255 255 / 0.55), transparent),
+    radial-gradient(3px 3px at 196px 460px, rgb(255 255 255 / 0.5), transparent),
+    radial-gradient(3.5px 3.5px at 337px 199px, rgb(255 255 255 / 0.6), transparent);
+  background-size: 719px 797px;
+  animation-duration: 27s;
+}
+
+:root[data-theme='christmas-night'] .card-header::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -6px;
+  height: 10px;
+  pointer-events: none;
+  z-index: 2;
+  background-image:
+    radial-gradient(circle 3px at 10px 5px, #ff4d4d 60%, transparent 62%),
+    radial-gradient(circle 3px at 34px 6px, #ffd166 60%, transparent 62%),
+    radial-gradient(circle 3px at 58px 5px, #4ade80 60%, transparent 62%),
+    radial-gradient(circle 3px at 82px 6px, #60a5fa 60%, transparent 62%);
+  background-size: 96px 10px;
+  filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.6));
+  animation: theme-breathe 2.4s ease-in-out infinite;
+}
+
+/* Reduced motion: the grounds and glows stop where they are and the snow is off. !important because
+   index.css comes after this file and sets the card and header animation at the same specificity. */
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after { animation: none !important; }
+  body::before, body::after, #root::after { content: none !important; }
+}
