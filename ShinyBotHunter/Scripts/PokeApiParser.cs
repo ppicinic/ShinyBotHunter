@@ -5,9 +5,12 @@ using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 namespace ShinyBotHunter.Scripts
 {
@@ -122,6 +125,112 @@ namespace ShinyBotHunter.Scripts
                 return parts[3] == "strawberry" ? $"alcremie-{parts[1]}{parts[2]}" : $"alcremie-{parts[1]}{parts[2]}-{parts[3]}";
             }
             return null;
+        }
+
+        // FR-2 (e): the forms with no animation in PokeAPI or on Showdown, and their Wikidex Scarlet/Violet
+        // model clips (normal, shiny), with the height the GIF is scaled to so it sits with the others.
+        internal static readonly Dictionary<string, (string Normal, string Shiny, int Height)> WikidexClips = new()
+        {
+            ["iron-treads"] = ("Ferrodada EP.gif", "Ferrodada EP variocolor.gif", 70),
+            ["iron-bundle"] = ("Ferrosaco EP.gif", "Ferrosaco EP variocolor.gif", 85),
+            ["iron-jugulis"] = ("Ferrocuello EP.gif", "Ferrocuello EP variocolor.gif", 110),
+            ["iron-leaves"] = ("Ferroverdor EP.gif", "Ferroverdor EP variocolor.gif", 110),
+            ["iron-boulder"] = ("Ferromole EP.webm", "Ferromole EP variocolor.webm", 100),
+            ["iron-crown"] = ("Ferrotesta EP.webm", "Ferrotesta EP variocolor.webm", 105),
+            ["ogerpon"] = ("Ogerpon máscara turquesa EP.webm", "Ogerpon máscara turquesa EP variocolor.webm", 85),
+            ["ogerpon-wellspring-mask"] = ("Ogerpon máscara fuente EP.webm", "Ogerpon máscara fuente EP variocolor.webm", 85),
+            ["ogerpon-hearthflame-mask"] = ("Ogerpon máscara horno EP.webm", "Ogerpon máscara horno EP variocolor.webm", 85),
+            ["ogerpon-cornerstone-mask"] = ("Ogerpon máscara cimiento EP.webm", "Ogerpon máscara cimiento EP variocolor.webm", 85),
+            ["pecharunt"] = ("Pecharunt (abierto) EP.webm", "Pecharunt (abierto) EP variocolor.webm", 60),
+        };
+
+        // FR-2 (e): converts the Wikidex clips of the table's forms that have no GIF yet with ffmpeg,
+        // cropped to the Pokemon over every frame. Without ffmpeg on the PATH it says so and skips.
+        private async Task ConvertWikidexClipsAsync(HttpClient client, HashSet<string> femaleFromClip)
+        {
+            var forms = WikidexClips.Keys
+                .Where(form => !File.Exists($"{rootSpriteDirectory}/Animated/Default/{form}.gif") || !File.Exists($"{rootSpriteDirectory}/Animated/Shiny/{form}.gif"))
+                .ToList();
+            if (forms.Count == 0) return;
+
+            string? ffmpeg = Environment.GetEnvironmentVariable("PATH")!
+                .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(dir => Path.Combine(dir, "ffmpeg.exe"))
+                .FirstOrDefault(File.Exists);
+            if (ffmpeg is null)
+            {
+                Console.WriteLine($"ffmpeg not found on the PATH: skipped the Wikidex clips (step e) for: {String.Join(", ", forms)}");
+                return;
+            }
+
+            // One MediaWiki query for every clip. Wikidex answers with the titles normalized to "Archivo:".
+            var titles = forms.SelectMany(form => new[] { WikidexClips[form].Normal, WikidexClips[form].Shiny }).Select(file => $"File:{file}");
+            var response = await client.GetFromJsonAsync<JsonElement>(
+                $"https://www.wikidex.net/api.php?action=query&prop=imageinfo&iiprop=url&format=json&titles={Uri.EscapeDataString(String.Join("|", titles))}");
+            var query = response.GetProperty("query");
+            var askedAs = query.GetProperty("normalized").EnumerateArray()
+                .ToDictionary(entry => entry.GetProperty("to").GetString()!, entry => entry.GetProperty("from").GetString()!);
+            var clipUrls = new Dictionary<string, string>();
+            foreach (var page in query.GetProperty("pages").EnumerateObject())
+            {
+                string title = page.Value.GetProperty("title").GetString()!;
+                if (!page.Value.TryGetProperty("imageinfo", out var imageInfo))
+                {
+                    throw new Exception($"Wikidex has no file {title}");
+                }
+                clipUrls[askedAs[title]] = imageInfo[0].GetProperty("url").GetString()!;
+            }
+
+            async Task<string> RunFfmpegAsync(string form, List<string> arguments)
+            {
+                var start = new ProcessStartInfo(ffmpeg) { RedirectStandardError = true, UseShellExecute = false };
+                start.ArgumentList.Add("-hide_banner");
+                arguments.ForEach(start.ArgumentList.Add);
+                using var process = Process.Start(start)!;
+                string stderr = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception($"ffmpeg failed on {form} (exit {process.ExitCode}): {stderr[^Math.Min(500, stderr.Length)..]}");
+                }
+                return stderr;
+            }
+
+            foreach (string form in forms)
+            {
+                var clip = WikidexClips[form];
+                foreach (var (file, folder) in new[] { (clip.Normal, "Default"), (clip.Shiny, "Shiny") })
+                {
+                    string gif = $"{rootSpriteDirectory}/Animated/{folder}/{form}.gif";
+                    if (File.Exists(gif)) continue;
+                    string temp = Path.Combine(Path.GetTempPath(), file);
+                    await DownloadImageAsync(clipUrls[$"File:{file}"], temp);
+                    var input = new List<string>();
+                    if (file.EndsWith(".webm"))
+                    {
+                        // The WebM alpha plane is only decoded by libvpx-vp9.
+                        input.AddRange(new[] { "-c:v", "libvpx-vp9" });
+                    }
+                    input.AddRange(new[] { "-i", temp });
+
+                    string detect = await RunFfmpegAsync(form, [.. input, "-vf", "alphaextract,cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"]);
+                    var crops = Regex.Matches(detect, @"crop=(\d+:\d+:\d+:\d+)");
+                    if (crops.Count == 0)
+                    {
+                        throw new Exception($"ffmpeg found no crop for {form}: {detect[^Math.Min(500, detect.Length)..]}");
+                    }
+                    string crop = crops[^1].Groups[1].Value;
+                    await RunFfmpegAsync(form, ["-y", .. input, "-filter_complex",
+                        $"crop={crop},fps=20,scale=-2:{clip.Height}:flags=lanczos,split[a][b];[a]palettegen=reserve_transparent=1:max_colors=127[p];[b][p]paletteuse=alpha_threshold=110:dither=none",
+                        "-loop", "0", gif]);
+                    File.Delete(temp);
+                }
+                if (femaleFromClip.Contains(form))
+                {
+                    File.Copy($"{rootSpriteDirectory}/Animated/Default/{form}.gif", $"{rootSpriteDirectory}/Animated/Female_Default/{form}.gif", overwrite: true);
+                    File.Copy($"{rootSpriteDirectory}/Animated/Shiny/{form}.gif", $"{rootSpriteDirectory}/Animated/Female_Shiny/{form}.gif", overwrite: true);
+                }
+            }
         }
 
         private async Task<Dictionary<int, PokemonMoveMetadata>> ScrapeMovesApiAsync()
@@ -528,6 +637,8 @@ namespace ShinyBotHunter.Scripts
             }
             await collection.BulkWriteAsync(updateList);
             Console.WriteLine("Saved to MongoDB successfully!");
+
+            await ConvertWikidexClipsAsync(client, femaleFromClip);
         }
 
         public async Task ScrapeItemSprites()

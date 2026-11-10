@@ -129,6 +129,16 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void WikidexClips_HasTheElevenForms()
+        {
+            var pecharunt = PokeApiParser.WikidexClips["pecharunt"];
+
+            Assert.Equal(11, PokeApiParser.WikidexClips.Count);
+            Assert.Equal("Pecharunt (abierto) EP.webm", pecharunt.Normal);
+            Assert.Equal("Pecharunt (abierto) EP variocolor.webm", pecharunt.Shiny);
+        }
+
+        [Fact]
         public void SpriteRecords_ReadTheNestedSources()
         {
             const string json = """
