@@ -241,7 +241,7 @@ The bot recognises HeartGold, SoulSilver, Ruby and Sapphire. HeartGold and SoulS
 
 ## Fill in the Pokemon data (once per PC)
 
-The bot needs a table of every Pokemon, move and sprite. It downloads them once from pokeapi.co.
+The bot needs a table of every Pokemon, move and sprite. It downloads them once from pokeapi.co, and then downloads the item pictures the dashboard shows.
 
 You need:
 
@@ -258,7 +258,9 @@ Steps:
    dotnet run --project ShinyBotHunter -c Release -- --parsepokeapi
    ```
 
-**Expected result:** it prints progress such as `Scraping move metadata...` and `Fetching Dex entries...`, ends with `Saved to MongoDB successfully!`, and exits by itself. The sprite folders now hold pictures.
+   If this PC already has its Pokemon data and only needs the item pictures, run `dotnet run --project ShinyBotHunter -c Release -- --parseitemsprites` instead. It does not touch MongoDB.
+
+**Expected result:** it prints progress such as `Scraping move metadata...` and `Fetching Dex entries...`, then `Saved to MongoDB successfully!`. It then prints `Fetching item sprites...`, ends with `Item sprites done.`, and exits by itself. The sprite folders now hold pictures, and the sprite folder has a new `Items` folder of item pictures named by item number (for example `17.png`, the Potion). A few `has no sprite` lines are normal.
 
 ## Create the encounter database
 
