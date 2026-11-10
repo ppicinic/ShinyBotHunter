@@ -48,6 +48,7 @@ export interface PickupItem {
 
 export interface PickupTally {
   gameFileName: string
+  milestone: string
   total: number
   items: PickupItem[]
 }

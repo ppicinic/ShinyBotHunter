@@ -161,7 +161,7 @@ Every encounter ever recorded is kept in the database; see [Your data](06-your-d
 
 ## Watch the Pickup items
 
-A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture, name and count, several to a row as the window's width fits, and the total below them. There is one window per game file the bot has taken items on.
+A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture, name and count, several to a row as the window's width fits, and the total below them. There is one window per game file the bot has taken items on. The window's top line shows the game file in small grey text, then the milestone of the hunt that last took an item on it.
 
 The pictures come from the `Items` folder in the sprite folder (see [Fill in the Pokemon data](01-install.md#fill-in-the-pokemon-data-once-per-pc)). An item without a picture there shows only its name and count.
 

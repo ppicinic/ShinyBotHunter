@@ -12,10 +12,10 @@ namespace ShinyBotHunter.Tests
         {
             PickupTally tally = Tally([]);
 
-            await tally.RecordAsync("B", 17);
-            await tally.RecordAsync("A", 17);
-            await tally.RecordAsync("A", 50);
-            await tally.RecordAsync("A", 17);
+            await tally.RecordAsync("B", "M", 17);
+            await tally.RecordAsync("A", "M", 17);
+            await tally.RecordAsync("A", "M", 50);
+            await tally.RecordAsync("A", "M", 17);
 
             List<PickupItemsResponse> read = tally.Read();
             Assert.Equal(["A", "B"], read.Select(r => r.GameFileName));
@@ -29,10 +29,10 @@ namespace ShinyBotHunter.Tests
         public async Task ReadReturnsCopies()
         {
             PickupTally tally = Tally([]);
-            await tally.RecordAsync("A", 17);
+            await tally.RecordAsync("A", "M", 17);
 
             List<PickupItemsResponse> first = tally.Read();
-            await tally.RecordAsync("A", 17);
+            await tally.RecordAsync("A", "M", 17);
             List<PickupItemsResponse> second = tally.Read();
             first[0].Items.Clear();
             List<PickupItemsResponse> third = tally.Read();
@@ -47,14 +47,32 @@ namespace ShinyBotHunter.Tests
         {
             PickupTally tally = Tally([]);
 
-            await tally.RecordAsync("A", 50);
-            await tally.RecordAsync("A", 26);
-            await tally.RecordAsync("A", 17);
-            await tally.RecordAsync("A", 26);
+            await tally.RecordAsync("A", "M", 50);
+            await tally.RecordAsync("A", "M", 26);
+            await tally.RecordAsync("A", "M", 17);
+            await tally.RecordAsync("A", "M", 26);
 
             Assert.Equal(
                 [new PickupItemCount(26, "Super Potion", 2), new PickupItemCount(17, "Potion", 1), new PickupItemCount(50, "Rare Candy", 1)],
                 tally.Read()[0].Items);
+        }
+
+        [Fact]
+        public async Task ALaterMilestoneReplacesTheGamesMilestoneAndKeepsCounts()
+        {
+            List<PickupItemsResponse> pushes = [];
+            PickupTally tally = Tally(pushes);
+
+            await tally.RecordAsync("A", "Route 33", 17);
+            await tally.RecordAsync("B", "Lake", 50);
+            await tally.RecordAsync("A", "Route 34", 50);
+
+            List<PickupItemsResponse> read = tally.Read();
+            Assert.Equal("Route 34", read[0].Milestone);
+            Assert.Equal(2, read[0].Total);
+            Assert.Equal([new PickupItemCount(17, "Potion", 1), new PickupItemCount(50, "Rare Candy", 1)], read[0].Items);
+            Assert.Equal("Lake", read[1].Milestone);
+            Assert.Equal("Route 34", pushes[^1].Milestone);
         }
 
         [Fact]
@@ -70,9 +88,9 @@ namespace ShinyBotHunter.Tests
         {
             List<PickupItemsResponse> pushes = [];
             PickupTally tally = Tally(pushes);
-            await tally.RecordAsync("B", 50);
+            await tally.RecordAsync("B", "M", 50);
 
-            await tally.RecordAsync("A", 17);
+            await tally.RecordAsync("A", "M", 17);
 
             Assert.Equal(2, pushes.Count);
             PickupItemsResponse push = pushes[1];

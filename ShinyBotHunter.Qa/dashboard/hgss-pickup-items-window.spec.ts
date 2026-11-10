@@ -20,6 +20,8 @@ const PICKUP_SLOTS = [2, 3, 4, 5, 6]
 // Potion, Super Potion, Hyper Potion, Escape Rope, Rare Candy, in slot order.
 const HELD_ITEMS = [17, 26, 25, 78, 50]
 const PICKUP_TITLE = `Pokemon Dashboard — Pickup: ${ROM}`
+// The milestone fillPickupForm in pickup.ts picks.
+const MILESTONE = 'Route 33'
 // The first visit's tally in the GET's order: count, then name by ordinal.
 const FIRST_TALLY = [
   { id: 78, name: 'Escape Rope', count: 1 },
@@ -41,7 +43,7 @@ async function readParty(): Promise<PartySlot[]> {
   return res.ok ? ((await res.json()) as PartySlot[]) : []
 }
 
-type Tally = { gameFileName: string; total: number; items: { id: number; name: string; count: number }[] }
+type Tally = { gameFileName: string; milestone: string; total: number; items: { id: number; name: string; count: number }[] }
 async function readTally(): Promise<Tally[]> {
   const res = await fetch('http://localhost:5000/api/bot/getPickupItems')
   expect(res.ok, `GET getPickupItems returned ${res.status}`).toBe(true)
@@ -178,8 +180,10 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     await expect(pickupSwitch).toBeChecked()
     const pickup = await windowByTitle(app, PICKUP_TITLE, 30_000)
     expect(await pickupTitles(app), 'the Pickup windows after the switch on').toEqual([PICKUP_TITLE])
+    // The header: the game file, then the milestone once the first load has returned.
+    await expect.poll(() => pickup.locator('.card-header > div > span').allTextContents(), { timeout: 10_000 }).toEqual([ROM, MILESTONE])
     const first = await readTally()
-    expect(first, 'GET getPickupItems after the first visit').toEqual([{ gameFileName: ROM, total: 5, items: FIRST_TALLY }])
+    expect(first, 'GET getPickupItems after the first visit').toEqual([{ gameFileName: ROM, milestone: MILESTONE, total: 5, items: FIRST_TALLY }])
     // "No items yet" shows until the window's first load has returned.
     await expect.poll(() => windowRows(pickup), { timeout: 10_000 }).toEqual(tallyRows(first[0]))
     // A missing Items/<id>.png leaves the hidden image with naturalWidth 0.
@@ -242,6 +246,7 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     for (const t of newTakes) counts.set(t.item, (counts.get(t.item) ?? 0) + 1)
     const second = await readTally()
     expect(second.length, 'games in GET getPickupItems').toBe(1)
+    expect(second[0].milestone, 'the milestone after the later visit').toBe(MILESTONE)
     expect(second[0].total, 'the total after the later visit').toBe(5 + newTakes.length)
     expect(new Map(second[0].items.map((i) => [i.id, i.count])), 'the counts after the later visit').toEqual(counts)
     const rows = tallyRows(second[0])
