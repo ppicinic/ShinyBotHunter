@@ -1,7 +1,7 @@
 # Spec: Pickup items dashboard
 
-Status: In progress (approved by the owner 2026-11-10; feature/pickup-items).
-Last updated: 2026-11-10 (item sprites built, I4 #302 and I5 #303)
+Status: Implemented (approved by the owner 2026-11-10; feature/pickup-items, QA green 2026-11-10).
+Last updated: 2026-11-10 (implemented; I1 to I6, QA green)
 Owner: Phil
 Related: [Pickup mode spec](pickup-mode.md) (the takes this counts), [the dashboard guide page](../guide/03-dashboard.md), [Wild encounters guide page](../guide/04-hunts/01-wild-encounter.md), [feature workflow](feature-workflow.md)
 
@@ -101,7 +101,17 @@ Where the build differs from this spec as approved (2026-11-10). The requirement
 - FR-6, FR-7: the main process holds the tallies (fetched by the GET when the switch goes on, then each push) and the switch's state; the windows read main's copy over the IPC invoke `get-pickup-items` and the broadcast `pickup-items`, and the Dashboard Config tab reads the switch over `get-pickup-windows` on mount, because the tab unmounts when it is not shown (#297).
 - FR-6: Pickup windows closed by hand have their own set, apart from the phase windows', so a phase sync cannot reopen them (#297).
 - FR-9: `--parsepokeapi` calls the item step from `SetupCommands` after `ScrapePokeApi()` returns, which leaves that method unchanged. The first run on the dev PC, 2026-11-10, wrote 514 pictures with no failures and no item lacking a sprite; `Items/17.png` is the Potion and `Items/221.png` King's Rock (#302).
+- QA: the switch is a controlled box that ticks only after main's GET and window sync, so the scenario clicks it and waits up to 30 s for the tick instead of Playwright's `check()`; one run in five took 2.4 s, and an earlier run failed on the 5 s default.
 - QA: `hgss-pickup-items-window` also waits for a later take with the window open and checks the push reached it, for at most 10 won battles (#298).
+
+## Evidence
+
+QA ran on the feature tip 174f5e7 plus the switch-wait fix in the commit that adds this section, 2026-11-10, through the Electron UI with the Playwright driver, screen-recorded. The run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/` on the dev PC (gitignored):
+
+- `hgss-pickup-items-window`, five cycles in a row, all green: `20261110-113818`, `20261110-113943`, `20261110-114333`, `20261110-114930`, `20261110-115057` (each `-hgss-route33-dashboard`). Each showed the five takes at 1 and a total of 5 equal to the GET, every item sprite loaded, more than one cell to a row, the header `HG-Pickup-Held` then `Route 33`, a later take pushed into the open window, and the switch off closing it. The switch ticked in 48 to 2 388 ms.
+- `hgss-pickup-take`: green on the same tip, five takes in slot order on the first visit.
+- Save equals `.bak` after every run.
+- The item sprite fetch (FR-9) ran once on the dev PC: 514 pictures, no failures.
 
 ## Open questions
 

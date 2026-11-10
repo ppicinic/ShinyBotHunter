@@ -176,8 +176,11 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     // loaded and the cells several to a row. The hunt keeps running.
     await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
     // click, not check(): the box is controlled and ticks only once main has opened the windows.
+    // The tick waits on main's GET and window sync, so it gets the window wait's 30 s, not the default 5 s.
+    const switchedAt = Date.now()
     await pickupSwitch.click()
-    await expect(pickupSwitch).toBeChecked()
+    await expect(pickupSwitch).toBeChecked({ timeout: 30_000 })
+    step(`switch ticked in ${Date.now() - switchedAt} ms`)
     const pickup = await windowByTitle(app, PICKUP_TITLE, 30_000)
     expect(await pickupTitles(app), 'the Pickup windows after the switch on').toEqual([PICKUP_TITLE])
     // The header: the game file, then the milestone once the first load has returned.
@@ -261,7 +264,7 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     // 13. Switch off: the window closes and no Pickup window is left.
     const closed = pickup.waitForEvent('close', { timeout: 30_000 })
     await pickupSwitch.click()
-    await expect(pickupSwitch).not.toBeChecked()
+    await expect(pickupSwitch).not.toBeChecked({ timeout: 30_000 })
     await closed
     await expect.poll(() => pickupTitles(app!), { timeout: 10_000 }).toEqual([])
     await shotAll('06-switch-off', pages)
