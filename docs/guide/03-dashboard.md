@@ -161,7 +161,9 @@ Every encounter ever recorded is kept in the database; see [Your data](06-your-d
 
 ## Watch the Pickup items
 
-A Pickup items window shows what a Pickup hunt has taken on one game file: each item by name, how many of it, and a total at the bottom. There is one window per game file the bot has taken items on.
+A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture, name and count, several to a row as the window's width fits, and the total below them. There is one window per game file the bot has taken items on.
+
+The pictures come from the `Items` folder in the sprite folder (see [Fill in the Pokemon data](01-install.md#fill-in-the-pokemon-data-once-per-pc)). An item without a picture there shows only its name and count.
 
 It counts only the items the bot itself took during a Pickup hunt since you last [started the bot](01-install.md#start-the-bot-for-the-first-time) (`ShinyBotHunter.exe`). Starting another hunt does not reset the counts; it adds to them. When you restart the bot, the counts start again from zero. Items you take by hand in the emulator are not counted.
 
