@@ -30,26 +30,30 @@ export function PickupWindow({ gameFileName }: PickupWindowProps): JSX.Element {
           {!tally ? (
             <div className="flex items-center justify-center h-full text-slate-500 text-sm">No items yet</div>
           ) : (
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-card-border">
-                  <th className="text-left text-xs text-slate-400 font-medium pb-1 pr-3">Item</th>
-                  <th className="text-right text-xs text-slate-400 font-medium pb-1">Count</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(5rem,1fr))]">
                 {tally.items.map((item) => (
-                  <tr key={item.id} className="border-b border-card-border/30">
-                    <td className="py-1 pr-3 text-white text-sm">{item.name}</td>
-                    <td className="py-1 text-right text-white font-medium text-sm">{item.count}</td>
-                  </tr>
+                  <div key={item.id} data-testid="pickup-item" className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 flex items-center justify-center">
+                      <img
+                        src={`sprite://local/Items/${item.id}.png`}
+                        alt={item.name}
+                        className="pokemon-sprite w-12 h-12 object-contain"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    </div>
+                    <span data-testid="pickup-item-name" className="text-white text-xs">{item.name}</span>
+                    <span data-testid="pickup-item-count" className="text-white font-medium text-sm">{item.count}</span>
+                  </div>
                 ))}
-                <tr>
-                  <td className="py-1 pr-3 text-slate-400 text-sm font-semibold">Total</td>
-                  <td className="py-1 text-right text-white font-semibold text-sm">{tally.total}</td>
-                </tr>
-              </tbody>
-            </table>
+              </div>
+              <div data-testid="pickup-total" className="flex justify-between border-t border-card-border mt-2 py-1">
+                <span className="text-slate-400 text-sm font-semibold">Total</span>
+                <span className="text-white font-semibold text-sm">{tally.total}</span>
+              </div>
+            </>
           )}
         </div>
       </div>

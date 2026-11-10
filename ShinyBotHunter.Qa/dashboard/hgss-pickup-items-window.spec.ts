@@ -61,9 +61,13 @@ async function pickupTitles(app: ElectronApplication): Promise<string[]> {
   return titles
 }
 
-// The Pickup window's rows as [name, count], the Total row last.
-const windowRows = (pickup: Page): Promise<string[][]> =>
-  pickup.locator('tbody tr').evaluateAll((rows) => rows.map((r) => Array.from(r.querySelectorAll('td')).map((td) => (td.textContent ?? '').trim())))
+// The Pickup window's cells as [name, count], then the Total line as ['Total', total].
+const windowRows = async (pickup: Page): Promise<string[][]> => {
+  const cells = await pickup.getByTestId('pickup-item').evaluateAll((items) =>
+    items.map((c) => ['pickup-item-name', 'pickup-item-count'].map((id) => (c.querySelector(`[data-testid=${id}]`)?.textContent ?? '').trim())))
+  const totals = await pickup.getByTestId('pickup-total').evaluateAll((t) => t.map((e) => Array.from(e.children).map((c) => (c.textContent ?? '').trim())))
+  return [...cells, ...totals]
+}
 const tallyRows = (tally: Tally): string[][] => [...tally.items.map((i) => [i.name, String(i.count)]), ['Total', String(tally.total)]]
 
 test('HGSS Pickup items window: off at start, on after the first visit shows the five takes, a later take is pushed into it, off closes it', async () => {
@@ -166,7 +170,8 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     for (const t of took) step(`took item ${t.item} from slot ${t.slot} (${t.name})`)
     expect(took.map((t) => t.item), 'the first visit\'s takes, in slot order').toEqual(HELD_ITEMS)
 
-    // 11. Switch on: one window for the game, equal to the GET, five items at 1 and a total of 5. The hunt keeps running.
+    // 11. Switch on: one window for the game, equal to the GET, five items at 1 and a total of 5, each cell's sprite
+    // loaded and the cells several to a row. The hunt keeps running.
     await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
     await pickupSwitch.check()
     await expect(pickupSwitch).toBeChecked()
@@ -176,6 +181,17 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     expect(first, 'GET getPickupItems after the first visit').toEqual([{ gameFileName: ROM, total: 5, items: FIRST_TALLY }])
     // "No items yet" shows until the window's first load has returned.
     await expect.poll(() => windowRows(pickup), { timeout: 10_000 }).toEqual(tallyRows(first[0]))
+    // A missing Items/<id>.png leaves the hidden image with naturalWidth 0.
+    await expect.poll(
+      () => pickup.locator('[data-testid=pickup-item] img').evaluateAll((imgs) =>
+        imgs.map((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0)),
+      { timeout: 10_000, message: 'the item sprites did not all load; run --parseitemsprites on the QA PC' }
+    ).toEqual([true, true, true, true, true])
+    const onFirstRow = await pickup.getByTestId('pickup-item').evaluateAll((cells) => {
+      const top = cells[0].getBoundingClientRect().top
+      return cells.filter((c) => c.getBoundingClientRect().top === top).length
+    })
+    expect(onFirstRow, 'the cells on the grid\'s first row').toBeGreaterThan(1)
     await shotAll('04-switch-on', { admin, recent, pickup })
 
     // 12. Let the hunt run until a later visit takes an item, for at most MAX_BATTLES won battles; at that visit's trip
