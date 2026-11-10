@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 namespace ShinyBotHunter.Scripts
 {
@@ -15,7 +16,11 @@ namespace ShinyBotHunter.Scripts
     internal record PokemonDexEntry(string name, string url);
     internal record PokemonSpecies(string name, string url);
     internal record Pokemon(PokemonSpecies species, string name, int id, PokemonSprite sprites, PokemonForm[] forms, LearnedMoves[] moves);
-    internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female);
+    internal record PokemonSprite(string front_default, string front_shiny, string front_female, string front_shiny_female, SpriteOther? other, SpriteVersions? versions);
+    internal record SpriteOther(PokemonSprite? showdown);
+    internal record SpriteVersions([property: JsonPropertyName("generation-v")] SpriteGenV? GenerationV);
+    internal record SpriteGenV([property: JsonPropertyName("black-white")] SpriteBlackWhite? BlackWhite);
+    internal record SpriteBlackWhite(PokemonSprite? animated);
     internal record PokemonForm(string name, string url);
     internal record PokemonFormData(string name, VersionGroup version_group, PokemonSprite sprites);
     internal record VersionGroup(string name, string url);
@@ -65,6 +70,50 @@ namespace ShinyBotHunter.Scripts
                     await File.WriteAllBytesAsync(filePath, imageBytes);
                 }
             }
+        }
+
+        // FR-2 and FR-3: the animated GIF for one still, first hit wins. Generations 1 to 5 prefer the
+        // black-white pixel animation, 6 to 9 Showdown's. A form with no animation of its own takes its
+        // Pokemon's (c) unless Showdown has it under its own name (d). A female-only species, which
+        // PokeAPI marks by front_female equal to front_default, takes the ordinary animation as female.
+        internal static string? AnimatedSpriteUrl(string form, int speciesId, PokemonSprite own, PokemonSprite? owner, bool shiny, bool female)
+        {
+            string? Field(PokemonSprite? sprite) => sprite is null ? null : (shiny, female) switch
+            {
+                (false, false) => sprite.front_default,
+                (true, false) => sprite.front_shiny,
+                (false, true) => sprite.front_female,
+                (true, true) => sprite.front_shiny_female,
+            };
+            string? Sources(PokemonSprite? sprite)
+            {
+                string? blackWhite = Field(sprite?.versions?.GenerationV?.BlackWhite?.animated);
+                string? showdown = Field(sprite?.other?.showdown);
+                return speciesId <= 649 ? blackWhite ?? showdown : showdown ?? blackWhite;
+            }
+
+            string? showdownName = ShowdownAniName(form);
+            string? url = Sources(own)
+                ?? (showdownName is null ? Sources(owner) : null)
+                ?? (showdownName is not null && !female ? $"https://play.pokemonshowdown.com/sprites/{(shiny ? "ani-shiny" : "ani")}/{showdownName}.gif" : null);
+            if (url is null && female && own.front_female == own.front_default)
+            {
+                return AnimatedSpriteUrl(form, speciesId, own, owner, shiny, female: false);
+            }
+            return url;
+        }
+
+        // Showdown's ani folder name for the forms PokeAPI has no animation for.
+        internal static string? ShowdownAniName(string form)
+        {
+            if (form == "furfrou-la-reine") return "furfrou-lareine";
+            if (form == "maushold-family-of-three") return "maushold";
+            string[] parts = form.Split('-');
+            if (parts.Length == 5 && parts[0] == "alcremie" && parts[4] == "sweet")
+            {
+                return parts[3] == "strawberry" ? $"alcremie-{parts[1]}{parts[2]}" : $"alcremie-{parts[1]}{parts[2]}-{parts[3]}";
+            }
+            return null;
         }
 
         private async Task<Dictionary<int, PokemonMoveMetadata>> ScrapeMovesApiAsync()
