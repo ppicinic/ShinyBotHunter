@@ -32,6 +32,7 @@ export interface Appearance {
   nightStart: string
   default: ThemeChoice
   windows: Record<string, ThemeChoice>
+  animations: boolean
 }
 
 export interface SharedDashboardConfig {
