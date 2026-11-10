@@ -218,7 +218,7 @@ The bot recognises HeartGold, SoulSilver, Ruby and Sapphire. HeartGold and SoulS
 
 **Saves.** BizHawk keeps each game's save as `<ROM file name>.SaveRAM`, in a folder for that console inside your BizHawk folder. Each copy of a ROM has its own save. The folders are BizHawk's standard ones, `NDS\SaveRAM` for HeartGold and SoulSilver and `GBA\SaveRAM` for Ruby and Sapphire, and there is nothing to set up.
 
-**Sprites.** Make one folder for the Pokemon pictures, and inside it four empty folders: `Default`, `Shiny`, `Female_Default` and `Female_Shiny`. Set that folder as `SpriteBaseDirectory` and as the dashboard's `spritesRootPath`. "Fill in the Pokemon data" below fills the four folders.
+**Sprites.** Make one folder for the Pokemon pictures, and inside it four empty folders: `Default`, `Shiny`, `Female_Default` and `Female_Shiny`. Set that folder as `SpriteBaseDirectory` and as the dashboard's `spritesRootPath`. "Fill in the Pokemon data" below fills the four folders. The data step also makes an `Animated` folder inside it, with the same four folders, and fills it with moving pictures (about 230 MB). You do not make it yourself.
 
 ## Build the bot and the dashboard
 
@@ -249,6 +249,7 @@ You need:
 - the sprite folder and its four folders made, as described under "Where do the game files go?";
 - the MongoDB and sprite settings set, as shown on the [Configure](02-configure.md) page;
 - an internet connection.
+- optional: `ffmpeg` on the PATH. Without it, 11 Pokemon have no moving picture (the six Iron Pokemon, Ogerpon and its three masks, and Pecharunt). They keep their still picture, which the dashboard moves gently.
 
 Steps:
 
@@ -260,7 +261,7 @@ Steps:
 
    If this PC already has its Pokemon data and only needs the item pictures, run `dotnet run --project ShinyBotHunter -c Release -- --parseitemsprites` instead. It does not touch MongoDB.
 
-**Expected result:** it prints progress such as `Scraping move metadata...` and `Fetching Dex entries...`, then `Saved to MongoDB successfully!`. It then prints `Fetching item sprites...`, ends with `Item sprites done.`, and exits by itself. The sprite folders now hold pictures, and the sprite folder has a new `Items` folder of item pictures named by item number (for example `17.png`, the Potion). A few `has no sprite` lines are normal.
+**Expected result:** it prints progress such as `Scraping move metadata...` and `Fetching Dex entries...`, then `Saved to MongoDB successfully!`. After that it prints one line per moving-picture folder, such as `Animated/Default: 1395 of 1395`. A Pokemon with no moving picture is listed under its folder; Eevee under the two female folders is normal. Without `ffmpeg` it prints `ffmpeg not found on the PATH: skipped the Wikidex clips (step e) for: ...` and goes on. Running the step again downloads only the pictures that are missing. It then prints `Fetching item sprites...`, ends with `Item sprites done.`, and exits by itself. The sprite folders now hold pictures, and the sprite folder has a new `Items` folder of item pictures named by item number (for example `17.png`, the Potion). A few `has no sprite` lines are normal.
 
 ## Create the encounter database
 
