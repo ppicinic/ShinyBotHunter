@@ -188,6 +188,15 @@ export function AppearanceSection({ showFeedback }: Props): JSX.Element {
   return (
     <div>
       {heading}
+      <label className="flex items-center gap-1 text-xs text-slate-300 mb-2">
+        <input
+          type="checkbox"
+          aria-label="Animations"
+          checked={appearance.animations}
+          onChange={(e) => post({ ...(latest.current as Appearance), animations: e.target.checked })}
+        />
+        Animations
+      </label>
       {showTimes && (
         <div className="flex gap-4 items-center mb-2 text-xs text-slate-300">
           <label className="flex items-center gap-2">

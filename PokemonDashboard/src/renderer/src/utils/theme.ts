@@ -92,10 +92,16 @@ function storageKey(windowName: string): string {
   return `dashboard-theme:${windowName}`
 }
 
+// One key for every window: the switch is the same for all of them.
+const ANIMATIONS_KEY = 'dashboard-animations'
+
 // Before first paint: the last theme this window applied. With none saved it stays Midnight.
+// With no animations value saved the attribute stays absent, which the CSS reads as on.
 export function initTheme(windowName: string): void {
   const saved = localStorage.getItem(storageKey(windowName))
   if (saved !== null) document.documentElement.dataset.theme = saved
+  const animations = localStorage.getItem(ANIMATIONS_KEY)
+  if (animations !== null) document.documentElement.dataset.animations = animations
 }
 
 // Touched only on the renderer's single thread (the AppContext effect and this timer's callback).
@@ -108,6 +114,9 @@ export function applyTheme(appearance: Appearance, windowName: string): void {
   const theme = resolveTheme(appearance, windowName, now)
   document.documentElement.dataset.theme = theme
   localStorage.setItem(storageKey(windowName), theme)
+  const animations = appearance.animations ? 'on' : 'off'
+  document.documentElement.dataset.animations = animations
+  localStorage.setItem(ANIMATIONS_KEY, animations)
   const delay = nextSwitchDelay(appearance, windowName, now)
   if (delay !== null) timer = setTimeout(() => applyTheme(appearance, windowName), delay)
 }

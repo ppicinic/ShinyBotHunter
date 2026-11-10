@@ -246,9 +246,15 @@
   animation: theme-breathe 2.4s ease-in-out infinite;
 }
 
-/* Reduced motion: the grounds and glows stop where they are and the snow is off. !important because
+/* Reduced motion: the grounds and glows stop where they are and the snow stays, still. !important because
    index.css comes after this file and sets the card and header animation at the same specificity. */
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after { animation: none !important; }
-  body::before, body::after, #root::after { content: none !important; }
+  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after,
+  body::before, body::after, #root::after { animation: none !important; }
 }
+
+/* The Admin Animations switch: the same stop; the GIFs, the drop-in and the idle movement are left alone. */
+:root[data-animations='off'] .dashboard-card, :root[data-animations='off'] .dashboard-card::before,
+:root[data-animations='off'] .card-header, :root[data-animations='off'] .card-header::after,
+:root[data-animations='off'] body::before, :root[data-animations='off'] body::after,
+:root[data-animations='off'] #root::after { animation: none !important; }
