@@ -42,6 +42,13 @@ namespace ShinyBotHunter.Controllers
             return Ok();
         }
 
+        [HttpPost("admin/appearance")]
+        public async Task<IActionResult> SetAppearance([FromBody] Appearance appearance)
+        {
+            await adminService.SetAppearanceAsync(appearance);
+            return Ok();
+        }
+
         [HttpGet("metadata")]
         public ActionResult<AdminMetadata> GetMetadata()
         {
