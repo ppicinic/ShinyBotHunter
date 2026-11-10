@@ -1,0 +1,18 @@
+/* ============================================================
+   Themes: RGB triplets, picked by <html data-theme>. Midnight is the default.
+   ============================================================ */
+:root {
+  --bg: 13 13 26;
+  --card-bg: 26 26 46;
+  --card-header: 22 33 62;
+  --card-border: 45 45 78;
+  --ink: 255 255 255;
+  --n-100: 241 245 249; --n-200: 226 232 240; --n-300: 203 213 225;
+  --n-400: 148 163 184; --n-500: 100 116 139; --n-600: 71 85 105;
+  --n-700: 51 65 85;    --n-800: 30 41 59;    --n-900: 15 23 42;
+  --accent-500: 99 102 241; --accent-600: 79 70 229; --accent-700: 67 56 202;
+  --accent-2: 124 58 237;
+  /* Resolves to the active theme's border; a theme sets --panel only for black glass. */
+  --panel: var(--card-border);
+  --scroll-thumb: 61 61 107; --scroll-thumb-hover: 90 90 158;
+}
