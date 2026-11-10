@@ -106,7 +106,7 @@ namespace ShinyBotHunter.BotEvents
                     await run("T.A");
                     await GameStateWait.UntilAsync(game, $"the party list after slot {i + 1}'s take", s => s.AppState == addresses.PartyMenuList, step, ct);
                     Console.WriteLine($"[Pickup] took item {member.HeldItem} from slot {i + 1} ({member.Name})");
-                    await tally.RecordAsync(gameFileName, member.HeldItem);
+                    await tally.RecordAsync(gameFileName, state.Milestone, member.HeldItem);
                 }
 
                 await run(Touch(config.CancelTouch));

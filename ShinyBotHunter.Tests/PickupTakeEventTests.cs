@@ -89,7 +89,7 @@ namespace ShinyBotHunter.Tests
 
         private static GameState Deciding()
         {
-            GameState state = new();
+            GameState state = new() { Milestone = "Route 33" };
             state.State.Push(EventState.DecideOverworldAction);
             return state;
         }
@@ -129,6 +129,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(park);
             PickupItemsResponse took = Assert.Single(tally.Read());
             Assert.Equal("HG-Test", took.GameFileName);
+            Assert.Equal("Route 33", took.Milestone);
             Assert.Equal(2, took.Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1), new PickupItemCount(26, "Super Potion", 1)], took.Items);
             Assert.Equal(2, pushes.Count);
