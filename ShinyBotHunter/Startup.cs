@@ -100,6 +100,7 @@ namespace ShinyBotHunter
                 .AddSingleton<IEncounterDao, PostgreSQLEncounterDao>()
                 .AddSingleton<MongoDbConnection>()
                 .AddSingleton<MongoCaughtPokemonDao>()
+                .AddSingleton<MongoDashboardConfigDao>()
                 .AddSingleton<PhaseInfoService>()
                 .AddSingleton<RomInfoService>()
                 .AddSingleton<AdminService>()
