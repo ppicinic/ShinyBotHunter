@@ -13,6 +13,7 @@ export function DashboardConfigTab(): JSX.Element {
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [recentCount, setRecentCount] = useState<number>(dashboardConfig.recentEncounterCount)
   const [loading, setLoading] = useState(false)
+  const [pickupWindowsOn, setPickupWindowsOn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -39,6 +40,11 @@ export function DashboardConfigTab(): JSX.Element {
       .then((data: GameRomInfo[]) => setAllGames(data))
       .catch((err) => console.error('Failed to load games:', err))
   }, [apiUrl])
+
+  // The tab unmounts when not shown; main owns the switch, so read it back on every mount
+  useEffect(() => {
+    window.api.getPickupWindows().then(setPickupWindowsOn)
+  }, [])
 
   // Keep recentCount in sync when dashboardConfig updates from SignalR
   useEffect(() => {
@@ -95,6 +101,18 @@ export function DashboardConfigTab(): JSX.Element {
       const res = await api.updateRecentEncounterCount(apiUrl, recentCount)
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       showFeedback(`Recent encounter count updated to ${recentCount}`)
+    } catch (err) {
+      showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handlePickupWindowsChange = async (on: boolean): Promise<void> => {
+    setLoading(true)
+    try {
+      await window.api.setPickupWindows(on)
+      setPickupWindowsOn(on)
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
     } finally {
@@ -212,6 +230,22 @@ export function DashboardConfigTab(): JSX.Element {
             Current: {dashboardConfig.recentEncounterCount}
           </span>
         </div>
+      </div>
+
+      {/* Pickup items windows */}
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+          Pickup Items Windows
+        </h3>
+        <label className="flex items-center gap-2 text-sm text-white">
+          <input
+            type="checkbox"
+            checked={pickupWindowsOn}
+            disabled={loading}
+            onChange={(e) => handlePickupWindowsChange(e.target.checked)}
+          />
+          Pickup items windows
+        </label>
       </div>
 
       {/* Feedback */}

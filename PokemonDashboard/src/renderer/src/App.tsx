@@ -5,6 +5,7 @@ import { AppProvider } from './context/AppContext'
 import { AdminWindow } from './windows/AdminWindow'
 import { RecentWindow } from './windows/RecentWindow'
 import { PhaseWindow } from './windows/PhaseWindow'
+import { PickupWindow } from './windows/PickupWindow'
 
 export default function App(): JSX.Element {
   const params = new URLSearchParams(window.location.search)
@@ -21,6 +22,7 @@ export default function App(): JSX.Element {
           gameName={params.get('gameName') || null}
         />
       )}
+      {card === 'pickup' && <PickupWindow gameFileName={params.get('game') ?? ''} />}
     </AppProvider>
   )
 }
