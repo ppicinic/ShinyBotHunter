@@ -38,6 +38,7 @@ A dashboard window per game that shows what the Pickup hunt has taken so far: ea
 | FR-9 | The item sprite fetcher: `PokeApiParser` gains a step that lists every item on pokeapi.co (`item?limit=3000`), reads each item, and for an item with a `generation-iv` game index and a `sprites.default` picture downloads it to `{SpriteBaseDirectory}/Items/{game index}.png`, through the existing `DownloadImageAsync`, which skips a file already there. The game index is the HGSS item id the tally counts (checked: Potion 17, King's Rock 221). It creates the `Items` folder if missing. It runs at the end of `--parsepokeapi`, and alone as `--parseitemsprites`, so an install that already has its Pokémon data need not redo the MongoDB write. An item with no sprite, or a failed request, is logged with its name and skipped; the step keeps going. | Must | Run by hand once against pokeapi.co: `Items/17.png` is the Potion and `Items/221.png` King's Rock. No unit test: the step is the network and file boundary, as the Pokémon scrape is. |
 | FR-10 | The window lays the items out several to a row, as many as its width fits (a CSS grid with `auto-fill`), to save space (owner, 2026-11-10). Each cell shows the item's sprite from `sprite://local/Items/{id}.png`, served by the dashboard's existing `sprite` protocol under `spritesRootPath`, with the name and count under it; the order stays the backend's (FR-4), read left to right. The total stays on its own line below the grid. An item with no file shows no picture and keeps its cell, name and count (the image hides on its load error). | Must | QA: the five cells show their pictures, more than one to a row, in the screenshot. |
 | FR-11 | The guide: [Install](../guide/01-install.md)'s "Fill in the Pokemon data" says it also fills an `Items` folder with item pictures and gives `--parseitemsprites` for an install that only needs those; [the dashboard](../guide/03-dashboard.md)'s "Watch the Pickup items" says each row shows the item's picture when the folder has it. | Must | Reviewer check. |
+| FR-12 | The header: each Pickup window's header reads like a phase window's, the game file name in small grey text, then the milestone as the title (owner, 2026-11-10). The milestone is the one of the hunt that made that game's latest take: the tally keeps it per game file beside the counts (FR-1), `RecordAsync` takes it from `GameState.Milestone`, and FR-4's JSON and FR-5's push carry it as `milestone`. Still one window per game (owner: "just one window per game"); a game hunted on two milestones shows the latest, and its counts keep adding (FR-1). The OS window title stays `Pokemon Dashboard — Pickup: {game file}`. | Must | Unit test: two takes on one game under milestones A then B read milestone B; QA: the header shows `HG-Pickup-Held` and the run's milestone. |
 
 ## Design
 
@@ -83,6 +84,8 @@ The item sprites (added 2026-11-10, after I1 to I3 merged):
 
 I4 and I5 have disjoint files and run in parallel. I5 works from FR-9's file name; QA runs on the tip after both.
 
+| I6 | FR-12: the milestone in the tally, the JSON and the window header | `Service/PickupTally.cs`, `Service/IElectronClient.cs`, `BotEvents/PickupTakeEvent.cs`, `PickupTallyTests.cs`, `PickupTakeEventTests.cs`, `shared/windowContracts.ts`, `PickupWindow.tsx`, `hgss-pickup-items-window.spec.ts`, `docs/guide/03-dashboard.md` |
+
 ## What diverged
 
 Where the build differs from this spec as approved (2026-11-10). The requirements above stay as written; this list keeps the record.
@@ -103,5 +106,6 @@ Where the build differs from this spec as approved (2026-11-10). The requirement
 
 ## Changelog
 
+- 2026-11-10: FR-12, the header reads game file then milestone: "i rather the title be the game name then the milestone", "just one window per game".
 - 2026-11-10: item sprites, FR-9 to FR-11, from the owner's ask: "let's add sprites and let's add a sprite image fetcher like we do for pokemon". FR-10 then made a grid, several items to a row: "i think items can be multiple per row to consolidate space".
 - 2026-11-10: first draft, from the owner's answers: totals only, keep adding until the backend restarts, a manual switch, one window per game.
