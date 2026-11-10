@@ -86,6 +86,8 @@ public sealed class DiscordBotService
         // 3. Send the custom text message, embed, and the 5 buttons
         var message = await channel.SendMessageAsync(embed: eb.Build(), components: component);
         string? pendingChoice = null;
+        // The move the clicked slot button names; at Confirm Choice the clicked button is Confirm Choice itself.
+        string? pendingMoveName = null;
 
         async Task ButtonHandler(SocketMessageComponent interaction)
         {
@@ -103,6 +105,7 @@ public sealed class DiscordBotService
             if (customId.StartsWith("move_") || customId == "do_not_learn")
             {
                 pendingChoice = customId;
+                pendingMoveName = buttonLabel;
 
                 // Build "Are you sure?" confirmation buttons
                 var confirmComponent = new ComponentBuilder()
@@ -173,7 +176,7 @@ public sealed class DiscordBotService
                     {
                         EmbedBuilder eb3 = new EmbedBuilder();
                         eb3.WithTitle($"{pokemon.Name} - New Move")
-                            .WithDescription($"{pokemon.Name} forget {buttonLabel}, and learned {newMove.Name}!");
+                            .WithDescription($"{pokemon.Name} forgot {pendingMoveName}, and learned {newMove.Name}!");
                         await interaction.UpdateAsync(msg =>
                         {
                             msg.Embed = eb3.Build();
@@ -193,6 +196,7 @@ public sealed class DiscordBotService
             if (customId == "confirm_no")
             {
                 pendingChoice = null;
+                pendingMoveName = null;
                 await interaction.UpdateAsync(msg => {
                     msg.Embed = eb.Build();
                     msg.Components = component;
