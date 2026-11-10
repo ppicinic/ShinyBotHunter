@@ -18,13 +18,19 @@ namespace ShinyBotHunter.Tools
             }
             switch (args[0].ToLower())
             {
+                case "--parseitemsprites":
                 case "--parsepokeapi":
                     var config = new ConfigurationBuilder()
                         .AddJsonFile("appsettings.json", optional: false)
                         .AddUserSecrets<Startup>()
                         .Build();
                     var settings = config.GetSection("ApplicationSettings").Get<ApplicationSettings>()!;
-                    await new PokeApiParser(Options.Create(settings)).ScrapePokeApi();
+                    var parser = new PokeApiParser(Options.Create(settings));
+                    if (args[0].ToLower() == "--parsepokeapi")
+                    {
+                        await parser.ScrapePokeApi();
+                    }
+                    await parser.ScrapeItemSprites();
                     return true;
                 case "--generatemapdatahgss":
                     if (args.Length < 5)
