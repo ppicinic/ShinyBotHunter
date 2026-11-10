@@ -1,6 +1,6 @@
 # Spec: a livelier dashboard (animated sprites, themes)
 
-Status: Approved for build (owner, 2026-11-10). Not implemented. The spike's prototype, scripts and mocks are on the `spike/dashboard-alive-prototype` branch, which is not for merge.
+Status: In progress (approved for build by the owner, 2026-11-10; epic on feature/dashboard-alive). The spike's prototype, scripts and mocks are on the `spike/dashboard-alive-prototype` branch, which is not for merge.
 Last updated: 2026-11-10
 Owner: Phil
 Related: [research: the spike](../research/dashboard-alive.md) (the source for every count here), [pickup items dashboard](pickup-items-dashboard.md) (the item sprite fetcher this sits beside), [feature workflow](feature-workflow.md), the guide pages [Install](../guide/01-install.md) and [Dashboard](../guide/03-dashboard.md).
