@@ -35,6 +35,7 @@ namespace ShinyBotHunter.BotEvents
         private PokemonMetadataService metadataService;
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
+        private PickupTally pickupTally;
 
         public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams)
         {
@@ -45,6 +46,7 @@ namespace ShinyBotHunter.BotEvents
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
+            this.pickupTally = provider.GetRequiredService<PickupTally>();
         }
 
         public override async Task<EventState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -285,7 +287,7 @@ namespace ShinyBotHunter.BotEvents
                     // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
                     PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
                     // The visit is awaited inline; a stop has already parked the stack in Waiting.
-                    if (!await new PickupTakeEvent(state.Bot, reader, config).ExecuteWithResultAsync(state, cancellationToken))
+                    if (!await new PickupTakeEvent(state.Bot, reader, config, pickupTally).ExecuteWithResultAsync(state, cancellationToken))
                     {
                         return;
                     }
