@@ -113,6 +113,7 @@ namespace ShinyBotHunter
                 .AddSingleton<LegalityService>()
                 .AddSingleton<RsStartMenuService>()
                 .AddSingleton<StarterHuntStateStore>()
+                .AddSingleton<PickupTally>()
                 .AddSingleton(new DiscordSocketConfig
                 {
                     // Safe default for initial bot setup; add privileged intents later if needed.
