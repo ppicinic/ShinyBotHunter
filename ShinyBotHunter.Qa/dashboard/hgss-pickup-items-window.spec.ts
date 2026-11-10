@@ -9,7 +9,7 @@ import {
 } from './driver'
 import { backendLines, backendLog, CRASHED, Y_ADDR } from './headbutt'
 import {
-  ABILITY_PICKUP, fillPickupForm, parseHeld, parseTook, parseTrip, pickupHolders, PICKUP_STOP, PICKUP_TRIP, readPartyRam
+  ABILITY_PICKUP, fillPickupForm, parseHeld, parseTook, pickupHolders, PICKUP_STOP, PICKUP_TRIP, readPartyRam
 } from './pickup'
 
 // hgss.qa-pickup-held: Typhlosion Lv 37 leading, five Aipom with Pickup in slots 2 to 6, each holding an item.

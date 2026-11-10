@@ -66,6 +66,18 @@ One scenario, `hgss-pickup-items-window`, on `hgss.qa-pickup-held` (five items i
 
 I1 and I2 have disjoint files and run in parallel (I2 works from FR-4's JSON shape). I3 after both.
 
+## What diverged
+
+Where the build differs from this spec as approved (2026-11-10). The requirements above stay as written; this list keeps the record.
+
+- FR-1: the tally is `Service/PickupTally.cs`, registered in `Startup.cs` (the spec's task table said `Program.cs`). Its push is a delegate set by the DI constructor from `IHubContext<ElectronHub, IElectronClient>`; an `internal` constructor takes the delegate as the test seam (#296).
+- FR-3: the names are `GameInfo.GetStrings("en").GetItemStrings(EntityContext.Gen4, GameVersion.HG)` from PKHeX.Core 26.7.7 (#296).
+- FR-4: `BotController` takes the tally by action injection on `GetPickupItems`, not its constructor, so the thirteen existing `new BotController(...)` test calls stay unchanged (#296).
+- FR-6: no dashboard sort or total helper and no Vitest for one. The backend sends the items sorted with the total (FR-4), so the window shows them as received (#297).
+- FR-6, FR-7: the main process holds the tallies (fetched by the GET when the switch goes on, then each push) and the switch's state; the windows read main's copy over the IPC invoke `get-pickup-items` and the broadcast `pickup-items`, and the Dashboard Config tab reads the switch over `get-pickup-windows` on mount, because the tab unmounts when it is not shown (#297).
+- FR-6: Pickup windows closed by hand have their own set, apart from the phase windows', so a phase sync cannot reopen them (#297).
+- QA: `hgss-pickup-items-window` also waits for a later take with the window open and checks the push reached it, for at most 10 won battles (#298).
+
 ## Open questions
 
 - None blocking. The planner confirms the PKHeX.Core call for the HGSS item list and the game-file value.
