@@ -14,7 +14,7 @@ A dashboard window per game that shows what the Pickup hunt has taken so far: ea
 - G1: the operator sees, per game file, how many of each item Pickup has taken since the backend started, by item name.
 - G2: the windows open only when the operator turns them on, and close when turned off.
 - G3: nothing new is persisted: no table, no collection, no file. (The item sprites in G4 are downloaded pictures, like the Pokémon sprites, not session data.)
-- G4: each item row shows the item's picture, fetched once from pokeapi.co the way the Pokémon sprites are (owner, 2026-11-10).
+- G4: each item shows its picture, several items to a row,, fetched once from pokeapi.co the way the Pokémon sprites are (owner, 2026-11-10).
 
 ## Non-goals
 
@@ -36,7 +36,7 @@ A dashboard window per game that shows what the Pickup hunt has taken so far: ea
 | FR-7 | The toggle: a `Pickup items windows` switch in the Admin window's Dashboard Config tab. Off at every dashboard start (not saved). On opens the windows for every game that has a tally and keeps opening them as new games get one; off closes them all. No `config.json` key. | Must | QA: the switch opens and closes the windows; a dashboard restart starts with it off. |
 | FR-8 | The guide page [the dashboard](../guide/03-dashboard.md) gets a section "Watch the Pickup items" in plain words: what the window shows, that it counts only what the bot took since the backend started, how to turn it on and off. | Must | Reviewer check (AGENTS.md, the guide rule). |
 | FR-9 | The item sprite fetcher: `PokeApiParser` gains a step that lists every item on pokeapi.co (`item?limit=3000`), reads each item, and for an item with a `generation-iv` game index and a `sprites.default` picture downloads it to `{SpriteBaseDirectory}/Items/{game index}.png`, through the existing `DownloadImageAsync`, which skips a file already there. The game index is the HGSS item id the tally counts (checked: Potion 17, King's Rock 221). It creates the `Items` folder if missing. It runs at the end of `--parsepokeapi`, and alone as `--parseitemsprites`, so an install that already has its Pokémon data need not redo the MongoDB write. An item with no sprite, or a failed request, is logged with its name and skipped; the step keeps going. | Must | Run by hand once against pokeapi.co: `Items/17.png` is the Potion and `Items/221.png` King's Rock. No unit test: the step is the network and file boundary, as the Pokémon scrape is. |
-| FR-10 | The window shows each row's sprite left of the name, from `sprite://local/Items/{id}.png`, served by the dashboard's existing `sprite` protocol under `spritesRootPath`. An item with no file shows no picture and keeps its row, name and count (the image hides on its load error). | Must | QA: the five rows show their pictures in the screenshot. |
+| FR-10 | The window lays the items out several to a row, as many as its width fits (a CSS grid with `auto-fill`), to save space (owner, 2026-11-10). Each cell shows the item's sprite from `sprite://local/Items/{id}.png`, served by the dashboard's existing `sprite` protocol under `spritesRootPath`, with the name and count under it; the order stays the backend's (FR-4), read left to right. The total stays on its own line below the grid. An item with no file shows no picture and keeps its cell, name and count (the image hides on its load error). | Must | QA: the five cells show their pictures, more than one to a row, in the screenshot. |
 | FR-11 | The guide: [Install](../guide/01-install.md)'s "Fill in the Pokemon data" says it also fills an `Items` folder with item pictures and gives `--parseitemsprites` for an install that only needs those; [the dashboard](../guide/03-dashboard.md)'s "Watch the Pickup items" says each row shows the item's picture when the folder has it. | Must | Reviewer check. |
 
 ## Design
@@ -62,7 +62,7 @@ No package, project, interface, config key or table. The fetcher reuses `SpriteB
 
 One scenario, `hgss-pickup-items-window`, on `hgss.qa-pickup-held` (five items in hand): the switch is off at start and no Pickup window exists; start the Pickup hunt; after the first visit turn the switch on: one window titled for `HG-Pickup-Held` shows the five items (Potion, Super Potion, Hyper Potion, Escape Rope, Rare Candy) at 1 each and a total of 5, matching `GET getPickupItems`; turn the switch off: the window closes; screenshots of both states; save equals `.bak`. A second game is covered by the unit tests, not QA.
 
-With the item sprites (FR-10), the same scenario's screenshot shows a picture on each of the five rows. QA's sprite folder must hold `Items/` first, so `--parseitemsprites` is run once on the QA PC before the run.
+With the item sprites (FR-10), the same scenario's screenshot shows a picture in each of the five cells, more than one to a row. QA's sprite folder must hold `Items/` first, so `--parseitemsprites` is run once on the QA PC before the run.
 
 ## Suggested task split
 
@@ -79,7 +79,7 @@ The item sprites (added 2026-11-10, after I1 to I3 merged):
 | Task | Scope | Files |
 |---|---|---|
 | I4 | FR-9 and FR-11's Install half: the item sprite step and the command | `Scripts/PokeApiParser.cs`, `Tools/SetupCommands.cs`, `docs/guide/01-install.md` |
-| I5 | FR-10, FR-11's dashboard half, and the QA screenshot check | `PickupWindow.tsx`, the CSS file the window's rows use, `docs/guide/03-dashboard.md`, `ShinyBotHunter.Qa/dashboard/hgss-pickup-items-window.spec.ts` |
+| I5 | FR-10, FR-11's dashboard half, and the QA screenshot check: the item grid with sprites | `PickupWindow.tsx`, the CSS file the window's rows use, `docs/guide/03-dashboard.md`, `ShinyBotHunter.Qa/dashboard/hgss-pickup-items-window.spec.ts` |
 
 I4 and I5 have disjoint files and run in parallel. I5 works from FR-9's file name; QA runs on the tip after both.
 
@@ -102,5 +102,5 @@ Where the build differs from this spec as approved (2026-11-10). The requirement
 
 ## Changelog
 
-- 2026-11-10: item sprites, FR-9 to FR-11, from the owner's ask: "let's add sprites and let's add a sprite image fetcher like we do for pokemon".
+- 2026-11-10: item sprites, FR-9 to FR-11, from the owner's ask: "let's add sprites and let's add a sprite image fetcher like we do for pokemon". FR-10 then made a grid, several items to a row: "i think items can be multiple per row to consolidate space".
 - 2026-11-10: first draft, from the owner's answers: totals only, keep adding until the backend restarts, a manual switch, one window per game.
