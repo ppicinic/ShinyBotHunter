@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
+import { AppearanceSection } from './AppearanceSection'
 import type { AdminMetadata, GameRomInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
 
@@ -125,6 +126,8 @@ export function DashboardConfigTab(): JSX.Element {
 
   return (
     <div className="p-3 space-y-4">
+      <AppearanceSection showFeedback={showFeedback} />
+
       {/* Active subscriptions */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
