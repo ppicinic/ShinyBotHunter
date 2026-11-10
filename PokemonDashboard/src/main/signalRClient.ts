@@ -3,10 +3,11 @@ import {
   IPC,
   type ConnectionState,
   type PhaseWindowRequest,
+  type PickupTally,
   type SharedDashboardConfig,
   type SignalRSnapshot
 } from '../shared/windowContracts'
-import { broadcast, syncPhaseWindows } from './windowManager'
+import { broadcast, receivePickupTally, syncPhaseWindows } from './windowManager'
 
 const emptyDashboardConfig: SharedDashboardConfig = {
   gamePhases: [],
@@ -120,6 +121,10 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
 
   hub.on('ReceiveDashboardState', (state: unknown) => {
     broadcast(IPC.signalRDashboardState, state)
+  })
+
+  hub.on('ReceivePickupItems', (tally: PickupTally) => {
+    receivePickupTally(tally)
   })
 
   hub.onreconnecting(() => {

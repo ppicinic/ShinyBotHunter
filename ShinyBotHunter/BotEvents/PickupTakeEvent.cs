@@ -19,12 +19,14 @@ namespace ShinyBotHunter.BotEvents
         private readonly IBot bot;
         private readonly PokemonStateReader reader;
         private readonly PickupConfig config;
+        private readonly PickupTally tally;
 
-        public PickupTakeEvent(IBot bot, PokemonStateReader reader, PickupConfig config)
+        public PickupTakeEvent(IBot bot, PokemonStateReader reader, PickupConfig config, PickupTally tally)
         {
             this.bot = bot;
             this.reader = reader;
             this.config = config;
+            this.tally = tally;
         }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -35,14 +37,15 @@ namespace ShinyBotHunter.BotEvents
                 await bot.WaitForMacroAsync(cancellationToken);
             };
             string? park = await TakeAsync(state, bot.State, (HgssPointerService)bot.Addresses, config, run, bot.ClearMacro,
-                () => reader.GetPartyState(bot), cancellationToken);
+                () => reader.GetPartyState(bot), tally, bot.GameFileName, cancellationToken);
             return park is null;
         }
 
         // The visit. Returns null when every Pickup member is empty-handed afterwards, with the
         // state stack untouched, otherwise the reason the event parked in Waiting.
         internal static async Task<string?> TakeAsync(
-            GameState state, IGameStateReader game, HgssPointerService addresses, PickupConfig config, Func<string, Task> run, Action clear, Func<Task<PokemonState>> readParty, CancellationToken ct)
+            GameState state, IGameStateReader game, HgssPointerService addresses, PickupConfig config, Func<string, Task> run, Action clear, Func<Task<PokemonState>> readParty,
+            PickupTally tally, string gameFileName, CancellationToken ct)
         {
             Stopwatch trip = Stopwatch.StartNew();
             try
@@ -103,6 +106,7 @@ namespace ShinyBotHunter.BotEvents
                     await run("T.A");
                     await GameStateWait.UntilAsync(game, $"the party list after slot {i + 1}'s take", s => s.AppState == addresses.PartyMenuList, step, ct);
                     Console.WriteLine($"[Pickup] took item {member.HeldItem} from slot {i + 1} ({member.Name})");
+                    await tally.RecordAsync(gameFileName, state.Milestone, member.HeldItem);
                 }
 
                 await run(Touch(config.CancelTouch));

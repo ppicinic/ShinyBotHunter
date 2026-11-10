@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -12,12 +12,13 @@ The dashboard is a set of separate windows:
 - **Admin**: the control panel. Everything on this page except the counts happens here.
 - **Recent Encounters**: the latest Pokémon the bot has met.
 - **One counts window per subscription**: the counts for one milestone (see [Watch the counts](#watch-the-counts)).
+- **One Pickup items window per game file, when switched on**: the items a Pickup hunt has taken (see [Watch the Pickup items](#watch-the-pickup-items)).
 
 Each is its own window. Move and resize them like any other window; the dashboard remembers where they were and puts them back the next time you open it.
 
 The Admin window has four tabs, in this order:
 
-1. **Dashboard Config**: which counts windows are open, and how many recent encounters to show.
+1. **Dashboard Config**: which counts windows are open, how many recent encounters to show, and the Pickup items windows.
 2. **Bot Control**: launch emulators, and start, resume and cancel hunts.
 3. **Milestone Editor**: make and change milestones.
 4. **Window Layout**: set window positions and sizes by number.
@@ -157,6 +158,23 @@ To change how many it shows:
 3. Click **Update**.
 
 Every encounter ever recorded is kept in the database; see [Your data](06-your-data.md).
+
+## Watch the Pickup items
+
+A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture, name and count, several to a row as the window's width fits, and the total below them. There is one window per game file the bot has taken items on. The window's top line shows the game file in small grey text, then the milestone of the hunt that last took an item on it.
+
+The pictures come from the `Items` folder in the sprite folder (see [Fill in the Pokemon data](01-install.md#fill-in-the-pokemon-data-once-per-pc)). An item without a picture there shows only its name and count.
+
+It counts only the items the bot itself took during a Pickup hunt since you last [started the bot](01-install.md#start-the-bot-for-the-first-time) (`ShinyBotHunter.exe`). Starting another hunt does not reset the counts; it adds to them. When you restart the bot, the counts start again from zero. Items you take by hand in the emulator are not counted.
+
+To open the windows:
+
+1. In the Admin window, click the **Dashboard Config** tab.
+2. Under **Pickup Items Windows**, tick **Pickup items windows**.
+
+A window opens for every game file with items taken so far, and a new one opens when the bot takes its first item on another game file. Each window updates after every item the bot takes.
+
+To close them all, untick **Pickup items windows**. A window you close yourself stays closed until you untick the box and tick it again. The box is always unticked when the dashboard starts.
 
 ## Resume a hunt that is waiting
 

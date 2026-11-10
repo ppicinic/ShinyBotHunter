@@ -36,6 +36,10 @@ namespace ShinyBotHunter.Scripts
     internal record EvoChainList(EvoUrl[] results);
     internal record PokemonFieldName(string name, string url);
     internal record EvoUrl(string url);
+    internal record ItemList(PokemonFieldName[] results);
+    internal record Item(string name, ItemSprites sprites, ItemGameIndex[] game_indices);
+    internal record ItemSprites(string? @default);
+    internal record ItemGameIndex(int game_index, PokemonFieldName generation);
     public class PokeApiParser
     {
         private string rootSpriteDirectory;
@@ -445,6 +449,38 @@ namespace ShinyBotHunter.Scripts
             }
             await collection.BulkWriteAsync(updateList);
             Console.WriteLine("Saved to MongoDB successfully!");
+        }
+
+        public async Task ScrapeItemSprites()
+        {
+            Console.WriteLine("Fetching item sprites...");
+            Directory.CreateDirectory($"{rootSpriteDirectory}/Items");
+            using var client = new HttpClient();
+            var items = await client.GetFromJsonAsync<ItemList>("https://pokeapi.co/api/v2/item?limit=3000");
+            if (items?.results == null) throw new Exception("Failed to retrieve items.");
+
+            for (int i = 0; i < items.results.Length; i++)
+            {
+                if (i % 100 == 0) Console.WriteLine($"Processed {i} items...");
+                var entry = items.results[i];
+                try
+                {
+                    var item = (await client.GetFromJsonAsync<Item>(entry.url))!;
+                    var gen4 = item.game_indices.FirstOrDefault(x => x.generation.name == "generation-iv");
+                    if (gen4 == null) continue;
+                    if (item.sprites.@default == null)
+                    {
+                        Console.WriteLine($"Item {item.name} has no sprite");
+                        continue;
+                    }
+                    await DownloadImageAsync(item.sprites.@default, $"{rootSpriteDirectory}/Items/{gen4.game_index}.png");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Item {entry.name} failed: {ex}");
+                }
+            }
+            Console.WriteLine("Item sprites done.");
         }
     }
 
