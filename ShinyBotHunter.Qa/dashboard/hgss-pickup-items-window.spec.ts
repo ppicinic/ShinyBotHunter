@@ -173,7 +173,8 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     // 11. Switch on: one window for the game, equal to the GET, five items at 1 and a total of 5, each cell's sprite
     // loaded and the cells several to a row. The hunt keeps running.
     await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
-    await pickupSwitch.check()
+    // click, not check(): the box is controlled and ticks only once main has opened the windows.
+    await pickupSwitch.click()
     await expect(pickupSwitch).toBeChecked()
     const pickup = await windowByTitle(app, PICKUP_TITLE, 30_000)
     expect(await pickupTitles(app), 'the Pickup windows after the switch on').toEqual([PICKUP_TITLE])
@@ -254,7 +255,7 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
 
     // 13. Switch off: the window closes and no Pickup window is left.
     const closed = pickup.waitForEvent('close', { timeout: 30_000 })
-    await pickupSwitch.uncheck()
+    await pickupSwitch.click()
     await expect(pickupSwitch).not.toBeChecked()
     await closed
     await expect.poll(() => pickupTitles(app!), { timeout: 10_000 }).toEqual([])
