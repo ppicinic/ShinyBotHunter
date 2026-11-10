@@ -84,6 +84,10 @@ The item sprites (added 2026-11-10, after I1 to I3 merged):
 
 I4 and I5 have disjoint files and run in parallel. I5 works from FR-9's file name; QA runs on the tip after both.
 
+The header (added 2026-11-10, after I4 and I5 merged):
+
+| Task | Scope | Files |
+|---|---|---|
 | I6 | FR-12: the milestone in the tally, the JSON and the window header | `Service/PickupTally.cs`, `Service/IElectronClient.cs`, `BotEvents/PickupTakeEvent.cs`, `PickupTallyTests.cs`, `PickupTakeEventTests.cs`, `shared/windowContracts.ts`, `PickupWindow.tsx`, `hgss-pickup-items-window.spec.ts`, `docs/guide/03-dashboard.md` |
 
 ## What diverged
