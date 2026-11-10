@@ -2,7 +2,7 @@ import React from 'react'
 import FlipMove from 'react-flip-move'
 import type { PokemonData } from '../types/api'
 import { useAppContext } from '../context/AppContext'
-import { getSpriteUrl } from '../utils/sprites'
+import { PokemonSprite } from './PokemonSprite'
 import { WindowCloseButton } from './WindowChrome'
 
 const NATURE_NAMES: Record<number, string> = {
@@ -26,8 +26,6 @@ interface PokemonEntryRowProps {
 // FlipMove requires forwardRef on child components
 const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
   function PokemonEntryRow({ pokemon }, ref) {
-    const spriteUrl = getSpriteUrl(pokemon.formCode, pokemon.isShiny)
-
     const ivValues = [
       { label: 'HP', value: pokemon.ivHp },
       { label: 'Atk', value: pokemon.ivAtk },
@@ -45,14 +43,7 @@ const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
         <div className="flex items-start gap-3">
           {/* Sprite */}
           <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
-            <img
-              src={spriteUrl}
-              alt={pokemon.name}
-              className="pokemon-sprite w-24 h-24 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none'
-              }}
-            />
+            <PokemonSprite formCode={pokemon.formCode} isShiny={pokemon.isShiny} name={pokemon.name} size={96} />
           </div>
 
           {/* Main info */}

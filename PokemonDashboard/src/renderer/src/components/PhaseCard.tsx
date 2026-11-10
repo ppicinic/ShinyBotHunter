@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import * as api from '../services/apiClient'
-import { getSpriteUrl } from '../utils/sprites'
+import { PokemonSprite } from './PokemonSprite'
 import { WindowCloseButton } from './WindowChrome'
 
 const GAME_DISPLAY_NAMES: Record<string, string> = {
@@ -157,7 +157,6 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                     : pkmn.hasFemaleForm
                       ? '♂'
                       : ''
-                const spritePath = getSpriteUrl(pkmn.formCode, true)
 
                 return (
                   <tr
@@ -167,15 +166,9 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                   >
                     {/* Sprite */}
                     <td className="py-0 pr-3 text-center">
-                      <img
-                        src={spritePath}
-                        alt={pkmn.name}
-                        style={{ width: spriteSize, height: spriteSize }}
-                        className="object-contain mx-auto"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
+                      <div className="mx-auto" style={{ width: spriteSize }}>
+                        <PokemonSprite formCode={pkmn.formCode} isShiny name={pkmn.name} size={spriteSize} />
+                      </div>
                     </td>
 
                     {/* Name */}

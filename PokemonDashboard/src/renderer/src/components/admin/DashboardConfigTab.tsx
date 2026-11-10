@@ -3,6 +3,7 @@ import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
 import type { AdminMetadata, GameRomInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
+import { THEMES, currentTheme, setTheme, type ThemeId } from '../../utils/theme'
 
 export function DashboardConfigTab(): JSX.Element {
   const { dashboardConfig, config } = useAppContext()
@@ -11,6 +12,7 @@ export function DashboardConfigTab(): JSX.Element {
   const [selectedPhase, setSelectedPhase] = useState<string>('')
   const [selectedGameName, setSelectedGameName] = useState<string>('')
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
+  const [theme, setThemeState] = useState<ThemeId>(currentTheme())
   const [recentCount, setRecentCount] = useState<number>(dashboardConfig.recentEncounterCount)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -107,6 +109,24 @@ export function DashboardConfigTab(): JSX.Element {
 
   return (
     <div className="p-3 space-y-4">
+      {/* Theme */}
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Theme</h3>
+        <select
+          aria-label="Theme"
+          value={theme}
+          onChange={(e) => {
+            setTheme(e.target.value as ThemeId)
+            setThemeState(e.target.value as ThemeId)
+          }}
+          className="bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+        >
+          {THEMES.map((t) => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Active subscriptions */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
