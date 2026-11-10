@@ -25,6 +25,7 @@ interface AppContextValue {
 const emptyDashboardConfig: DashboardConfig = {
   gamePhases: [],
   recentEncounterCount: 0,
+  appearance: null,
 }
 
 const AppContext = createContext<AppContextValue>({
