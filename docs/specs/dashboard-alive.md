@@ -1,6 +1,6 @@
 # Spec: a livelier dashboard (animated sprites, themes)
 
-Status: In progress (approved for build by the owner, 2026-11-10; epic on feature/dashboard-alive). The spike's prototype, scripts and mocks are on the `spike/dashboard-alive-prototype` branch, which is not for merge.
+Status: Implemented (2026-11-10, epic #308; see "What diverged" and "Evidence"). The spike's prototype, scripts and mocks are on the `spike/dashboard-alive-prototype` branch, which is not for merge.
 Last updated: 2026-11-10
 Owner: Phil
 Related: [research: the spike](../research/dashboard-alive.md) (the source for every count here), [pickup items dashboard](pickup-items-dashboard.md) (the item sprite fetcher this sits beside), [feature workflow](feature-workflow.md), the guide pages [Install](../guide/01-install.md) and [Dashboard](../guide/03-dashboard.md).
@@ -197,6 +197,27 @@ None.
 - No further themes in the first build (owner, 2026-11-10).
 - The night switch is optional per row; a row without it is one permanent theme. The Admin window has its own override row (owner, 2026-11-10).
 
+## What diverged
+
+- **FR-3, female-only species.** The parser does not read `pokemon-species`, so there is no `gender_rate`. A species is female-only when its `front_female` still equals its `front_default` in the record already fetched (45 of the 147 female stills). No call is added (NFR-3 stands); the result is the one FR-3 asks for: Chansey takes the ordinary animation, Eevee gets none.
+- **FR-2 (c).** On the data of 2026-11-10 `flabebe-red`, `gimmighoul-chest` and `koraidon-apex-build` carry their own animated URLs and take (a) or (b). (c) is "the form's own record has none and the form has no Showdown name", which today is `arceus-unknown` only. `maushold-family-of-three` is a (d) name (Showdown's `maushold`).
+- **FR-15, size.** The `Animated` folder is 230 MB after the run on the dev PC, not about 210; the Install page says 230.
+- **A3, files.** The registration and the load at start are in `Startup.cs`; `Program.cs` only calls it. A `SemaphoreSlim` orders the saves; the lock is still never held across an await. The fallback of FR-19 runs on load only, not on the POST body.
+- **A4, the screenshot check.** It is its own scenario, `dashboard-themes` (Midnight byte-equal to `origin/main`, per-theme screenshots, the contrast table, snow and reduced motion). `dashboard-alive` does not repeat the comparison; QA runs both.
+- **A4, FR-14.** Midnight keeps `main`'s values, including 4.47:1 for button text on its hover colour (G5 outranks FR-14). The other seven themes meet 4.5:1 on accents and on every header stop under the title; each theme's `--accent-500` is darker than the spike's, which also deepens focus borders, the active tab line and checkboxes. Not changed: on HGSS Gold and Silver the connection pill's label in the Admin header is about 2.1:1.
+- **A4b, files.** `main/windowManager.ts` gained two lines: the window list is broadcast when a card window opens and closes, so the Appearance section's rows follow the windows.
+- **FR-17.** "Switch at night" is disabled on a window row set to "Default" (there is no entry to carry a night theme, and making one would pre-fill it). Equal day and night times mean night all day. A saved override whose window is gone shows greyed with its theme as text and a Remove.
+- **QA, the Pickup Items window.** Main opens one only from a running Pickup hunt's tally, so the scenario opens it by hand; its theme lookup is checked, its Appearance row is not.
+
+## Evidence
+
+QA on the feature tip 5824d0b, 2026-11-10. The run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/` on the dev PC (gitignored).
+
+- `dashboard-themes`: `20261110-132318-dashboard-themes`, green; Midnight byte-equal to `origin/main` on Recent, Admin and a milestone window.
+- `dashboard-alive`, five cycles green in a row: `20261110-132455`, `-132746`, `-133030`, `-133231`, `-133548` (`-dashboard-alive`). Recent switched to Christmas Night 57 to 179 ms after the boundary with no reload; subscriptions, the default, the overrides (one on a window name holding a dot) and the night switch were back after the dashboard restart and after the backend restart. Screenshots per theme and the recordings are in each folder.
+- Two earlier runs on the task branch failed (`20261110-130417`, `-130919`): during the wait for the boundary the Appearance settings changed. The recordings show the focus ring and the selects stepping one option at a time, which is keys typed elsewhere on the PC reaching the focused Admin window; the review found no path in the code that posts without a control event. The scenario now moves the focus to Recent before the wait and asserts the settings are unchanged after it.
+- The data step on the dev PC, on an empty `Animated` folder. Without `ffmpeg` on the PATH: the skip line names the 11 forms; 1,384 of 1,395 in Default and Shiny, 142 of 147 in the female folders. With `ffmpeg`: 1,395 of 1,395 in Default and Shiny, 146 of 147 in the female folders (Eevee), 230 MB.
+
 ## Changelog
 
 - 2026-11-10: drafted from the spike.
@@ -209,3 +230,4 @@ None.
 - 2026-11-10: the 11 edge cases found on Wikidex and converted (FR-2 step (e), FR-2a, Q6, Q7): 1,395 of 1,395.
 - 2026-11-10: ffmpeg optional and Pecharunt's open pose decided; Q6 and Q7 closed.
 - 2026-11-10: approved for build; no further themes; Q5 closed.
+- 2026-11-10: implemented (epic #308); "What diverged" and "Evidence" added.
