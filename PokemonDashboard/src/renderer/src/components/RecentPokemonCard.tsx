@@ -43,7 +43,7 @@ const PokemonEntryRow = React.forwardRef<HTMLDivElement, PokemonEntryRowProps>(
         <div className="flex items-start gap-3">
           {/* Sprite */}
           <div className="flex-shrink-0 w-24 h-24 flex items-center justify-center">
-            <PokemonSprite formCode={pokemon.formCode} isShiny={pokemon.isShiny} name={pokemon.name} size={96} />
+            <PokemonSprite key={`${pokemon.formCode}:${pokemon.isShiny}`} formCode={pokemon.formCode} isShiny={pokemon.isShiny} name={pokemon.name} size={96} />
           </div>
 
           {/* Main info */}
