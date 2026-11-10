@@ -1,3 +1,4 @@
+@import './themes.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -20,8 +21,8 @@ body,
 }
 
 body {
-  background-color: #0d0d1a;
-  color: #e2e8f0;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--n-200));
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -36,14 +37,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: rgb(var(--card-bg));
 }
 ::-webkit-scrollbar-thumb {
-  background: #3d3d6b;
+  background: rgb(var(--scroll-thumb));
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #5a5a9e;
+  background: rgb(var(--scroll-thumb-hover));
 }
 
 /* ============================================================
@@ -51,21 +52,41 @@ body {
    ============================================================ */
 .dashboard-card {
   @apply rounded-lg overflow-hidden flex flex-col;
-  background-color: #1a1a2e;
-  border: 1px solid #2d2d4e;
+  position: relative;
+  isolation: isolate;
+  background: var(--card-fill, rgb(var(--card-bg)));
+  background-size: var(--card-fill-size, auto);
+  animation: var(--card-fill-anim, none);
+  border: 1px solid rgb(var(--card-border));
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* A theme's glow layer, under the card's content. */
+.dashboard-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--card-glow, none);
+  background-size: var(--card-glow-size, auto);
+  background-repeat: no-repeat;
+  animation: var(--card-glow-anim, none);
 }
 
 .card-header {
   @apply flex items-center justify-between px-4 py-2 select-none cursor-grab active:cursor-grabbing;
-  background-color: #16213e;
-  border-bottom: 1px solid #2d2d4e;
+  position: relative;
+  background: var(--header-fill, rgb(var(--card-header)));
+  background-size: var(--header-size, auto);
+  animation: var(--header-anim, none);
+  border-bottom: 1px solid rgb(var(--card-border));
   min-height: 40px;
 }
 
 .card-header-title {
   @apply text-sm font-semibold uppercase tracking-wider;
-  color: #94a3b8;
+  color: rgb(var(--header-title, var(--n-400)));
 }
 
 .card-body {
@@ -90,13 +111,13 @@ body {
    ============================================================ */
 .progress-bar-track {
   @apply rounded-full overflow-hidden;
-  background-color: #2d2d4e;
+  background-color: rgb(var(--card-border));
   height: 8px;
 }
 
 .progress-bar-fill {
   @apply h-full rounded-full transition-all duration-500;
-  background: linear-gradient(90deg, #4f46e5, #7c3aed);
+  background: linear-gradient(90deg, rgb(var(--accent-600)), rgb(var(--accent-2)));
 }
 
 .progress-bar-fill.complete {
@@ -176,22 +197,22 @@ body {
    ============================================================ */
 .tab-bar {
   @apply flex border-b;
-  border-color: #2d2d4e;
+  border-color: rgb(var(--card-border));
 }
 
 .tab-btn {
   @apply px-4 py-2 text-sm font-medium transition-colors;
-  color: #64748b;
+  color: rgb(var(--n-500));
   border-bottom: 2px solid transparent;
 }
 
 .tab-btn:hover {
-  color: #94a3b8;
+  color: rgb(var(--n-400));
 }
 
 .tab-btn.active {
-  color: #e2e8f0;
-  border-bottom-color: #6366f1;
+  color: rgb(var(--n-200));
+  border-bottom-color: rgb(var(--accent-500));
 }
 
 /* ============================================================
@@ -204,20 +225,20 @@ body {
 
 .stat-cell {
   @apply text-center rounded py-1;
-  background-color: #2d2d4e;
+  background-color: var(--cell, rgb(var(--card-border)));
   font-size: 11px;
 }
 
 .stat-cell .stat-label {
   @apply block;
-  color: #64748b;
+  color: rgb(var(--n-500));
   font-size: 9px;
   text-transform: uppercase;
 }
 
 .stat-cell .stat-value {
   @apply block font-bold;
-  color: #e2e8f0;
+  color: rgb(var(--n-200));
 }
 
 .stat-cell .stat-value.max {
