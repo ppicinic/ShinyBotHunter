@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -18,7 +18,7 @@ Each is its own window. Move and resize them like any other window; the dashboar
 
 The Admin window has four tabs, in this order:
 
-1. **Dashboard Config**: which counts windows are open, how many recent encounters to show, and the Pickup items windows.
+1. **Dashboard Config**: the look of the windows (themes), which counts windows are open, how many recent encounters to show, and the Pickup items windows.
 2. **Bot Control**: launch emulators, and start, resume and cancel hunts.
 3. **Milestone Editor**: make and change milestones.
 4. **Window Layout**: set window positions and sizes by number.
@@ -145,11 +145,15 @@ A counts window opens for that milestone, and it is listed under **Active Subscr
 
 To close a counts window for good, click **Remove** beside its entry under **Active Subscriptions**.
 
+The bot remembers your subscriptions: after a restart of the bot, the counts windows open again by themselves.
+
 Changes on this tab reach every dashboard connected to the bot.
 
 ## See the latest encounters
 
 The **Recent Encounters** window lists the newest encounters first. Each shows the Pokémon, its gender, level and nature, its shiny value (**SV**; below 8 means shiny) and its six IVs. Shinies are highlighted. Before the first encounter it reads "No encounters yet...".
+
+Each Pokémon moves: a moving picture where one exists, otherwise its still picture with a small hop or sway. Each drops in when it appears, and a shiny twinkles.
 
 To change how many it shows:
 
@@ -196,6 +200,35 @@ You see a green message such as `Cancelled position 1`. What happens depends on 
 - **Doing nothing**: the emulator closes and its entry goes away.
 - **A hunt started from the Start Action list**: the hunt stops and its entry goes away, even while it is waiting for you.
 
+## Choose a theme
+
+A theme sets the colours and background of the windows. There are eight:
+
+- **Midnight**: the dark blue the dashboard has always had. It is the default.
+- **HGSS Gold and Silver** and **HGSS Dusk**.
+- **Ruby and Sapphire**, **Ruby** and **Sapphire**.
+- **Christmas Pine** and **Christmas Night**.
+
+The game themes have a slowly moving background. The two Christmas themes have snow falling in every window. Christmas is never picked by date; you pick it.
+
+To choose a theme:
+
+1. In the Admin window, click the **Dashboard Config** tab.
+2. **Appearance** is at the top. In the **Default** row, pick a **Theme**. Every window takes it.
+3. To give one window its own theme, pick a **Theme** in that window's row. There is a row for Admin, Recent Encounters, each counts window and each open Pickup items window. A row's first choice, **Default**, follows the Default row; any other choice is for that window only.
+
+To switch at night:
+
+1. In a row, tick **Switch at night**.
+2. Pick a **Night theme**. HGSS Dusk and Christmas Night are listed first, but any theme can be picked. Nothing changes until you pick one.
+3. **Day starts** and **Night starts** appear while any row switches at night. Set the two times.
+
+Each window switches by itself at those times, by this PC's clock, without reloading. **Switch at night** is greyed out on a row set to **Default**: pick a theme for that row first.
+
+A theme set for a window that is closed, or no longer subscribed, shows greyed with **Remove**. It applies again when the window comes back.
+
+The bot keeps all of this, so every dashboard looks the same, and it is still there after you restart the dashboard or the bot.
+
 ## Arrange the windows
 
 Move and resize the windows with the mouse; positions and sizes are saved as you go. The **Window Layout** tab lets you set them by number instead.
@@ -206,6 +239,7 @@ Move and resize the windows with the mouse; positions and sizes are saved as you
 - **You see** "Pick a game first" in **Milestone**. **It means** no game is chosen yet. **Do** pick the game first.
 - **You see** a red box under **Start Action**. **It means** the dashboard could not reach the bot. **Do** see [When something goes wrong](07-when-something-goes-wrong.md).
 - **You see** a red message after Start or Run. **It means** the bot refused, and the message is its reason, word for word. For example, a message of the form "ACTION needs CAPABILITY, which GAME does not have." means that action does not exist for that game. **Do** what the message asks, then try again.
+- **You see** "Waiting for the backend" under **Appearance**. **It means** the dashboard is not connected to the bot. **Do** start the bot.
 
 For anything else, see [When something goes wrong](07-when-something-goes-wrong.md).
 
