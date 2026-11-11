@@ -6,6 +6,7 @@ import {
   RECENT_WINDOW,
   phaseWindowName,
   pickupWindowName,
+  type AnimationLevel,
   type Appearance,
   type ThemeChoice
 } from '../../../../shared/windowContracts'
@@ -13,6 +14,19 @@ import { NIGHT_THEME_ORDER, THEMES, windowLabel } from '../../utils/theme'
 
 // The Default row's data-window; no window is named this.
 const DEFAULT_ROW = 'default'
+
+const ANIMATION_KINDS = [
+  { kind: 'gradients', label: 'Gradients' },
+  { kind: 'snow', label: 'Snow' },
+  { kind: 'stars', label: 'Stars' }
+] as const
+
+const ANIMATION_LEVELS: { level: AnimationLevel; name: string }[] = [
+  { level: 'off', name: 'Off' },
+  { level: 'low', name: 'Low' },
+  { level: 'medium', name: 'Medium' },
+  { level: 'high', name: 'High' }
+]
 
 const selectClass =
   'bg-card-border text-white text-sm rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500'
@@ -179,15 +193,27 @@ export function AppearanceSection({ showFeedback }: Props): JSX.Element {
   return (
     <div>
       {heading}
-      <label className="flex items-center gap-1 text-xs text-slate-300 mb-2">
-        <input
-          type="checkbox"
-          aria-label="Animations"
-          checked={appearance.animations}
-          onChange={(e) => post({ ...(latest.current as Appearance), animations: e.target.checked })}
-        />
+      <div className="flex gap-4 items-center mb-2 text-xs text-slate-300">
         Animations
-      </label>
+        {ANIMATION_KINDS.map(({ kind, label }) => (
+          <label key={kind} className="flex items-center gap-2">
+            {label}
+            <select
+              aria-label={label}
+              value={appearance.animations[kind]}
+              onChange={(e) => {
+                const current = latest.current as Appearance
+                post({ ...current, animations: { ...current.animations, [kind]: e.target.value as AnimationLevel } })
+              }}
+              className={selectClass}
+            >
+              {ANIMATION_LEVELS.map(({ level, name }) => (
+                <option key={level} value={level}>{name}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
       {showTimes && (
         <div className="flex gap-4 items-center mb-2 text-xs text-slate-300">
           <label className="flex items-center gap-2">

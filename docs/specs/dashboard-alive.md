@@ -147,6 +147,8 @@ It sits at the top of the Dashboard Config tab, above Active Subscriptions. The 
 
 A theme's background is a gradient several times wider than the window, moved by animating `background-position` over 30 to 45 s, or two soft radial glows that circle each other. Both are compositor work on one element per window; rows and cells are translucent so the colour shows through. `prefers-reduced-motion` stops the movement and leaves the gradient where it is.
 
+2026-11-11: changed by the [dashboard animation cost spec](dashboard-animation-cost.md): Admin's Appearance section has three Animations settings, Gradients, Snow and Stars, each Off, Low, Medium or High. High is the CSS animation described here; Low and Medium move the same parts with a timer in each window; Off leaves the gradients still and does not draw the snow or the stars. Under reduced motion the snow and the stars are not drawn either.
+
 ### Why remap the palettes
 
 About 290 class uses across 16 files name `slate`, `indigo` or `white`. Renaming them to semantic classes is a 16-file change for no visible gain; the remap is one config file. The cost is that `slate-400` no longer means Tailwind's slate in this project; the config comment says so.
@@ -235,3 +237,4 @@ Since [Add Pickup items windows per game file](pickup-windows-add.md), the Appea
 - 2026-11-10: ffmpeg optional and Pecharunt's open pose decided; Q6 and Q7 closed.
 - 2026-11-10: approved for build; no further themes; Q5 closed.
 - 2026-11-10: implemented (epic #308); "What diverged" and "Evidence" added.
+- 2026-11-11: dated note under "The moving backgrounds": the Animations settings of the [dashboard animation cost spec](dashboard-animation-cost.md) change these animation rules.
