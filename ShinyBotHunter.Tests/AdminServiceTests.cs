@@ -37,7 +37,9 @@ namespace ShinyBotHunter.Tests
             JsonNode appearance = json["appearance"]!;
             Assert.Equal("07:00", (string?)appearance["dayStart"]);
             Assert.Equal("19:00", (string?)appearance["nightStart"]);
-            Assert.True((bool?)appearance["animations"]);
+            JsonObject animations = appearance["animations"]!.AsObject();
+            Assert.Equal(["gradients", "snow", "stars"], animations.Select(member => member.Key));
+            Assert.All(animations, member => Assert.Equal("high", (string?)member.Value));
             Assert.Equal("hgss-drift", (string?)appearance["default"]!["theme"]);
             Assert.Equal("hgss-dusk", (string?)appearance["default"]!["night"]);
             JsonObject window = appearance["windows"]!["phase:RS:Hoenn%20Starters:Ruby"]!.AsObject();
@@ -58,7 +60,7 @@ namespace ShinyBotHunter.Tests
                 {
                     DayStart = "06:30",
                     NightStart = "20:00",
-                    Animations = false,
+                    Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.low, Stars = AnimationLevel.medium },
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
                     Windows =
                     {
@@ -70,6 +72,7 @@ namespace ShinyBotHunter.Tests
 
             BsonDocument document = MongoDashboardConfigDao.ToDocument(config);
             Assert.Equal("dashboard", document["_id"].AsString);
+            Assert.Equal("low", document["Appearance"]["Animations"]["Snow"].AsString);
             DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
 
             Assert.Equal(config.GamePhases, loaded.GamePhases);
@@ -78,14 +81,44 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void SavedDocumentWithoutAnimationsLoadsAsOn()
+        public void SavedDocumentWithoutAnimationsLoadsAsHigh()
         {
-            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = false } });
+            var animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.off, Stars = AnimationLevel.off };
+            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = animations } });
             document["Appearance"].AsBsonDocument.Remove("Animations");
 
             DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
 
-            Assert.True(loaded.Appearance.Animations);
+            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Gradients);
+            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Snow);
+            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Stars);
+        }
+
+        [Fact]
+        public void SavedDocumentWithoutAnAnimationMemberLoadsAsHigh()
+        {
+            var animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.low, Stars = AnimationLevel.medium };
+            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = animations } });
+            document["Appearance"]["Animations"].AsBsonDocument.Remove("Snow");
+
+            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
+
+            Assert.Equal(AnimationLevel.off, loaded.Appearance.Animations.Gradients);
+            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Snow);
+            Assert.Equal(AnimationLevel.medium, loaded.Appearance.Animations.Stars);
+        }
+
+        // The same options as the controllers in Startup.cs; the JsonException is what [ApiController] answers with a 400.
+        [Theory]
+        [InlineData("gradients")]
+        [InlineData("snow")]
+        [InlineData("stars")]
+        public void UnknownAnimationLevelIsRejected(string kind)
+        {
+            var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            options.Converters.Add(new JsonStringEnumConverter());
+
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Appearance>($$$"""{"animations":{"{{{kind}}}":"ultra"}}""", options));
         }
 
         [Fact]
@@ -184,7 +217,9 @@ namespace ShinyBotHunter.Tests
             Assert.Null(pushed.Appearance.Default.Night);
             Assert.Equal("07:00", pushed.Appearance.DayStart);
             Assert.Equal("19:00", pushed.Appearance.NightStart);
-            Assert.True(pushed.Appearance.Animations);
+            Assert.Equal(AnimationLevel.high, pushed.Appearance.Animations.Gradients);
+            Assert.Equal(AnimationLevel.high, pushed.Appearance.Animations.Snow);
+            Assert.Equal(AnimationLevel.high, pushed.Appearance.Animations.Stars);
             Assert.Empty(pushed.Appearance.Windows);
         }
 
@@ -200,7 +235,7 @@ namespace ShinyBotHunter.Tests
                 {
                     DayStart = "06:30",
                     NightStart = "20:00",
-                    Animations = false,
+                    Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.medium, Stars = AnimationLevel.low },
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
                     Windows =
                     {
@@ -292,7 +327,9 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Equal(expected.DayStart, actual.DayStart);
             Assert.Equal(expected.NightStart, actual.NightStart);
-            Assert.Equal(expected.Animations, actual.Animations);
+            Assert.Equal(expected.Animations.Gradients, actual.Animations.Gradients);
+            Assert.Equal(expected.Animations.Snow, actual.Animations.Snow);
+            Assert.Equal(expected.Animations.Stars, actual.Animations.Stars);
             AssertSameChoice(expected.Default, actual.Default);
             Assert.Equal(expected.Windows.Keys.Order(), actual.Windows.Keys.Order());
             foreach ((string name, ThemeChoice choice) in expected.Windows)
