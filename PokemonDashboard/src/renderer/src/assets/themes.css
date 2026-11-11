@@ -54,6 +54,7 @@
   --header-fill: linear-gradient(90deg, #e3b341, #c9ced6) bottom no-repeat, #1b1916;
   --header-title: 240 214 138;
   --header-size: 100% 2px, auto;
+  --header-pos: bottom;
   --card-glow: radial-gradient(closest-side, rgb(227 179 65 / 0.34), transparent), radial-gradient(closest-side, rgb(170 190 220 / 0.28), transparent);
   --card-glow-size: 70% 70%, 80% 80%;
   --card-glow-anim: theme-orbit 30s ease-in-out infinite;
@@ -201,6 +202,7 @@
     radial-gradient(1px 1px at 7px 168px, rgb(255 255 255 / 0.6), transparent);
   background-size: 383px 457px;
   animation-duration: 14s;
+  transform: translate3d(0, var(--snow-1, 0px), 0);
 }
 :root[data-theme='christmas'] body::after, :root[data-theme='christmas-night'] body::after {
   inset: -613px 0 0 0;
@@ -215,6 +217,7 @@
     radial-gradient(2.5px 2.5px at 497px 148px, rgb(255 255 255 / 0.7), transparent);
   background-size: 541px 613px;
   animation-duration: 20s;
+  transform: translate3d(0, var(--snow-2, 0px), 0);
 }
 :root[data-theme='christmas'] #root::after, :root[data-theme='christmas-night'] #root::after {
   inset: -797px 0 0 0;
@@ -227,6 +230,7 @@
     radial-gradient(3.5px 3.5px at 337px 199px, rgb(255 255 255 / 0.6), transparent);
   background-size: 719px 797px;
   animation-duration: 27s;
+  transform: translate3d(0, var(--snow-3, 0px), 0);
 }
 
 :root[data-theme='christmas-night'] .card-header::after {
@@ -244,17 +248,23 @@
   background-size: 96px 10px;
   filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.6));
   animation: theme-breathe 2.4s ease-in-out infinite;
+  opacity: var(--lights-opacity, 1);
 }
 
-/* Reduced motion: the grounds and glows stop where they are and the snow stays, still. !important because
-   index.css comes after this file and sets the card and header animation at the same specificity. */
+/* Reduced motion: the grounds and glows stop and the snow is not drawn. !important because index.css comes after
+   this file and sets the card and header animation at the same specificity. */
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after,
-  body::before, body::after, #root::after { animation: none !important; }
+  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after { animation: none !important; }
+  body::before, body::after, #root::after { content: none !important; }
 }
 
-/* The Admin Animations switch: the same stop; the GIFs, the drop-in and the idle movement are left alone. */
-:root[data-animations='off'] .dashboard-card, :root[data-animations='off'] .dashboard-card::before,
-:root[data-animations='off'] .card-header, :root[data-animations='off'] .card-header::after,
-:root[data-animations='off'] body::before, :root[data-animations='off'] body::after,
-:root[data-animations='off'] #root::after { animation: none !important; }
+/* The Admin Animations settings, one per kind: these CSS animations run only in high. In low and medium the timers
+   in utils/theme.ts move the same parts through the custom properties read above and in index.css. In off the
+   gradients are still and the snow is not drawn. The GIFs, the drop-in and the idle movement are left alone. */
+:root:not([data-anim-gradients='high']) .dashboard-card, :root:not([data-anim-gradients='high']) .dashboard-card::before,
+:root:not([data-anim-gradients='high']) .card-header,
+:root:not([data-anim-gradients='high']) .card-header::after { animation: none !important; }
+:root:not([data-anim-snow='high']) body::before, :root:not([data-anim-snow='high']) body::after,
+:root:not([data-anim-snow='high']) #root::after { animation: none !important; }
+:root[data-anim-snow='off'] body::before, :root[data-anim-snow='off'] body::after,
+:root[data-anim-snow='off'] #root::after { content: none !important; }

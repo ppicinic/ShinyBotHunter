@@ -1,5 +1,5 @@
 // Measures what each dashboard animation costs on the built dashboard: every CSS animation off against as built.
-// See docs/specs/dashboard-animation-cost.md. Run: node measure-animations.js [row filter] [--samples=N]
+// See docs/specs/dashboard-animation-cost.md. Run: node measure-animations.js [row filter] [--samples=N] [--animations=low|medium|high]
 const { spawn, execFileSync } = require('child_process')
 const fs = require('fs')
 const os = require('os')
@@ -15,6 +15,9 @@ const SETTLE_MS = 3000
 const SAMPLE_S = 10
 const SAMPLES = Number((process.argv.find((a) => a.startsWith('--samples=')) || '--samples=3').slice(10))
 const filter = process.argv.slice(2).find((a) => !a.startsWith('--'))
+// As built means every kind of theme animation at this setting: low or medium (the timers) or high (the CSS
+// animations). Still is high with every CSS animation off: drawn, not moving, and no timer.
+const MODE = (process.argv.find((a) => a.startsWith('--animations=')) || '--animations=low').slice(13)
 const STILL = '*,*::before,*::after{animation:none!important}'
 
 const stills = ['eevee', 'chansey', 'rattata', 'hoppip', 'spearow', 'zubat'].map((n) => ({ src: `sprite://local/Shiny/${n}.png`, star: true }))
@@ -90,8 +93,9 @@ async function sample() {
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
 const spread = (xs) => `${median(xs).toFixed(1)} (${Math.min(...xs).toFixed(1)}-${Math.max(...xs).toFixed(1)})`
 
-const probe = `window.__probe = (theme, css, sprites) => {
+const probe = `window.__probe = (theme, css, sprites, animations) => {
   document.documentElement.dataset.theme = theme
+  Object.assign(document.documentElement.dataset, { animGradients: animations, animSnow: animations, animStars: animations })
   let st = document.getElementById('probe-style')
   if (!st) { st = document.createElement('style'); st.id = 'probe-style'; document.head.appendChild(st) }
   st.textContent = css
@@ -137,7 +141,10 @@ async function main() {
     pages.push(run)
   }
 
-  const set = async (theme, css, sprites) => { for (const run of pages) await run(`window.__probe(${JSON.stringify(theme)}, ${JSON.stringify(css)}, ${JSON.stringify(sprites)})`) }
+  const set = async (theme, css, sprites) => {
+    const animations = css === STILL ? 'high' : MODE
+    for (const run of pages) await run(`window.__probe(${JSON.stringify(theme)}, ${JSON.stringify(css)}, ${JSON.stringify(sprites)}, ${JSON.stringify(animations)})`)
+  }
   const check = async (name, sprites) => {
     const states = []
     for (const run of pages) states.push(await run(report))
@@ -149,7 +156,7 @@ async function main() {
   }
 
   const first = await check('start', null)
-  console.log(`windows: ${first.map((s) => `${s.title} ${s.size}`).join(', ')}; ${SAMPLES} samples per cell of ${SAMPLE_S} s, each after ${SETTLE_MS / 1000} s settle, still and as built alternating`)
+  console.log(`windows: ${first.map((s) => `${s.title} ${s.size}`).join(', ')}; ${SAMPLES} samples per cell of ${SAMPLE_S} s, each after ${SETTLE_MS / 1000} s settle, still and as built (animations ${MODE}) alternating`)
   console.log("CPU is percent of one core, the dashboard's own processes; GPU is the sum of its GPU engine use; each cell is median (min-max)")
   console.log('built r/g/m/o splits the median as-built sample by process: renderer, gpu, main, other')
   const w = Math.max(...lines.map(([name]) => name.length))
