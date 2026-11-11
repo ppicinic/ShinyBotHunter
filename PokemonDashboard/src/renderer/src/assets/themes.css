@@ -54,6 +54,7 @@
   --header-fill: linear-gradient(90deg, #e3b341, #c9ced6) bottom no-repeat, #1b1916;
   --header-title: 240 214 138;
   --header-size: 100% 2px, auto;
+  --header-pos: bottom;
   --card-glow: radial-gradient(closest-side, rgb(227 179 65 / 0.34), transparent), radial-gradient(closest-side, rgb(170 190 220 / 0.28), transparent);
   --card-glow-size: 70% 70%, 80% 80%;
   --card-glow-anim: theme-orbit 30s ease-in-out infinite;

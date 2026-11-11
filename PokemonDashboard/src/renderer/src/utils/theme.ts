@@ -219,6 +219,7 @@ function syncMotion(): void {
   const reduced = matchMedia(REDUCE_MOTION).matches
   const m = MOTION[motionTheme ?? ''] ?? {}
   for (const kind of KINDS) {
+    // Every theme and window has stars: a shiny sprite can appear at any moment. A tick with none shown writes nothing.
     const has = kind === 'stars' || (kind === 'snow' ? m.snow === true : Object.keys(m).some((k) => k !== 'snow'))
     const ms = reduced || !has ? undefined : RATES[kind][root.dataset[ATTRIBUTE[kind]] ?? '']
     const now = running[kind]
