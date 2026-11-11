@@ -57,6 +57,7 @@ body {
   background: var(--card-fill, rgb(var(--card-bg)));
   background-size: var(--card-fill-size, auto);
   animation: var(--card-fill-anim, none);
+  background-position: var(--card-fill-pos, 0% 0%);
   border: 1px solid rgb(var(--card-border));
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
@@ -72,6 +73,8 @@ body {
   background-size: var(--card-glow-size, auto);
   background-repeat: no-repeat;
   animation: var(--card-glow-anim, none);
+  background-position: var(--card-glow-pos, 0% 0%);
+  opacity: var(--card-glow-opacity, 1);
 }
 
 .card-header {
@@ -80,6 +83,7 @@ body {
   background: var(--header-fill, rgb(var(--card-header)));
   background-size: var(--header-size, auto);
   animation: var(--header-anim, none);
+  background-position: var(--header-pos, 0% 0%);
   border-bottom: 1px solid rgb(var(--card-border));
   min-height: 40px;
 }

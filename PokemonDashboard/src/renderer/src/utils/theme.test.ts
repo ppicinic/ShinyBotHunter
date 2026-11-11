@@ -18,7 +18,7 @@ function at(hhmm: string, month = 10, date = 10): Date {
 }
 
 function appearance(partial: Partial<Appearance>): Appearance {
-  return { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {}, ...partial }
+  return { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {}, animations: { gradients: 'high', snow: 'high', stars: 'high' }, ...partial }
 }
 
 describe('windowNameFromSearch', () => {
@@ -158,18 +158,63 @@ describe('theme lists', () => {
 describe('applyTheme and initTheme', () => {
   let dataset: Record<string, string>
   let store: Map<string, string>
+  let props: Map<string, string>
+  let reduceMotion: { matches: boolean; listener: (() => void) | null }
+  let attributesChanged: (() => void) | null
+  let sparkle: object | null
 
+  // Reduced motion is on unless a test turns it off, so only the motion tests run the motion timers.
   function stubDom(): void {
     dataset = {}
     store = new Map()
-    vi.stubGlobal('document', { documentElement: { dataset } })
+    props = new Map()
+    reduceMotion = { matches: true, listener: null }
+    attributesChanged = null
+    sparkle = null
+    vi.stubGlobal('document', {
+      documentElement: {
+        dataset,
+        style: { setProperty: (key: string, value: string) => props.set(key, value), removeProperty: (key: string) => props.delete(key) }
+      },
+      querySelector: () => sparkle
+    })
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => store.set(key, value)
     })
+    vi.stubGlobal('matchMedia', () => ({
+      matches: reduceMotion.matches,
+      addEventListener: (_: string, listener: () => void) => (reduceMotion.listener = listener)
+    }))
+    vi.stubGlobal(
+      'MutationObserver',
+      class {
+        constructor(callback: () => void) {
+          attributesChanged = callback
+        }
+        observe(): void {}
+      }
+    )
+  }
+
+  // Starts a window with this theme and every kind at this value, with reduced motion off.
+  function startMotion(theme: string, animations: string): void {
+    stubDom()
+    reduceMotion.matches = false
+    vi.useFakeTimers()
+    store.set('dashboard-theme:admin', theme)
+    for (const kind of ['gradients', 'snow', 'stars']) store.set(`dashboard-anim-${kind}`, animations)
+    initTheme('admin')
+  }
+
+  // Each kind's attribute, as the root carries it.
+  function setKinds(gradients: string, snow: string, stars: string): void {
+    Object.assign(dataset, { animGradients: gradients, animSnow: snow, animStars: stars })
+    attributesChanged?.()
   }
 
   afterEach(() => {
+    setKinds('off', 'off', 'off')
     vi.useRealTimers()
     vi.unstubAllGlobals()
   })
@@ -208,5 +253,85 @@ describe('applyTheme and initTheme', () => {
     store.set('dashboard-theme:recent', 'sapphire')
     initTheme('recent')
     expect(dataset.theme).toBe('sapphire')
+  })
+
+  it('marks each animation kind from the pushed appearance, and remembers it', () => {
+    stubDom()
+    applyTheme(appearance({ animations: { gradients: 'off', snow: 'low', stars: 'medium' } }), 'admin')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['off', 'low', 'medium'])
+    expect(['gradients', 'snow', 'stars'].map((kind) => store.get(`dashboard-anim-${kind}`))).toEqual(['off', 'low', 'medium'])
+
+    applyTheme(appearance({}), 'admin')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'high', 'high'])
+    expect(['gradients', 'snow', 'stars'].map((kind) => store.get(`dashboard-anim-${kind}`))).toEqual(['high', 'high', 'high'])
+    expect(dataset.animations).toBeUndefined()
+  })
+
+  it('restores the animation kinds before first paint, high when none is saved', () => {
+    stubDom()
+    initTheme('recent')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'high', 'high'])
+
+    store.set('dashboard-anim-snow', 'off')
+    initTheme('recent')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'off', 'high'])
+  })
+
+  it('runs a timer per kind under low, faster under medium, and none under off and high', () => {
+    startMotion('christmas', 'low')
+    expect(vi.getTimerCount()).toBe(3)
+    vi.advanceTimersByTime(500)
+    expect(props.get('--card-fill-pos')).toMatch(/% 50%$/)
+    expect(props.get('--snow-1')).toMatch(/px$/)
+
+    setKinds('high', 'medium', 'off')
+    expect(vi.getTimerCount()).toBe(1)
+    expect(props.has('--card-fill-pos')).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(props.get('--snow-1')).toMatch(/px$/)
+
+    setKinds('medium', 'off', 'off')
+    vi.advanceTimersByTime(100)
+    const first = props.get('--card-fill-pos')
+    vi.advanceTimersByTime(100)
+    expect(props.get('--card-fill-pos')).not.toBe(first)
+  })
+
+  it('gives a kind that is off no moves while another runs', () => {
+    startMotion('christmas', 'low')
+    setKinds('off', 'low', 'off')
+    vi.advanceTimersByTime(1000)
+    expect(props.has('--snow-1')).toBe(true)
+    expect(props.has('--card-fill-pos')).toBe(false)
+  })
+
+  it('runs nothing the theme does not have, and twinkles only while a star is shown', () => {
+    startMotion('midnight', 'low')
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(600)
+    expect(props.size).toBe(0)
+
+    sparkle = {}
+    vi.advanceTimersByTime(600)
+    expect(Number(props.get('--twinkle-1')) + Number(props.get('--twinkle-2'))).toBeCloseTo(1)
+  })
+
+  it('stops with Windows reduced motion, starts again, and clears the old theme on a switch', () => {
+    startMotion('ruby', 'low')
+    vi.advanceTimersByTime(500)
+    expect(props.has('--header-pos')).toBe(true)
+
+    reduceMotion.matches = true
+    reduceMotion.listener?.()
+    expect(vi.getTimerCount()).toBe(0)
+    reduceMotion.matches = false
+    reduceMotion.listener?.()
+    expect(vi.getTimerCount()).toBe(2)
+    vi.advanceTimersByTime(500)
+    expect(props.has('--header-pos')).toBe(true)
+
+    dataset.theme = 'midnight'
+    attributesChanged?.()
+    expect(props.has('--header-pos')).toBe(false)
   })
 })

@@ -27,11 +27,15 @@ export interface ThemeChoice {
   night?: string
 }
 
+// How much a kind of theme animation moves (docs/specs/dashboard-animation-cost.md FR-12).
+export type AnimationLevel = 'off' | 'low' | 'medium' | 'high'
+
 export interface Appearance {
   dayStart: string
   nightStart: string
   default: ThemeChoice
   windows: Record<string, ThemeChoice>
+  animations: { gradients: AnimationLevel; snow: AnimationLevel; stars: AnimationLevel }
 }
 
 export interface SharedDashboardConfig {
