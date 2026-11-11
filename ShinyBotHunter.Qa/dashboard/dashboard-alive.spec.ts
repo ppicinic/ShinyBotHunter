@@ -120,7 +120,28 @@ async function shots(name: string, pages: Record<string, Page>): Promise<void> {
   step(`screenshots ${name}`)
 }
 
-const DEFAULT_APPEARANCE = { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {} }
+const DEFAULT_APPEARANCE = {
+  dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {},
+  animations: { gradients: 'high', snow: 'high', stars: 'high' }
+}
+// One level per kind that is not the default, kept through the night wait and both restarts.
+const CHOSEN = { gradients: 'low', snow: 'off', stars: 'medium' } as const
+const LEVEL_LABELS = { gradients: 'Gradients', snow: 'Snow', stars: 'Stars' } as const
+const ATTRIBUTES = { gradients: 'animGradients', snow: 'animSnow', stars: 'animStars' } as const
+
+// The names of the running CSS animations, the pseudo-elements' included.
+const running = (page: Page): Promise<string[]> => page.evaluate(() =>
+  [...new Set(document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName))].sort())
+// A theme's own animation (gradients, glows, lights, snow) or the shiny stars.
+const themed = (names: string[]): string[] => names.filter((n) => n.startsWith('theme-') || n === 'sprite-twinkle')
+const levels = (page: Page): Promise<Record<string, string | null>> => page.evaluate((attrs) => Object.fromEntries(Object.entries(attrs).map(([kind, attr]) =>
+  [kind, `${document.documentElement.dataset[attr]} ${localStorage.getItem(`dashboard-anim-${kind}`)}`])), ATTRIBUTES)
+// Attribute and remembered value, which must agree.
+const levelsAre = (chosen: Record<string, string>): Record<string, string> => Object.fromEntries(Object.entries(chosen).map(([k, v]) => [k, `${v} ${v}`]))
+const snowContent = (page: Page): Promise<string[]> => page.evaluate(() =>
+  [getComputedStyle(document.body, '::before'), getComputedStyle(document.body, '::after'), getComputedStyle(document.getElementById('root')!, '::after')].map((l) => l.content))
+const rootProps = (page: Page, prefix: string): Promise<string> => page.evaluate((p) =>
+  Array.from(document.documentElement.style).filter((n) => n.startsWith(p)).map((n) => `${n}=${document.documentElement.style.getPropertyValue(n)}`).join(' '), prefix)
 
 // The sample encounters, as the spike's demo3.js builds them: [formCode, shiny].
 const MONS: [string, boolean][] = [
@@ -151,7 +172,7 @@ const FILES = [
   '/Animated/Default/wailord.gif'
 ]
 
-test('dashboard alive: sprite files, themes per window, night switch, back after restarts', async () => {
+test('dashboard alive: sprite files, themes per window, animation levels, night switch, back after restarts', async () => {
   fs.mkdirSync(runDir, { recursive: true })
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
@@ -312,6 +333,43 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
     await unchanged([[recent, 'hgss-drift'], [milestoneA, 'hgss-drift'], [pickup, 'hgss-drift'], [milestoneB, 'sapphire']])
     await shots('02-overrides', { admin, recent, milestoneA, milestoneB, pickup })
 
+    // --- the Animations settings: gradients low, snow off, stars medium, through the Admin selectors ---------
+    const level = (kind: keyof typeof LEVEL_LABELS) => admin.locator(`select[aria-label="${LEVEL_LABELS[kind]}"]`)
+    const five = [['admin', admin], ['recent', recent], ['A', milestoneA], ['B', milestoneB], ['pickup', pickup]] as const
+    for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) await expect(level(kind)).toHaveValue('high')
+    // Admin is on Christmas Pine, B on Sapphire, the rest on HGSS Gold and Silver: every one has a theme animation.
+    for (const [name, page] of five) {
+      await expect.poll(async () => (await running(page)).some((n) => n.startsWith('theme-')), { timeout: 15_000, message: `${name} runs a theme animation at high` }).toBe(true)
+    }
+    expect(await running(recent), 'the shiny Totodile\'s stars twinkle at high').toContain('sprite-twinkle')
+    for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) {
+      await level(kind).selectOption(CHOSEN[kind])
+      await expect(level(kind)).toHaveValue(CHOSEN[kind], { timeout: 30_000 })
+      await noServerError()
+      step(`Animations ${LEVEL_LABELS[kind]}: ${CHOSEN[kind]}`)
+    }
+    for (const [name, page] of five) {
+      await expect.poll(() => levels(page), { timeout: 30_000, message: `${name}: the root attributes and remembered levels` }).toEqual(levelsAre(CHOSEN))
+      await expect.poll(async () => themed(await running(page)), { timeout: 15_000, message: `${name}: no theme animation or stars running as CSS` }).toEqual([])
+    }
+    expect(await snowContent(admin), 'Admin\'s snow with snow off').toEqual(['none', 'none', 'none'])
+    // Low and medium: the timers move the root properties instead.
+    const moves = async (page: Page, prefix: string): Promise<boolean> => {
+      const a = await rootProps(page, prefix)
+      await sleep(1500)
+      return a !== '' && a !== (await rootProps(page, prefix))
+    }
+    await expect.poll(() => moves(recent, '--header-pos'), { timeout: 15_000, message: 'Recent\'s header gradient moves at low' }).toBe(true)
+    await expect.poll(() => moves(recent, '--twinkle-'), { timeout: 15_000, message: 'Recent\'s stars twinkle at medium' }).toBe(true)
+    // The GIFs, the still's idle movement and the drop-in are not theme animations and stay.
+    const after = await imgs()
+    expect(after.map((i) => i.file), 'the sprite files with the animation levels changed').toEqual(expected)
+    expect(after.map((i) => i.cls), 'the sprite classes with the animation levels changed').toEqual(loaded.map((i) => i.cls))
+    const idle = after.find((i) => !i.file.startsWith('/Animated/'))!.cls.split(' ')[1]
+    expect(await running(recent), `the still's idle movement ${idle}`).toContain(idle)
+    expect(await recent.locator('.sprite-stage').evaluateAll((els) => [...new Set(els.map((e) => getComputedStyle(e).animationName))]), 'the drop-in').toEqual(['sprite-enter'])
+    await shots('02-animations', { admin, recent, milestoneA, milestoneB, pickup })
+
     // The night switch on Recent. The box is disabled while the row is on Default, so the theme comes first.
     await pick('recent', 'Theme', 'christmas', 'christmas')
     await nightBox('recent').click()
@@ -376,6 +434,13 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
       await expectTheme(recent, 'christmas-night')
       await expectTheme(milestoneA, 'hgss-drift')
       await expectTheme(milestoneB, 'sapphire')
+      for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) await expect(level(kind)).toHaveValue(CHOSEN[kind])
+      for (const [label, page] of [['admin', admin], ['recent', recent], ['A', milestoneA], ['B', milestoneB]] as const) {
+        await expect.poll(() => levels(page), { timeout: 30_000, message: `${label}: the root attributes and remembered levels` }).toEqual(levelsAre(CHOSEN))
+        await expect.poll(async () => themed(await running(page)), { timeout: 15_000, message: `${label}: no theme animation running as CSS` }).toEqual([])
+      }
+      expect(await snowContent(admin), 'Admin\'s snow with snow off').toEqual(['none', 'none', 'none'])
+      expect(await snowContent(recent), 'Recent\'s snow with snow off').toEqual(['none', 'none', 'none'])
       await shots(name, { admin, recent, milestoneA, milestoneB })
     }
 
@@ -395,6 +460,18 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
     step('backend and dashboard restarted')
     await expectSaved('05-after-backend-restart')
 
+    // All three back to high for the per-theme screenshots: the theme animations run again.
+    for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) {
+      await level(kind).selectOption('high')
+      await expect(level(kind)).toHaveValue('high', { timeout: 30_000 })
+      await noServerError()
+    }
+    for (const [label, page] of [['admin', admin], ['recent', recent], ['A', milestoneA], ['B', milestoneB]] as const) {
+      await expect.poll(async () => (await running(page)).some((n) => n.startsWith('theme-')), { timeout: 15_000, message: `${label} runs a theme animation at high` }).toBe(true)
+    }
+    expect(await running(recent), 'Recent\'s snow falls at high').toContain('theme-snow')
+    step('Animations all high again')
+
     // --- one screenshot per theme, ending on Midnight with no overrides ----------------------------
     for (const name of ['admin', 'recent', B]) await pick(name, 'Theme', { label: 'Default' }, '')
     for (const id of THEMES) {
@@ -411,7 +488,7 @@ test('dashboard alive: sprite files, themes per window, night switch, back after
           await post('/unsubcribeGamePhase', { game: 'HGSS', phase: phases[0], gameName: null })
           await post('/unsubcribeGamePhase', { game: 'HGSS', phase: phases[1], gameName: DOTTED })
         }
-        step('restore: Midnight, default times, A and B unsubscribed')
+        step('restore: Midnight, default times, animations high, A and B unsubscribed')
       } catch (err) {
         step(`restore failed: ${err}`)
       }
