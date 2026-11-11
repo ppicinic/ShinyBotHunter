@@ -117,8 +117,11 @@ async function connect(target) {
   let id = 0
   const pending = new Map()
   ws.onmessage = (m) => { const d = JSON.parse(m.data); if (pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id) } }
-  return (expression) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, returnByValue: true } })) })
-    .then((d) => d.result.result.value)
+  const send = (method, params) => new Promise((r) => { pending.set(++id, r); ws.send(JSON.stringify({ id, method, params })) })
+  const run = (expression) => send('Runtime.evaluate', { expression, returnByValue: true }).then((d) => d.result.result.value)
+  // The theme motion is a timer in the page, which stops under reduced motion; emulating it stops the timer the app's own way.
+  run.reduceMotion = (on) => send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: on ? 'reduce' : '' }] })
+  return run
 }
 
 const pageTargets = async () => (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).filter((t) => t.type === 'page')
@@ -137,7 +140,12 @@ async function main() {
     pages.push(run)
   }
 
-  const set = async (theme, css, sprites) => { for (const run of pages) await run(`window.__probe(${JSON.stringify(theme)}, ${JSON.stringify(css)}, ${JSON.stringify(sprites)})`) }
+  const set = async (theme, css, sprites) => {
+    for (const run of pages) {
+      await run(`window.__probe(${JSON.stringify(theme)}, ${JSON.stringify(css)}, ${JSON.stringify(sprites)})`)
+      await run.reduceMotion(css === STILL)
+    }
+  }
   const check = async (name, sprites) => {
     const states = []
     for (const run of pages) states.push(await run(report))

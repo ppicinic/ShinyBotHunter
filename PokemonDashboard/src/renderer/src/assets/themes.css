@@ -33,10 +33,8 @@
   --header-fill: linear-gradient(100deg, #b8860b, #f3d57a 22%, #c9952a 40%, #9aa3b0 62%, #eef1f5 80%, #8f98a6);
   --header-title: 29 22 6;
   --header-size: 250% 100%;
-  --header-anim: theme-drift 24s steps(48, end) infinite alternate;
   --card-fill: linear-gradient(120deg, #3a2a06, #17171c 30%, #232a36 55%, #17171c 78%, #3a2a06);
   --card-fill-size: 400% 400%;
-  --card-fill-anim: theme-drift 36s steps(72, end) infinite alternate;
 }
 
 /* HGSS Dusk */
@@ -56,7 +54,6 @@
   --header-size: 100% 2px, auto;
   --card-glow: radial-gradient(closest-side, rgb(227 179 65 / 0.34), transparent), radial-gradient(closest-side, rgb(170 190 220 / 0.28), transparent);
   --card-glow-size: 70% 70%, 80% 80%;
-  --card-glow-anim: theme-orbit 30s steps(30, end) infinite;
 }
 
 /* Ruby and Sapphire: the header shows half the gradient, so it always holds one ruby and one sapphire peak. */
@@ -75,10 +72,8 @@
   --header-fill: linear-gradient(100deg, #8f0f22, #ea0023 10%, #c2183a 20%, #5a2a8a 25%, #1f4fd0 30%, #0a6bff 40%, #1238a0 45%, #5a2a8a 50%, #8f0f22 55%, #ea0023 60%, #c2183a 70%, #5a2a8a 75%, #1f4fd0 80%, #0a6bff 90%, #1238a0);
   --header-title: 255 255 255;
   --header-size: 200% 100%;
-  --header-anim: theme-drift 24s steps(48, end) infinite alternate;
   --card-fill: linear-gradient(120deg, #3d0812, #17161c 30%, #101c3e 55%, #17161c 78%, #3d0812);
   --card-fill-size: 400% 400%;
-  --card-fill-anim: theme-drift 36s steps(72, end) infinite alternate;
 }
 
 /* Ruby */
@@ -97,10 +92,8 @@
   --header-fill: linear-gradient(100deg, #7d0c1c, #e2223e 30%, #ea002a 48%, #c2183a 60%, #7d0c1c);
   --header-title: 255 255 255;
   --header-size: 260% 100%;
-  --header-anim: theme-drift 20s steps(40, end) infinite alternate;
   --card-fill: linear-gradient(120deg, #24050b, #5a0d1c 35%, #3a0a26 65%, #24050b);
   --card-fill-size: 300% 300%;
-  --card-fill-anim: theme-drift 34s steps(68, end) infinite alternate;
 }
 
 /* Sapphire */
@@ -119,10 +112,8 @@
   --header-fill: linear-gradient(100deg, #0c2a80, #2f6fe0 30%, #076bff 48%, #1f4fd0 60%, #0c2a80);
   --header-title: 255 255 255;
   --header-size: 260% 100%;
-  --header-anim: theme-drift 20s steps(40, end) infinite alternate;
   --card-fill: linear-gradient(120deg, #050d26, #0e2a6a 35%, #0a1a52 65%, #050d26);
   --card-fill-size: 300% 300%;
-  --card-fill-anim: theme-drift 34s steps(68, end) infinite alternate;
 }
 
 /* Christmas Pine */
@@ -142,7 +133,6 @@
   --header-title: 255 240 214;
   --card-fill: linear-gradient(120deg, #0a1c12, #133021 50%, #0a1c12);
   --card-fill-size: 250% 250%;
-  --card-fill-anim: theme-drift 30s steps(60, end) infinite alternate;
 }
 
 /* Christmas Night */
@@ -162,19 +152,10 @@
   --card-fill: linear-gradient(180deg, #081226, #0e2140 55%, #1a2b3a);
   --card-glow: radial-gradient(closest-side, rgb(242 193 78 / 0.22), transparent);
   --card-glow-size: 120% 60%;
-  --card-glow-anim: theme-breathe 8s steps(4, end) infinite;
 }
 
-/* The moving parts: a ground wider than the window that slides, two glows that circle, snow, string lights. */
-@keyframes theme-drift { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
-@keyframes theme-orbit {
-  0%, 100% { background-position: 0% 0%, 100% 100%; }
-  50% { background-position: 60% 40%, 40% 60%; }
-}
-@keyframes theme-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-/* Each loop moves exactly one tile down, so the restart does not jump. */
-@keyframes theme-snow { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, var(--snow-tile), 0); } }
-
+/* The moving parts (a ground wider than the window that slides, two glows that circle, snow, string lights)
+   are moved by the timer in utils/theme.ts, through the custom properties read here and in index.css. */
 /* Snow: three layers with prime tile sizes wider than a window and their own speeds, so no grid shows. */
 :root[data-theme='christmas'] body::before, :root[data-theme='christmas-night'] body::before,
 :root[data-theme='christmas'] body::after, :root[data-theme='christmas-night'] body::after,
@@ -186,7 +167,6 @@
 }
 :root[data-theme='christmas'] body::before, :root[data-theme='christmas-night'] body::before {
   inset: -457px 0 0 0;
-  --snow-tile: 457px;
   background-image:
     radial-gradient(1.5px 1.5px at 337px 79px, #fff, transparent),
     radial-gradient(1px 1px at 341px 200px, rgb(255 255 255 / 0.7), transparent),
@@ -199,11 +179,10 @@
     radial-gradient(1.5px 1.5px at 175px 283px, rgb(255 255 255 / 0.8), transparent),
     radial-gradient(1px 1px at 7px 168px, rgb(255 255 255 / 0.6), transparent);
   background-size: 383px 457px;
-  animation: theme-snow 14s steps(112, end) infinite;
+  transform: translate3d(0, var(--snow-1, 0px), 0);
 }
 :root[data-theme='christmas'] body::after, :root[data-theme='christmas-night'] body::after {
   inset: -613px 0 0 0;
-  --snow-tile: 613px;
   background-image:
     radial-gradient(2.5px 2.5px at 282px 172px, rgb(255 255 255 / 0.8), transparent),
     radial-gradient(2px 2px at 159px 263px, rgb(255 255 255 / 0.6), transparent),
@@ -213,11 +192,10 @@
     radial-gradient(2px 2px at 431px 402px, rgb(255 255 255 / 0.6), transparent),
     radial-gradient(2.5px 2.5px at 497px 148px, rgb(255 255 255 / 0.7), transparent);
   background-size: 541px 613px;
-  animation: theme-snow 20s steps(160, end) infinite;
+  transform: translate3d(0, var(--snow-2, 0px), 0);
 }
 :root[data-theme='christmas'] #root::after, :root[data-theme='christmas-night'] #root::after {
   inset: -797px 0 0 0;
-  --snow-tile: 797px;
   background-image:
     radial-gradient(3.5px 3.5px at 36px 131px, rgb(255 255 255 / 0.6), transparent),
     radial-gradient(3px 3px at 476px 646px, rgb(255 255 255 / 0.5), transparent),
@@ -225,7 +203,7 @@
     radial-gradient(3px 3px at 196px 460px, rgb(255 255 255 / 0.5), transparent),
     radial-gradient(3.5px 3.5px at 337px 199px, rgb(255 255 255 / 0.6), transparent);
   background-size: 719px 797px;
-  animation: theme-snow 27s steps(216, end) infinite;
+  transform: translate3d(0, var(--snow-3, 0px), 0);
 }
 
 :root[data-theme='christmas-night'] .card-header::after {
@@ -242,18 +220,5 @@
     radial-gradient(circle 3px at 82px 6px, #60a5fa 60%, transparent 62%);
   background-size: 96px 10px;
   filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.6));
-  animation: theme-breathe 2.4s steps(3, end) infinite;
+  opacity: var(--lights-opacity, 1);
 }
-
-/* Reduced motion: the grounds and glows stop where they are and the snow stays, still. !important because
-   index.css comes after this file and sets the card and header animation at the same specificity. */
-@media (prefers-reduced-motion: reduce) {
-  .dashboard-card, .dashboard-card::before, .card-header, .card-header::after,
-  body::before, body::after, #root::after { animation: none !important; }
-}
-
-/* The Admin Animations switch: the same stop; the GIFs, the drop-in and the idle movement are left alone. */
-:root[data-animations='off'] .dashboard-card, :root[data-animations='off'] .dashboard-card::before,
-:root[data-animations='off'] .card-header, :root[data-animations='off'] .card-header::after,
-:root[data-animations='off'] body::before, :root[data-animations='off'] body::after,
-:root[data-animations='off'] #root::after { animation: none !important; }

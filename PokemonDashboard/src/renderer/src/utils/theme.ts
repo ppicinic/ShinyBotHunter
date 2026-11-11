@@ -102,6 +102,8 @@ export function initTheme(windowName: string): void {
   if (saved !== null) document.documentElement.dataset.theme = saved
   const animations = localStorage.getItem(ANIMATIONS_KEY)
   if (animations !== null) document.documentElement.dataset.animations = animations
+  matchMedia(REDUCE_MOTION).addEventListener('change', syncMotion)
+  syncMotion()
 }
 
 // Touched only on the renderer's single thread (the AppContext effect and this timer's callback).
@@ -119,4 +121,95 @@ export function applyTheme(appearance: Appearance, windowName: string): void {
   localStorage.setItem(ANIMATIONS_KEY, animations)
   const delay = nextSwitchDelay(appearance, windowName, now)
   if (delay !== null) timer = setTimeout(() => applyTheme(appearance, windowName), delay)
+  syncMotion()
+}
+
+// The theme animations are moved by one timer instead of CSS animations: a running CSS animation, even a
+// stepped one, cost about half a core in bursts (docs/specs/dashboard-animation-cost.md). The timer writes
+// custom properties on the root, which index.css, themes.css and sprites.css read; stopped, it leaves them
+// where they are, so the grounds, glows and snow stay drawn, still.
+const REDUCE_MOTION = '(prefers-reduced-motion: reduce)'
+
+// Seconds per cycle of what moves in each theme. The colours and sizes are in assets/themes.css.
+const MOTION: Record<string, { header?: number; card?: number; orbit?: number; glow?: number; lights?: number; snow?: boolean }> = {
+  'hgss-drift': { header: 24, card: 36 },
+  'hgss-dusk': { orbit: 30 },
+  'rs-drift': { header: 24, card: 36 },
+  ruby: { header: 20, card: 34 },
+  sapphire: { header: 20, card: 34 },
+  christmas: { card: 30, snow: true },
+  'christmas-night': { glow: 8, lights: 2.4, snow: true }
+}
+
+// Each snow layer: its tile height in px (its inset and background-size in themes.css) and the seconds to fall one tile.
+const SNOW = [
+  [457, 14],
+  [613, 20],
+  [797, 27]
+]
+
+// The star states, one every 500 ms: the first star's opacity; the second star shows the rest.
+const TWINKLE = [0, 0.5, 1, 0.5]
+
+const MOTION_PROPS = ['--header-pos', '--card-fill-pos', '--card-glow-pos', '--card-glow-opacity', '--lights-opacity',
+  '--snow-1', '--snow-2', '--snow-3', '--twinkle-1', '--twinkle-2']
+
+// Touched only on the renderer's single thread (applyTheme, initTheme, the media query listener and this timer's callback).
+let motion: ReturnType<typeof setInterval> | null = null
+let motionTheme: string | undefined
+let ticks = 0
+
+// 0 to 1 and back over twice the given seconds, as an alternating CSS animation moves.
+function backAndForth(t: number, seconds: number): number {
+  const x = (t / seconds) % 2
+  return x < 1 ? x : 2 - x
+}
+
+// Every 250 ms: the snow 4 times a second, everything else twice.
+function tick(): void {
+  followTheme()
+  const style = document.documentElement.style
+  const t = Date.now() / 1000
+  const m = MOTION[motionTheme ?? ''] ?? {}
+  if (m.snow) SNOW.forEach(([tile, seconds], i) => style.setProperty(`--snow-${i + 1}`, `${(((t / seconds) % 1) * tile).toFixed(1)}px`))
+  if (ticks++ % 2 !== 0) return
+  if (m.header) style.setProperty('--header-pos', `${(backAndForth(t, m.header) * 100).toFixed(2)}% 50%`)
+  if (m.card) style.setProperty('--card-fill-pos', `${(backAndForth(t, m.card) * 100).toFixed(2)}% 50%`)
+  if (m.orbit) {
+    const f = backAndForth(t, m.orbit / 2)
+    style.setProperty('--card-glow-pos', `${(60 * f).toFixed(2)}% ${(40 * f).toFixed(2)}%, ${(100 - 60 * f).toFixed(2)}% ${(100 - 40 * f).toFixed(2)}%`)
+  }
+  if (m.glow) style.setProperty('--card-glow-opacity', (0.55 + 0.45 * backAndForth(t, m.glow / 2)).toFixed(3))
+  if (m.lights) style.setProperty('--lights-opacity', (0.55 + 0.45 * backAndForth(t, m.lights / 2)).toFixed(3))
+  if (document.querySelector('.sprite-sparkle')) {
+    const v = TWINKLE[Math.floor(t * 2) % TWINKLE.length]
+    style.setProperty('--twinkle-1', String(v))
+    style.setProperty('--twinkle-2', String(1 - v))
+  }
+}
+
+// A new theme starts from its own still look, not from where the last theme stopped.
+function followTheme(): void {
+  const root = document.documentElement
+  if (root.dataset.theme === motionTheme) return
+  for (const prop of MOTION_PROPS) root.style.removeProperty(prop)
+  motionTheme = root.dataset.theme
+}
+
+// Runs the timer while the Animations switch is on and Windows does not ask for reduced motion.
+function syncMotion(): void {
+  followTheme()
+  const root = document.documentElement
+  const run = root.dataset.animations !== 'off' && !matchMedia(REDUCE_MOTION).matches
+  if (run && motion === null) {
+    ticks = 0
+    motion = setInterval(tick, 250)
+  }
+  if (!run && motion !== null) {
+    clearInterval(motion)
+    motion = null
+    // Without these the stars fall back to fully shown.
+    root.style.removeProperty('--twinkle-1')
+    root.style.removeProperty('--twinkle-2')
+  }
 }

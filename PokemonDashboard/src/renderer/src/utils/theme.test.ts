@@ -158,15 +158,32 @@ describe('theme lists', () => {
 describe('applyTheme and initTheme', () => {
   let dataset: Record<string, string>
   let store: Map<string, string>
+  let props: Map<string, string>
+  let reduceMotion: { matches: boolean; listener: (() => void) | null }
+  let sparkle: object | null
 
+  // Reduced motion is on unless a test turns it off, so only the motion tests run the motion timer.
   function stubDom(): void {
     dataset = {}
     store = new Map()
-    vi.stubGlobal('document', { documentElement: { dataset } })
+    props = new Map()
+    reduceMotion = { matches: true, listener: null }
+    sparkle = null
+    vi.stubGlobal('document', {
+      documentElement: {
+        dataset,
+        style: { setProperty: (key: string, value: string) => props.set(key, value), removeProperty: (key: string) => props.delete(key) }
+      },
+      querySelector: () => sparkle
+    })
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => store.set(key, value)
     })
+    vi.stubGlobal('matchMedia', () => ({
+      matches: reduceMotion.matches,
+      addEventListener: (_: string, listener: () => void) => (reduceMotion.listener = listener)
+    }))
   }
 
   afterEach(() => {
@@ -229,5 +246,62 @@ describe('applyTheme and initTheme', () => {
     store.set('dashboard-animations', 'off')
     initTheme('recent')
     expect(dataset.animations).toBe('off')
+  })
+
+  it('moves the theme while animations are on, and leaves it drawn where it stopped when they go off', () => {
+    stubDom()
+    reduceMotion.matches = false
+    vi.useFakeTimers()
+    applyTheme(appearance({ default: { theme: 'christmas' } }), 'admin')
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.advanceTimersByTime(250)
+    expect(props.get('--card-fill-pos')).toMatch(/% 50%$/)
+    expect(props.get('--snow-1')).toMatch(/px$/)
+    expect(props.has('--header-pos')).toBe(false)
+
+    applyTheme(appearance({ default: { theme: 'christmas' }, animations: false }), 'admin')
+    expect(vi.getTimerCount()).toBe(0)
+    expect(props.has('--card-fill-pos')).toBe(true)
+    expect(props.has('--snow-1')).toBe(true)
+  })
+
+  it('twinkles the stars only while running, and shows them fully when stopped', () => {
+    stubDom()
+    reduceMotion.matches = false
+    vi.useFakeTimers()
+    applyTheme(appearance({ default: { theme: 'midnight' } }), 'admin')
+    vi.advanceTimersByTime(500)
+    expect(props.size).toBe(0)
+
+    sparkle = {}
+    vi.advanceTimersByTime(500)
+    expect(Number(props.get('--twinkle-1')) + Number(props.get('--twinkle-2'))).toBe(1)
+
+    applyTheme(appearance({ default: { theme: 'midnight' }, animations: false }), 'admin')
+    expect(props.size).toBe(0)
+  })
+
+  it('stops and starts with Windows reduced motion, and clears the old theme on a switch', () => {
+    stubDom()
+    reduceMotion.matches = false
+    vi.useFakeTimers()
+    initTheme('admin')
+    applyTheme(appearance({ default: { theme: 'ruby' } }), 'admin')
+    vi.advanceTimersByTime(250)
+    expect(props.has('--header-pos')).toBe(true)
+
+    reduceMotion.matches = true
+    reduceMotion.listener?.()
+    expect(vi.getTimerCount()).toBe(0)
+    reduceMotion.matches = false
+    reduceMotion.listener?.()
+    expect(vi.getTimerCount()).toBe(1)
+
+    applyTheme(appearance({ default: { theme: 'midnight' } }), 'admin')
+    expect(props.has('--header-pos')).toBe(false)
+
+    applyTheme(appearance({ default: { theme: 'midnight' }, animations: false }), 'admin')
+    expect(vi.getTimerCount()).toBe(0)
   })
 })
