@@ -66,6 +66,7 @@ Limits: one sample each, on a PC far faster than prod and at 143 Hz (prod's scre
 | FR-10 | The guide's "Choose a theme" gains the Animations switch and when to use it; the Livelier dashboard spec gets a dated note that its animation rules are changed by this spec. | Must | Reviewer check (the guide rule; decisions are added, not edited). |
 
 | FR-11 | Added 2026-11-11, and it replaces the on-or-off of FR-1 and FR-2 and the technique of FR-6 to FR-8. `animations` has four values: `off`, `low`, `medium` and `high`; a saved config without it reads as `high`. The Appearance section shows them as one **Animations** selector (Off, Low, Medium, High) in place of the checkbox. `high` is the smooth CSS animations as first built. `low` runs no CSS theme animation: one timer in each window moves the gradients and pulses about twice a second, the snow 4 times a second and the stars about every 600 ms. `medium` is the same timer about 10 times a second, the stars about every 300 ms. `off` is FR-3 and FR-4. The limits of FR-6 to FR-8 apply to `low` only; `medium` and `high` are measured and reported, with no limit. | Must | Unit tests: the four values round-trip, a document without the field loads as `high`, the timer runs only under `low` and `medium`. QA: each value in turn, in every window, with no reload; the choice is back after both restarts. The script: still, low, medium and high per row. |
+| FR-12 | Added 2026-11-11; it replaces FR-4 and the single value of FR-11. `animations` is three values, `gradients`, `snow` and `stars`, each `off`, `low`, `medium` or `high` as FR-11 defines them; a missing one reads as `high`. The Appearance section shows three selectors (Gradients, Snow, Stars). Off means not shown: with snow `off` no snow is drawn, and with stars `off` no star is drawn. Gradients `off` is the still fill, glow and lights, which are the theme's background. Windows' reduce motion does the same: no snow, no stars, still gradients. | Must | Unit tests: the three round-trip, each missing one loads as `high`, an unknown value is a 400, the timer ticks only the types on `low` or `medium`. QA: each type set on its own; with snow or stars `off` the layers and the stars are absent, not still. |
 
 ## Design
 
@@ -104,11 +105,12 @@ The switch (C1, C2) can ship first on its own if prod needs relief before the ch
 ## Open questions
 
 - FR-3: the light pulse and glow pulse on Christmas Night are counted with the gradients (built that way; the owner gave the go-ahead without changing it).
-- FR-4: still snow and still stars when animations are off. Proposed on 2026-11-10 and not yet answered.
+- FR-4: answered 2026-11-11, no: "if the animation is off it shouldn't show at all. non animating stars blocks the view." See FR-12.
 - FR-6 to FR-8: the limits (2, 1 and 5 percent on the dev PC) are a first guess. Prod's own numbers should set them once the script has run there.
 
 ## Changelog
 
+- 2026-11-11: FR-12. "i should be able to configure each type individually. if the animation is off it shouldn't show at all. non animating stars blocks the view." One value per type; off hides the snow and the stars, under reduce motion too.
 - 2026-11-11: FR-11. The owner chose the timer for the cheap mode ("Yes, use the timer"), then asked for the smooth animations to stay as a choice: "we should have a high quality mode and keep a hire FPS as well as a option". Then: "add a medium as well". C4 builds low and medium beside high; a new task C6 makes the saved field and the Admin control four-valued; C5 follows C6.
 - 2026-11-10: the switch covers only the gradients, the snow and the stars: "Gif doesnt cause issues. Animations should only be for gradients, snow, and stars".
 - 2026-11-10: first draft, with the dev PC measurements, from the owner's ask for a measurement, a cheaper way and an off switch in Admin, as its own spec.
