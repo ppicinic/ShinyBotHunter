@@ -172,11 +172,12 @@ const FILES = [
   '/Animated/Default/wailord.gif'
 ]
 
-test('dashboard alive: sprite files, themes per window, animation levels, night switch, back after restarts', async () => {
+test('dashboard alive: sprite files, themes per window, animation levels, night switch, back after restarts, a Pickup items window added and removed', async () => {
   fs.mkdirSync(runDir, { recursive: true })
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
   let phases: [string, string] | null = null
+  let pickupFile: string | null = null
   try {
     expect(await answers(), 'something already answers on localhost:5000; stop it first').toBe(false)
     const build = spawnSync('npm run build', { cwd: dashboardDir, shell: true, encoding: 'utf8' })
@@ -192,6 +193,11 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     phases = [names[0], names[1]]
     const [PHASE_A, PHASE_B] = phases
     step(`milestone A "${PHASE_A}", milestone B "${PHASE_B}" with game file ${DOTTED}`)
+    const games: { handle: string }[] = await (await fetch(`${API}/getAllGames`)).json()
+    expect(games.length, 'needs one ROM in ROMBaseDirectory for the Pickup window').toBeGreaterThan(0)
+    const PICKUP_FILE = games[0].handle
+    pickupFile = PICKUP_FILE
+    step(`Pickup items window for game file ${PICKUP_FILE}`)
 
     app = await launch()
     // Reassigned after each restart.
@@ -204,13 +210,15 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     // Reset to a known saved config, through the endpoints: the dashboard has no reset control.
     const snapshot = await admin.evaluate(() => (window as any).api.getSignalRState())
     for (const s of snapshot.dashboardConfig.gamePhases) await post('/unsubcribeGamePhase', { game: s.game, phase: s.phase, gameName: s.gameName ?? null })
+    for (const f of snapshot.dashboardConfig.pickupGameFiles) await post('/admin/pickupGameFiles/remove', f)
     await post('/admin/appearance', DEFAULT_APPEARANCE)
     await post('/updateRecentEncounterConfig', 10)
     await expect(admin.getByText('Current: 10', { exact: true })).toBeVisible({ timeout: 30_000 })
     await expect.poll(() => app!.windows().filter((p) => p.url().includes('card=phase')).length, { timeout: 30_000 }).toBe(0)
+    await expect.poll(() => app!.windows().filter((p) => p.url().includes('card=pickup')).length, { timeout: 30_000 }).toBe(0)
     await expectTheme(admin, 'midnight')
     await expectTheme(recent, 'midnight')
-    step(`reset: ${snapshot.dashboardConfig.gamePhases.length} subscription(s) removed, Midnight, no overrides, count 10`)
+    step(`reset: ${snapshot.dashboardConfig.gamePhases.length} subscription(s) and ${snapshot.dashboardConfig.pickupGameFiles.length} Pickup window(s) removed, Midnight, no overrides, count 10`)
 
     // Milestone A through the UI, with no game file.
     const add = admin.locator('h3', { hasText: 'Add Subscription' }).locator('xpath=following-sibling::div[1]')
@@ -225,14 +233,18 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     await sleep(5000)
     step('milestone windows A and B open')
 
-    // Main opens a Pickup window only from a hunt's tally, so this one is opened by hand. It has no Appearance row.
-    await app.evaluate(({ BrowserWindow }, query) => {
-      const file = decodeURIComponent(new URL(BrowserWindow.getAllWindows()[0].webContents.getURL()).pathname).replace(/^\//, '')
-      const win = new BrowserWindow({ width: 480, height: 400, frame: false, webPreferences: { preload: file.replace('renderer/index.html', 'preload/index.js') } })
-      win.loadFile(file, { query })
-    }, { card: 'pickup', game: DOTTED })
-    const pickup = await windowByTitle(app, `Pokemon Dashboard — Pickup: ${DOTTED}`, 30_000)
-    step('Pickup window opened by hand')
+    // A Pickup items window added with Add: it opens at once with No items yet, and it has an Appearance row.
+    // A function, because admin is reassigned after each restart.
+    const pickupSection = () => admin.locator('h3', { hasText: 'Pickup Items Windows' }).locator('xpath=..')
+    const pickupEntry = () => pickupSection().locator('li', { hasText: PICKUP_FILE })
+    await pickupSection().locator('select').selectOption(PICKUP_FILE)
+    await pickupSection().getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(pickupEntry()).toBeVisible({ timeout: 30_000 })
+    const pickupTitle = `Pokemon Dashboard — Pickup: ${PICKUP_FILE}`
+    let pickup = await windowByTitle(app, pickupTitle, 30_000)
+    await expect(pickup.getByText('No items yet', { exact: true })).toBeVisible({ timeout: 10_000 })
+    expect(await pickup.locator('.card-header > div > span').allTextContents(), 'the Pickup window header').toEqual([PICKUP_FILE])
+    step('Pickup window added')
 
     // Sample encounters with no game or phase, so no milestone's counts are touched.
     const send = (channel: string, payload: object): Promise<void> => app!.evaluate(({ BrowserWindow }, a) =>
@@ -290,7 +302,7 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     // --- themes: every change through the Appearance section --------------------------------------
     const A = phaseName('HGSS', PHASE_A, null)
     const B = phaseName('HGSS', PHASE_B, DOTTED)
-    const PICKUP = `pickup:${enc(DOTTED)}`
+    const PICKUP = `pickup:${enc(PICKUP_FILE)}`
     const row = (name: string) => admin.locator(`[data-window="${name}"]`)
     const select = (name: string, aria: 'Theme' | 'Night theme') => row(name).locator(`select[aria-label="${aria}"]`)
     const nightBox = (name: string) => row(name).locator('input[aria-label="Switch at night"]')
@@ -309,6 +321,8 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     }
 
     // Default.
+    await expect(row(PICKUP)).toBeVisible()
+    await expect(row(PICKUP)).toContainText(`Pickup Items (${PICKUP_FILE})`)
     await pick('default', 'Theme', 'hgss-drift', 'hgss-drift')
     for (const [name, page] of [['admin', admin], ['recent', recent], [A, milestoneA], [B, milestoneB], [PICKUP, pickup]] as const) {
       await expectTheme(page, 'hgss-drift')
@@ -331,13 +345,18 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     await pick('admin', 'Theme', 'christmas', 'christmas')
     await expectTheme(admin, 'christmas')
     await unchanged([[recent, 'hgss-drift'], [milestoneA, 'hgss-drift'], [pickup, 'hgss-drift'], [milestoneB, 'sapphire']])
+
+    // The Pickup row, kept for the restarts.
+    await pick(PICKUP, 'Theme', 'rs-drift', 'rs-drift')
+    await expectTheme(pickup, 'rs-drift')
+    await unchanged([[admin, 'christmas'], [recent, 'hgss-drift'], [milestoneA, 'hgss-drift'], [milestoneB, 'sapphire']])
     await shots('02-overrides', { admin, recent, milestoneA, milestoneB, pickup })
 
     // --- the Animations settings: gradients low, snow off, stars medium, through the Admin selectors ---------
     const level = (kind: keyof typeof LEVEL_LABELS) => admin.locator(`select[aria-label="${LEVEL_LABELS[kind]}"]`)
     const five = [['admin', admin], ['recent', recent], ['A', milestoneA], ['B', milestoneB], ['pickup', pickup]] as const
     for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) await expect(level(kind)).toHaveValue('high')
-    // Admin is on Christmas Pine, B on Sapphire, the rest on HGSS Gold and Silver: every one has a theme animation.
+    // Admin is on Christmas Pine, B on Sapphire, Pickup on RS drift, the rest on HGSS Gold and Silver: every one has a theme animation.
     for (const [name, page] of five) {
       await expect.poll(async () => (await running(page)).some((n) => n.startsWith('theme-')), { timeout: 15_000, message: `${name} runs a theme animation at high` }).toBe(true)
     }
@@ -415,12 +434,15 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
       recent = await windowByTitle(app!, RECENT_TITLE, 60_000)
       milestoneA = await windowByTitle(app!, `HGSS — ${PHASE_A}`, 60_000)
       milestoneB = await windowByTitle(app!, `HGSS — ${PHASE_B} (${DOTTED})`, 60_000)
+      pickup = await windowByTitle(app!, pickupTitle, 60_000)
       await expect.poll(async () => {
         const state = await admin.evaluate(() => (window as any).api.getSignalRState())
         return state.dashboardConfig.gamePhases
           .map((p: { game: string; phase: string; gameName?: string | null }) => [p.game, p.phase, p.gameName ?? null])
           .sort()
       }, { timeout: 30_000, message: 'subscriptions' }).toEqual([['HGSS', PHASE_A, null], ['HGSS', PHASE_B, DOTTED]].sort())
+      await expect.poll(async () => (await admin.evaluate(() => (window as any).api.getSignalRState())).dashboardConfig.pickupGameFiles,
+        { timeout: 30_000, message: 'Pickup items windows' }).toEqual([PICKUP_FILE])
       await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
       await expect(row('default')).toBeVisible({ timeout: 30_000 })
       await expect(select('default', 'Theme')).toHaveValue('hgss-drift', { timeout: 30_000 })
@@ -430,10 +452,14 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
       await expect(select('recent', 'Night theme')).toHaveValue('christmas-night')
       await expect(select(B, 'Theme')).toHaveValue('sapphire')
       await expect(select(A, 'Theme')).toHaveValue('')
+      await expect(select(PICKUP, 'Theme')).toHaveValue('rs-drift')
       await expectTheme(admin, 'christmas')
       await expectTheme(recent, 'christmas-night')
       await expectTheme(milestoneA, 'hgss-drift')
       await expectTheme(milestoneB, 'sapphire')
+      await expectTheme(pickup, 'rs-drift')
+      // No hunt runs, and the tally starts from zero after a bot restart.
+      await expect(pickup.getByText('No items yet', { exact: true })).toBeVisible({ timeout: 10_000 })
       for (const kind of Object.keys(CHOSEN) as (keyof typeof CHOSEN)[]) await expect(level(kind)).toHaveValue(CHOSEN[kind])
       for (const [label, page] of [['admin', admin], ['recent', recent], ['A', milestoneA], ['B', milestoneB]] as const) {
         await expect.poll(() => levels(page), { timeout: 30_000, message: `${label}: the root attributes and remembered levels` }).toEqual(levelsAre(CHOSEN))
@@ -441,7 +467,7 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
       }
       expect(await snowContent(admin), 'Admin\'s snow with snow off').toEqual(['none', 'none', 'none'])
       expect(await snowContent(recent), 'Recent\'s snow with snow off').toEqual(['none', 'none', 'none'])
-      await shots(name, { admin, recent, milestoneA, milestoneB })
+      await shots(name, { admin, recent, milestoneA, milestoneB, pickup })
     }
 
     await app.close()
@@ -473,13 +499,24 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
     step('Animations all high again')
 
     // --- one screenshot per theme, ending on Midnight with no overrides ----------------------------
-    for (const name of ['admin', 'recent', B]) await pick(name, 'Theme', { label: 'Default' }, '')
+    for (const name of ['admin', 'recent', B, PICKUP]) await pick(name, 'Theme', { label: 'Default' }, '')
     for (const id of THEMES) {
       await pick('default', 'Theme', id, id)
       for (const page of [recent, admin, milestoneA]) await expectTheme(page, id)
       await sleep(2000) // the drift and the snow show
       await shots(id, { recent, admin, milestone: milestoneA })
     }
+
+    // Remove: the window closes, the entry leaves the list, and the row goes, since its theme is Default.
+    const closed = pickup.waitForEvent('close', { timeout: 30_000 })
+    await pickupEntry().getByRole('button', { name: 'Remove', exact: true }).click()
+    await closed
+    await expect(pickupEntry()).toHaveCount(0, { timeout: 30_000 })
+    await expect(row(PICKUP)).toHaveCount(0)
+    await expect.poll(() => app!.windows().filter((p) => p.url().includes('card=pickup')).length, { timeout: 30_000 }).toBe(0)
+    await noServerError()
+    step('Pickup window removed')
+    await shots('06-removed', { admin })
   } finally {
     if (backend && (await answers())) {
       try {
@@ -488,7 +525,8 @@ test('dashboard alive: sprite files, themes per window, animation levels, night 
           await post('/unsubcribeGamePhase', { game: 'HGSS', phase: phases[0], gameName: null })
           await post('/unsubcribeGamePhase', { game: 'HGSS', phase: phases[1], gameName: DOTTED })
         }
-        step('restore: Midnight, default times, animations high, A and B unsubscribed')
+        if (pickupFile) await post('/admin/pickupGameFiles/remove', pickupFile)
+        step('restore: Midnight, default times, animations high, A and B unsubscribed, Pickup window removed')
       } catch (err) {
         step(`restore failed: ${err}`)
       }
