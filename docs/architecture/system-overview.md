@@ -70,7 +70,7 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 | BizHawk fork (external) | C# | `ppicinic/BizHawk`, branch `fix/4535-sticky-analog`, built as 2.11.2 with `Dist/BuildRelease.sh`. Not in this repo; see section 8. |
 | `Dolphin/`, `Scripts/deploy-dolphin.ps1` | ini files | Dolphin config as files, installed by the script into `{DolphinBaseDirectory}\User-ShinyBotHunter`, the user folder the bot launches Dolphin with (`-u`). |
 | Dolphin 2609a (external) | C++ | Mainline Dolphin, no fork, used only by the Wishmaker Jirachi hunt; see section 8. |
-| `PokemonDashboard/` | Electron + React + TS | Operator UI. Multi-window (admin, phase cards, recent encounters, and one Pickup items window per game while its switch is on). |
+| `PokemonDashboard/` | Electron + React + TS | Operator UI. Multi-window (admin, phase cards, recent encounters, and one Pickup items window per game file added in the Admin window). |
 
 ## 4. Backend startup and composition
 
@@ -91,14 +91,14 @@ All under `/api` (`ApiControllerBase`). Consumers: the dashboard only.
 
 | Controller | Endpoints | Backing service |
 |---|---|---|
-| `AdminController` | subscribe/unsubscribe a game phase for live updates; recent-encounter count; `admin/appearance` (the whole theme choice, pushed to every dashboard); `metadata` (all phases per flavor + feature flags); `getAllGames`, `refreshGames` (ROM inventory) | `AdminService`, `PhaseInfoService`, `RomInfoService` |
+| `AdminController` | subscribe/unsubscribe a game phase for live updates; recent-encounter count; `admin/appearance` (the whole theme choice and the animation levels, pushed to every dashboard); `admin/pickupGameFiles/add` and `/remove` (which game files have a Pickup items window); `metadata` (all phases per flavor + feature flags); `getAllGames`, `refreshGames` (ROM inventory) | `AdminService`, `PhaseInfoService`, `RomInfoService` |
 | `BotController` | `getTopLevelActions` (the `OwnsEmulators` entries of `EventRegistry`, minus the by-name-only HGSS hunt), `startTopLevelAction` (launch a bot or a multi-emulator hunt), `bot/getDashboardState`, `bot/getBotActions/{pos}`, `bot/getParty/{pos}`, `bot/startAction/{pos}`, `bot/cancelAction`, `bot/getPickupItems` (the in-memory Pickup tally, `PickupTally`) | `BotService`, `PickupTally` |
 | `PhaseMetadataController` | `phaseinfo/{game}/{phase}[/{gameFileName}]` (phase definition + all counts), `updatePhaseInfo`, `phaseinfo/encounterRate/...` | `PhaseInfoService`, `PokemonPersistenceService`, `IEncounterDao` |
 | `DevController` | location readout and macro recording; every route 404s unless `EnableMacroRecording` | `LocationService`, `MacroRecordingService` |
 
 The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it. Every action is one `EventRegistration` in `Games/EventRegistry.cs` (name, options, required capability, owns-emulators flag, and the `BotService` method that starts it), so a new bot action is one registry entry plus one method, with no dashboard code change. Both start routes map `ArgumentException`, `InvalidOperationException` and `FileNotFoundException` to a plain-text 400.
 
-**SignalR** (`ElectronHub`, `IElectronClient`): server pushes `ReceiveDashboardConfig` (subscriptions, recent count and `appearance`; `AdminService` saves the whole of it as one MongoDB document on every change and loads it at start, so it survives a backend restart; each dashboard window picks its own theme from it), `ReceiveDashboardState` (bot positions and states) `RecieveEncounters` (counts for a subscribed `{game}_{phase}` group) and `ReceivePickupItems` (one game's Pickup tally after each take, from `PickupTally`; memory only, gone on a backend restart). Clients call `SubscribeToGamePhase`.
+**SignalR** (`ElectronHub`, `IElectronClient`): server pushes `ReceiveDashboardConfig` (subscriptions, recent count, `pickupGameFiles` and `appearance`; `AdminService` saves the whole of it as one MongoDB document on every change and loads it at start, so it survives a backend restart; each dashboard window picks its own theme from it), `ReceiveDashboardState` (bot positions and states) `RecieveEncounters` (counts for a subscribed `{game}_{phase}` group) and `ReceivePickupItems` (one game's Pickup tally after each take, from `PickupTally`; memory only, gone on a backend restart). Clients call `SubscribeToGamePhase`.
 
 ## 6. Data and persistence
 
@@ -269,3 +269,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-11-10: the Pickup items windows, `bot/getPickupItems` and the `ReceivePickupItems` push (epic #292).
 - 2026-11-10: section 4 lists `--parseitemsprites`, the item sprites for the Pickup items windows (epic #292).
 - 2026-11-10: the saved dashboard config (`DashboardConfig` collection, `appearance`, `admin/appearance`) and the animated sprites in `--parsepokeapi` (epic #308).
+- 2026-11-11: the animation levels on `appearance` (epic #323) and the saved Pickup items windows, `pickupGameFiles` and its two endpoints (epic #331).

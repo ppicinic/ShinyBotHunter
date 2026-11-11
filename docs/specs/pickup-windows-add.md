@@ -1,7 +1,7 @@
 # Spec: add Pickup items windows per game file
 
-Status: In progress (approved for build by the owner, 2026-11-10: "Implement both"; epic on feature/pickup-windows-add, branched from feature/dashboard-animation-cost because the two change the same files).
-Last updated: 2026-11-10
+Status: Implemented on feature/pickup-windows-add (epic #331), 2026-11-11, on top of feature/dashboard-animation-cost. Not yet merged to main.
+Last updated: 2026-11-11
 Owner: Phil
 Related: [Pickup items dashboard](pickup-items-dashboard.md) (the windows this changes), [Livelier dashboard](dashboard-alive.md) (the saved dashboard config this reuses), [the dashboard guide page](../guide/03-dashboard.md), [feature workflow](feature-workflow.md)
 
@@ -74,11 +74,24 @@ The checkbox, its two IPC calls and the main-process switch flag; the window's t
 
 W1 and W2 have disjoint files and run in parallel (W2 works from FR-1's field name). W3 after both.
 
+## What diverged
+
+- Design said "The main process still holds the tallies". As built, the main process holds none: each Pickup items window loads its own tally with `GET /api/bot/getPickupItems` when it opens and then follows the `ReceivePickupItems` push.
+- W1's plan expected the saved-config DAO to need no change; a saved document without `PickupGameFiles` loaded as null, so `MongoDashboardConfigDao.FromDocument` gained a guard that reads it as empty.
+- The tile is the picture and the count only; the name is the tile's tooltip and is printed only if the picture fails to load.
+- The Pickup QA scenarios clean up after themselves: `dashboard-alive` leaves no saved Pickup window, and `hgss-pickup-items-window` removes `HG-Pickup-Held` before and after its run.
+
+## Evidence
+
+- PRs: #336 (W1), #337 (W2), #342 (W3).
+- QA on the tip dfb5f5d, 2026-11-11, both passed first run: `qa-runs/20261111-145028-dashboard-alive` (Add opens the window with `No items yet`; back after the dashboard restart and the bot restart; Remove closes it and drops its Appearance row) and `qa-runs/20261111-145330-hgss-route33-dashboard` (`hgss-pickup-items-window` on the emulator: the window added before the bot launched, the take in battle 3 pushed into the open window as picture tiles with counts and no total line; SaveRAM equal to its `.bak` afterwards).
+
 ## Open questions
 
 None open. Settled at the go-ahead, which changed none of the draft's choices: a window closed by hand behaves as a counts window does (FR-6); Add lives on Dashboard Config only; the item names come off the tiles (tooltip, and printed when a picture is missing, FR-10).
 
 ## Changelog
 
+- 2026-11-11: implemented; "What diverged" and "Evidence" added.
 - 2026-11-10: FR-10 and FR-11, the window shows only pictures and counts: "remove the bottom line that is total. i just want the item sprites with their counts as well".
 - 2026-11-10: first draft, from the owner's choice of "add per game file" over a saved checkbox or fully automatic windows.
