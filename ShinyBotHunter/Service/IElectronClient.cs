@@ -1,4 +1,6 @@
 ﻿using System.Text.Json.Serialization;
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.Pokemon;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
@@ -22,7 +24,7 @@ namespace ShinyBotHunter.Service
     {
         public string DayStart { get; set; } = "07:00";
         public string NightStart { get; set; } = "19:00";
-        public bool Animations { get; set; } = true;
+        public AnimationChoice Animations { get; set; } = new();
         public ThemeChoice Default { get; set; } = new() { Theme = "midnight" };
         public Dictionary<string, ThemeChoice> Windows { get; set; } = new();
     }
@@ -33,6 +35,20 @@ namespace ShinyBotHunter.Service
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Night { get; set; }
     }
+
+    // How much each kind of theme animation moves (docs/specs/dashboard-animation-cost.md FR-12); a missing member is high.
+    public class AnimationChoice
+    {
+        [BsonRepresentation(BsonType.String)]
+        public AnimationLevel Gradients { get; set; } = AnimationLevel.high;
+        [BsonRepresentation(BsonType.String)]
+        public AnimationLevel Snow { get; set; } = AnimationLevel.high;
+        [BsonRepresentation(BsonType.String)]
+        public AnimationLevel Stars { get; set; } = AnimationLevel.high;
+    }
+
+    // Lowercase because the member names are the values on the wire and in Mongo.
+    public enum AnimationLevel { off, low, medium, high }
 
     // One game file's Pickup tally: the GET body's entries and the push payload.
     public record PickupItemsResponse(string GameFileName, string Milestone, int Total, List<PickupItemCount> Items);

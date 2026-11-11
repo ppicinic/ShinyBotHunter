@@ -18,7 +18,7 @@ function at(hhmm: string, month = 10, date = 10): Date {
 }
 
 function appearance(partial: Partial<Appearance>): Appearance {
-  return { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {}, animations: true, ...partial }
+  return { dayStart: '07:00', nightStart: '19:00', default: { theme: 'midnight' }, windows: {}, animations: { gradients: 'high', snow: 'high', stars: 'high' }, ...partial }
 }
 
 describe('windowNameFromSearch', () => {
@@ -203,7 +203,7 @@ describe('applyTheme and initTheme', () => {
     reduceMotion.matches = false
     vi.useFakeTimers()
     store.set('dashboard-theme:admin', theme)
-    store.set('dashboard-animations', animations)
+    for (const kind of ['gradients', 'snow', 'stars']) store.set(`dashboard-anim-${kind}`, animations)
     initTheme('admin')
   }
 
@@ -255,25 +255,26 @@ describe('applyTheme and initTheme', () => {
     expect(dataset.theme).toBe('sapphire')
   })
 
-  it('sets every kind off or low from the pushed appearance, and remembers it', () => {
+  it('marks each animation kind from the pushed appearance, and remembers it', () => {
     stubDom()
-    applyTheme(appearance({ animations: false }), 'admin')
-    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['off', 'off', 'off'])
-    expect(store.get('dashboard-animations')).toBe('off')
+    applyTheme(appearance({ animations: { gradients: 'off', snow: 'low', stars: 'medium' } }), 'admin')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['off', 'low', 'medium'])
+    expect(['gradients', 'snow', 'stars'].map((kind) => store.get(`dashboard-anim-${kind}`))).toEqual(['off', 'low', 'medium'])
 
-    applyTheme(appearance({ animations: true }), 'admin')
-    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['low', 'low', 'low'])
-    expect(store.get('dashboard-animations')).toBe('low')
+    applyTheme(appearance({}), 'admin')
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'high', 'high'])
+    expect(['gradients', 'snow', 'stars'].map((kind) => store.get(`dashboard-anim-${kind}`))).toEqual(['high', 'high', 'high'])
+    expect(dataset.animations).toBeUndefined()
   })
 
-  it('restores the kinds before first paint, and leaves them absent when none is saved', () => {
+  it('restores the animation kinds before first paint, high when none is saved', () => {
     stubDom()
     initTheme('recent')
-    expect(dataset.animSnow).toBeUndefined()
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'high', 'high'])
 
-    store.set('dashboard-animations', 'off')
+    store.set('dashboard-anim-snow', 'off')
     initTheme('recent')
-    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['off', 'off', 'off'])
+    expect([dataset.animGradients, dataset.animSnow, dataset.animStars]).toEqual(['high', 'off', 'high'])
   })
 
   it('runs a timer per kind under low, faster under medium, and none under off and high', () => {

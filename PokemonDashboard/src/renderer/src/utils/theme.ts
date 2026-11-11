@@ -92,27 +92,25 @@ function storageKey(windowName: string): string {
   return `dashboard-theme:${windowName}`
 }
 
-// One key for every window: the switch is the same for all of them.
-const ANIMATIONS_KEY = 'dashboard-animations'
-
 // Each kind of theme animation follows its own root attribute: off, low, medium or high.
 const KINDS = ['gradients', 'snow', 'stars'] as const
 type Kind = (typeof KINDS)[number]
 const ATTRIBUTE = { gradients: 'animGradients', snow: 'animSnow', stars: 'animStars' } as const
 
-// Until the saved setting holds a value per kind (C6), one saved value sets all three.
-function setAnimations(value: string): void {
-  for (const kind of KINDS) document.documentElement.dataset[ATTRIBUTE[kind]] = value
+// One key per kind for every window: the levels are the same for all of them.
+function animationKey(kind: Kind): string {
+  return `dashboard-anim-${kind}`
 }
 
 // Before first paint: the last theme this window applied. With none saved it stays Midnight.
-// With no animations value saved the attributes stay absent: nothing moves until the pushed appearance sets them.
+// A kind with no level saved is high, as the backend loads a missing one, so the attributes are never absent.
 // From here on the motion timers follow the root's attributes and Windows' reduced motion.
 export function initTheme(windowName: string): void {
   const saved = localStorage.getItem(storageKey(windowName))
   if (saved !== null) document.documentElement.dataset.theme = saved
-  const animations = localStorage.getItem(ANIMATIONS_KEY)
-  if (animations !== null) setAnimations(animations)
+  for (const kind of KINDS) {
+    document.documentElement.dataset[ATTRIBUTE[kind]] = localStorage.getItem(animationKey(kind)) ?? 'high'
+  }
   new MutationObserver(syncMotion).observe(document.documentElement, {
     attributeFilter: ['data-theme', 'data-anim-gradients', 'data-anim-snow', 'data-anim-stars']
   })
@@ -130,10 +128,10 @@ export function applyTheme(appearance: Appearance, windowName: string): void {
   const theme = resolveTheme(appearance, windowName, now)
   document.documentElement.dataset.theme = theme
   localStorage.setItem(storageKey(windowName), theme)
-  // The saved switch is on or off for now; on is the timer at low for every kind.
-  const animations = appearance.animations ? 'low' : 'off'
-  setAnimations(animations)
-  localStorage.setItem(ANIMATIONS_KEY, animations)
+  for (const kind of KINDS) {
+    document.documentElement.dataset[ATTRIBUTE[kind]] = appearance.animations[kind]
+    localStorage.setItem(animationKey(kind), appearance.animations[kind])
+  }
   const delay = nextSwitchDelay(appearance, windowName, now)
   if (delay !== null) timer = setTimeout(() => applyTheme(appearance, windowName), delay)
 }
