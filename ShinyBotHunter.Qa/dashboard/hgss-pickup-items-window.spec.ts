@@ -43,7 +43,8 @@ async function readParty(): Promise<PartySlot[]> {
   return res.ok ? ((await res.json()) as PartySlot[]) : []
 }
 
-type Tally = { gameFileName: string; milestone: string; total: number; items: { id: number; name: string; count: number }[] }
+type Tally = { gameFileName: string; milestone: string; items: { id: number; name: string; count: number }[] }
+const sum = (t: Tally): number => t.items.reduce((n, i) => n + i.count, 0)
 async function readTally(): Promise<Tally[]> {
   const res = await fetch('http://localhost:5000/api/bot/getPickupItems')
   expect(res.ok, `GET getPickupItems returned ${res.status}`).toBe(true)
@@ -63,16 +64,13 @@ async function pickupTitles(app: ElectronApplication): Promise<string[]> {
   return titles
 }
 
-// The Pickup window's cells as [name, count], then the Total line as ['Total', total].
-const windowRows = async (pickup: Page): Promise<string[][]> => {
-  const cells = await pickup.getByTestId('pickup-item').evaluateAll((items) =>
-    items.map((c) => ['pickup-item-name', 'pickup-item-count'].map((id) => (c.querySelector(`[data-testid=${id}]`)?.textContent ?? '').trim())))
-  const totals = await pickup.getByTestId('pickup-total').evaluateAll((t) => t.map((e) => Array.from(e.children).map((c) => (c.textContent ?? '').trim())))
-  return [...cells, ...totals]
-}
-const tallyRows = (tally: Tally): string[][] => [...tally.items.map((i) => [i.name, String(i.count)]), ['Total', String(tally.total)]]
+// The Pickup window's tiles as [tooltip name, count].
+const windowRows = (pickup: Page): Promise<string[][]> =>
+  pickup.getByTestId('pickup-item').evaluateAll((items) =>
+    items.map((c) => [c.getAttribute('title') ?? '', (c.querySelector('[data-testid=pickup-item-count]')?.textContent ?? '').trim()]))
+const tallyRows = (tally: Tally): string[][] => tally.items.map((i) => [i.name, String(i.count)])
 
-test('HGSS Pickup items window: off at start, on after the first visit shows the five takes, a later take is pushed into it, off closes it', async () => {
+test('HGSS Pickup items window: added before the launch shows No items yet, the first visit\'s five takes are pushed in as five tiles, a later take too, Remove closes it', async () => {
   let backend: ChildProcess | null = null
   let app: ElectronApplication | null = null
   // Before the try, so the finally block never kills an emulator this run did not start.
@@ -88,9 +86,13 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     expect(fs.existsSync(SAVE + '.bak'), `missing ${SAVE}.bak`).toBe(true)
     step(`SaveRAM sha256 ${sha256(SAVE)}, .bak sha256 ${sha256(SAVE + '.bak')}`)
 
-    // 3. Backend.
+    // 3. Backend. A failed earlier run may have left ROM on the saved list, which would open its window at launch.
     backend = await startBackend()
     step('backend up on localhost:5000')
+    const removed = await fetch('http://localhost:5000/api/admin/pickupGameFiles/remove', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ROM)
+    })
+    expect(removed.ok, `POST pickupGameFiles/remove returned ${removed.status}`).toBe(true)
 
     // 4. Dashboard and its windows.
     app = await launchDashboard(path.join(runDir, 'videos'))
@@ -99,12 +101,20 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     const pages = { admin, recent }
     step('windows attached')
 
-    // 5. The switch is off at start and no Pickup window is open.
-    expect(await pickupTitles(app), 'a Pickup window at start').toEqual([])
+    // 5. Add a Pickup items window for ROM before the launch: it opens at once, with the game file and No items yet.
+    expect(await pickupTitles(app), 'the Pickup windows at start').not.toContain(PICKUP_TITLE)
     await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
-    const pickupSwitch = admin.getByLabel('Pickup items windows', { exact: true })
-    await expect(pickupSwitch).not.toBeChecked()
-    await shotAll('01-switch-off', pages)
+    const pickupSection = admin.locator('h3', { hasText: 'Pickup Items Windows' }).locator('xpath=..')
+    const pickupEntry = pickupSection.locator('li', { hasText: ROM })
+    await pickupSection.locator('select').selectOption(ROM)
+    await pickupSection.getByRole('button', { name: 'Add', exact: true }).click()
+    await expect(pickupEntry).toBeVisible({ timeout: 30_000 })
+    await expect(admin.getByText(/Server returned/)).toHaveCount(0)
+    const pickup = await windowByTitle(app, PICKUP_TITLE, 30_000)
+    await expect.poll(() => pickup.locator('.card-header > div > span').allTextContents(), { timeout: 10_000 }).toEqual([ROM])
+    await expect(pickup.getByText('No items yet', { exact: true })).toBeVisible()
+    await expect(pickup.getByTestId('pickup-item')).toHaveCount(0)
+    await shotAll('01-added', { admin, recent, pickup })
 
     // 6. Launch the bot through the top-level action; the bot running opens no window.
     await admin.getByRole('button', { name: 'Bot Control', exact: true }).click()
@@ -119,7 +129,8 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * 60 * 1000 })
     startEmulatorRecorder()
     await shotAll('02-launched', pages)
-    expect(await pickupTitles(app), 'a Pickup window after the launch').toEqual([])
+    expect((await pickupTitles(app)).filter((t) => t === PICKUP_TITLE), 'the ROM\'s Pickup windows after the launch').toHaveLength(1)
+    await expect(pickup.getByText('No items yet', { exact: true })).toBeVisible()
 
     // 7. Two tiles down from the path into the grass. The position reads -1 until the overworld has faded in.
     await expect.poll(async () => toS16(await readU32(Y_ADDR)), { timeout: 60_000, intervals: [500] }).toBeGreaterThan(0)
@@ -172,22 +183,14 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     for (const t of took) step(`took item ${t.item} from slot ${t.slot} (${t.name})`)
     expect(took.map((t) => t.item), 'the first visit\'s takes, in slot order').toEqual(HELD_ITEMS)
 
-    // 11. Switch on: one window for the game, equal to the GET, five items at 1 and a total of 5, each cell's sprite
-    // loaded and the cells several to a row. The hunt keeps running.
-    await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
-    // click, not check(): the box is controlled and ticks only once main has opened the windows.
-    // The tick waits on main's GET and window sync, so it gets the window wait's 30 s, not the default 5 s.
-    const switchedAt = Date.now()
-    await pickupSwitch.click()
-    await expect(pickupSwitch).toBeChecked({ timeout: 30_000 })
-    step(`switch ticked in ${Date.now() - switchedAt} ms`)
-    const pickup = await windowByTitle(app, PICKUP_TITLE, 30_000)
-    expect(await pickupTitles(app), 'the Pickup windows after the switch on').toEqual([PICKUP_TITLE])
-    // The header: the game file, then the milestone once the first load has returned.
+    // 11. The window added before the launch, filled by the first visit's push alone: the milestone in the header, equal
+    // to the GET, five tiles at 1 summing to 5, each a loaded picture with no printed name, no total line, and the
+    // tiles several to a row. The hunt keeps running.
+    expect(pickup.isClosed(), 'the Pickup window closed during the first visit').toBe(false)
     await expect.poll(() => pickup.locator('.card-header > div > span').allTextContents(), { timeout: 10_000 }).toEqual([ROM, MILESTONE])
     const first = await readTally()
-    expect(first, 'GET getPickupItems after the first visit').toEqual([{ gameFileName: ROM, milestone: MILESTONE, total: 5, items: FIRST_TALLY }])
-    // "No items yet" shows until the window's first load has returned.
+    expect(first, 'GET getPickupItems after the first visit').toEqual([{ gameFileName: ROM, milestone: MILESTONE, items: FIRST_TALLY }])
+    expect(sum(first[0]), 'the items after the first visit').toBe(5)
     await expect.poll(() => windowRows(pickup), { timeout: 10_000 }).toEqual(tallyRows(first[0]))
     // A missing Items/<id>.png leaves the hidden image with naturalWidth 0.
     await expect.poll(
@@ -195,12 +198,15 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
         imgs.map((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0)),
       { timeout: 10_000, message: 'the item sprites did not all load; run --parseitemsprites on the QA PC' }
     ).toEqual([true, true, true, true, true])
+    await expect(pickup.locator('[data-testid=pickup-item] img')).toHaveCount(5)
+    await expect(pickup.getByTestId('pickup-item-name')).toHaveCount(0)
+    await expect(pickup.getByText(/total/i)).toHaveCount(0)
     const onFirstRow = await pickup.getByTestId('pickup-item').evaluateAll((cells) => {
       const top = cells[0].getBoundingClientRect().top
       return cells.filter((c) => c.getBoundingClientRect().top === top).length
     })
     expect(onFirstRow, 'the cells on the grid\'s first row').toBeGreaterThan(1)
-    await shotAll('04-switch-on', { admin, recent, pickup })
+    await shotAll('04-first-visit', { admin, recent, pickup })
 
     // 12. Let the hunt run until a later visit takes an item, for at most MAX_BATTLES won battles; at that visit's trip
     // line, the open window must have risen by its takes through the push alone.
@@ -250,7 +256,7 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     const second = await readTally()
     expect(second.length, 'games in GET getPickupItems').toBe(1)
     expect(second[0].milestone, 'the milestone after the later visit').toBe(MILESTONE)
-    expect(second[0].total, 'the total after the later visit').toBe(5 + newTakes.length)
+    expect(sum(second[0]), 'the items after the later visit').toBe(5 + newTakes.length)
     expect(new Map(second[0].items.map((i) => [i.id, i.count])), 'the counts after the later visit').toEqual(counts)
     const rows = tallyRows(second[0])
     await expect.poll(() => windowRows(pickup), { timeout: 10_000 }).toEqual(rows)
@@ -261,13 +267,14 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     expect(await pickupTitles(app), 'the Pickup windows after the push').toEqual([PICKUP_TITLE])
     await shotAll('05-pushed', { admin, recent, pickup })
 
-    // 13. Switch off: the window closes and no Pickup window is left.
+    // 13. Remove: the window closes and the entry leaves the list.
+    await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
     const closed = pickup.waitForEvent('close', { timeout: 30_000 })
-    await pickupSwitch.click()
-    await expect(pickupSwitch).not.toBeChecked({ timeout: 30_000 })
+    await pickupEntry.getByRole('button', { name: 'Remove', exact: true }).click()
     await closed
-    await expect.poll(() => pickupTitles(app!), { timeout: 10_000 }).toEqual([])
-    await shotAll('06-switch-off', pages)
+    await expect(pickupEntry).toHaveCount(0)
+    await expect.poll(() => pickupTitles(app!), { timeout: 10_000 }).not.toContain(PICKUP_TITLE)
+    await shotAll('06-removed', pages)
 
     // 14. Cancel the event, then one more cancel removes the bot and closes the emulator.
     await admin.getByRole('button', { name: 'Bot Control', exact: true }).click()
@@ -304,6 +311,13 @@ test('HGSS Pickup items window: off at start, on after the first visit shows the
     // Failure path: leave nothing running. A forced kill does not flush SaveRAM.
     await stopRecorder()
     if (app) await app.close().catch(() => undefined)
+    // So the owner's saved config does not reopen this window; a no-op after step 13.
+    if (backend && backend.exitCode === null) {
+      const res = await fetch('http://localhost:5000/api/admin/pickupGameFiles/remove', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ROM)
+      }).catch((err: Error) => err)
+      if (res instanceof Error || !res.ok) step(`after teardown: removing ${ROM} from the Pickup windows failed: ${res instanceof Error ? res.message : res.status}`)
+    }
     if (backend && backend.exitCode === null) killTree(backend.pid!)
     if (emuHawkRunning()) killEmuHawk()
     // On every outcome: a forced kill must not have changed the save either.
