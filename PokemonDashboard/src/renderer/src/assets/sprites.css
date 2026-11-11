@@ -59,7 +59,7 @@
   color: #ffd700;
   text-shadow: 0 0 6px rgba(255, 215, 0, 0.9);
   font-size: 12px;
-  animation: sprite-twinkle 1.8s ease-in-out infinite;
+  animation: sprite-twinkle 1.8s steps(3, end) infinite;
 }
 .sprite-sparkle::before { top: 8%; left: 10%; }
 .sprite-sparkle::after { top: 38%; right: 6%; font-size: 9px; animation-delay: 0.9s; }
