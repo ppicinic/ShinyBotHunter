@@ -230,7 +230,7 @@ A theme set for a window that is closed, or no longer subscribed, shows greyed w
 To change how much the windows move:
 
 1. In **Appearance**, find **Animations** at the top. It has three settings: **Gradients** (the moving backgrounds, glows and Christmas lights), **Snow** and **Stars** (the twinkling stars on a shiny Pokemon).
-2. Pick **Off**, **Low**, **Medium** or **High** for each. **High** is the smooth movement and the first choice. **Medium** moves in small jumps, about ten a second. **Low** moves in bigger jumps, a few a second, and costs the PC least. **Off** stops the gradients where they are, and hides the snow or the stars completely.
+2. Pick **Off**, **Low**, **Medium** or **High** for each. **High** is the smooth movement, and what a new dashboard starts on. **Medium** moves in small jumps, about ten a second. **Low** moves in bigger jumps, a few a second, and costs the PC much less. **Off** keeps the gradients still, and hides the snow or the stars completely.
 
 Each setting changes every window at once. The Pokemon pictures keep moving whatever you pick. If Windows is set to reduce motion (Settings, Accessibility, Visual effects, Animation effects off), the dashboard shows no snow and no stars and keeps the gradients still, whatever the settings say.
 

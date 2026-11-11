@@ -1,7 +1,7 @@
 # Spec: cheaper dashboard animations and an off switch
 
-Status: In progress (approved for build by the owner, 2026-11-10: "Implement both"; epic on feature/dashboard-animation-cost).
-Last updated: 2026-11-10
+Status: Implemented on feature/dashboard-animation-cost (epic #323), 2026-11-11. Not yet merged to main. Read "As built" first: FR-11 and FR-12 replaced the single switch this spec started with.
+Last updated: 2026-11-11
 Owner: Phil
 Related: [Livelier dashboard](dashboard-alive.md) (the animations and themes this changes), [the dashboard guide page](../guide/03-dashboard.md), [feature workflow](feature-workflow.md)
 
@@ -36,6 +36,8 @@ What the numbers say:
 - The GIF sprites are cheap next to any of the smooth animations.
 
 Limits: one sample each, on a PC far faster than prod and at 143 Hz (prod's screen is probably 60 Hz, so its smooth figures will differ). These show the relative saving, not what prod will do. The prod PC is the real test.
+
+Correction, 2026-11-11: the table above is from single 10 second samples and is not reliable. Repeated samples showed that any running CSS animation, smooth or stepped, brings bursts of about half a core for 6 to 9 seconds about every 41 seconds, so one sample reads near zero or very high by chance. The stars are not cheap (median 40 percent of a core smooth), and stepping does not fix the drift (bursts remain). The figures to use are under "Evidence".
 
 ## Goals
 
@@ -102,6 +104,44 @@ C1 and C3 run in parallel with C2. C4 comes after C2 and C3, since it shares the
 
 The switch (C1, C2) can ship first on its own if prod needs relief before the cheaper animations are ready.
 
+## As built, 2026-11-11
+
+- **Three settings.** The Appearance section has **Gradients**, **Snow** and **Stars** under an Animations label, each Off, Low, Medium or High. Saved as `appearance.animations = { gradients, snow, stars }`; a missing one reads `high`; an unknown value is a 400.
+- **In each window** the root carries `data-anim-gradients`, `data-anim-snow` and `data-anim-stars`, always set, remembered in `localStorage` (`dashboard-anim-*`) for first paint.
+- **High** is the smooth CSS animations, unchanged from `main`.
+- **Low and Medium** run no CSS theme animation. Timers in `utils/theme.ts`, one per kind, move root custom properties that the CSS reads: gradients every 500 ms (low) or 100 ms (medium), snow every 250 or 100 ms, stars every 600 or 300 ms. A kind has no timer when it is off or high, when the theme lacks it, or under reduce motion. The stars timer runs in every window because a shiny can arrive at any moment; a tick with no star writes nothing.
+- **Off** keeps the gradients still and does not draw the snow or the stars. Windows' reduce motion does the same, whatever the settings.
+- GIF sprites, the drop-in and the idle movement are untouched by the settings.
+
+## What diverged
+
+- FR-1, FR-2: one checkbox became three four-value selectors (FR-11, FR-12). The line in Design about `data-animations="off"` describes the first build, replaced by the three attributes.
+- FR-4: reversed. Snow and stars that are off are not drawn, and reduce motion hides them too (owner: "non animating stars blocks the view").
+- FR-6 to FR-8: stepping CSS animations was built, measured and dropped: the bursts stayed. The cheap modes are timers (owner: "Yes, use the timer"). The limits apply to Low only and two are missed: snow on Low is 6.7 percent of a core (limit 5), and the drift's worst 10 second window on Low is 4.1 (limit 2; its median meets it).
+- A sixth task, C6 (#338), carried the three values; it was not in the first split.
+- A database that a C1 or C2 build of this branch saved the checkbox to must have it removed once, or the bot fails at startup: `db.DashboardConfig.updateOne({_id: "dashboard"}, {$unset: {"Appearance.Animations": ""}})`. `main` never wrote it.
+- Not done: a number in place of a level in a hand-made POST is accepted (the dashboard cannot send one).
+
+## Evidence
+
+- PRs: #329 (C1), #330 (C2), #335 (C3), #339 (C4), #340 (C6), #341 (C5).
+- QA on the tip 6b070e0, 2026-11-11, both passed first run: `qa-runs/20261111-143129-dashboard-themes` (each kind at off, low and high on all seven themes in all windows, medium on Christmas Night, reduce motion at high and at low, Midnight byte-equal to the base) and `qa-runs/20261111-143434-dashboard-alive` (Gradients low, Snow off, Stars medium back after the dashboard restart and the bot restart; sprites unchanged).
+- `measure-animations.js` on the dev PC (PR #339; C4's build, before C6 changed only how the value is carried). CPU in percent of one core, median of three 10 second samples; still is 0.0 to 0.3.
+
+| Row | Low | Medium | High | GPU low, medium, high |
+|---|---|---|---|---|
+| HGSS Gold and Silver | 1.2 | 7.5 | 73.0 | 0.1, 0.7, 8.1 |
+| HGSS Dusk | 1.8 | 10.2 | 63.6 | 0.1, 0.7, 8.2 |
+| RS | 0.9 | 11.2 | 51.5 | 0.1, 0.7, 8.6 |
+| Ruby | 1.5 | 9.4 | 63.2 | 0.1, 0.7, 7.2 |
+| Sapphire | 2.4 | 7.2 | 37.1 | 0.1, 0.6, 7.4 |
+| Christmas Pine | 6.7 | 13.6 | 75.1 | 0.8, 2.2, 7.6 |
+| Christmas Night | 7.3 | 14.2 | 43.8 | 0.8, 2.4, 6.9 |
+| Stars on 6 shiny stills | 2.5 | 4.0 | 23.7 | 0.1, 0.2, 7.0 |
+
+- 135 second per-second traces on Low (Ruby, HGSS Dusk, Christmas Pine, stars) and Medium (Christmas Pine, Ruby): no bursts in any.
+- Not measured: the prod PC. That is the owner's check.
+
 ## Open questions
 
 - FR-3: the light pulse and glow pulse on Christmas Night are counted with the gradients (built that way; the owner gave the go-ahead without changing it).
@@ -110,6 +150,7 @@ The switch (C1, C2) can ship first on its own if prod needs relief before the ch
 
 ## Changelog
 
+- 2026-11-11: implemented; "As built", "What diverged" and "Evidence" added, and the first measurement table marked unreliable.
 - 2026-11-11: FR-12. "i should be able to configure each type individually. if the animation is off it shouldn't show at all. non animating stars blocks the view." One value per type; off hides the snow and the stars, under reduce motion too.
 - 2026-11-11: FR-11. The owner chose the timer for the cheap mode ("Yes, use the timer"), then asked for the smooth animations to stay as a choice: "we should have a high quality mode and keep a hire FPS as well as a option". Then: "add a medium as well". C4 builds low and medium beside high; a new task C6 makes the saved field and the Admin control four-valued; C5 follows C6.
 - 2026-11-10: the switch covers only the gradients, the snow and the stars: "Gif doesnt cause issues. Animations should only be for gradients, snow, and stars".
