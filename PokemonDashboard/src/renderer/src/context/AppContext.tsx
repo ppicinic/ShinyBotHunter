@@ -27,6 +27,7 @@ const emptyDashboardConfig: DashboardConfig = {
   gamePhases: [],
   recentEncounterCount: 0,
   appearance: null,
+  pickupGameFiles: [],
 }
 
 const AppContext = createContext<AppContextValue>({

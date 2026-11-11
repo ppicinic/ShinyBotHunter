@@ -10,10 +10,13 @@ namespace ShinyBotHunter.Service
     {
         private static readonly string[] ThemeIds = ["midnight", "hgss-drift", "hgss-dusk", "rs-drift", "ruby", "sapphire", "christmas", "christmas-night"];
 
-        // Guards gamePhases, RecentEncounterCount and appearance. Held only around the mutation or the snapshot copy, never across an await.
+        // Guards gamePhases, pickupGameFiles, RecentEncounterCount and appearance. Held only around the mutation or the snapshot copy, never across an await.
         private readonly object gamePhasesLock = new();
         // Mutated by concurrent dashboard requests (subscribe/unsubscribe) and copied by UpdateDashboardsAsync (requests and every SignalR connect): read and written only under gamePhasesLock.
         private readonly HashSet<GamePhase> gamePhases = new HashSet<GamePhase>();
+        // Mutated by add/remove dashboard requests and copied by Snapshot: read and written only under gamePhasesLock.
+        // A List, not a HashSet, because the dashboard shows the game files in the order they were added.
+        private readonly List<string> pickupGameFiles = new();
         // Set once in the constructor; the hub context and the MongoDB collection behind them are thread-safe.
         private readonly Func<DashboardConfig, Task> push;
         private readonly Func<Task<DashboardConfig?>> load;
@@ -53,6 +56,7 @@ namespace ShinyBotHunter.Service
             lock (gamePhasesLock)
             {
                 gamePhases.UnionWith(loaded.GamePhases);
+                pickupGameFiles.AddRange(loaded.PickupGameFiles);
                 RecentEncounterCount = loaded.RecentEncounterCount;
                 appearance = restored;
             }
@@ -102,6 +106,38 @@ namespace ShinyBotHunter.Service
             }
             await UpdateDashboardsAsync();
             await SaveAsync();
+        }
+
+        public async Task AddPickupGameFileAsync(string gameFileName)
+        {
+            bool added;
+            lock (gamePhasesLock)
+            {
+                added = !pickupGameFiles.Contains(gameFileName);
+                if (added)
+                {
+                    pickupGameFiles.Add(gameFileName);
+                }
+            }
+            if (added)
+            {
+                await UpdateDashboardsAsync();
+                await SaveAsync();
+            }
+        }
+
+        public async Task RemovePickupGameFileAsync(string gameFileName)
+        {
+            bool removed;
+            lock (gamePhasesLock)
+            {
+                removed = pickupGameFiles.Remove(gameFileName);
+            }
+            if (removed)
+            {
+                await UpdateDashboardsAsync();
+                await SaveAsync();
+            }
         }
 
         // Pushes only; a SignalR connect calls this and never saves.
@@ -169,6 +205,7 @@ namespace ShinyBotHunter.Service
                 {
                     RecentEncounterCount = RecentEncounterCount,
                     Appearance = appearance,
+                    PickupGameFiles = pickupGameFiles.ToArray(),
                 };
             }
         }

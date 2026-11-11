@@ -33,6 +33,7 @@ export interface DashboardConfig {
   recentEncounterCount: number
   // null until the backend's first push
   appearance: Appearance | null
+  pickupGameFiles: string[]
 }
 
 // ============================================================

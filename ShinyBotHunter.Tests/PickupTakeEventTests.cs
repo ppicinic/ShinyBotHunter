@@ -130,7 +130,6 @@ namespace ShinyBotHunter.Tests
             PickupItemsResponse took = Assert.Single(tally.Read());
             Assert.Equal("HG-Test", took.GameFileName);
             Assert.Equal("Route 33", took.Milestone);
-            Assert.Equal(2, took.Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1), new PickupItemCount(26, "Super Potion", 1)], took.Items);
             Assert.Equal(2, pushes.Count);
             // The decision read at the list before any slot touch, then the re-read after CANCEL.
@@ -157,7 +156,6 @@ namespace ShinyBotHunter.Tests
 
             Assert.StartsWith("Pickup: Waited for the party list after slot 4's take", park);
             PickupItemsResponse took = Assert.Single(tally.Read());
-            Assert.Equal(1, took.Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1)], took.Items);
             Assert.Single(pushes);
         }

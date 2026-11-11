@@ -220,6 +220,10 @@ QA on the feature tip 5824d0b, 2026-11-10. The run folders are under `ShinyBotHu
 - Two earlier runs on the task branch failed (`20261110-130417`, `-130919`): during the wait for the boundary the Appearance settings changed. The recordings show the focus ring and the selects stepping one option at a time, which is keys typed elsewhere on the PC reaching the focused Admin window; the review found no path in the code that posts without a control event. The scenario now moves the focus to Recent before the wait and asserts the settings are unchanged after it.
 - The data step on the dev PC, on an empty `Animated` folder. Without `ffmpeg` on the PATH: the skip line names the 11 forms; 1,384 of 1,395 in Default and Shiny, 142 of 147 in the female folders. With `ffmpeg`: 1,395 of 1,395 in Default and Shiny, 146 of 147 in the female folders (Eevee), 230 MB.
 
+## 2026-11-10: Pickup rows from the saved list
+
+Since [Add Pickup items windows per game file](pickup-windows-add.md), the Appearance section lists a row for each added Pickup items window from the pushed `pickupGameFiles`, open or not, and no longer reads the window list (FR-17 said "each open Pickup Items window"). The two window-list broadcasts of A4b stay: the Window Layout tab reads them.
+
 ## Changelog
 
 - 2026-11-10: drafted from the spike.

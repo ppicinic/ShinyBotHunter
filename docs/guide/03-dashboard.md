@@ -12,7 +12,7 @@ The dashboard is a set of separate windows:
 - **Admin**: the control panel. Everything on this page except the counts happens here.
 - **Recent Encounters**: the latest Pokémon the bot has met.
 - **One counts window per subscription**: the counts for one milestone (see [Watch the counts](#watch-the-counts)).
-- **One Pickup items window per game file, when switched on**: the items a Pickup hunt has taken (see [Watch the Pickup items](#watch-the-pickup-items)).
+- **One Pickup items window per game file you add**: the items a Pickup hunt has taken (see [Watch the Pickup items](#watch-the-pickup-items)).
 
 Each is its own window. Move and resize them like any other window; the dashboard remembers where they were and puts them back the next time you open it.
 
@@ -165,20 +165,21 @@ Every encounter ever recorded is kept in the database; see [Your data](06-your-d
 
 ## Watch the Pickup items
 
-A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture, name and count, several to a row as the window's width fits, and the total below them. There is one window per game file the bot has taken items on. The window's top line shows the game file in small grey text, then the milestone of the hunt that last took an item on it.
+A Pickup items window shows what a Pickup hunt has taken on one game file: each item as a small tile with its picture and count, several to a row as the window's width fits. Hold the mouse over a tile to see the item's name. The window's top line shows the game file in small grey text, then the milestone of the hunt that last took an item on it. Until the bot takes an item on that game file, the window shows **No items yet**.
 
-The pictures come from the `Items` folder in the sprite folder (see [Fill in the Pokemon data](01-install.md#fill-in-the-pokemon-data-once-per-pc)). An item without a picture there shows only its name and count.
+The pictures come from the `Items` folder in the sprite folder (see [Fill in the Pokemon data](01-install.md#fill-in-the-pokemon-data-once-per-pc)). An item without a picture there shows its name in place of the picture.
 
 It counts only the items the bot itself took during a Pickup hunt since you last [started the bot](01-install.md#start-the-bot-for-the-first-time) (`ShinyBotHunter.exe`). Starting another hunt does not reset the counts; it adds to them. When you restart the bot, the counts start again from zero. Items you take by hand in the emulator are not counted.
 
-To open the windows:
+To add a window:
 
 1. In the Admin window, click the **Dashboard Config** tab.
-2. Under **Pickup Items Windows**, tick **Pickup items windows**.
+2. Under **Pickup Items Windows**, pick the game file in **Choose a game file**.
+3. Click **Add**.
 
-A window opens for every game file with items taken so far, and a new one opens when the bot takes its first item on another game file. Each window updates after every item the bot takes.
+The window opens straight away, and the game file is listed under **Pickup Items Windows**. The list is saved with the rest of the dashboard config, so the window comes back when you restart the dashboard or the bot. Each window updates after every item the bot takes.
 
-To close them all, untick **Pickup items windows**. A window you close yourself stays closed until you untick the box and tick it again. The box is always unticked when the dashboard starts.
+To remove a window, click **Remove** beside its game file. The window closes. A window you close yourself stays closed until you click Remove and Add it again, or restart the dashboard.
 
 ## Resume a hunt that is waiting
 
@@ -215,7 +216,7 @@ To choose a theme:
 
 1. In the Admin window, click the **Dashboard Config** tab.
 2. **Appearance** is at the top. In the **Default** row, pick a **Theme**. Every window takes it.
-3. To give one window its own theme, pick a **Theme** in that window's row. There is a row for Admin, Recent Encounters, each counts window and each open Pickup items window. A row's first choice, **Default**, follows the Default row; any other choice is for that window only.
+3. To give one window its own theme, pick a **Theme** in that window's row. There is a row for Admin, Recent Encounters, each counts window and each Pickup items window you added. A row's first choice, **Default**, follows the Default row; any other choice is for that window only.
 
 To switch at night:
 

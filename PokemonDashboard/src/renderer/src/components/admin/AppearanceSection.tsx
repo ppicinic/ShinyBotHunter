@@ -5,10 +5,10 @@ import {
   ADMIN_WINDOW,
   RECENT_WINDOW,
   phaseWindowName,
+  pickupWindowName,
   type AnimationLevel,
   type Appearance,
-  type ThemeChoice,
-  type WindowInfo
+  type ThemeChoice
 } from '../../../../shared/windowContracts'
 import { NIGHT_THEME_ORDER, THEMES, windowLabel } from '../../utils/theme'
 
@@ -42,7 +42,6 @@ interface Props {
 export function AppearanceSection({ showFeedback }: Props): JSX.Element {
   const { dashboardConfig, config } = useAppContext()
   const appearance = dashboardConfig.appearance
-  const [pickupNames, setPickupNames] = useState<string[]>([])
   // Rows ticked for "Switch at night" whose night theme is not picked yet; nothing is posted for them.
   const [pendingNight, setPendingNight] = useState<Set<string>>(new Set())
   // The newest of the pushed appearance and the last posted one, so a second change made
@@ -52,14 +51,6 @@ export function AppearanceSection({ showFeedback }: Props): JSX.Element {
   useEffect(() => {
     latest.current = appearance
   }, [appearance])
-
-  // Main broadcasts the window list whenever a window opens, closes, moves or resizes.
-  useEffect(() => {
-    const read = (list: WindowInfo[]): void =>
-      setPickupNames(list.filter((w) => w.kind === 'pickup').map((w) => w.name))
-    window.api.getWindowList().then(read).catch(console.error)
-    return window.api.onWindowBoundsChanged(read)
-  }, [])
 
   const heading = (
     <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Appearance</h3>
@@ -142,7 +133,7 @@ export function AppearanceSection({ showFeedback }: Props): JSX.Element {
     ADMIN_WINDOW,
     RECENT_WINDOW,
     ...dashboardConfig.gamePhases.map(phaseWindowName),
-    ...pickupNames
+    ...dashboardConfig.pickupGameFiles.map(pickupWindowName)
   ]
   const goneRows = Object.keys(appearance.windows).filter((name) => !openRows.includes(name))
   const showTimes =
