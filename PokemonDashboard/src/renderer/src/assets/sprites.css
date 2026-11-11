@@ -59,15 +59,29 @@
   color: #ffd700;
   text-shadow: 0 0 6px rgba(255, 215, 0, 0.9);
   font-size: 12px;
-  /* Set by the timer in utils/theme.ts; without it a star is fully shown, still. */
+  animation: sprite-twinkle 1.8s ease-in-out infinite;
+  /* In low and medium, set by the timer in utils/theme.ts; unset, a star is fully shown, still. */
   opacity: var(--twinkle, 1);
   scale: calc(0.4 + 0.6 * var(--twinkle, 1));
   rotate: calc(45deg * var(--twinkle, 0));
 }
 .sprite-sparkle::before { top: 8%; left: 10%; --twinkle: var(--twinkle-1); }
-.sprite-sparkle::after { top: 38%; right: 6%; font-size: 9px; --twinkle: var(--twinkle-2); }
+.sprite-sparkle::after { top: 38%; right: 6%; font-size: 9px; animation-delay: 0.9s; --twinkle: var(--twinkle-2); }
 
-/* Reduced motion: nothing moves; the shiny stars stay shown, still. */
+@keyframes sprite-twinkle {
+  0%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(45deg); }
+}
+
+/* Reduced motion: nothing moves, and the shiny stars are not drawn. */
 @media (prefers-reduced-motion: reduce) {
   .sprite-stage, .sprite-stage img { animation: none !important; }
+  .sprite-sparkle::before, .sprite-sparkle::after { content: none; }
 }
+
+/* The Admin stars setting: the twinkle runs as CSS only in high (see themes.css); in off the stars are not drawn.
+   The drop-in and idle movement keep running. */
+:root:not([data-anim-stars='high']) .sprite-sparkle::before,
+:root:not([data-anim-stars='high']) .sprite-sparkle::after { animation: none !important; }
+:root[data-anim-stars='off'] .sprite-sparkle::before,
+:root[data-anim-stars='off'] .sprite-sparkle::after { content: none; }

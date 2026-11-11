@@ -95,13 +95,27 @@ function storageKey(windowName: string): string {
 // One key for every window: the switch is the same for all of them.
 const ANIMATIONS_KEY = 'dashboard-animations'
 
+// Each kind of theme animation follows its own root attribute: off, low, medium or high.
+const KINDS = ['gradients', 'snow', 'stars'] as const
+type Kind = (typeof KINDS)[number]
+const ATTRIBUTE = { gradients: 'animGradients', snow: 'animSnow', stars: 'animStars' } as const
+
+// Until the saved setting holds a value per kind (C6), one saved value sets all three.
+function setAnimations(value: string): void {
+  for (const kind of KINDS) document.documentElement.dataset[ATTRIBUTE[kind]] = value
+}
+
 // Before first paint: the last theme this window applied. With none saved it stays Midnight.
-// With no animations value saved the attribute stays absent, which the CSS reads as on.
+// With no animations value saved the attributes stay absent: nothing moves until the pushed appearance sets them.
+// From here on the motion timers follow the root's attributes and Windows' reduced motion.
 export function initTheme(windowName: string): void {
   const saved = localStorage.getItem(storageKey(windowName))
   if (saved !== null) document.documentElement.dataset.theme = saved
   const animations = localStorage.getItem(ANIMATIONS_KEY)
-  if (animations !== null) document.documentElement.dataset.animations = animations
+  if (animations !== null) setAnimations(animations)
+  new MutationObserver(syncMotion).observe(document.documentElement, {
+    attributeFilter: ['data-theme', 'data-anim-gradients', 'data-anim-snow', 'data-anim-stars']
+  })
   matchMedia(REDUCE_MOTION).addEventListener('change', syncMotion)
   syncMotion()
 }
@@ -116,21 +130,29 @@ export function applyTheme(appearance: Appearance, windowName: string): void {
   const theme = resolveTheme(appearance, windowName, now)
   document.documentElement.dataset.theme = theme
   localStorage.setItem(storageKey(windowName), theme)
-  const animations = appearance.animations ? 'on' : 'off'
-  document.documentElement.dataset.animations = animations
+  // The saved switch is on or off for now; on is the timer at low for every kind.
+  const animations = appearance.animations ? 'low' : 'off'
+  setAnimations(animations)
   localStorage.setItem(ANIMATIONS_KEY, animations)
   const delay = nextSwitchDelay(appearance, windowName, now)
   if (delay !== null) timer = setTimeout(() => applyTheme(appearance, windowName), delay)
-  syncMotion()
 }
 
-// The theme animations are moved by one timer instead of CSS animations: a running CSS animation, even a
-// stepped one, cost about half a core in bursts (docs/specs/dashboard-animation-cost.md). The timer writes
-// custom properties on the root, which index.css, themes.css and sprites.css read; stopped, it leaves them
-// where they are, so the grounds, glows and snow stay drawn, still.
+// In low and medium a kind of theme animation is moved by a timer instead of a CSS animation: a running CSS
+// animation, even a stepped one, cost about half a core in bursts (docs/specs/dashboard-animation-cost.md). The
+// timer writes custom properties on the root, which index.css, themes.css and sprites.css read. In high the CSS
+// animation runs instead and the timer is stopped; in off, and under reduced motion, the snow and stars are not
+// drawn and the gradients are still (the CSS does both).
 const REDUCE_MOTION = '(prefers-reduced-motion: reduce)'
 
-// Seconds per cycle of what moves in each theme. The colours and sizes are in assets/themes.css.
+// Milliseconds between moves, per kind and mode. Off and high have none.
+const RATES: Record<Kind, Record<string, number>> = {
+  gradients: { low: 500, medium: 100 },
+  snow: { low: 250, medium: 100 },
+  stars: { low: 600, medium: 300 }
+}
+
+// Seconds per cycle of the gradients in each theme, and which themes snow. The colours and sizes are in assets/themes.css.
 const MOTION: Record<string, { header?: number; card?: number; orbit?: number; glow?: number; lights?: number; snow?: boolean }> = {
   'hgss-drift': { header: 24, card: 36 },
   'hgss-dusk': { orbit: 30 },
@@ -148,16 +170,11 @@ const SNOW = [
   [797, 27]
 ]
 
-// The star states, one every 500 ms: the first star's opacity; the second star shows the rest.
-const TWINKLE = [0, 0.5, 1, 0.5]
-
-const MOTION_PROPS = ['--header-pos', '--card-fill-pos', '--card-glow-pos', '--card-glow-opacity', '--lights-opacity',
-  '--snow-1', '--snow-2', '--snow-3', '--twinkle-1', '--twinkle-2']
-
-// Touched only on the renderer's single thread (applyTheme, initTheme, the media query listener and this timer's callback).
-let motion: ReturnType<typeof setInterval> | null = null
-let motionTheme: string | undefined
-let ticks = 0
+const PROPS: Record<Kind, string[]> = {
+  gradients: ['--header-pos', '--card-fill-pos', '--card-glow-pos', '--card-glow-opacity', '--lights-opacity'],
+  snow: ['--snow-1', '--snow-2', '--snow-3'],
+  stars: ['--twinkle-1', '--twinkle-2']
+}
 
 // 0 to 1 and back over twice the given seconds, as an alternating CSS animation moves.
 function backAndForth(t: number, seconds: number): number {
@@ -165,51 +182,49 @@ function backAndForth(t: number, seconds: number): number {
   return x < 1 ? x : 2 - x
 }
 
-// Every 250 ms: the snow 4 times a second, everything else twice.
-function tick(): void {
-  followTheme()
+// One move of a kind at time t (seconds), for a timer every ms milliseconds.
+function move(kind: Kind, t: number, ms: number): void {
   const style = document.documentElement.style
-  const t = Date.now() / 1000
   const m = MOTION[motionTheme ?? ''] ?? {}
-  if (m.snow) SNOW.forEach(([tile, seconds], i) => style.setProperty(`--snow-${i + 1}`, `${(((t / seconds) % 1) * tile).toFixed(1)}px`))
-  if (ticks++ % 2 !== 0) return
-  if (m.header) style.setProperty('--header-pos', `${(backAndForth(t, m.header) * 100).toFixed(2)}% 50%`)
-  if (m.card) style.setProperty('--card-fill-pos', `${(backAndForth(t, m.card) * 100).toFixed(2)}% 50%`)
-  if (m.orbit) {
-    const f = backAndForth(t, m.orbit / 2)
-    style.setProperty('--card-glow-pos', `${(60 * f).toFixed(2)}% ${(40 * f).toFixed(2)}%, ${(100 - 60 * f).toFixed(2)}% ${(100 - 40 * f).toFixed(2)}%`)
-  }
-  if (m.glow) style.setProperty('--card-glow-opacity', (0.55 + 0.45 * backAndForth(t, m.glow / 2)).toFixed(3))
-  if (m.lights) style.setProperty('--lights-opacity', (0.55 + 0.45 * backAndForth(t, m.lights / 2)).toFixed(3))
-  if (document.querySelector('.sprite-sparkle')) {
-    const v = TWINKLE[Math.floor(t * 2) % TWINKLE.length]
-    style.setProperty('--twinkle-1', String(v))
-    style.setProperty('--twinkle-2', String(1 - v))
+  if (kind === 'snow') {
+    SNOW.forEach(([tile, seconds], i) => style.setProperty(`--snow-${i + 1}`, `${(((t / seconds) % 1) * tile).toFixed(1)}px`))
+  } else if (kind === 'gradients') {
+    if (m.header) style.setProperty('--header-pos', `${(backAndForth(t, m.header) * 100).toFixed(2)}% 50%`)
+    if (m.card) style.setProperty('--card-fill-pos', `${(backAndForth(t, m.card) * 100).toFixed(2)}% 50%`)
+    if (m.orbit) {
+      const f = backAndForth(t, m.orbit / 2)
+      style.setProperty('--card-glow-pos', `${(60 * f).toFixed(2)}% ${(40 * f).toFixed(2)}%, ${(100 - 60 * f).toFixed(2)}% ${(100 - 40 * f).toFixed(2)}%`)
+    }
+    if (m.glow) style.setProperty('--card-glow-opacity', (0.55 + 0.45 * backAndForth(t, m.glow / 2)).toFixed(3))
+    if (m.lights) style.setProperty('--lights-opacity', (0.55 + 0.45 * backAndForth(t, m.lights / 2)).toFixed(3))
+  } else if (document.querySelector('.sprite-sparkle')) {
+    // A twinkle of at least four moves and at least the CSS's 1.8 s; the second star is half a twinkle behind.
+    const step = ms / 1000
+    const v = backAndForth(Math.floor(t / step) * step, Math.max(1.8, 4 * step) / 2)
+    style.setProperty('--twinkle-1', v.toFixed(2))
+    style.setProperty('--twinkle-2', (1 - v).toFixed(2))
   }
 }
 
-// A new theme starts from its own still look, not from where the last theme stopped.
-function followTheme(): void {
-  const root = document.documentElement
-  if (root.dataset.theme === motionTheme) return
-  for (const prop of MOTION_PROPS) root.style.removeProperty(prop)
-  motionTheme = root.dataset.theme
-}
+// Touched only on the renderer's single thread (initTheme, the observer, the media query listener and the timers' callbacks).
+const running: Partial<Record<Kind, { id: ReturnType<typeof setInterval>; ms: number }>> = {}
+let motionTheme: string | undefined
 
-// Runs the timer while the Animations switch is on and Windows does not ask for reduced motion.
+// Starts, changes or stops each kind's timer to match the root's attributes, the theme and reduced motion.
+// A kind that stops or changes theme loses its properties, so it starts again from the still look.
 function syncMotion(): void {
-  followTheme()
   const root = document.documentElement
-  const run = root.dataset.animations !== 'off' && !matchMedia(REDUCE_MOTION).matches
-  if (run && motion === null) {
-    ticks = 0
-    motion = setInterval(tick, 250)
-  }
-  if (!run && motion !== null) {
-    clearInterval(motion)
-    motion = null
-    // Without these the stars fall back to fully shown.
-    root.style.removeProperty('--twinkle-1')
-    root.style.removeProperty('--twinkle-2')
+  const themeChanged = root.dataset.theme !== motionTheme
+  motionTheme = root.dataset.theme
+  const reduced = matchMedia(REDUCE_MOTION).matches
+  const m = MOTION[motionTheme ?? ''] ?? {}
+  for (const kind of KINDS) {
+    const has = kind === 'stars' || (kind === 'snow' ? m.snow === true : Object.keys(m).some((k) => k !== 'snow'))
+    const ms = reduced || !has ? undefined : RATES[kind][root.dataset[ATTRIBUTE[kind]] ?? '']
+    const now = running[kind]
+    if (now?.ms === ms && !themeChanged) continue
+    if (now) clearInterval(now.id)
+    for (const prop of PROPS[kind]) root.style.removeProperty(prop)
+    running[kind] = ms === undefined ? undefined : { id: setInterval(() => move(kind, Date.now() / 1000, ms), ms), ms }
   }
 }
