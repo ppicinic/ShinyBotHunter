@@ -162,9 +162,57 @@ async function contrastRows(page: Page, theme: string): Promise<string[]> {
   return out
 }
 
+// --- animation levels (the Admin Gradients, Snow and Stars settings) -----------------------------
+
+// Each kind: its CSS animation names, run only in high, and the root properties its timer writes in low and medium.
+const KINDS = {
+  gradients: { css: /^theme-(drift|orbit|breathe)$/, prop: /^--(header-pos|card-fill-pos|card-glow-pos|card-glow-opacity|lights-opacity)$/ },
+  snow: { css: /^theme-snow$/, prop: /^--snow-/ },
+  stars: { css: /^sprite-twinkle$/, prop: /^--twinkle-/ }
+} as const
+type Kind = keyof typeof KINDS
+type Level = 'off' | 'low' | 'medium' | 'high'
+// css: a CSS animation of the kind runs; timer: its root properties are absent, set, or change between two reads;
+// hidden: the snow layers or the stars are not drawn (the gradients are always drawn).
+type Look = { css: boolean; timer: 'none' | 'set' | 'moving'; hidden: boolean }
+const look = (kind: Kind, level: Level): Look => ({
+  css: level === 'high',
+  timer: level === 'low' || level === 'medium' ? 'moving' : 'none',
+  hidden: level === 'off' && kind !== 'gradients'
+})
+
+type Motion = { css: string[]; props: Record<string, string>; snow: string[]; stars: string[] }
+const motion = (page: Page): Promise<Motion> => page.evaluate(() => {
+  const root = document.documentElement
+  const sparkle = document.querySelector('.sprite-sparkle')
+  return {
+    // Includes the pseudo-elements' animations.
+    css: [...new Set(document.getAnimations().filter((a) => a.playState === 'running').map((a) => (a as CSSAnimation).animationName))].sort(),
+    props: Object.fromEntries(Array.from(root.style).filter((p) => p.startsWith('--')).map((p) => [p, root.style.getPropertyValue(p)])),
+    snow: [getComputedStyle(document.body, '::before'), getComputedStyle(document.body, '::after'), getComputedStyle(document.getElementById('root')!, '::after')].map((l) => l.content),
+    stars: sparkle ? [getComputedStyle(sparkle, '::before').content, getComputedStyle(sparkle, '::after').content] : []
+  }
+})
+
+/** Two reads 1.5 s apart, more than the slowest low timer (600 ms), summed up per kind. */
+async function looks(page: Page, kinds: Kind[]): Promise<Partial<Record<Kind, Look>>> {
+  const a = await motion(page)
+  await sleep(1500)
+  const b = await motion(page)
+  return Object.fromEntries(kinds.map((kind) => {
+    const props = Object.keys(b.props).filter((p) => KINDS[kind].prop.test(p))
+    const drawn = kind === 'snow' ? b.snow : kind === 'stars' ? b.stars : []
+    return [kind, {
+      css: b.css.some((n) => KINDS[kind].css.test(n)),
+      timer: props.length === 0 ? 'none' : props.some((p) => a.props[p] !== b.props[p]) ? 'moving' : 'set',
+      hidden: drawn.length > 0 && drawn.every((c) => c === 'none')
+    }]
+  }))
+}
+
 // --- the check -----------------------------------------------------------------------------------
 
-test('dashboard themes: Midnight matches the base, seven themes, contrast, reduced motion', async () => {
+test('dashboard themes: Midnight matches the base, seven themes, contrast, animation levels, reduced motion', async () => {
   fs.mkdirSync(path.join(runDir, 'no-sprites'), { recursive: true })
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json')
@@ -206,6 +254,36 @@ test('dashboard themes: Midnight matches the base, seven themes, contrast, reduc
     fs.writeFileSync(path.join(runDir, 'contrast.md'), table.join('\n') + '\n')
     console.log(table.join('\n'))
 
+    // The animation levels, set on the root by hand as the theme is: this scenario has no backend to post to.
+    // The Admin selectors, the save and the push are checked in dashboard-alive. The sprite folder is empty, so a
+    // shiny's sparkle is added to each window by hand for the stars.
+    for (const w of WINDOWS) await pages[w].evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="sprite-stage"><span class="sprite-sparkle"></span></div>'))
+    const ATTRIBUTE = { gradients: 'animGradients', snow: 'animSnow', stars: 'animStars' } as const
+    const setLevels = (levels: Partial<Record<Kind, Level>>): Promise<unknown> => Promise.all(WINDOWS.map((w) => pages[w].evaluate((set) => Object.assign(document.documentElement.dataset, set),
+      Object.fromEntries(Object.entries(levels).map(([kind, level]) => [ATTRIBUTE[kind as Kind], level])))))
+    const expectLooks = (theme: string, kinds: Kind[], levels: Record<Kind, Level>): Promise<unknown> => Promise.all(WINDOWS.map((w) =>
+      expect.poll(() => looks(pages[w], kinds), { timeout: 15_000, message: `${theme}, ${w}: ${kinds.map((k) => `${k} ${levels[k]}`).join(', ')}` })
+        .toEqual(Object.fromEntries(kinds.map((k) => [k, look(k, levels[k])])))))
+    const HIGH: Record<Kind, Level> = { gradients: 'high', snow: 'high', stars: 'high' }
+    for (const theme of THEMES) {
+      for (const w of WINDOWS) await pages[w].evaluate((t) => { document.documentElement.dataset.theme = t }, theme)
+      const kinds: Kind[] = theme.startsWith('christmas') ? ['gradients', 'snow', 'stars'] : ['gradients', 'stars']
+      await expectLooks(theme, kinds, HIGH)
+      step(`${theme}: running at high on Recent ${(await motion(pages.recent)).css.join(', ')}`)
+      // Each kind on its own; the other two stay high.
+      for (const kind of kinds) {
+        for (const level of ['off', 'low', 'high'] as const) {
+          await setLevels({ [kind]: level })
+          await expectLooks(theme, kinds, { ...HIGH, [kind]: level })
+        }
+      }
+      step(`${theme}: ${kinds.join(', ')} each off, low and high in all windows`)
+    }
+    await setLevels({ gradients: 'medium', snow: 'medium', stars: 'medium' })
+    await expectLooks('christmas-night', ['gradients', 'snow', 'stars'], { gradients: 'medium', snow: 'medium', stars: 'medium' })
+    await setLevels(HIGH)
+    step('christmas-night: all three medium in all windows')
+
     const snowLayers = (): Promise<{ content: string[]; pointer: string[]; animation: string[] }> => pages.recent.evaluate(() => {
       const layers = [getComputedStyle(document.body, '::before'), getComputedStyle(document.body, '::after'), getComputedStyle(document.getElementById('root')!, '::after')]
       const animated = [document.querySelector('.dashboard-card')!, document.querySelector('.card-header')!].map((e) => getComputedStyle(e).animationName)
@@ -220,6 +298,13 @@ test('dashboard themes: Midnight matches the base, seven themes, contrast, reduc
     step(`christmas, reduced motion: snow content ${still.content.join(', ')}; animations ${still.animation.join(', ')}`)
     expect(still.content, 'snow under reduced motion').toEqual(['none', 'none', 'none'])
     expect(still.animation, 'card and header animation under reduced motion').toEqual(['none', 'none'])
+    // As off, at every level: no snow, no stars, still gradients, and no timer.
+    const reduced = { gradients: look('gradients', 'off'), snow: look('snow', 'off'), stars: look('stars', 'off') }
+    for (const level of ['high', 'low'] as const) {
+      await setLevels({ gradients: level, snow: level, stars: level })
+      await expect.poll(() => looks(pages.recent, ['gradients', 'snow', 'stars']), { timeout: 15_000, message: `reduced motion at ${level}` }).toEqual(reduced)
+      step(`christmas, reduced motion at ${level}: no snow, no stars, nothing moves`)
+    }
 
     expect(mismatched, 'Midnight screenshots that differ from the base (both PNGs kept)').toEqual([])
   } finally {
