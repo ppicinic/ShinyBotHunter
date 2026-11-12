@@ -369,6 +369,16 @@ namespace ShinyBotHunter.Service.Pointers
         // PartyMenuState 17, app.state of the "Received the X from Y." message; constant; observed; QA: hgss-pickup
         public int PartyMenuTakeMessage => 17;
 
+        // The summary screen, docs/research/sinjoh-static.md "The summary screen".
+
+        // the party menu app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9,
+        // English HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
+        public uint PartyMenuInit => 0x02078E31;
+
+        // the summary app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9, English
+        // HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
+        public uint SummaryInit => 0x02088299;
+
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 

@@ -212,7 +212,7 @@ namespace ShinyBotHunter.Games.Hgss
 
         // The party menu's state, highlighted slot and slot 0's printer (research/pickup.md, "The party menu"); filled on
         // every other app, since the party menu's ovyId (0xFFFFFFFF) does not identify it. A NULL data pointer gives no
-        // index (FR-3).
+        // index (FR-3). The init function tells the party menu from the summary, both ovyId 0xFFFFFFFF.
         private GameSnapshot OtherApp(byte[] app, ChainBlockResult partyMenu, ChainBlockResult printerBlock)
         {
             if (!Ok(partyMenu) && partyMenu.Status != ChainBlockStatus.NullPointer) return Snapshot(GameScreen.Transitioning);
@@ -222,6 +222,8 @@ namespace ShinyBotHunter.Games.Hgss
                 AppState = (int)U32(app, addresses.AppStateOffset),
                 PartyMonIndex = Ok(partyMenu) ? partyMenu.Bytes[0] : null,
                 TextPrinter = printer,
+                // app + 0x00, the app's init function
+                AppInit = U32(app, 0),
             };
         }
 

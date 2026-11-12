@@ -48,7 +48,8 @@ namespace ShinyBotHunter.Tests
             uint env = Env, uint envCheck = Magic, ushort scriptId = 0,
             uint scriptCtx0 = 0, byte mode0 = 0, uint native0 = 0,
             uint scriptCtx1 = 0, byte mode1 = 0, uint native1 = 0,
-            uint printerTask = 0, byte printerState = 0, byte evoPrinter = 0, byte envPrinter = 0, byte partyMonIndex = 0)
+            uint printerTask = 0, byte printerState = 0, byte evoPrinter = 0, byte envPrinter = 0, byte partyMonIndex = 0,
+            uint appInit = 0)
         {
             FakeMemoryClient memory = new();
             memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
@@ -58,6 +59,7 @@ namespace ShinyBotHunter.Tests
             memory.Place(At(Sub0, Table.SubAppOffset), BitConverter.GetBytes(app));
             memory.Place(At(Sub0, Table.PausedOffset), BitConverter.GetBytes(paused));
             memory.Place(At(Taskman, Table.TaskFunctionOffset), BitConverter.GetBytes(taskFunction));
+            memory.Place(At(App, 0), BitConverter.GetBytes(appInit));
             memory.Place(At(App, Table.AppOverlayIdOffset), BitConverter.GetBytes(ovyId));
             memory.Place(At(App, Table.AppStateOffset), BitConverter.GetBytes(state));
             memory.Place(At(App, Table.AppSetupOffset), BitConverter.GetBytes(setup));
@@ -189,7 +191,49 @@ namespace ShinyBotHunter.Tests
         {
             GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 15, partyMonIndex: 3));
 
-            Assert.Equal(new GameSnapshot(GameScreen.OtherApp, null, null, null, null, AppState: 15, PartyMonIndex: 3), snapshot);
+            Assert.Equal(new GameSnapshot(GameScreen.OtherApp, null, null, null, null, AppState: 15, PartyMonIndex: 3, AppInit: 0), snapshot);
+        }
+
+        [Fact]
+        public async Task OtherAppCarriesTheAppInit()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: 1, appInit: 0x12345678));
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(0x12345678u, snapshot.AppInit);
+        }
+
+        // research/sinjoh-static.md, "The summary screen": the summary and the context menu differ only by the init function.
+        [Theory]
+        [InlineData(0x02078E31u, 1)]
+        [InlineData(0x02078E31u, 2)]
+        [InlineData(0x02088299u, 2)]
+        public async Task PartyMenuAndSummaryAreToldApart(uint appInit, int state)
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 0xFFFFFFFF, state: (uint)state, appInit: appInit));
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(appInit, snapshot.AppInit);
+            Assert.Equal(state, snapshot.AppState);
+            Assert.Equal(0x02078E31u, Table.PartyMenuInit);
+            Assert.Equal(0x02088299u, Table.SummaryInit);
+        }
+
+        [Fact]
+        public async Task NoAppOpenHasNoAppInit()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(appInit: 0x02078E31));
+
+            Assert.Equal(new GameSnapshot(GameScreen.FieldFree, null, null, null, null), snapshot);
+        }
+
+        [Fact]
+        public async Task BattleHasNoAppInit()
+        {
+            GameSnapshot snapshot = await SnapshotOf(Memory(app: App, ovyId: 12, state: 9, command: 5, sel: 1, appInit: 0x02078E31));
+
+            Assert.Equal(GameScreen.BattleMenu, snapshot.Screen);
+            Assert.Null(snapshot.AppInit);
         }
 
         [Fact]
