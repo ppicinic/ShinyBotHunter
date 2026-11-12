@@ -166,8 +166,10 @@ namespace ShinyBotHunter.BotEvents
                         return Stop(state, bot, cutsceneStop);
                     }
                     Stopwatch after = Stopwatch.StartNew();
-                    await NavigatorEvent.PressThroughScriptAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, ct,
-                        pressA: HoldA, pressB: HoldB);
+                    if (await StartMenuAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, MenuStale, ct) is { } menuStop)
+                    {
+                        return Stop(state, bot, menuStop);
+                    }
                     Console.WriteLine($"[Static] after the hand-over {after.ElapsedMilliseconds} ms, field free on map {await bot.Overworld.GetMapIdAsync(ct)}");
 
                     var (mon, summaryStop) = await SummaryAsync(bot.State, addresses, press, encounter, readParty, MenuStale, ct);
@@ -307,7 +309,7 @@ namespace ShinyBotHunter.BotEvents
             return $"{StartMenuRounds} times in a row a script started after the field was free, instead of the start menu after X ({scene}).";
         }
 
-        // X, POKéMON, slot 2, SUMMARY, from the free field the scripts after the hand-over ended on (FR-9). Each press is
+        // POKéMON, slot 2, SUMMARY, from the start menu StartMenuAsync confirmed (FR-9). Each press is
         // gated on the state the one before it confirmed and is sent once; the party menu and the summary are told apart by
         // the app's init function (FR-13), the summary by its init function with state 2, drawn. Slot 2 is read only once the
         // summary is on screen, as a player would see it.
@@ -315,9 +317,6 @@ namespace ShinyBotHunter.BotEvents
             StaticEncounterConfig.Entry encounter, Func<Task<PokemonState>> readParty, TimeSpan stale, CancellationToken ct)
         {
             Stopwatch route = Stopwatch.StartNew();
-            await press("H.X.6");
-            await GameStateWait.UntilAsync(game, "the start menu after X", s => s.Screen == GameScreen.FieldTask, stale, ct);
-
             await press(Touch(encounter.PokemonTouch));
             await GameStateWait.UntilAsync(game, "the party list after POKéMON",
                 s => s.Screen == GameScreen.OtherApp && s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuList, stale, ct);

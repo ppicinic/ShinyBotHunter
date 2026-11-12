@@ -255,7 +255,7 @@ namespace ShinyBotHunter.Tests
 
         private const uint PartyMenuInit = 0x02078E31;
         private const uint SummaryInit = 0x02088299;
-        private const uint StartMenuTask = 0x0203D001;
+        private const uint StartMenuTask = 0x0203BEF1;
 
         private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask);
         private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
@@ -265,13 +265,12 @@ namespace ShinyBotHunter.Tests
 
         private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
 
-        private static readonly string[] SummaryRoute = ["H.X.6", "W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
+        private static readonly string[] SummaryRoute = ["W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
 
         // Each confirm comes only after two reads of the snapshot the press was sent at.
         private static readonly GameSnapshot[][] ToTheSummarySlowly =
         [
-            [Free],
-            [Free, Free, StartMenu],
+            [StartMenu],
             [StartMenu, StartMenu, PartyList],
             [PartyList, PartyList, ContextMenu(1)],
             [ContextMenu(1), ContextMenu(1), SummaryScreen],
@@ -303,8 +302,9 @@ namespace ShinyBotHunter.Tests
             Assert.Null(stop);
             Assert.Equal(0x12345678u, mon!.PID);
             Assert.Equal(SummaryRoute, presses.Select(p => p.Macro));
-            // X's gate, the free field, was seen by the presser before the step; each touch is sent at the confirm before it.
-            Assert.Equal([StartMenu, PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
+            // POKéMON's gate, the start menu, was confirmed by StartMenuAsync before the step; each later touch is sent at the
+            // confirm before it.
+            Assert.Equal([PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
         }
 
         [Fact]
@@ -326,7 +326,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task SlotTwoIsReadOnlyOnceTheSummaryIsDrawn()
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(0), SummaryLoading(1), SummaryScreen]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(0), SummaryLoading(1), SummaryScreen]);
             List<GameSnapshot> readAt = [];
 
             var (mon, _) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga, () =>
@@ -346,7 +346,7 @@ namespace ShinyBotHunter.Tests
         [InlineData(1)]
         public async Task ASummaryThatStaysLoadingIsAStaleTimeout(int state)
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(state)]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(state)]);
             List<(string Macro, GameSnapshot At)> presses = [];
 
             var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
@@ -361,14 +361,14 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task AContextMenuOnAnotherSlotIsNotTheSummaryRoute()
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(0)]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(0)]);
             List<(string Macro, GameSnapshot At)> presses = [];
 
             var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
                 Dialga, () => throw new InvalidOperationException("slot 2 read"), Stale, CancellationToken.None));
 
             Assert.Equal("slot 2's context menu", ex.WaitingFor);
-            Assert.Equal(SummaryRoute[..3], presses.Select(p => p.Macro));
+            Assert.Equal(SummaryRoute[..2], presses.Select(p => p.Macro));
         }
 
         [Fact]
@@ -566,7 +566,7 @@ namespace ShinyBotHunter.Tests
 
             string save = Macro("SaveGame");
             Assert.Equal(NotOneArceus, stop);
-            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
+            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", "H.X.6", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
             Assert.Single(presses, p => p == save);
         }
 
