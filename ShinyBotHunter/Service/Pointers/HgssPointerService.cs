@@ -221,6 +221,11 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
         public int TextPrinterTaskDataOffset => 0x10;
 
+        // TextPrinter.template.currentChar (u16 *), the next character to draw: different for every box, held while the
+        // printer waits at the arrow (printer + 0x00); offset (revision-independent); observed (the #374 watcher run);
+        // QA: hgss-static-dialga, hgss-heal-variants
+        public int TextPrinterCurrentCharOffset => 0x00;
+
         // TextPrinter.state (u8), RenderText's state (render_text.c): 0, 4, 5, 6 drawing, 2, 3, 7, 8 waiting at the arrow
         // (printer + 0x28); offset (revision-independent); observed (0, 2, 6); QA: hgss-route33-evolve-learn-replace,
         // hgss-heal-variants
