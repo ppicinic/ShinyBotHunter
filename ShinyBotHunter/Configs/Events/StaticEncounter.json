@@ -1,6 +1,6 @@
 {
   // Macros are looked up by name in Macro/Configs/HGSS.
-  "softResetMacro": "SoftReset",
+  "softResetMacro": "SoftResetHeld",
   "continueMacro": "ContinueGameWithRandom",
 
   "softResetDelayMs": 15000,

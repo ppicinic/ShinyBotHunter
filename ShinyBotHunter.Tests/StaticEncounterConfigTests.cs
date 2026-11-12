@@ -45,6 +45,14 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void TheResetMacroHoldsTheFourButtonsEightFrames()
+        {
+            StaticEncounterConfig config = StaticEncounterConfig.Load(StaticEncounterConfig.DefaultPath);
+
+            Assert.Equal("H.Start.8:H.Select.8:H.L.8:H.R.8", MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.SoftResetMacro));
+        }
+
+        [Fact]
         public void BadValuesAreRejected()
         {
             var cases = new (string Key, Action<StaticEncounterConfig> Set)[]

@@ -1,0 +1,5 @@
+# Held 8 frames: the 3-frame taps of SoftReset did not reset from the summary (run 20261112-183938).
+name: SoftResetHeld
+flavor: HGSS
+steps:
+  - ["H.Start.8", "H.Select.8", "H.L.8", "H.R.8"]

@@ -190,7 +190,7 @@ namespace ShinyBotHunter.BotEvents
                         Console.WriteLine($"[Static] Shiny {encounter.Name}. Saved.");
                         return null;
                     }
-                    if (await ResetAsync(bot, config, start, checks, ct) is { } resetStop)
+                    if (await ResetAsync(bot, addresses, config, start, checks, MenuStale, ct) is { } resetStop)
                     {
                         return Stop(state, bot, resetStop);
                     }
@@ -316,13 +316,16 @@ namespace ShinyBotHunter.BotEvents
         private static string Touch(int[] xy) => $"{GameStateWait.MenuWait}S.{xy[0]}.{xy[1]}.3";
 
         // Back to the save from any screen, the summary included, then Run's checks and the tile and facing the walk was made
-        // from, so the next attempt replays the walk from where it fits (FR-11). Null when the game is back where it was saved.
-        internal static async Task<string?> ResetAsync(IBot bot, StaticEncounterConfig config, (short X, short Y, Direction Facing) start,
-            Func<Task<string?>> checks, CancellationToken ct)
+        // from, so the next attempt replays the walk from where it fits (FR-11). The reset is confirmed by the summary leaving
+        // before the continue is pressed. Null when the game is back where it was saved.
+        internal static async Task<string?> ResetAsync(IBot bot, HgssPointerService addresses, StaticEncounterConfig config,
+            (short X, short Y, Direction Facing) start, Func<Task<string?>> checks, TimeSpan stale, CancellationToken ct)
         {
             Stopwatch reset = Stopwatch.StartNew();
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, config.SoftResetMacro));
             await bot.WaitForMacroAsync(ct);
+            await GameStateWait.UntilAsync(bot.State, "the soft reset to leave the summary",
+                s => !(s.Screen == GameScreen.OtherApp && s.AppInit == addresses.SummaryInit), stale, ct);
             await Task.Delay(config.SoftResetDelayMs, ct);
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, config.ContinueMacro));
             await bot.WaitForMacroAsync(ct);
