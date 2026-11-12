@@ -190,10 +190,7 @@ namespace ShinyBotHunter.BotEvents
 
                     if (mon.IsShiny)
                     {
-                        if (await FinishAsync(bot, addresses, press, persist, alert, addCaught, ScriptStale, MenuStale, postSave, ct) is { } finishStop)
-                        {
-                            return Stop(state, bot, finishStop);
-                        }
+                        await FinishAsync(bot, addresses, press, persist, alert, addCaught, MenuStale, postSave, ct);
                         CompleteState(state);
                         Console.WriteLine($"[Static] Shiny {encounter.Name}. Saved.");
                         return null;
@@ -376,13 +373,12 @@ namespace ShinyBotHunter.BotEvents
             return null;
         }
 
-        // The shiny (FR-11): the alert first, then B to the party list and B to the field, each confirmed, because the save
-        // macro starts from the field. A menu that opened in the moment before a scene script would let that script run once
-        // the menu closes, so the start menu is opened again, which only happens once nothing of the scene is left, and closed
-        // with B to the field. Then the save, the caught record and the flush, uncancellable as the Primo hunt's are. Null
-        // when saved, otherwise the sentence it stopped with before the save.
-        internal static async Task<string?> FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
-            Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught, TimeSpan scriptStale, TimeSpan stale, TimeSpan postSave, CancellationToken ct)
+        // The shiny (FR-11): the alert first, then B at the summary to the party list, B at the party list to the start menu
+        // it was opened from (not the field), and B at the start menu to the free field, each confirmed before the next,
+        // because the save macro starts from the field. Then the save, the caught record and the flush, uncancellable as the
+        // Primo hunt's are.
+        internal static async Task FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
+            Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught, TimeSpan stale, TimeSpan postSave, CancellationToken ct)
         {
             await alert(persist);
 
@@ -390,12 +386,8 @@ namespace ShinyBotHunter.BotEvents
             await GameStateWait.UntilAsync(bot.State, "the party list after B from the summary",
                 s => s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuList, stale, ct);
             await press(GameStateWait.MenuWait + "H.B.6");
-            await GameStateWait.UntilAsync(bot.State, "the field free after B from the party list", s => s.Screen == GameScreen.FieldFree, stale, ct);
-
-            if (await StartMenuAsync(bot.State, addresses, press, "the scripts before the save", scriptStale, stale, ct) is { } stop)
-            {
-                return stop;
-            }
+            await GameStateWait.UntilAsync(bot.State, "the start menu after B from the party list",
+                s => s.Screen == GameScreen.FieldTask && s.Script is null && s.TaskFunction == addresses.StartMenuTask, stale, ct);
             await press(GameStateWait.MenuWait + "H.B.6");
             await GameStateWait.UntilAsync(bot.State, "the field free after B from the start menu", s => s.Screen == GameScreen.FieldFree, stale, ct);
 
@@ -404,7 +396,6 @@ namespace ShinyBotHunter.BotEvents
             await addCaught(persist);
             await bot.FlushSave(CancellationToken.None);
             await Task.Delay(postSave, CancellationToken.None);
-            return null;
         }
     }
 }
