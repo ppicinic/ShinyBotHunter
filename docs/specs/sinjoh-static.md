@@ -141,4 +141,6 @@ None.
 
 - 2026-11-12: drafted from the spike.
 - 2026-11-12: owner review. Save at Run, the name and one emulator confirmed; the hand-over reset removed as a question (it was never open: the global decision settles it).
+- 2026-11-12: the `StaticEncounter` choice is a dropdown (owner, at S2's plan review): the dashboard had no server-driven choice list, so the action's schema gains a choices member and the dashboard renders it (task S2b, #354). This is the dashboard change "Where it lives" left for the planner to confirm.
+- 2026-11-12: the run's one `Pathfind` call is made by `StartStaticEncounterAsync`, so a null macro is FR-2's 400; the event is handed the macro with its tile and facing and never searches (S2's plan, #348).
 - 2026-11-12: the walk is the navigator's pathfinder, called once at Run and its macro cached (FR-4, FR-5, FR-10; owner). The tile list is gone; the pathfinder's map data was checked to hold the stage and reach all three spots.
