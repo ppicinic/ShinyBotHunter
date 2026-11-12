@@ -23,6 +23,9 @@ namespace ShinyBotHunter.BotEvents
         private static readonly TimeSpan MenuStale = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
 
+        // How many times X may meet a script that started after the field was free before the hunt stops.
+        internal const int StartMenuRounds = 3;
+
         // The field reads 6-frame holds; one-frame taps were missed in the spike (FR-14).
         private const string HoldA = "H.A.6;W.20";
         private const string HoldB = "H.B.6;W.20";
@@ -280,6 +283,28 @@ namespace ShinyBotHunter.BotEvents
             await GameStateWait.UntilAsync(game, "the nickname menu to take the No", s => s.Native != addresses.MenuChoiceNative, menuStale, ct);
             Console.WriteLine("[Static] No to the nickname");
             return null;
+        }
+
+        // Presses through the scene's scripts to a free field, then X, confirmed by the start menu itself: its task function
+        // with no script. A free field also occurs between two scripts of one scene, so a script running after the X means
+        // the scene was not over: X opened nothing, the script is pressed through and X is gated again on the next free field.
+        // X is sent once per free field and never while a script runs. Null with the start menu open.
+        internal static async Task<string?> StartMenuAsync(IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string scene,
+            TimeSpan scriptStale, TimeSpan menuStale, CancellationToken ct)
+        {
+            for (int round = 1; round <= StartMenuRounds; round++)
+            {
+                await NavigatorEvent.PressThroughScriptAsync(game, addresses, press, scene, scriptStale, ct, pressA: HoldA, pressB: HoldB);
+                await press("H.X.6");
+                GameSnapshot after = await GameStateWait.UntilAsync(game, "the start menu after X",
+                    s => s.Screen == GameScreen.FieldTask && (s.TaskFunction == addresses.StartMenuTask && s.Script is null || s.Script is not null), menuStale, ct);
+                if (after.Script is null)
+                {
+                    return null;
+                }
+                Console.WriteLine($"[Static] a script started after the field was free: script {after.Script}, round {round} of {StartMenuRounds} ({scene})");
+            }
+            return $"{StartMenuRounds} times in a row a script started after the field was free, instead of the start menu after X ({scene}).";
         }
 
         // X, POKéMON, slot 2, SUMMARY, from the free field the scripts after the hand-over ended on (FR-9). Each press is
