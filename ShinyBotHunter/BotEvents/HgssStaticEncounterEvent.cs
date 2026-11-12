@@ -30,17 +30,18 @@ namespace ShinyBotHunter.BotEvents
         // Safety margin after a save so the flush lands before anything else happens; the Primo hunt's value.
         private static readonly TimeSpan PostSaveDelay = TimeSpan.FromSeconds(10);
 
-        private const string SummaryNotBuilt = "The summary step is not built yet (#356).";
-
         private readonly IBot bot;
         private readonly StaticEncounterConfig config;
         private readonly StaticEncounterConfig.Entry encounter;
         private readonly string walkMacro;
         private readonly (short X, short Y, Direction Facing) start;
+        private readonly PokemonStateReader reader;
+        private readonly PokemonPersistenceService persistenceService;
+        private readonly ShinyAlertService shinyAlertService;
         private readonly BotService botService;
 
         public HgssStaticEncounterEvent(IBot bot, StaticEncounterConfig config, StaticEncounterConfig.Entry encounter, string walkMacro,
-            short x, short y, Direction facing, BotService botService)
+            short x, short y, Direction facing, IServiceProvider provider, BotService botService)
         {
             this.bot = bot;
             this.config = config;
@@ -48,6 +49,9 @@ namespace ShinyBotHunter.BotEvents
             this.walkMacro = walkMacro;
             this.start = (x, y, facing);
             this.botService = botService;
+            this.reader = provider.GetRequiredService<PokemonStateReader>();
+            this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
+            this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
         }
 
         public override async Task<bool> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)
@@ -58,7 +62,13 @@ namespace ShinyBotHunter.BotEvents
             bool complete = false;
             try
             {
-                complete = await HuntAsync(gameState, bot, config, encounter, walkMacro, start, PostSaveDelay, cancellationToken) is null;
+                complete = await HuntAsync(gameState, bot, config, encounter, walkMacro, start,
+                    () => botService.StaticEncounterRefusalAsync(bot, encounter, cancellationToken),
+                    () => reader.GetPartyState(bot),
+                    persistenceService.AddEncounterAsync,
+                    p => shinyAlertService.NotifyTargetFoundAsync(p, "received"),
+                    persistenceService.AddCaughtPokemonAsync,
+                    PostSaveDelay, cancellationToken) is null;
                 return complete;
             }
             finally
@@ -84,6 +94,18 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        private static void CompleteState(GameState gameState)
+        {
+            if (gameState.State.Count == 0)
+            {
+                gameState.State.Push(EventState.Complete);
+            }
+            else
+            {
+                gameState.SwapState(EventState.Complete);
+            }
+        }
+
         // Clears the macro, logs the sentence and leaves the slot idle, so Run is offered again and checks again. Not Waiting:
         // Resume would run the save at Run again from wherever the stop left the game.
         private static string Stop(GameState state, IBot bot, string sentence)
@@ -97,8 +119,12 @@ namespace ShinyBotHunter.BotEvents
         // -- Steps, internal for the tests --------------------------------------------------------
 
         // The run: the save at Run, then the attempts. Null when the hunt completed, otherwise the sentence it stopped with.
+        // The delegates are the boundaries a test cannot run (AGENTS rule 2): Run's live checks, the emulator's party read,
+        // the encounter log, the alert and the caught record.
         internal static async Task<string?> HuntAsync(GameState state, IBot bot, StaticEncounterConfig config, StaticEncounterConfig.Entry encounter,
-            string walkMacro, (short X, short Y, Direction Facing) start, TimeSpan postSave, CancellationToken ct)
+            string walkMacro, (short X, short Y, Direction Facing) start, Func<Task<string?>> checks, Func<Task<PokemonState>> readParty,
+            Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught,
+            TimeSpan postSave, CancellationToken ct)
         {
             var addresses = (HgssPointerService)bot.Addresses;
             Func<string, Task> press = async macro =>
@@ -140,7 +166,34 @@ namespace ShinyBotHunter.BotEvents
                     await NavigatorEvent.PressThroughScriptAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, ct,
                         pressA: HoldA, pressB: HoldB);
                     Console.WriteLine($"[Static] after the hand-over {after.ElapsedMilliseconds} ms, field free on map {await bot.Overworld.GetMapIdAsync(ct)}");
-                    return Stop(state, bot, SummaryNotBuilt);
+
+                    var (mon, summaryStop) = await SummaryAsync(bot.State, addresses, press, encounter, readParty, MenuStale, ct);
+                    if (summaryStop is not null)
+                    {
+                        return Stop(state, bot, summaryStop);
+                    }
+                    var persist = new PersistPokemonData
+                    {
+                        PokemonData = mon!,
+                        DateTime = DateTime.UtcNow,
+                        Game = bot.GameFlavor,
+                        Phase = state.Milestone,
+                        GameFileName = bot.GameFileName,
+                    };
+                    await addEncounter(persist);
+                    Console.WriteLine($"[Static] attempt {attempt}: {encounter.Name} species {mon!.Species}, pid {mon.PID:X8}, shinyValue {mon.ShinyValue}, shiny {mon.IsShiny}");
+
+                    if (mon.IsShiny)
+                    {
+                        await FinishAsync(bot, addresses, press, persist, alert, addCaught, MenuStale, postSave, ct);
+                        CompleteState(state);
+                        Console.WriteLine($"[Static] Shiny {encounter.Name}. Saved.");
+                        return null;
+                    }
+                    if (await ResetAsync(bot, config, start, checks, ct) is { } resetStop)
+                    {
+                        return Stop(state, bot, resetStop);
+                    }
                 }
             }
             catch (GameStateTimeoutException ex)

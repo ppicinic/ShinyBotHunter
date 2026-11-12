@@ -80,7 +80,12 @@ namespace ShinyBotHunter.Tests
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, Profile());
-            var provider = new ServiceCollection().AddSingleton(new PokemonStateReader()).BuildServiceProvider();
+            // The hunt's event resolves these when Run builds it; the test cancels it before it reaches them.
+            var provider = new ServiceCollection()
+                .AddSingleton(new PokemonStateReader())
+                .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
+                .AddSingleton(new ShinyAlertService(null!, settings))
+                .BuildServiceProvider();
             var service = new BotService(settings, factory, provider, null!, null!, null!);
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
             FakeBot bot = factory.Bots[0];
