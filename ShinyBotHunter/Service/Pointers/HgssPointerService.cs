@@ -371,6 +371,11 @@ namespace ShinyBotHunter.Service.Pointers
 
         // The summary screen, docs/research/sinjoh-static.md "The summary screen".
 
+        // the start menu's task function (task + 0x04) after X in the free field, still there under the party menu and the
+        // summary and after the SaveGame macro's Save touch; symbol not traced; root (revision-dependent; static ARM9, English
+        // HeartGold); observed (#366, runs 20261112-192129 and -192630); QA: none yet: hgss-static-dialga (S4)
+        public uint StartMenuTask => 0x0203BEF1;
+
         // the party menu app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9,
         // English HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
         public uint PartyMenuInit => 0x02078E31;
