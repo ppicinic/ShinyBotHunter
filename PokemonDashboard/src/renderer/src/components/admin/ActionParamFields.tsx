@@ -92,6 +92,17 @@ export function ActionParamFields({
                 <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
               ))}
             </select>
+          ) : schema.choices?.[param] ? (
+            <select
+              value={params[param] ?? ''}
+              onChange={(e) => onChange(param, e.target.value)}
+              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="">Select...</option>
+              {schema.choices[param].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
           ) : (
             <input
               type="text"

@@ -285,6 +285,8 @@ export interface EventArgumentOptions {
   gameFilter?: GameFilter | null
   // Parameter name to choice to the reason it is unavailable; null when nothing is disabled.
   disabledChoices?: Record<string, Record<string, string>> | null
+  // Parameter name to the values it allows, rendered as a dropdown; null when the server offers no list.
+  choices?: Record<string, string[]> | null
 }
 
 // Matches C# GameFilter in BotDtos.cs. testedOnly admits only ROMs whose revisionSupport is "Tested".

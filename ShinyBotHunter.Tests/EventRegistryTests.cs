@@ -77,6 +77,22 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task IdleHgssBotListsTheStaticEncounterChoices()
+        {
+            Directory.SetCurrentDirectory(RepoPaths.AppProject);
+            var service = Build();
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            var choices = actions.Single(a => a.Name == "HGSS Static Encounter").Choices!;
+            Assert.Equal(["StaticEncounter"], choices.Keys);
+            Assert.Equal(["Dialga (Sinjoh Ruins)", "Palkia (Sinjoh Ruins)", "Giratina (Sinjoh Ruins)"], choices["StaticEncounter"]);
+            Assert.All(actions.Where(a => a.Name != "HGSS Static Encounter"), a => Assert.Null(a.Choices));
+            Assert.Null(EventRegistry.Get("HGSS Static Encounter").Options.Choices);
+        }
+
+        [Fact]
         public void PrimoEggEntryNeedsAMilestoneAndEggs()
         {
             EventRegistration entry = EventRegistry.Get("HGSS Primo Egg");
