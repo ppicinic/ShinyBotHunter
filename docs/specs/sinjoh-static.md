@@ -1,6 +1,6 @@
 # Spec: HGSS static encounter hunt (Sinjoh Ruins: Dialga, Palkia, Giratina)
 
-Status: Approved for build (owner, 2026-11-12). Not implemented.
+Status: In progress on feature/sinjoh-static (owner approved for build, 2026-11-12).
 Last updated: 2026-11-12
 Owner: Phil
 Related: [research: the spike](../research/sinjoh-static.md) (the source for every tile, timing and rule here), [Primo egg hunt spec](primo-egg-hunt.md) (the soft-reset cycle and the shiny ending this reuses), [HGSS state reader spec](hgss-state-reader.md), [pickup mode spec](pickup-mode.md) (the party menu reads), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the decision [Hunts act as a human would](../decisions/global.md).
