@@ -633,8 +633,8 @@ namespace ShinyBotHunter.Tests
         public async Task AShinyAlertsOnceSavesRecordsAndCompletes()
         {
             List<string> presses = [];
-            // After B from the summary, after B from the list, after the save.
-            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Free]];
+            // After B from the summary, after B from the list, after X, after B from the start menu, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [StartMenu], [Free], [Free]];
             FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
             Boundaries boundaries = new(ShinyPid);
             GameState state = Running();
@@ -642,7 +642,7 @@ namespace ShinyBotHunter.Tests
             string? stop = await HuntAsync(state, bot, Config(), boundaries);
 
             Assert.Null(stop);
-            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses[^3..]);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^5..]);
             Assert.DoesNotContain(Macro("SoftResetHeld"), presses);
             // Only the walk's clear, once the circle's script started; no stop's.
             Assert.Equal(["clear"], bot.Macros);
