@@ -2,6 +2,7 @@ using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
 
@@ -15,6 +16,14 @@ namespace ShinyBotHunter.BotEvents
 
         // How long the snapshot may stay the same during the walk: it stays FieldFree throughout, which takes 5.4 to 6.9 s.
         private static readonly TimeSpan WalkStale = TimeSpan.FromSeconds(15);
+
+        // How long the snapshot may stay the same after a menu answer, and in a field script (the navigator's value).
+        private static readonly TimeSpan MenuStale = TimeSpan.FromSeconds(10);
+        private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
+
+        // The field reads 6-frame holds; one-frame taps were missed in the spike (FR-14).
+        private const string HoldA = "H.A.6;W.20";
+        private const string HoldB = "H.B.6;W.20";
 
         // Safety margin after a save so the flush lands before anything else happens; the Primo hunt's value.
         private static readonly TimeSpan PostSaveDelay = TimeSpan.FromSeconds(10);
@@ -89,6 +98,12 @@ namespace ShinyBotHunter.BotEvents
         internal static async Task<string?> HuntAsync(GameState state, IBot bot, StaticEncounterConfig config, StaticEncounterConfig.Entry encounter,
             string walkMacro, (short X, short Y, Direction Facing) start, TimeSpan postSave, CancellationToken ct)
         {
+            var addresses = (HgssPointerService)bot.Addresses;
+            Func<string, Task> press = async macro =>
+            {
+                bot.RunMacroString(macro);
+                await bot.WaitForMacroAsync(ct);
+            };
             // The one place the macro is printed (FR-12).
             Console.WriteLine($"[Static] {encounter.Name}: species {encounter.Species}, circle ({encounter.Spot[0]}, {encounter.Spot[1]}) on map {encounter.MapId}; " +
                 $"walk from ({start.X}, {start.Y}) facing {start.Facing.ToString().ToLowerInvariant()}: {walkMacro}");
@@ -110,6 +125,10 @@ namespace ShinyBotHunter.BotEvents
                     if (await WalkAsync(bot, encounter, walkMacro, WalkStale, ct) is { } walkStop)
                     {
                         return Stop(state, bot, walkStop);
+                    }
+                    if (await PromptAsync(bot.State, addresses, press, ScriptStale, MenuStale, ct) is { } promptStop)
+                    {
+                        return Stop(state, bot, promptStop);
                     }
                     return Stop(state, bot, SummaryNotBuilt);
                 }
@@ -148,6 +167,24 @@ namespace ShinyBotHunter.BotEvents
             // The step that started the script was the macro's last, so nothing of it is left to wait for.
             bot.ClearMacro();
             Console.WriteLine($"[Static] walk {walk.ElapsedMilliseconds} ms, script {started.Script}");
+            return null;
+        }
+
+        // The circle's Yes/No (FR-6). The presser presses nothing at the menu, because until is checked first; its only presses
+        // are A at a text arrow, for the refusal's text, each confirmed by the printer leaving the arrow. The Yes is one press,
+        // not repeated: a dropped hold is the stale stop naming the menu.
+        internal static async Task<string?> PromptAsync(IGameStateReader game, HgssPointerService addresses, Func<string, Task> press,
+            TimeSpan scriptStale, TimeSpan menuStale, CancellationToken ct)
+        {
+            GameSnapshot ended = await NavigatorEvent.PressThroughScriptAsync(game, addresses, press, "the circle script", scriptStale, ct,
+                s => s.Native == addresses.MenuChoiceNative || s.Screen == GameScreen.FieldFree, HoldA, HoldB);
+            if (ended.Screen == GameScreen.FieldFree)
+            {
+                return DidNotRespond;
+            }
+            await press(GameStateWait.MenuWait + HoldA);
+            await GameStateWait.UntilAsync(game, "the circle menu to take the Yes", s => s.Native != addresses.MenuChoiceNative, menuStale, ct);
+            Console.WriteLine("[Static] Yes");
             return null;
         }
     }
