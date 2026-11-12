@@ -4,7 +4,7 @@ namespace ShinyBotHunter.Games
         GameScreen Screen,
         BattleOutcome? Outcome, int? Script, int? Prompt, uint? TaskFunction, uint? Native = null, int? SummaryState = null,
         int? TextPrinter = null, int? AppState = null, int? PartyMonIndex = null, uint? AppInit = null,
-        int? StartMenuState = null)
+        int? StartMenuState = null, uint? TextCursor = null)
     {
         // RenderText's waits for A or B at the arrow (pointer-discovery.md, "Text printer state (2026-10-24)"); 3, 7 and 8
         // are decomp only.
@@ -18,5 +18,6 @@ namespace ShinyBotHunter.Games
     // of slot 0. AppState on OtherApp, app.state (the party menu's PartyMenuState); PartyMonIndex on OtherApp, the party
     // menu's partyMonIndex, null when [app + 0x1C] is NULL; AppInit on OtherApp, the word at app + 0x00 (the app's init
     // function). StartMenuState on FieldTask while the task function is the start menu's, the u16 at [taskman + 0x0C] +
-    // 0x26 (3 idle).
+    // 0x26 (3 idle). TextCursor wherever TextPrinter is at the arrow (AtTextArrow), the u32 at printer + 0x00 (the
+    // printer's current character): different for every box, and it does not change while the printer waits at an arrow.
 }
