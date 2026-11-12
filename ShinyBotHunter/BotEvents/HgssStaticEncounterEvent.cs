@@ -23,6 +23,9 @@ namespace ShinyBotHunter.BotEvents
         private static readonly TimeSpan MenuStale = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
 
+        // How many times X may meet a script that started after the field was free before the hunt stops.
+        internal const int StartMenuRounds = 3;
+
         // The field reads 6-frame holds; one-frame taps were missed in the spike (FR-14).
         private const string HoldA = "H.A.6;W.20";
         private const string HoldB = "H.B.6;W.20";
@@ -163,8 +166,10 @@ namespace ShinyBotHunter.BotEvents
                         return Stop(state, bot, cutsceneStop);
                     }
                     Stopwatch after = Stopwatch.StartNew();
-                    await NavigatorEvent.PressThroughScriptAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, ct,
-                        pressA: HoldA, pressB: HoldB);
+                    if (await StartMenuAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, MenuStale, ct) is { } menuStop)
+                    {
+                        return Stop(state, bot, menuStop);
+                    }
                     Console.WriteLine($"[Static] after the hand-over {after.ElapsedMilliseconds} ms, field free on map {await bot.Overworld.GetMapIdAsync(ct)}");
 
                     var (mon, summaryStop) = await SummaryAsync(bot.State, addresses, press, encounter, readParty, MenuStale, ct);
@@ -185,7 +190,10 @@ namespace ShinyBotHunter.BotEvents
 
                     if (mon.IsShiny)
                     {
-                        await FinishAsync(bot, addresses, press, persist, alert, addCaught, MenuStale, postSave, ct);
+                        if (await FinishAsync(bot, addresses, press, persist, alert, addCaught, ScriptStale, MenuStale, postSave, ct) is { } finishStop)
+                        {
+                            return Stop(state, bot, finishStop);
+                        }
                         CompleteState(state);
                         Console.WriteLine($"[Static] Shiny {encounter.Name}. Saved.");
                         return null;
@@ -282,7 +290,29 @@ namespace ShinyBotHunter.BotEvents
             return null;
         }
 
-        // X, POKéMON, slot 2, SUMMARY, from the free field the scripts after the hand-over ended on (FR-9). Each press is
+        // Presses through the scene's scripts to a free field, then X, confirmed by the start menu itself: its task function
+        // with no script. A free field also occurs between two scripts of one scene, so a script running after the X means
+        // the scene was not over: X opened nothing, the script is pressed through and X is gated again on the next free field.
+        // X is sent once per free field and never while a script runs. Null with the start menu open.
+        internal static async Task<string?> StartMenuAsync(IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string scene,
+            TimeSpan scriptStale, TimeSpan menuStale, CancellationToken ct)
+        {
+            for (int round = 1; round <= StartMenuRounds; round++)
+            {
+                await NavigatorEvent.PressThroughScriptAsync(game, addresses, press, scene, scriptStale, ct, pressA: HoldA, pressB: HoldB);
+                await press("H.X.6");
+                GameSnapshot after = await GameStateWait.UntilAsync(game, "the start menu after X",
+                    s => s.Screen == GameScreen.FieldTask && (s.TaskFunction == addresses.StartMenuTask && s.Script is null || s.Script is not null), menuStale, ct);
+                if (after.Script is null)
+                {
+                    return null;
+                }
+                Console.WriteLine($"[Static] a script started after the field was free: script {after.Script}, round {round} of {StartMenuRounds} ({scene})");
+            }
+            return $"{StartMenuRounds} times in a row a script started after the field was free, instead of the start menu after X ({scene}).";
+        }
+
+        // POKéMON, slot 2, SUMMARY, from the start menu StartMenuAsync confirmed (FR-9). Each press is
         // gated on the state the one before it confirmed and is sent once; the party menu and the summary are told apart by
         // the app's init function (FR-13), the summary by its init function with state 2, drawn. Slot 2 is read only once the
         // summary is on screen, as a player would see it.
@@ -290,9 +320,6 @@ namespace ShinyBotHunter.BotEvents
             StaticEncounterConfig.Entry encounter, Func<Task<PokemonState>> readParty, TimeSpan stale, CancellationToken ct)
         {
             Stopwatch route = Stopwatch.StartNew();
-            await press("H.X.6");
-            await GameStateWait.UntilAsync(game, "the start menu after X", s => s.Screen == GameScreen.FieldTask, stale, ct);
-
             await press(Touch(encounter.PokemonTouch));
             await GameStateWait.UntilAsync(game, "the party list after POKéMON",
                 s => s.Screen == GameScreen.OtherApp && s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuList, stale, ct);
@@ -350,9 +377,12 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // The shiny (FR-11): the alert first, then B to the party list and B to the field, each confirmed, because the save
-        // macro starts from the field; then the save, the caught record and the flush, uncancellable as the Primo hunt's are.
-        internal static async Task FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
-            Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught, TimeSpan stale, TimeSpan postSave, CancellationToken ct)
+        // macro starts from the field. A menu that opened in the moment before a scene script would let that script run once
+        // the menu closes, so the start menu is opened again, which only happens once nothing of the scene is left, and closed
+        // with B to the field. Then the save, the caught record and the flush, uncancellable as the Primo hunt's are. Null
+        // when saved, otherwise the sentence it stopped with before the save.
+        internal static async Task<string?> FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
+            Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught, TimeSpan scriptStale, TimeSpan stale, TimeSpan postSave, CancellationToken ct)
         {
             await alert(persist);
 
@@ -362,11 +392,19 @@ namespace ShinyBotHunter.BotEvents
             await press(GameStateWait.MenuWait + "H.B.6");
             await GameStateWait.UntilAsync(bot.State, "the field free after B from the party list", s => s.Screen == GameScreen.FieldFree, stale, ct);
 
+            if (await StartMenuAsync(bot.State, addresses, press, "the scripts before the save", scriptStale, stale, ct) is { } stop)
+            {
+                return stop;
+            }
+            await press(GameStateWait.MenuWait + "H.B.6");
+            await GameStateWait.UntilAsync(bot.State, "the field free after B from the start menu", s => s.Screen == GameScreen.FieldFree, stale, ct);
+
             bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, "SaveGame"));
             await bot.WaitForMacroAsync(CancellationToken.None);
             await addCaught(persist);
             await bot.FlushSave(CancellationToken.None);
             await Task.Delay(postSave, CancellationToken.None);
+            return null;
         }
     }
 }

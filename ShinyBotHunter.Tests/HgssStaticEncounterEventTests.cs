@@ -255,7 +255,7 @@ namespace ShinyBotHunter.Tests
 
         private const uint PartyMenuInit = 0x02078E31;
         private const uint SummaryInit = 0x02088299;
-        private const uint StartMenuTask = 0x0203D001;
+        private const uint StartMenuTask = 0x0203BEF1;
 
         private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask);
         private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
@@ -265,13 +265,12 @@ namespace ShinyBotHunter.Tests
 
         private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
 
-        private static readonly string[] SummaryRoute = ["H.X.6", "W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
+        private static readonly string[] SummaryRoute = ["W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
 
         // Each confirm comes only after two reads of the snapshot the press was sent at.
         private static readonly GameSnapshot[][] ToTheSummarySlowly =
         [
-            [Free],
-            [Free, Free, StartMenu],
+            [StartMenu],
             [StartMenu, StartMenu, PartyList],
             [PartyList, PartyList, ContextMenu(1)],
             [ContextMenu(1), ContextMenu(1), SummaryScreen],
@@ -303,8 +302,9 @@ namespace ShinyBotHunter.Tests
             Assert.Null(stop);
             Assert.Equal(0x12345678u, mon!.PID);
             Assert.Equal(SummaryRoute, presses.Select(p => p.Macro));
-            // X's gate, the free field, was seen by the presser before the step; each touch is sent at the confirm before it.
-            Assert.Equal([StartMenu, PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
+            // POKéMON's gate, the start menu, was confirmed by StartMenuAsync before the step; each later touch is sent at the
+            // confirm before it.
+            Assert.Equal([PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
         }
 
         [Fact]
@@ -326,7 +326,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task SlotTwoIsReadOnlyOnceTheSummaryIsDrawn()
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(0), SummaryLoading(1), SummaryScreen]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(0), SummaryLoading(1), SummaryScreen]);
             List<GameSnapshot> readAt = [];
 
             var (mon, _) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga, () =>
@@ -346,7 +346,7 @@ namespace ShinyBotHunter.Tests
         [InlineData(1)]
         public async Task ASummaryThatStaysLoadingIsAStaleTimeout(int state)
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(state)]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(state)]);
             List<(string Macro, GameSnapshot At)> presses = [];
 
             var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
@@ -361,14 +361,62 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task AContextMenuOnAnotherSlotIsNotTheSummaryRoute()
         {
-            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(0)]);
+            PressedReader reader = new([StartMenu], [PartyList], [ContextMenu(0)]);
             List<(string Macro, GameSnapshot At)> presses = [];
 
             var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
                 Dialga, () => throw new InvalidOperationException("slot 2 read"), Stale, CancellationToken.None));
 
             Assert.Equal("slot 2's context menu", ex.WaitingFor);
-            Assert.Equal(SummaryRoute[..3], presses.Select(p => p.Macro));
+            Assert.Equal(SummaryRoute[..2], presses.Select(p => p.Macro));
+        }
+
+        // -- The start menu ------------------------------------------------------------------------
+
+        // The warp's fade task, a field task with no script that is not the start menu.
+        private const uint FadeTask = 0x0205528D;
+
+        [Fact]
+        public async Task EachXIsSentAtAFreeFieldAndTheMenuIsItsOwnState()
+        {
+            PressedReader reader = new([Free], [Script(Printing, 2)], [Free], [StartMenu]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            string? stop = await HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal(["H.X.6", HoldA, "H.X.6"], presses.Select(p => p.Macro));
+            Assert.All(presses.Where(p => p.Macro == "H.X.6"), p => Assert.Equal(Free, p.At));
+        }
+
+        [Fact]
+        public async Task XConfirmedByAFieldTaskThatIsNotTheStartMenuDoesNotCount()
+        {
+            PressedReader reader = new([Free], [ChildTask(FadeTask)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() =>
+                HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Stale, CancellationToken.None));
+
+            Assert.Equal("the start menu after X", ex.WaitingFor);
+            Assert.Contains($"TaskFunction = {FadeTask}", ex.Message);
+            Assert.Equal(["H.X.6"], presses.Select(p => p.Macro));
+        }
+
+        [Fact]
+        public async Task AScriptAfterEveryXStopsAfterTheRounds()
+        {
+            // Each X meets a script at its arrow, and each A frees the field.
+            GameSnapshot[][] stages = [.. Enumerable.Range(0, HgssStaticEncounterEvent.StartMenuRounds).SelectMany(_ => new[] { new[] { Free }, [Script(Printing, 2)] })];
+            PressedReader reader = new(stages);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            string? stop = await HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Long, CancellationToken.None);
+
+            Assert.Equal($"{HgssStaticEncounterEvent.StartMenuRounds} times in a row a script started after the field was free, instead of the start menu after X (the scene).", stop);
+            var xs = presses.Where(p => p.Macro == "H.X.6").ToList();
+            Assert.Equal(HgssStaticEncounterEvent.StartMenuRounds, xs.Count);
+            Assert.All(xs, p => Assert.Equal(Free, p.At));
         }
 
         [Fact]
@@ -566,8 +614,40 @@ namespace ShinyBotHunter.Tests
 
             string save = Macro("SaveGame");
             Assert.Equal(NotOneArceus, stop);
-            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
+            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", "H.X.6", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
             Assert.Single(presses, p => p == save);
+        }
+
+        [Fact]
+        public async Task AScriptAfterTheFreeFieldIsPressedThroughAndXGatedAgain()
+        {
+            List<string> presses = [];
+            // The first X meets the researcher's script at its arrow; its A frees the field; the second X opens the start menu.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, [Script(Printing, 2)], [Free], .. ToTheSummary, .. ThroughTheReset];
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
+
+            string? stop = await HuntAsync(Running(), bot, Config());
+
+            Assert.Equal(NotOneArceus, stop);
+            Assert.Equal([Macro("SaveGame"), WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", "H.X.6", HoldA, "H.X.6", .. SummaryRoute,
+                Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
+        }
+
+        [Fact]
+        public async Task TheShinySaveWaitsForTheScenesScriptsToEnd()
+        {
+            List<string> presses = [];
+            // After B from the summary, after B from the list, after an X that met a script, after its A, after X, after B
+            // from the start menu, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Script(Printing, 2)], [Free], [StartMenu], [Free], [Free]];
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
+            Boundaries boundaries = new(ShinyPid);
+
+            string? stop = await HuntAsync(Running(), bot, Config(), boundaries);
+
+            Assert.Null(stop);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", HoldA, "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^7..]);
+            Assert.Equal(["readParty", "addEncounter", "alert", "addCaught"], boundaries.Calls.Select(c => c.Call));
         }
 
         public static TheoryData<string> Stops => ["did not respond", "no hand-over", "stale cutscene"];
@@ -633,8 +713,8 @@ namespace ShinyBotHunter.Tests
         public async Task AShinyAlertsOnceSavesRecordsAndCompletes()
         {
             List<string> presses = [];
-            // After B from the summary, after B from the list, after the save.
-            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Free]];
+            // After B from the summary, after B from the list, after X, after B from the start menu, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [StartMenu], [Free], [Free]];
             FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
             Boundaries boundaries = new(ShinyPid);
             GameState state = Running();
@@ -642,7 +722,7 @@ namespace ShinyBotHunter.Tests
             string? stop = await HuntAsync(state, bot, Config(), boundaries);
 
             Assert.Null(stop);
-            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses[^3..]);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^5..]);
             Assert.DoesNotContain(Macro("SoftResetHeld"), presses);
             // Only the walk's clear, once the circle's script started; no stop's.
             Assert.Equal(["clear"], bot.Macros);
