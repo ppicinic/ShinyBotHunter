@@ -3,6 +3,7 @@ using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Util;
+using System.Diagnostics;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -10,6 +11,11 @@ namespace ShinyBotHunter.BotEvents
     // attempt replays the walk Run made to the circle. A step that goes wrong stops the hunt with its sentence.
     public class HgssStaticEncounterEvent : AbstractBotEvent<bool>
     {
+        internal const string DidNotRespond = "The circle did not respond. This save has already received this Pokémon, or this Arceus has been used.";
+
+        // How long the snapshot may stay the same during the walk: it stays FieldFree throughout, which takes 5.4 to 6.9 s.
+        private static readonly TimeSpan WalkStale = TimeSpan.FromSeconds(15);
+
         // Safety margin after a save so the flush lands before anything else happens; the Primo hunt's value.
         private static readonly TimeSpan PostSaveDelay = TimeSpan.FromSeconds(10);
 
@@ -96,13 +102,53 @@ namespace ShinyBotHunter.BotEvents
                 await Overworld.WaitForReadyAsync(bot.State, ct);
                 Console.WriteLine("[Static] saved at Run");
 
-                return Stop(state, bot, SummaryNotBuilt);
+                int attempt = 0;
+                while (true)
+                {
+                    attempt++;
+                    Console.WriteLine($"[Static] attempt {attempt}");
+                    if (await WalkAsync(bot, encounter, walkMacro, WalkStale, ct) is { } walkStop)
+                    {
+                        return Stop(state, bot, walkStop);
+                    }
+                    return Stop(state, bot, SummaryNotBuilt);
+                }
             }
             catch (GameStateTimeoutException ex)
             {
                 // Its message already names what was awaited and the state that stayed.
                 return Stop(state, bot, ex.Message);
             }
+        }
+
+        // Replays Run's walk, raced against the circle's script starting, which is the arrival (FR-5). The gate is the free
+        // field, seen after the save or the reset. The event never searches: the macro is the parameter (FR-4).
+        internal static async Task<string?> WalkAsync(IBot bot, StaticEncounterConfig.Entry encounter, string walkMacro, TimeSpan stale, CancellationToken ct)
+        {
+            Stopwatch walk = Stopwatch.StartNew();
+            bot.RunMacroString(walkMacro);
+            GameSnapshot started;
+            try
+            {
+                started = await GameStateWait.UntilAsync(bot.State, "the circle to start its script",
+                    s => s.Screen == GameScreen.FieldTask && s.Script is not null, stale, ct);
+            }
+            catch (GameStateTimeoutException)
+            {
+                ushort map = await bot.Overworld.GetMapIdAsync(ct);
+                (short x, short y) = await bot.Overworld.GetPositionAsync(ct);
+                if (map == encounter.MapId && x == encounter.Spot[0] && y == encounter.Spot[1])
+                {
+                    return DidNotRespond;
+                }
+                Direction facing = await bot.Overworld.GetFacingAsync(ct);
+                return $"The walk to {encounter.Name} ended on map {map}, tile ({x}, {y}), facing {facing.ToString().ToLowerInvariant()}; " +
+                    $"the circle is at ({encounter.Spot[0]}, {encounter.Spot[1]}).";
+            }
+            // The step that started the script was the macro's last, so nothing of it is left to wait for.
+            bot.ClearMacro();
+            Console.WriteLine($"[Static] walk {walk.ElapsedMilliseconds} ms, script {started.Script}");
+            return null;
         }
     }
 }
