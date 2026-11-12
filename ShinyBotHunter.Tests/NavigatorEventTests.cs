@@ -32,8 +32,8 @@ namespace ShinyBotHunter.Tests
             public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
         }
 
-        private static GameSnapshot Script(uint? native, int script = 1, int? textPrinter = null)
-            => new(GameScreen.FieldTask, null, script, null, RunScripts, native, TextPrinter: textPrinter);
+        private static GameSnapshot Script(uint? native, int script = 1, int? textPrinter = null, uint? textCursor = null)
+            => new(GameScreen.FieldTask, null, script, null, RunScripts, native, TextPrinter: textPrinter, TextCursor: textCursor);
 
         // One box of the printing native: drawing, at the arrow, then the slot NULL.
         private static GameSnapshot[] Box(int script = 1) => [Script(Printing, script, 0), Script(Printing, script, 2), Script(Printing, script)];
@@ -103,11 +103,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([A, A], presses);
         }
 
+        // The #374 watcher: the scroll arrow pressed, and the next box already at its own arrow at the first read after.
+        [Fact]
+        public async Task NextBoxAtItsArrowConfirmsThePressAtOnce()
+        {
+            ScriptedReader reader = new(
+                Script(Printing, 1, 3, 0x022A7966), Script(Printing, 1, 2, 0x022A798E), Script(Printing, 1, 2, 0x022A798E), Script(Printing), Free);
+
+            List<string> presses = [];
+            await PressThrough(reader, presses);
+
+            Assert.Equal([A, A], presses);
+        }
+
         [Fact]
         public async Task ArrowThatDoesNotClearIsRetriedThenThrows()
         {
             List<string> presses = [];
-            ScriptedReader reader = new(Script(Printing, 1, 2));
+            ScriptedReader reader = new(Script(Printing, 1, 2, 0x022A7966));
 
             GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => PressThrough(reader, presses));
 
