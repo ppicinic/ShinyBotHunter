@@ -3,6 +3,8 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -55,9 +57,16 @@ namespace ShinyBotHunter.Tests
             private int stage;
             private Queue<GameSnapshot> queue = new(stages[0]);
 
+            // The snapshot last served.
+            public GameSnapshot Last { get; private set; }
+
             public void Advance() => queue = new(stages[++stage]);
 
-            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                Last = queue.Count > 1 ? queue.Dequeue() : queue.Peek();
+                return Task.FromResult(Last);
+            }
         }
 
         private static GameSnapshot Script(uint? native, int? textPrinter = null)
@@ -240,6 +249,101 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("At the nickname question the party holds 1, not 2.", stop);
             Assert.Empty(presses);
+        }
+
+        // -- The summary --------------------------------------------------------------------------
+
+        private const uint PartyMenuInit = 0x02078E31;
+        private const uint SummaryInit = 0x02088299;
+        private const uint StartMenuTask = 0x0203D001;
+
+        private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask);
+        private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
+        private static readonly GameSnapshot SummaryScreen = new(GameScreen.OtherApp, null, null, null, null, AppState: 2, AppInit: SummaryInit);
+
+        private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
+
+        private static readonly string[] SummaryRoute = ["H.X.6", "W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
+
+        // Each confirm comes only after two reads of the snapshot the press was sent at.
+        private static readonly GameSnapshot[][] ToTheSummarySlowly =
+        [
+            [Free],
+            [Free, Free, StartMenu],
+            [StartMenu, StartMenu, PartyList],
+            [PartyList, PartyList, ContextMenu(1)],
+            [ContextMenu(1), ContextMenu(1), SummaryScreen],
+        ];
+
+        private static PokemonState Party(ushort species, uint pid) => new()
+        {
+            PartySize = 2,
+            PartyPokemon = [new PokemonData { Species = 493 }, new PokemonData { Species = species, PID = pid }, null, null, null, null],
+        };
+
+        // Every press is recorded with the snapshot that was current when it was sent.
+        private static Func<string, Task> Advancing(PressedReader reader, List<(string Macro, GameSnapshot At)> presses) => macro =>
+        {
+            presses.Add((macro, reader.Last));
+            reader.Advance();
+            return Task.CompletedTask;
+        };
+
+        [Fact]
+        public async Task TheSummaryRouteWaitsOnEachStateBeforeTheNext()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var (mon, stop) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses), Dialga,
+                () => Task.FromResult(Party(483, 0x12345678)), Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal(0x12345678u, mon!.PID);
+            Assert.Equal(SummaryRoute, presses.Select(p => p.Macro));
+            // X's gate, the free field, was seen by the presser before the step; each touch is sent at the confirm before it.
+            Assert.Equal([StartMenu, PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
+        }
+
+        [Fact]
+        public async Task SlotTwoIsReadOnlyWithTheSummaryOnScreen()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+            List<GameSnapshot> readAt = [];
+
+            await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga, () =>
+            {
+                readAt.Add(reader.Last);
+                return Task.FromResult(Party(483, 0x12345678));
+            }, Long, CancellationToken.None);
+
+            GameSnapshot at = Assert.Single(readAt);
+            Assert.Equal(SummaryInit, at.AppInit);
+        }
+
+        [Fact]
+        public async Task AContextMenuOnAnotherSlotIsNotTheSummaryRoute()
+        {
+            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(0)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
+                Dialga, () => throw new InvalidOperationException("slot 2 read"), Stale, CancellationToken.None));
+
+            Assert.Equal("slot 2's context menu", ex.WaitingFor);
+            Assert.Equal(SummaryRoute[..3], presses.Select(p => p.Macro));
+        }
+
+        [Fact]
+        public async Task AWrongSpeciesInSlotTwoStops()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+
+            var (mon, stop) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga,
+                () => Task.FromResult(Party(25, 0x12345678)), Long, CancellationToken.None);
+
+            Assert.Null(mon);
+            Assert.Equal("Party slot 2 is species 25, not Dialga (Sinjoh Ruins)'s species 483.", stop);
         }
 
         // -- The run ------------------------------------------------------------------------------
