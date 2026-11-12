@@ -195,7 +195,7 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         internal static async Task<GameSnapshot> PressThroughScriptAsync(
             IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct,
-            Func<GameSnapshot, bool>? until = null)
+            Func<GameSnapshot, bool>? until = null, string pressA = PressA, string pressB = PressB)
         {
             until ??= s => s.Screen == GameScreen.FieldFree;
             GameSnapshot? last = null;
@@ -227,7 +227,7 @@ namespace ShinyBotHunter.BotEvents
                 bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
                 if (native == addresses.MenuChoiceNative && !yesGiven)
                 {
-                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + PressA), $"{waitingFor} Yes",
+                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + pressA), $"{waitingFor} Yes",
                         s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
                     Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
                     yesGiven = true;
@@ -237,14 +237,14 @@ namespace ShinyBotHunter.BotEvents
                     if (snapshot.AtTextArrow())
                     {
                         int presses = 0;
-                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? PressB : PressA); }, $"{waitingFor} box",
+                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? pressB : pressA); }, $"{waitingFor} box",
                             s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct);
                         Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8} (printer {snapshot.TextPrinter}) after {presses} press(es)");
                     }
                 }
                 else if (native == addresses.WaitButtonNative || decompOnly || native == addresses.MenuChoiceNative)
                 {
-                    await press(yesGiven ? PressB : PressA);
+                    await press(yesGiven ? pressB : pressA);
                     Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");
                 }
                 await Task.Delay(Constant.PollIntervalMs, ct);
