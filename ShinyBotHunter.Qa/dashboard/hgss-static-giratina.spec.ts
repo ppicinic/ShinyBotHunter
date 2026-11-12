@@ -3,8 +3,8 @@ import { shotAll, step } from './driver'
 import { decodeMon } from './egg-pid'
 import {
   backendLog, cancelEventAndBot, checkAttempt, GIRATINA, hex8, installPristine, launchBot, MACROS, MINUTE, parseResult,
-  parseRunLine, pristineSha, readPartyCount, readSlot, readTile, RESULT, ROM, RUN_LINE, runStatic, SAVED, savedSha, shutdown,
-  START_TILE, startFrame, teardown, WALK, waitForLine, waitForSummary, type Frame
+  parseRunLine, pristineSha, readPartyCount, readSlot, readTile, RESULT, ROM, RUN_LINE, runStatic, SAVED, savedSha, shotPages,
+  shutdown, START_TILE, startFrame, teardown, WALK, waitForLine, waitForSummary, type Frame
 } from './static'
 
 // ITEM_GRISEOUS_ORB: the gift Giratina holds it and is in its Origin form (1).
@@ -39,7 +39,7 @@ test('HGSS Static Encounter Giratina: the six-step walk, slot 2 read with the su
     // 3. QA's own read of slot 2, through the driver, with the summary on screen.
     await waitForSummary(0, 240_000, '02-summary')
     const mon = decodeMon(await readSlot(1))
-    await shotAll('02-summary', pages)
+    await shotPages('02-summary', pages)
     step(`slot 2 at the summary: species ${mon.species}, form ${mon.form}, item ${mon.heldItem}, pid ${hex8(mon.pid)}, checksum ${mon.checksumValid}`)
     expect([mon.species, mon.form, mon.heldItem, mon.checksumValid], 'slot 2 is not Origin Giratina holding the Griseous Orb')
       .toEqual([487, 1, GRISEOUS_ORB, true])

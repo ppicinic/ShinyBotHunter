@@ -7,7 +7,7 @@ import { decodeMon, MON_SIZE, rewritePid, shinyPidKeepingLow, type Mon } from '.
 import {
   API, ATTEMPT, backendLines, backendLog, cancelBot, checkAttempt, hex8, installPristine, launchBot, MACROS, MINUTE, PALKIA,
   parseResult, parseRunLine, PHASE, pristineSha, psql, readPartyCount, readSlot, readTile, RESULT, ROM, RUN_LINE, runStatic,
-  SAVED, saveOf, savedSha, settings, SHINY_SAVED, shutdown, SID, slotAddr, START_TILE, startFrame, teardown, TID, waitForLine,
+  SAVED, saveOf, savedSha, settings, SHINY_SAVED, shotPages, shutdown, SID, slotAddr, START_TILE, startFrame, teardown, TID, waitForLine,
   waitForSummary, YES, type Frame
 } from './static'
 
@@ -72,7 +72,7 @@ test('HGSS Static Encounter Palkia shiny: slot 2 rewritten at the hand-over, the
 
     // 4. The summary shows the shiny, and the result line carries the new PID.
     await waitForSummary(0, 240_000, '02-shiny-summary')
-    await shotAll('02-shiny-summary', pages)
+    await shotPages('02-shiny-summary', pages)
     const result = parseResult(await waitForLine(RESULT, 1, MINUTE))
     if (result.pid === palkia.pid) throw new Error('the bot read slot 2 before the rewrite landed; rerun')
     expect([hex8(result.pid), result.species, result.shiny], 'the result line').toEqual([hex8(newPid), 484, true])

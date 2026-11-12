@@ -116,10 +116,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export const backendLog = (): string[] => fs.readFileSync(path.join(runDir, 'backend.log'), 'utf8').split(/\r?\n/).slice(0, -1)
 export const backendLines = (pattern: RegExp): string[] => backendLog().filter((l) => pattern.test(l))
 
-/** Fails at once on a stop, a crash or a stale-timeout in the log. */
-function failOnStop(log: string[]): void {
+/** Fails at once on a stop (quoting its whole line), a crash or a stale-timeout in the log. */
+export function failOnStop(log: string[]): void {
   const stopped = log.find((l) => STOPPED.test(l))
-  if (stopped) throw new Error(`the hunt stopped: ${STOPPED.exec(stopped)![1]}`)
+  if (stopped) throw new Error(`the hunt stopped: ${stopped.trim()}`)
   const crashed = log.find((l) => CRASHED.test(l) || l.includes('GameStateTimeoutException'))
   if (crashed) throw new Error(`the event crashed: ${crashed}`)
 }
@@ -160,12 +160,8 @@ export function installPristine(): void {
   step(`pristine save installed: SaveRAM sha256 ${savedSha()}, .bak sha256 ${sha256(saveOf(ROM) + '.bak')}`)
 }
 
-/** For the finally: keeps the end-state save in the run folder, then installs the pristine one, once EmuHawk is gone. */
+/** For the finally, once EmuHawk is gone: keeps the end-state save in the run folder, then installs the pristine one. */
 function keepAndRestore(): void {
-  if (emuHawkRunning()) {
-    step('EmuHawk still running; SaveRAM not restored')
-    return
-  }
   for (const file of [saveOf(ROM), saveOf(ROM) + '.bak']) {
     if (fs.existsSync(file)) fs.copyFileSync(file, path.join(runDir, path.basename(file)))
   }
@@ -274,20 +270,32 @@ export async function shutdown(frame: Frame, admin: Page): Promise<void> {
   step(`backend exited with ${exitCode}`)
 }
 
-/** The finally: the backend first, so it cannot drive the emulator further; then EmuHawk closed, and the save restored. */
+/**
+ * The finally. EmuHawk is the backend's child and dies with its process tree, unflushed, so it is asked to close first;
+ * only once it has exited is the backend killed and the save restored. If it is still running after 60 s, the backend,
+ * EmuHawk and the save are all left as they are.
+ */
 export async function teardown(frame: Frame): Promise<void> {
-  if (frame.backend && frame.backend.exitCode === null) killTree(frame.backend.pid!)
   await stopRecorder()
   if (frame.app) await frame.app.close().catch(() => undefined)
   if (emuHawkRunning()) await closeEmuHawk()
+  if (emuHawkRunning()) {
+    step('EmuHawk still running after 60 s; the backend, EmuHawk and SaveRAM left alone')
+    return
+  }
+  if (frame.backend && frame.backend.exitCode === null) killTree(frame.backend.pid!)
   keepAndRestore()
 }
 
 // --- RAM -------------------------------------------------------------------------------------------------
 
+// The FieldSystem pointer reads 0 for about a second after a soft reset and through the title screen; every read that
+// can run then checks it rather than reading from a negative address, which readMemory throws on.
 export type Tile = { map: number; x: number; y: number; facing: string }
+/** The player's map, tile and facing; map -1, which matches no tile, while there is no FieldSystem. */
 export async function readTile(): Promise<Tile> {
   const fsys = await readU32(ANCHOR_ADDR)
+  if (fsys === 0) return { map: -1, x: -1, y: -1, facing: 'no FieldSystem' }
   const facing = (await readU16(fsys + FACING_OFFSET)) & 0xff
   return {
     map: await readU16(fsys + MAP_ID_OFFSET), x: toS16(await readU32(X_ADDR)), y: toS16(await readU32(Y_ADDR)),
@@ -298,37 +306,67 @@ export async function readTile(): Promise<Tile> {
 export const countAddr = async (): Promise<number> => (await readU32(ANCHOR_ADDR)) + PARTY_COUNT_OFFSET
 /** Party slot i, 0-based: slot 2 is i = 1. */
 export const slotAddr = async (i: number): Promise<number> => (await readU32(ANCHOR_ADDR)) + PARTY_OFFSET + i * MON_SIZE
-export const readPartyCount = async (): Promise<number> => (await readMemory(await countAddr(), 1))[0]
+/** The party count; -1 while there is no FieldSystem. */
+export async function readPartyCount(): Promise<number> {
+  const fsys = await readU32(ANCHOR_ADDR)
+  return fsys === 0 ? -1 : (await readMemory(fsys + PARTY_COUNT_OFFSET, 1))[0]
+}
 export const readSlot = async (i: number): Promise<Buffer> => readMemory(await slotAddr(i), MON_SIZE)
 
-/** The open app's init function (app + 0x00) and state (app + 0x14), from one read; init 0 on the field. */
+/** The open app's init function (app + 0x00) and state (app + 0x14), from one read; init 0 on the field or with no FieldSystem. */
 async function readApp(): Promise<{ init: number; state: number }> {
-  const sub0 = await readU32(await readU32(ANCHOR_ADDR))
+  const fsys = await readU32(ANCHOR_ADDR)
+  const sub0 = fsys === 0 ? 0 : await readU32(fsys)
   const app = sub0 === 0 ? 0 : await readU32(sub0 + 0x04)
   if (app === 0) return { init: 0, state: 0 }
   const bytes = await readMemory(app, 0x18)
   return { init: bytes.readUInt32LE(0), state: bytes.readUInt32LE(0x14) }
 }
 
+// The summary's app state once it is drawn; it loads in state 0 (black) and 1 first, about 1 s with the init function set.
+const SUMMARY_DRAWN = 2
+
 /**
- * Polls the app's init function every 100 ms until it is the summary's, and logs the app state with `shot`, the name of
- * the screenshot the caller takes next. Fails if a result line beyond `resultsBefore` comes first: the order proof that
- * the summary was on screen before this attempt's result was written.
+ * Polls the app every 50 ms until the summary is drawn (its init function in state 2), logging when the init function
+ * and when state 2 were first seen. At that moment it asks the recorder for the emulator frame `<shot>-emulator.png`
+ * before anything else, since a not-shiny summary is on screen for well under a second. It fails if this attempt's
+ * result line (one beyond `resultsBefore`) was in the log at any poll before state 2: the order proof that the summary
+ * was drawn before the result was written. The bot may log the result within the poll that sees state 2, so that
+ * poll's log is not held against it. The caller then calls shotPages.
  */
 export async function waitForSummary(resultsBefore: number, timeoutMs: number, shot: string): Promise<void> {
   const deadline = Date.now() + timeoutMs
+  let initSeenAt = 0
+  let last = { init: 0, state: 0 }
   while (true) {
-    const { init, state } = await readApp()
-    if (init === SUMMARY_INIT) {
-      step(`summary init 0x${hex8(init)} read, app state ${state}; screenshot ${shot}`)
+    last = await readApp()
+    if (last.init === SUMMARY_INIT && initSeenAt === 0) initSeenAt = Date.now()
+    if (last.init === SUMMARY_INIT && last.state === SUMMARY_DRAWN) {
+      fs.writeFileSync(path.join(runDir, `shot-${shot}-emulator.request`), '')
+      const drawnAt = Date.now()
+      step(`summary init 0x${hex8(SUMMARY_INIT)} first seen ${new Date(initSeenAt).toISOString()}, state ${SUMMARY_DRAWN} first seen ` +
+        `${new Date(drawnAt).toISOString()} (${drawnAt - initSeenAt} ms later); emulator screenshot ${shot} requested`)
       return
     }
     const log = backendLog()
-    if (log.filter((l) => RESULT.test(l)).length > resultsBefore) throw new Error('the result line came before the summary was seen')
+    if (log.filter((l) => RESULT.test(l)).length > resultsBefore) {
+      throw new Error(`the result line came before the summary was drawn (last init 0x${hex8(last.init)}, state ${last.state})`)
+    }
     failOnStop(log)
-    if (Date.now() > deadline) throw new Error(`the summary's init function not read within ${timeoutMs / 1000} s (last init 0x${hex8(init)})`)
-    await sleep(100)
+    if (Date.now() > deadline) {
+      throw new Error(`the summary not drawn within ${timeoutMs / 1000} s (last init 0x${hex8(last.init)}, state ${last.state})`)
+    }
+    await sleep(50)
   }
+}
+
+/** After waitForSummary: a screenshot of every dashboard window, then the wait for the requested emulator frame. */
+export async function shotPages(shot: string, pages: Record<string, Page>): Promise<void> {
+  for (const [window, page] of Object.entries(pages)) await page.screenshot({ path: path.join(runDir, `${shot}-${window}.png`) })
+  const png = path.join(runDir, `${shot}-emulator.png`)
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && !fs.existsSync(png)) await sleep(100)
+  step(fs.existsSync(png) ? `screenshots ${shot}` : `screenshots ${shot}; emulator screenshot not written within 5 s`)
 }
 
 // --- the per-attempt log check -------------------------------------------------------------------------------

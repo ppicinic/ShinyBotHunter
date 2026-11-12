@@ -1,10 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
 import { shotAll, step } from './driver'
 import {
-  ATTEMPT, backendLines, backendLog, cancelEventAndBot, checkAttempt, DIALGA, hex8, installPristine, launchBot, MACROS, MINUTE,
-  parseResult, parseRunLine, PHASE, pristineSha, psql, readPartyCount, readTile, RESET, RESULT, ROM, RUN_LINE, runStatic,
-  SAVED, savedSha, settings, shutdown, START_TILE, startFrame, teardown, waitForLine, waitForSummary, type Frame, type Result
+  ATTEMPT, backendLines, backendLog, cancelEventAndBot, checkAttempt, DIALGA, failOnStop, hex8, installPristine, launchBot, MACROS,
+  MINUTE, parseResult, parseRunLine, PHASE, pristineSha, psql, readPartyCount, readTile, RESET, RESULT, ROM, RUN_LINE, runStatic,
+  SAVED, savedSha, settings, shotPages, shutdown, START_TILE, startFrame, teardown, waitForLine, waitForSummary, type Frame,
+  type Result
 } from './static'
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 test('HGSS Static Encounter Dialga: one save at Run, two attempts each to the summary and a reset, two encounter rows', async () => {
   test.setTimeout(25 * MINUTE)
@@ -27,7 +30,7 @@ test('HGSS Static Encounter Dialga: one save at Run, two attempts each to the su
     })
     await waitForLine(SAVED, 1, 90_000)
 
-    // 2. Two attempts: the summary in RAM (and in a screenshot) before the result line, then the reset back to the start tile.
+    // 2. Two attempts: the summary drawn (and in a screenshot) before the result line, then the reset back to the start tile.
     const attemptAt: number[] = []
     const resultAt: number[] = []
     const results: Result[] = []
@@ -36,13 +39,20 @@ test('HGSS Static Encounter Dialga: one save at Run, two attempts each to the su
       attemptAt.push(Date.now())
       const shot = `0${n + 1}-summary`
       await waitForSummary(n - 1, 240_000, shot)
-      await shotAll(shot, pages)
+      await shotPages(shot, pages)
       const result = parseResult(await waitForLine(RESULT, n, MINUTE))
       resultAt.push(Date.now())
       expect([result.species, result.shiny], `attempt ${n}'s result`).toEqual([483, false])
       results.push(result)
-      await expect.poll(readTile, { message: `attempt ${n}: the reset did not land on the start tile`, timeout: 90_000, intervals: [250] })
-        .toEqual(START_TILE)
+      // The tile reads map -1 while the game reboots; a stop (a reset that did not take) fails at once with its line.
+      const resetDeadline = Date.now() + 90_000
+      let tile = await readTile()
+      while (JSON.stringify(tile) !== JSON.stringify(START_TILE)) {
+        failOnStop(backendLog())
+        if (Date.now() > resetDeadline) throw new Error(`attempt ${n}: the reset did not land on the start tile within 90 s; last ${JSON.stringify(tile)}`)
+        await sleep(250)
+        tile = await readTile()
+      }
       step(`attempt ${n}: reset back on the start tile`)
     }
 
@@ -55,15 +65,19 @@ test('HGSS Static Encounter Dialga: one save at Run, two attempts each to the su
     const log = backendLog()
     expect(backendLines(SAVED).length, 'not exactly one save at Run').toBe(1)
     expect(backendLines(RUN_LINE).length, 'the walk macro not printed exactly once').toBe(1)
-    for (const line of backendLines(RESET)) step(`logged: ${line.trim()}`)
     checkAttempt(log, 1)
     checkAttempt(log, 2)
     expect(results[0].pid, 'the two personality values are the same').not.toBe(results[1].pid)
-    const first = resultAt[0] - attemptAt[0]
-    const second = resultAt[1] - resultAt[0]
-    step(`attempt 1: ${first} ms from its attempt line to its result; attempt 2: ${second} ms from result 1 to result 2`)
-    expect(first, 'attempt 1 took 240 s or more').toBeLessThan(240_000)
-    expect(second, 'attempt 2 took 240 s or more').toBeLessThan(240_000)
+    // NFR-1: each attempt line to its result line, as seen by this scenario's 250 ms polls, under 240 s. The reset before
+    // attempt 2 is the bot's own `[Static] reset N ms` and is reported beside it, with the sum, not asserted.
+    const resetMs = backendLines(RESET).map((l) => Number(RESET.exec(l)![1]))
+    for (const n of [1, 2]) {
+      const attemptMs = resultAt[n - 1] - attemptAt[n - 1]
+      const before = n === 1 ? 'no reset before it' : `reset before it ${resetMs[0]} ms, reset plus attempt ${resetMs[0] + attemptMs} ms`
+      step(`attempt ${n}: ${attemptMs} ms from its attempt line to its result line; ${before}`)
+      expect(attemptMs, `attempt ${n} took 240 s or more from its attempt line to its result`).toBeLessThan(240_000)
+    }
+    step(`resets logged: ${resetMs.join(' ms, ')} ms`)
 
     // 5. The save at Run reached the SaveRAM, now that EmuHawk has exited (FR-3).
     expect(savedSha(), `${ROM} SaveRAM still equals the pristine copy`).not.toBe(pristineSha())
