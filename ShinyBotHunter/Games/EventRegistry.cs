@@ -74,6 +74,11 @@ namespace ShinyBotHunter.Games
                 new EventArgumentOptions() { Name = "HGSS Primo Egg", RequiredParameters = ["PhaseName"] },
                 (nameof(GameCapabilities.HasEggs), c => c.HasEggs), OwnsEmulators: false,
                 (s, args, pos) => s.StartPrimoEggAsync(args, pos)),
+            // The encounter list, the macros and the timings live in Configs/Events/StaticEncounter.json.
+            new("HGSS Static Encounter",
+                new EventArgumentOptions() { Name = "HGSS Static Encounter", RequiredParameters = ["PhaseName", "StaticEncounter"] },
+                (nameof(GameCapabilities.HasOverworldNavigation), c => c.HasOverworldNavigation), OwnsEmulators: false,
+                (s, args, pos) => s.StartStaticEncounterAsync(args, pos)),
             new("Resume",
                 new EventArgumentOptions() { Name = "Resume" },
                 null, OwnsEmulators: false, (s, args, pos) => s.ResumeAsync(args, pos)),

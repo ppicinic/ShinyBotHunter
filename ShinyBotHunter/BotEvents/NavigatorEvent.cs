@@ -186,7 +186,8 @@ namespace ShinyBotHunter.BotEvents
         /// the snapshot that ended it (R18, R19): A once per arrow of the printing
         /// native's printer and at every poll in the wait-button natives, one A at the menu native (Yes), then B for
         /// every later wait, since B closes a message as well as A and cannot start a second conversation or answer a
-        /// second menu. The printing native's press is confirmed by the printer leaving the arrow, and none is sent while
+        /// second menu. The printing native's press is confirmed by the printer leaving the arrow, or by the printer's current
+        /// character not being the one the press was sent at (the next box at its own arrow), and none is sent while
         /// the text draws or no printer is read (env.printer is not slot 0: the stale-timeout then names the script
         /// and its snapshot). Nothing is pressed during movement, WaitStd, the touch menu, bytecode, child tasks or a
         /// transition. The Yes also counts as given once the heal animation task is seen, because it only runs after Yes, so an A that
@@ -195,7 +196,7 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         internal static async Task<GameSnapshot> PressThroughScriptAsync(
             IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string waitingFor, TimeSpan stale, CancellationToken ct,
-            Func<GameSnapshot, bool>? until = null)
+            Func<GameSnapshot, bool>? until = null, string pressA = PressA, string pressB = PressB)
         {
             until ??= s => s.Screen == GameScreen.FieldFree;
             GameSnapshot? last = null;
@@ -227,7 +228,7 @@ namespace ShinyBotHunter.BotEvents
                 bool decompOnly = native == addresses.WaitButtonOrDelayNative || native == addresses.WaitButtonOrDpadNative;
                 if (native == addresses.MenuChoiceNative && !yesGiven)
                 {
-                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + PressA), $"{waitingFor} Yes",
+                    await GameStateWait.PressUntilAsync(game, () => press(GameStateWait.MenuWait + pressA), $"{waitingFor} Yes",
                         s => s.Native != addresses.MenuChoiceNative, ScriptPressConfirm, ScriptPressAttempts, ct);
                     Console.WriteLine($"[Navigator] {waitingFor}: Yes at the menu native");
                     yesGiven = true;
@@ -237,14 +238,15 @@ namespace ShinyBotHunter.BotEvents
                     if (snapshot.AtTextArrow())
                     {
                         int presses = 0;
-                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? PressB : PressA); }, $"{waitingFor} box",
-                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow(), ScriptPressConfirm, ScriptPressAttempts, ct);
+                        await GameStateWait.PressUntilAsync(game, () => { presses++; return press(yesGiven ? pressB : pressA); }, $"{waitingFor} box",
+                            s => s.Native != addresses.PrintingNative || !s.AtTextArrow() || s.TextCursor != snapshot.TextCursor,
+                            ScriptPressConfirm, ScriptPressAttempts, ct);
                         Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8} (printer {snapshot.TextPrinter}) after {presses} press(es)");
                     }
                 }
                 else if (native == addresses.WaitButtonNative || decompOnly || native == addresses.MenuChoiceNative)
                 {
-                    await press(yesGiven ? PressB : PressA);
+                    await press(yesGiven ? pressB : pressA);
                     Console.WriteLine($"[Navigator] {waitingFor}: {(yesGiven ? "T.B" : "T.A")} at native 0x{native:X8}{(decompOnly ? " (decomp-only)" : "")}");
                 }
                 await Task.Delay(Constant.PollIntervalMs, ct);

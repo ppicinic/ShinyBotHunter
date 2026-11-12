@@ -7,6 +7,7 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
 using static ShinyBotHunter.Service.PhaseInfoService;
@@ -384,6 +385,84 @@ namespace ShinyBotHunter.Service
             return GetBotDashboardState();
         }
 
+        private const int SpeciesArceus = 493;
+        private const string OffTheStage = "Stand on the Mystri Stage in the Sinjoh Ruins.";
+        private const string FieldNotFree = "Close any menu or text first: the player must be free to walk on the stage.";
+        private const string NotOneArceus = "The party must be one Arceus and nothing else.";
+        private const string NotTheEventArceus = "This Arceus is not the event Arceus or the Hall of Origin one.";
+        // MAPSEC_HALL_OF_ORIGIN as a Gen 4 met location; the rule is MonMetadataMatchesEvent's, src/trainer_memo.c.
+        private const int MetLocationHallOfOrigin = 86;
+        private const string NoPathToTheCircle = "No path from here to the circle. Stand on the stage in front of the circles.";
+
+        // Null when the live game can start the encounter, otherwise the sentence (FR-2). Each check is a fresh read.
+        // Run calls it once; the hunt calls it again after every reset.
+        internal async Task<string?> StaticEncounterRefusalAsync(IBot bot, StaticEncounterConfig.Entry encounter, CancellationToken ct)
+        {
+            if (await bot.Overworld.GetMapIdAsync(ct) != encounter.MapId)
+            {
+                return OffTheStage;
+            }
+            if ((await bot.State.ReadAsync(ct)).Screen != GameScreen.FieldFree)
+            {
+                return FieldNotFree;
+            }
+            PokemonState? party = await ReadPartyAsync(bot);
+            if (party is null)
+            {
+                return PartyUnreadable;
+            }
+            if (party.PartySize != 1 || party.PartyPokemon[0]!.Species != SpeciesArceus || party.PartyPokemon[0]!.IsEgg)
+            {
+                return NotOneArceus;
+            }
+            // A copy, because PK4 decrypts the block it is given in place.
+            var arceus = new PKHeX.Core.PK4(party.PartyPokemon[0]!.RawBytes!.ToArray());
+            bool hallOfOrigin = arceus.Version is PKHeX.Core.GameVersion.D or PKHeX.Core.GameVersion.P or PKHeX.Core.GameVersion.Pt
+                && arceus.MetLocation == MetLocationHallOfOrigin;
+            if (!arceus.FatefulEncounter && !hallOfOrigin)
+            {
+                return NotTheEventArceus;
+            }
+            return null;
+        }
+
+        internal async Task<Dictionary<int, EmulatorState>> StartStaticEncounterAsync(NewEventArguments args, int pos)
+        {
+            if (args.PhaseName is null)
+            {
+                throw new ArgumentException("PhaseName cannot be null for the static encounter hunt.");
+            }
+            StaticEncounterConfig config = StaticEncounterConfig.Load(StaticEncounterConfig.DefaultPath);
+            StaticEncounterConfig.Entry encounter = config.Find(args.StaticEncounter);
+            IBot bot = slots.Entries[pos].Bot!;
+            if (await StaticEncounterRefusalAsync(bot, encounter, CancellationToken.None) is { } refusal)
+            {
+                throw new InvalidOperationException(refusal);
+            }
+            ushort map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
+            var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
+            Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
+            // The run's one search (FR-4): the hunt replays this macro from this tile and facing after every reset.
+            string? walkMacro = bot.Profile.Pathfinding!.Pathfind(map, x, y, encounter.Spot[0], encounter.Spot[1], new Capability(), (byte)facing);
+            if (walkMacro is null)
+            {
+                throw new InvalidOperationException(NoPathToTheCircle);
+            }
+            var staticEvent = new HgssStaticEncounterEvent(bot, config, encounter, walkMacro, x, y, facing, provider, this);
+            slots.Entries[pos].GameState = new GameState()
+            {
+                Profile = bot.Profile,
+                BotService = this,
+                Bot = bot,
+                Milestone = args.PhaseName,
+                // GameState requires a target; the event looks only at the encounter.
+                Target = new ShinyTarget(),
+            };
+            runner.StartEvent(pos, slots.Entries[pos], staticEvent, slots.Entries[pos].GameState!, $"Static: {encounter.Name}", removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
         internal async Task<Dictionary<int, EmulatorState>> ResumeAsync(NewEventArguments args, int pos)
         {
             if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)
@@ -569,7 +648,7 @@ namespace ShinyBotHunter.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BotService] Could not read the party for the Headbutt and Pickup checks: {ex}");
+                Console.WriteLine($"[BotService] Could not read the party for the Run checks: {ex}");
                 return null;
             }
             // A game in the field always has a party member; none means the title screen.
@@ -641,6 +720,21 @@ namespace ShinyBotHunter.Service
         public async Task<List<EventArgumentOptions>> GetBotActionsAsync(int pos)
         {
             var actions = GetAvailableActions(pos);
+            // Read per listing, as Run reads it, so an edit shows without a restart. A bad file leaves
+            // the entry without choices, so its field is a text box, and Run returns the error as a 400.
+            int staticIndex = actions.FindIndex(a => a.Name == "HGSS Static Encounter");
+            if (staticIndex >= 0)
+            {
+                try
+                {
+                    StaticEncounterConfig config = StaticEncounterConfig.Load(StaticEncounterConfig.DefaultPath);
+                    actions[staticIndex] = actions[staticIndex] with { Choices = new() { ["StaticEncounter"] = config.Encounters.Select(e => e.Name).ToArray() } };
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException)
+                {
+                    Console.WriteLine($"[BotService] {StaticEncounterConfig.DefaultPath} could not be read for the action list: {ex}");
+                }
+            }
             // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
             // can still be closed between the two reads.
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))

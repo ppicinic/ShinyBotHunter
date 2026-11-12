@@ -91,6 +91,7 @@ When you start an action and the bot refuses it, the dashboard shows one of thes
 | `A game must be chosen for the Wishmaker Jirachi Hunt.` | No game was picked. | Pick a game. |
 | `PhaseName cannot be null for the Togepi egg hunt.` | No milestone was picked. | Pick a milestone. |
 | `PhaseName cannot be null for the Primo egg hunt.` | No milestone was picked. | Pick a milestone. |
+| `PhaseName cannot be null for the static encounter hunt.` | No milestone was picked. | Pick a milestone. |
 | `PhaseName cannot be null for Wild Pokemon Encounter Event.` | No milestone was picked. | Pick a milestone. |
 | `At least one starter entry (game + starter) is required for the shiny starter hunt.` | The starter hunt has no starters to hunt. | Add at least one game and starter. |
 | `Every starter entry must pick a game.` | A starter row has no game. | Pick a game in every row. |

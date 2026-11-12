@@ -57,7 +57,7 @@ namespace ShinyBotHunter.Tests
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
 
-            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg"], names);
+            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg", "HGSS Static Encounter"], names);
         }
 
         [Fact]
@@ -72,7 +72,24 @@ namespace ShinyBotHunter.Tests
             Assert.DoesNotContain("Chained Encounter", names);
             Assert.DoesNotContain("HGSS Togepi Egg", names);
             Assert.DoesNotContain("HGSS Primo Egg", names);
+            Assert.DoesNotContain("HGSS Static Encounter", names);
             Assert.Empty(names);
+        }
+
+        [Fact]
+        public async Task IdleHgssBotListsTheStaticEncounterChoices()
+        {
+            Directory.SetCurrentDirectory(RepoPaths.AppProject);
+            var service = Build();
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            var choices = actions.Single(a => a.Name == "HGSS Static Encounter").Choices!;
+            Assert.Equal(["StaticEncounter"], choices.Keys);
+            Assert.Equal(["Dialga (Sinjoh Ruins)", "Palkia (Sinjoh Ruins)", "Giratina (Sinjoh Ruins)"], choices["StaticEncounter"]);
+            Assert.All(actions.Where(a => a.Name != "HGSS Static Encounter"), a => Assert.Null(a.Choices));
+            Assert.Null(EventRegistry.Get("HGSS Static Encounter").Options.Choices);
         }
 
         [Fact]
@@ -82,6 +99,16 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(["PhaseName"], entry.Options.RequiredParameters);
             Assert.Equal(nameof(GameCapabilities.HasEggs), entry.Requires?.Capability);
+            Assert.False(entry.OwnsEmulators);
+        }
+
+        [Fact]
+        public void StaticEncounterEntryNeedsAMilestoneAndAnEncounter()
+        {
+            EventRegistration entry = EventRegistry.Get("HGSS Static Encounter");
+
+            Assert.Equal(["PhaseName", "StaticEncounter"], entry.Options.RequiredParameters!);
+            Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), entry.Requires?.Capability);
             Assert.False(entry.OwnsEmulators);
         }
 

@@ -221,6 +221,11 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-route33-evolve-learn-replace, hgss-heal-variants
         public int TextPrinterTaskDataOffset => 0x10;
 
+        // TextPrinter.template.currentChar (u16 *), the next character to draw: different for every box, held while the
+        // printer waits at the arrow (printer + 0x00); offset (revision-independent); observed (the #374 watcher run);
+        // QA: hgss-static-dialga, hgss-heal-variants
+        public int TextPrinterCurrentCharOffset => 0x00;
+
         // TextPrinter.state (u8), RenderText's state (render_text.c): 0, 4, 5, 6 drawing, 2, 3, 7, 8 waiting at the arrow
         // (printer + 0x28); offset (revision-independent); observed (0, 2, 6); QA: hgss-route33-evolve-learn-replace,
         // hgss-heal-variants
@@ -368,6 +373,33 @@ namespace ShinyBotHunter.Service.Pointers
 
         // PartyMenuState 17, app.state of the "Received the X from Y." message; constant; observed; QA: hgss-pickup
         public int PartyMenuTakeMessage => 17;
+
+        // The summary screen, docs/research/sinjoh-static.md "The summary screen".
+
+        // the start menu's task function (task + 0x04) after X in the free field, still there under the party menu and the
+        // summary and after the SaveGame macro's Save touch; symbol not traced; root (revision-dependent; static ARM9, English
+        // HeartGold); observed (#366, runs 20261112-192129 and -192630); QA: none yet: hgss-static-dialga (S4)
+        public uint StartMenuTask => 0x0203BEF1;
+
+        // the start menu's state, a u16 in the start menu task's environment (task.env + 0x26); offset
+        // (revision-independent); observed (#370, the 2026-11-12 watcher); QA: hgss-static-shiny
+        public int StartMenuStateOffset => 0x26;
+
+        // the start menu's state while it is open and idle, the only state that takes input; 4 and 5 while the app starts
+        // and runs, 0x0F and 0x11 while it returns; constant; observed (#370, the 2026-11-12 watcher); QA: hgss-static-shiny
+        public int StartMenuIdle => 3;
+
+        // the party menu app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9,
+        // English HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
+        public uint PartyMenuInit => 0x02078E31;
+
+        // the summary app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9, English
+        // HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
+        public uint SummaryInit => 0x02088299;
+
+        // the summary app's app.state once the summary is drawn (app + 0x14); 0 (black screen) and 1 are
+        // loading, about 1 s, and a soft reset pressed in them is ignored; constant; observed; QA: none yet: hgss-static-dialga (S4)
+        public int SummaryShown => 2;
 
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;

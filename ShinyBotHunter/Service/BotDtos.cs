@@ -34,6 +34,9 @@ namespace ShinyBotHunter.Service
         // Parameter name -> choice -> the reason it cannot be picked on this bot. Null when nothing
         // is disabled. Set only on per-request copies, never on the registry's own options.
         public Dictionary<string, Dictionary<string, string>>? DisabledChoices { get; set; }
+        // Parameter name -> the values it allows. Null when the server offers no list. Set only on
+        // per-request copies, never on the registry's own options.
+        public Dictionary<string, string[]>? Choices { get; set; }
     }
 
     public class GameFilter
@@ -114,6 +117,7 @@ namespace ShinyBotHunter.Service
         /// which ROM to launch and renders as a ROM picker.
         /// </summary>
         public string? RecordingName { get; set; }
+        public string? StaticEncounter { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 

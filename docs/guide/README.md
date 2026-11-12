@@ -16,6 +16,7 @@ This guide is for anyone running ShinyBotHunter on their own Windows PC. Read th
    - [Togepi egg hunt](04-hunts/04-togepi-egg.md): hunt a shiny Togepi from the egg in HeartGold and SoulSilver.
    - [Wishmaker Jirachi hunt](04-hunts/05-wishmaker-jirachi.md): hunt a shiny Wishmaker Jirachi, using the Dolphin emulator.
    - [Primo egg hunt](04-hunts/06-primo-egg.md): hunt a shiny Slugma from Primo's egg in HeartGold and SoulSilver.
+   - [Static encounter hunt](04-hunts/07-static-encounter.md): hunt a shiny Dialga, Palkia or Giratina at the Sinjoh Ruins in HeartGold.
 6. [Discord](05-discord.md): set up the Discord bot, what it posts, and how to answer it.
 7. [Your data](06-your-data.md): what the bot stores, where, how to look at it, and how to back it up.
 8. [When something goes wrong](07-when-something-goes-wrong.md): what you see, what it means, and what to do.

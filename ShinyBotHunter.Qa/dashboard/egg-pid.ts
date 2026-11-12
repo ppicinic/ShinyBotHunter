@@ -41,6 +41,7 @@ export interface Mon {
   pid: number
   species: number
   heldItem: number
+  form: number
   ability: number
   isEgg: boolean
   tid: number
@@ -61,6 +62,7 @@ export function decodeMon(raw: Buffer): Mon {
     pid,
     species: plain.readUInt16LE(0x00),
     heldItem: plain.readUInt16LE(0x02),
+    form: plain.readUInt8(32 + 0x18) >>> 3, // block B 0x18, bits 3 to 7
     ability: plain.readUInt8(0x0d),
     isEgg: ((ivWord >>> 30) & 1) === 1,
     tid,

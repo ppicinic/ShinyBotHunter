@@ -51,6 +51,7 @@ namespace ShinyBotHunter.Games.Hgss
         private const int SummaryBlock = 12;
         private const int PrinterBlock = 13;
         private const int PartyMenuBlock = 14;
+        private const int StartMenuBlock = 15;
 
         // The one sTextPrinterTasks slot read; every message observed used it (pointer-discovery.md, "Text printer state").
         private const byte ReadPrinterSlot = 0;
@@ -79,8 +80,9 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.ScriptContextsOffset + 2 * ContextPointerSize, StructStart], a.ScriptContextNativeOffset + 4),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, a.EvolutionSummaryOffset, a.OverlayProcStateOffset], 4),
-                new(a.TextPrinterTasks, [a.TextPrinterTaskDataOffset, a.TextPrinterStateOffset], 1),
+                new(a.TextPrinterTasks, [a.TextPrinterTaskDataOffset, StructStart], a.TextPrinterStateOffset + 1),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppDataOffset, a.PartyMenuMonIndexOffset], 1),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.StartMenuStateOffset], 2),
             ];
         }
 
@@ -102,10 +104,14 @@ namespace ShinyBotHunter.Games.Hgss
                 {
                     if (!Ok(r[TaskBlock])) return Snapshot(GameScreen.Transitioning);
                     uint function = U32(r[TaskBlock].Bytes, addresses.TaskFunctionOffset);
-                    // A child task on top of the script (the fade, the heal animation) carries only its function.
-                    return function == addresses.RunScriptsTask
-                        ? FieldScript(r, function)
-                        : Snapshot(GameScreen.FieldTask) with { TaskFunction = function };
+                    if (function == addresses.RunScriptsTask) return FieldScript(r, function);
+                    // A child task on top of the script (the fade, the heal animation) carries only its function; the
+                    // start menu's task also its state.
+                    GameSnapshot task = Snapshot(GameScreen.FieldTask) with { TaskFunction = function };
+                    if (function != addresses.StartMenuTask) return task;
+                    return Ok(r[StartMenuBlock])
+                        ? task with { StartMenuState = BitConverter.ToUInt16(r[StartMenuBlock].Bytes, 0) }
+                        : Snapshot(GameScreen.Transitioning);
                 }
                 return mapReady && taskman == 0 && U32(sub0, addresses.PausedOffset) == 0
                     ? Snapshot(GameScreen.FieldFree)
@@ -121,10 +127,10 @@ namespace ShinyBotHunter.Games.Hgss
             {
                 if (!Ok(r[EvoBlock])) return Snapshot(GameScreen.Transitioning);
                 byte[] evo = r[EvoBlock].Bytes;
-                if (!TryTextPrinter(r[PrinterBlock], evo[addresses.EvolutionPrinterOffset], out int? printer))
+                if (!TryTextPrinter(r[PrinterBlock], evo[addresses.EvolutionPrinterOffset], out int? printer, out uint? cursor))
                     return Snapshot(GameScreen.Transitioning);
                 byte evoState = evo[addresses.EvolutionStateOffset];
-                GameSnapshot evolution = Snapshot(GameScreen.Evolution) with { Prompt = evoState, TextPrinter = printer };
+                GameSnapshot evolution = Snapshot(GameScreen.Evolution) with { Prompt = evoState, TextPrinter = printer, TextCursor = cursor };
                 // The summary app runs only at 23; elsewhere evo.summary is NULL.
                 if (evoState != ForgetMoveList) return evolution;
                 return Ok(r[SummaryBlock])
@@ -151,8 +157,8 @@ namespace ShinyBotHunter.Games.Hgss
                     return Snapshot(GameScreen.BattleExpPrompt) with { Prompt = (int)getterState };
                 // The battle controller's printer slot is not read; every battle message observed used slot 0.
                 if (getterState is ForgetAMove or ChooseMoveToForget or GiveUpLearning)
-                    return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer)
-                        ? Snapshot(GameScreen.BattleMoveLearnPrompt) with { Prompt = (int)getterState, TextPrinter = printer }
+                    return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer, out uint? cursor)
+                        ? Snapshot(GameScreen.BattleMoveLearnPrompt) with { Prompt = (int)getterState, TextPrinter = printer, TextCursor = cursor }
                         : Snapshot(GameScreen.Transitioning);
             }
             if (command == ScriptRunning) return Snapshot(GameScreen.BattleScript) with { Script = (int)U32(ctx, addresses.ScriptFileOffset) };
@@ -162,8 +168,8 @@ namespace ShinyBotHunter.Games.Hgss
                 {
                     // "What will X do?" prints at sel 1 before the menu is built; its printer slot is not read, slot 0 is.
                     case MainMenu:
-                        return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer)
-                            ? Snapshot(GameScreen.BattleMenu) with { TextPrinter = printer }
+                        return TryTextPrinter(r[PrinterBlock], ReadPrinterSlot, out int? printer, out uint? cursor)
+                            ? Snapshot(GameScreen.BattleMenu) with { TextPrinter = printer, TextCursor = cursor }
                             : Snapshot(GameScreen.Transitioning);
                     case MoveList: return Snapshot(GameScreen.BattleMoveList);
                     case MessageShown: return Snapshot(GameScreen.BattleMessage);
@@ -179,13 +185,14 @@ namespace ShinyBotHunter.Games.Hgss
             ChainBlockResult env = r[EnvBlock];
             if (!Ok(env) || U32(env.Bytes, addresses.ScriptEnvironmentCheckOffset) != addresses.ScriptEnvironmentMagic)
                 return Snapshot(GameScreen.Transitioning);
-            if (!TryTextPrinter(r[PrinterBlock], env.Bytes[addresses.ScriptPrinterOffset], out int? printer))
+            if (!TryTextPrinter(r[PrinterBlock], env.Bytes[addresses.ScriptPrinterOffset], out int? printer, out uint? cursor))
                 return Snapshot(GameScreen.Transitioning);
             GameSnapshot script = Snapshot(GameScreen.FieldTask) with
             {
                 TaskFunction = function,
                 Script = BitConverter.ToUInt16(env.Bytes, addresses.ScriptIdOffset),
                 TextPrinter = printer,
+                TextCursor = cursor,
             };
             for (int i = ScriptContexts - 1; i >= 0; i--)
             {
@@ -199,29 +206,36 @@ namespace ShinyBotHunter.Games.Hgss
             return script;
         }
 
-        // printer is pr.state of the screen's slot, null when that slot is not the one read or holds no printer; false when
-        // the printer block failed otherwise (FR-3).
-        private static bool TryTextPrinter(ChainBlockResult block, byte slot, out int? printer)
+        // printer is pr.state of the screen's slot, null when that slot is not the one read or holds no printer; cursor is
+        // its current character while it waits at the arrow (AtTextArrow), null otherwise; false when the printer block
+        // failed otherwise (FR-3).
+        private bool TryTextPrinter(ChainBlockResult block, byte slot, out int? printer, out uint? cursor)
         {
             printer = null;
+            cursor = null;
             if (slot != ReadPrinterSlot || block.Status == ChainBlockStatus.NullPointer) return true;
             if (!Ok(block)) return false;
-            printer = block.Bytes[0];
+            printer = block.Bytes[addresses.TextPrinterStateOffset];
+            if ((Snapshot(GameScreen.Transitioning) with { TextPrinter = printer }).AtTextArrow())
+                cursor = U32(block.Bytes, addresses.TextPrinterCurrentCharOffset);
             return true;
         }
 
         // The party menu's state, highlighted slot and slot 0's printer (research/pickup.md, "The party menu"); filled on
         // every other app, since the party menu's ovyId (0xFFFFFFFF) does not identify it. A NULL data pointer gives no
-        // index (FR-3).
+        // index (FR-3). The init function tells the party menu from the summary, both ovyId 0xFFFFFFFF.
         private GameSnapshot OtherApp(byte[] app, ChainBlockResult partyMenu, ChainBlockResult printerBlock)
         {
             if (!Ok(partyMenu) && partyMenu.Status != ChainBlockStatus.NullPointer) return Snapshot(GameScreen.Transitioning);
-            if (!TryTextPrinter(printerBlock, ReadPrinterSlot, out int? printer)) return Snapshot(GameScreen.Transitioning);
+            if (!TryTextPrinter(printerBlock, ReadPrinterSlot, out int? printer, out uint? cursor)) return Snapshot(GameScreen.Transitioning);
             return Snapshot(GameScreen.OtherApp) with
             {
                 AppState = (int)U32(app, addresses.AppStateOffset),
                 PartyMonIndex = Ok(partyMenu) ? partyMenu.Bytes[0] : null,
                 TextPrinter = printer,
+                TextCursor = cursor,
+                // app + 0x00, the app's init function
+                AppInit = U32(app, 0),
             };
         }
 

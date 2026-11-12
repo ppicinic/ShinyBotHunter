@@ -109,7 +109,21 @@ The party menu and the summary are both applications in the field's app slot (`[
 | Summary | 0x02088299 | 2 |
 | Back at the list after B | 0x02078E31 | 1 |
 
-Read on the English HeartGold ROM; the two function addresses are revision-dependent roots. B from the summary returns to the list, B again to the field (the app slot empties and the field is free).
+Read on the English HeartGold ROM; the two function addresses are revision-dependent roots. B from the summary returns to the list. B again empties the app slot, but the field is not free: it returns to the start menu the party was opened from (corrected 2026-11-12; see "Found while building").
+
+## Found while building (2026-11-12)
+
+Measured on the same install during the build, with a 20 ms watcher on the field task and the app slot.
+
+- **The summary's states.** After the SUMMARY touch the app slot shows the party menu in state 33, then the summary's init function in state 0 about 0.5 s after the touch (the screen is black), state 1 at about 1.2 s and state 2 at about 1.5 s, when the summary is drawn. A soft reset pressed in state 0 or 1 is ignored; pressed when state 2 is first seen it takes (3 of 3), with a 3-frame or an 8-frame hold.
+- **The start menu.** X in the free field starts the field task `0x0203BEF1` (no script) within about 0.1 s. The 16-bit value at that task's environment + 0x26 (`[[FS + 0x10] + 0x0C] + 0x26`) is its state: 3 idle and taking input, 4 then 5 while an app starts and runs, 0x0F then 0x11 for about 1.5 s after the app closes, then 3. B at the start menu closes it to the free field only at 3 (4 of 4); B at 0x0F or 0x11 does nothing (3 of 3).
+- **The scene after the hand-over.** After the warp to map 315 the warp's script (4) ends and the field is free for less than 0.1 s before the researcher's script (8) starts. A poll lands in that moment in most runs. An X sent then arrives with script 8 running and opens nothing.
+- **The text boxes.** The scene after the hand-over has 19 boxes. The text printer's state (`TextPrinter + 0x28`) is 2 at an arrow that clears the box and 3 at one that scrolls; after an A at a scroll arrow it is 4 for about 0.3 s, then 0 while the next line prints, and the next arrow can come 0.67 s after the press. The printer's current-character pointer (`TextPrinter + 0x00`) advances with every character and holds at each arrow, so it differs from one box's arrow to the next (for example `0x022A7966` at a state 3 arrow and `0x022A798E` at the state 2 arrow after it).
+- **Giratina's form.** The gift is form 1 (Origin Forme) at `data[0x40] >> 3` of the party record, with the Griseous Orb; the summary shows the Origin sprite.
+- **The walk.** The pathfinder's macros from (16, 14) facing up are `M.Left.12.35497716;M.Down.15.35497724` (Dialga), `M.Right.20.35497716;M.Down.15.35497724` (Palkia) and `M.Up.8.35497724` (Giratina): along row 14 and one step down for the side circles. Each ended on the circle with its script running in about 0.8 to 1.2 s.
+- **The Arceus.** The event Arceus keeps its own OT (MICHINA, ID 02010 / 56468), not the player's.
+- **Timings in the bot** (four scenario runs): the save at Run 35 to 38 s; the cutscene 140 to 148 s from Yes to the nickname menu; the scripts after the hand-over 41 to 44 s to the confirmed start menu; the summary 3.0 to 3.5 s from the POKéMON touch; the reset 36 to 43 s to the free field; an attempt about 200 s from its start to its result.
+- **The QA install** has BackupSaveram on: every SaveRAM flush moves the previous file over the `.bak`, so after a hunt that saves, the `.bak` holds a saved game. The scenarios restore both from `qa-sinjoh.SaveRAM`.
 
 ## The clock
 
@@ -126,3 +140,5 @@ The summary's met date was the PC's date (Nov. 12, 2026): the emulator's clock i
 ## Evidence
 
 On the dev PC, in `ShinyBotHunter.Qa/dashboard/qa-runs/20261112-sinjoh-static-spike/` of the spike worktree (not committed): `hg.py` (the probe), `loop.py` (the timed attempts), `gated.py` and `gated1.log` (the attempt driven by the script's state, with every state change and press), `loop*.log` and `runs_*.json`, `shots/` (the prompts, the cutscene, the summaries), and `decomp/` (the files read). The save is also in the saves folder as `qa-sinjoh.SaveRAM`. The ROM copy and `HG-Static.SaveRAM` with its `.bak` are staged in the QA install.
+
+The build's QA runs (2026-11-12, `ShinyBotHunter.Qa/dashboard/qa-runs/` of the main checkout, not committed), on c74e226: `20261112-205409-hgss-route33-dashboard` (refusals), `20261112-205510-hgss-route33-dashboard` (Dialga), `20261112-210406-hgss-route33-dashboard` (Giratina), `20261112-210825-hgss-route33-dashboard` (shiny).
