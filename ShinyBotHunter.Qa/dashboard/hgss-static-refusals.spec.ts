@@ -4,8 +4,8 @@ import { emuHawkRunning, shotAll, step, writeU8 } from './driver'
 import { decodeMon } from './egg-pid'
 import {
   ACTION, API, backendLines, cancelBot, countAddr, DIALGA, installPristine, launchBot, MAP_SENTENCE, PARTY_SENTENCE, PHASE,
-  pristineSha, readPartyCount, readSlot, readTile, ROM, ROUTE33_ROM, savedSha, saveOf, sha256, shutdown, SID, slotAddr,
-  START_TILE, startFrame, teardown, TID, type Frame
+  pristineSha, readPartyCount, readSlot, readTile, ROM, ROUTE33_ROM, savedSha, saveOf, sha256, shutdown, slotAddr,
+  START_TILE, startFrame, teardown, type Frame
 } from './static'
 
 test('HGSS Static Encounter: a second Pokémon and a player off the stage are each refused at Start, nothing saved', async () => {
@@ -44,7 +44,8 @@ test('HGSS Static Encounter: a second Pokémon and a player off the stage are ea
     expect(await readPartyCount(), 'the save\'s party is not one').toBe(1)
     const slot1 = await readSlot(0)
     const arceus = decodeMon(slot1)
-    expect([arceus.species, arceus.checksumValid, arceus.tid, arceus.sid], 'slot 1 is not the save\'s Arceus').toEqual([493, true, TID, SID])
+    // The event Arceus keeps its own OT ids (2010 / 56468 on this save), not the player's.
+    expect([arceus.species, arceus.checksumValid], 'slot 1 is not the save\'s Arceus').toEqual([493, true])
     await shotAll('01-launched', pages)
 
     // Slot 1 copied into slot 2 and the count to 2: only the differing bytes, all at once, as ApiHawk drains its queue in one frame.
