@@ -9,7 +9,7 @@ It walks onto the circle you pick on the Mystri Stage, answers Yes, waits throug
 
 The Pokémon is decided when it is handed over after the cutscene, so the reset point is the save on the stage, before you step onto the circle.
 
-It works in HeartGold and SoulSilver. Each kind of Arceus gives one of Dialga, Palkia or Giratina, so one save gets one shiny and the hunt ends there.
+It has been tested on HeartGold (English). SoulSilver is untested and may stop at the summary. Each kind of Arceus gives one of Dialga, Palkia or Giratina, so one save gets one shiny and the hunt ends there.
 
 ## What does your save need?
 
@@ -46,7 +46,7 @@ Where the circles are, the macros and the timings are in a file that comes with 
 Once per run, before the first attempt:
 
 - At **Run** the bot checks your save as listed above and works out the walk from where you stand to the circle.
-- It saves the game. This takes about 25 seconds.
+- It saves the game. This takes about 35 seconds.
 
 Then each attempt:
 
@@ -60,7 +60,7 @@ Then each attempt:
 8. If the Pokémon is shiny, the bot sends a shiny alert to [Discord](../05-discord.md), closes the summary, the party list and the menu, saves the game, records it as caught, and finishes.
 9. If not, it soft resets and continues the game, then checks you are back on the stage, on the same tile, facing the same way.
 
-An attempt takes about three and a half minutes, most of it the cutscene and the dialogue after it.
+An attempt takes about four minutes with its soft reset, most of it the cutscene and the dialogue after it.
 
 ## What does it log?
 
