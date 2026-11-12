@@ -75,6 +75,7 @@ namespace ShinyBotHunter.Pokemon
             ushort spdef = data.Length > 136 ? BitConverter.ToUInt16(data, 0x9A) : (ushort)0;
             return new PokemonData
             {
+                RawBytes = raw,
                 PID = pid,
                 Checksum = checksum,
                 Species = species,

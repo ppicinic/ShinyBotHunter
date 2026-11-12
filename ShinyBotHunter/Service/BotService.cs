@@ -389,7 +389,10 @@ namespace ShinyBotHunter.Service
         private const string OffTheStage = "Stand on the Mystri Stage in the Sinjoh Ruins.";
         private const string FieldNotFree = "Close any menu or text first: the player must be free to walk on the stage.";
         private const string NotOneArceus = "The party must be one Arceus and nothing else.";
-        private const string NoPathToTheCircle = "No path from here to the circle. Stand on the stage in front of the circles.";
+        private const string NotTheEventArceus = "This Arceus is not the event Arceus or the Hall of Origin one.";
+        // MAPSEC_HALL_OF_ORIGIN as a Gen 4 met location; the rule is MonMetadataMatchesEvent's, src/trainer_memo.c.
+        private const int MetLocationHallOfOrigin = 86;
+        private const string NoPathToTheCircle ="No path from here to the circle. Stand on the stage in front of the circles.";
 
         // Null when the live game can start the encounter, otherwise the sentence (FR-2). Each check is a fresh read.
         // Run calls it once; the hunt calls it again after every reset.
@@ -411,6 +414,14 @@ namespace ShinyBotHunter.Service
             if (party.PartySize != 1 || party.PartyPokemon[0]!.Species != SpeciesArceus || party.PartyPokemon[0]!.IsEgg)
             {
                 return NotOneArceus;
+            }
+            // A copy, because PK4 decrypts the block it is given in place.
+            var arceus = new PKHeX.Core.PK4(party.PartyPokemon[0]!.RawBytes!.ToArray());
+            bool hallOfOrigin = arceus.Version is PKHeX.Core.GameVersion.D or PKHeX.Core.GameVersion.P or PKHeX.Core.GameVersion.Pt
+                && arceus.MetLocation == MetLocationHallOfOrigin;
+            if (!arceus.FatefulEncounter && !hallOfOrigin)
+            {
+                return NotTheEventArceus;
             }
             return null;
         }

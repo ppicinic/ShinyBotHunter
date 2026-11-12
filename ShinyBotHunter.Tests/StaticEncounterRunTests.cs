@@ -46,13 +46,14 @@ namespace ShinyBotHunter.Tests
             public PokemonData? Parse(byte[] raw)
             {
                 var pk = new PK4(raw.ToArray());
-                return new PokemonData { Species = pk.Species, IVs = pk.IV32 };
+                return new PokemonData { Species = pk.Species, IVs = pk.IV32, RawBytes = raw };
             }
         }
 
-        private static byte[] Block(ushort species, bool egg = false)
+        // Fateful by default: the owner's save holds the event Arceus.
+        private static byte[] Block(ushort species, bool egg = false, bool fateful = true, GameVersion version = GameVersion.HG, ushort metLocation = 0)
         {
-            var pk = new PK4 { Species = species, PID = 0x12345678, FatefulEncounter = true, IsEgg = egg };
+            var pk = new PK4 { Species = species, PID = 0x12345678, FatefulEncounter = fateful, IsEgg = egg, Version = version, MetLocation = metLocation };
             pk.RefreshChecksum();
             byte[] block = pk.Data.ToArray();
             PokeCrypto.Encrypt45(block);
@@ -135,6 +136,37 @@ namespace ShinyBotHunter.Tests
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, party);
 
             await AssertRefusedAsync(service, Run(), NotOneArceus);
+        }
+
+        public static TheoryData<byte[]> NeitherEventNorHallOfOrigin => new()
+        {
+            Block(493, fateful: false, version: GameVersion.HG, metLocation: 86),
+            Block(493, fateful: false, version: GameVersion.Pt, metLocation: 85),
+        };
+
+        [Theory]
+        [MemberData(nameof(NeitherEventNorHallOfOrigin))]
+        public async Task ArceusNeitherEventNorHallOfOriginIsRefused(byte[] arceus)
+        {
+            var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, arceus);
+
+            await AssertRefusedAsync(service, Run(), "This Arceus is not the event Arceus or the Hall of Origin one.");
+        }
+
+        [Fact]
+        public async Task FatefulArceusPasses()
+        {
+            var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493, fateful: true, version: GameVersion.HG));
+
+            await AssertRefusedAsync(service, Run(), Seam);
+        }
+
+        [Fact]
+        public async Task HallOfOriginPlatinumArceusPasses()
+        {
+            var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493, fateful: false, version: GameVersion.Pt, metLocation: 86));
+
+            await AssertRefusedAsync(service, Run(), Seam);
         }
 
         [Fact]
