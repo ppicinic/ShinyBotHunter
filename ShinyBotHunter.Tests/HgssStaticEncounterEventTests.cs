@@ -261,6 +261,8 @@ namespace ShinyBotHunter.Tests
         private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
         private static readonly GameSnapshot SummaryScreen = new(GameScreen.OtherApp, null, null, null, null, AppState: 2, AppInit: SummaryInit);
 
+        private static GameSnapshot SummaryLoading(int state) => new(GameScreen.OtherApp, null, null, null, null, AppState: state, AppInit: SummaryInit);
+
         private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
 
         private static readonly string[] SummaryRoute = ["H.X.6", "W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
@@ -319,6 +321,41 @@ namespace ShinyBotHunter.Tests
 
             GameSnapshot at = Assert.Single(readAt);
             Assert.Equal(SummaryInit, at.AppInit);
+        }
+
+        [Fact]
+        public async Task SlotTwoIsReadOnlyOnceTheSummaryIsDrawn()
+        {
+            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(0), SummaryLoading(1), SummaryScreen]);
+            List<GameSnapshot> readAt = [];
+
+            var (mon, _) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga, () =>
+            {
+                readAt.Add(reader.Last);
+                return Task.FromResult(Party(483, 0x12345678));
+            }, Long, CancellationToken.None);
+
+            GameSnapshot at = Assert.Single(readAt);
+            Assert.Equal(SummaryInit, at.AppInit);
+            Assert.Equal(2, at.AppState);
+            Assert.Equal(0x12345678u, mon!.PID);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        public async Task ASummaryThatStaysLoadingIsAStaleTimeout(int state)
+        {
+            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(1)], [SummaryLoading(state)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
+                Dialga, () => throw new InvalidOperationException("slot 2 read"), Stale, CancellationToken.None));
+
+            Assert.Equal("slot 2's summary after SUMMARY", ex.WaitingFor);
+            Assert.Contains($"AppState = {state}", ex.Message);
+            Assert.Contains($"AppInit = {SummaryInit}", ex.Message);
+            Assert.Equal(SummaryRoute, presses.Select(p => p.Macro));
         }
 
         [Fact]

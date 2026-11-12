@@ -284,7 +284,8 @@ namespace ShinyBotHunter.BotEvents
 
         // X, POKéMON, slot 2, SUMMARY, from the free field the scripts after the hand-over ended on (FR-9). Each press is
         // gated on the state the one before it confirmed and is sent once; the party menu and the summary are told apart by
-        // the app's init function (FR-13). Slot 2 is read only once the summary is on screen, as a player would see it.
+        // the app's init function (FR-13), the summary by its init function with state 2, drawn. Slot 2 is read only once the
+        // summary is on screen, as a player would see it.
         internal static async Task<(PokemonData? Mon, string? Stop)> SummaryAsync(IGameStateReader game, HgssPointerService addresses, Func<string, Task> press,
             StaticEncounterConfig.Entry encounter, Func<Task<PokemonState>> readParty, TimeSpan stale, CancellationToken ct)
         {
@@ -301,7 +302,8 @@ namespace ShinyBotHunter.BotEvents
                 s => s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuContextMenu && s.PartyMonIndex == 1, stale, ct);
 
             await press(Touch(encounter.SummaryTouch));
-            await GameStateWait.UntilAsync(game, "slot 2's summary after SUMMARY", s => s.AppInit == addresses.SummaryInit, stale, ct);
+            await GameStateWait.UntilAsync(game, "slot 2's summary after SUMMARY",
+                s => s.Screen == GameScreen.OtherApp && s.AppInit == addresses.SummaryInit && s.AppState == addresses.SummaryShown, stale, ct);
             Console.WriteLine($"[Static] summary on screen {route.ElapsedMilliseconds} ms");
 
             PokemonData mon = (await readParty()).PartyPokemon[1]!;
