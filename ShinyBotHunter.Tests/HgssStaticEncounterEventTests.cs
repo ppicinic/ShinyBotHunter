@@ -400,6 +400,20 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task AResetLandingOnAnotherTileStops()
+        {
+            List<string> presses = [];
+            FakeBot bot = WalkingBot(presses, new ScriptedReader(Free), 16, 15, Direction.Down);
+            StaticEncounterConfig config = Config();
+
+            string? stop = await HgssStaticEncounterEvent.ResetAsync(bot, config, (16, 14, Direction.Up), () => Task.FromResult<string?>(null), CancellationToken.None);
+
+            Assert.Equal("After the soft reset the player is at tile (16, 15) facing down, not (16, 14) facing up, where the walk was made from.", stop);
+            Assert.Equal([MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.SoftResetMacro), MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.ContinueMacro)],
+                presses);
+        }
+
+        [Fact]
         public async Task TheSaveAtRunIsTheFirstPressAndHappensOnce()
         {
             List<string> presses = [];

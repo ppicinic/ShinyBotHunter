@@ -261,5 +261,54 @@ namespace ShinyBotHunter.BotEvents
 
         // After the menu input-ready gap; a 3-frame touch (FR-14).
         private static string Touch(int[] xy) => $"{GameStateWait.MenuWait}S.{xy[0]}.{xy[1]}.3";
+
+        // Back to the save from any screen, the summary included, then Run's checks and the tile and facing the walk was made
+        // from, so the next attempt replays the walk from where it fits (FR-11). Null when the game is back where it was saved.
+        internal static async Task<string?> ResetAsync(IBot bot, StaticEncounterConfig config, (short X, short Y, Direction Facing) start,
+            Func<Task<string?>> checks, CancellationToken ct)
+        {
+            Stopwatch reset = Stopwatch.StartNew();
+            bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, config.SoftResetMacro));
+            await bot.WaitForMacroAsync(ct);
+            await Task.Delay(config.SoftResetDelayMs, ct);
+            bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, config.ContinueMacro));
+            await bot.WaitForMacroAsync(ct);
+            await Task.Delay(config.PostContinueDelayMs, ct);
+            await Overworld.WaitForReadyAsync(bot.State, ct);
+            Console.WriteLine($"[Static] reset {reset.ElapsedMilliseconds} ms to the free field");
+
+            if (await checks() is { } refusal)
+            {
+                return refusal;
+            }
+            (short x, short y) = await bot.Overworld.GetPositionAsync(ct);
+            Direction facing = await bot.Overworld.GetFacingAsync(ct);
+            if (x != start.X || y != start.Y || facing != start.Facing)
+            {
+                return $"After the soft reset the player is at tile ({x}, {y}) facing {facing.ToString().ToLowerInvariant()}, " +
+                    $"not ({start.X}, {start.Y}) facing {start.Facing.ToString().ToLowerInvariant()}, where the walk was made from.";
+            }
+            return null;
+        }
+
+        // The shiny (FR-11): the alert first, then B to the party list and B to the field, each confirmed, because the save
+        // macro starts from the field; then the save, the caught record and the flush, uncancellable as the Primo hunt's are.
+        internal static async Task FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
+            Func<PersistPokemonData, Task> alert, Func<PersistPokemonData, Task> addCaught, TimeSpan stale, TimeSpan postSave, CancellationToken ct)
+        {
+            await alert(persist);
+
+            await press(GameStateWait.MenuWait + "H.B.6");
+            await GameStateWait.UntilAsync(bot.State, "the party list after B from the summary",
+                s => s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuList, stale, ct);
+            await press(GameStateWait.MenuWait + "H.B.6");
+            await GameStateWait.UntilAsync(bot.State, "the field free after B from the party list", s => s.Screen == GameScreen.FieldFree, stale, ct);
+
+            bot.RunMacroString(MacroRegistry.Instance.GetMacro(bot.GameFlavor, "SaveGame"));
+            await bot.WaitForMacroAsync(CancellationToken.None);
+            await addCaught(persist);
+            await bot.FlushSave(CancellationToken.None);
+            await Task.Delay(postSave, CancellationToken.None);
+        }
     }
 }
