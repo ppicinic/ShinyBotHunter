@@ -475,7 +475,7 @@ namespace ShinyBotHunter.Tests
 
             string save = Macro("SaveGame");
             Assert.Equal(NotOneArceus, stop);
-            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", .. SummaryRoute, Macro("SoftReset"), Macro("ContinueGameWithRandom")], presses);
+            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
             Assert.Single(presses, p => p == save);
         }
 
@@ -531,7 +531,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(NotOneArceus, stop);
             Assert.Equal([WalkMacro, WalkMacro], presses.Where(p => p.StartsWith("M.")));
             Assert.Single(presses, p => p == Macro("SaveGame"));
-            Assert.Equal(2, presses.Count(p => p == Macro("SoftReset")));
+            Assert.Equal(2, presses.Count(p => p == Macro("SoftResetHeld")));
             Assert.Equal(2, boundaries.Count("addEncounter"));
             Assert.Equal(2, boundaries.Count("checks"));
             Assert.Equal(0, boundaries.Count("alert"));
@@ -552,7 +552,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Null(stop);
             Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses[^3..]);
-            Assert.DoesNotContain(Macro("SoftReset"), presses);
+            Assert.DoesNotContain(Macro("SoftResetHeld"), presses);
             // Only the walk's clear, once the circle's script started; no stop's.
             Assert.Equal(["clear"], bot.Macros);
             Assert.Equal(["readParty", "addEncounter", "alert", "addCaught"], boundaries.Calls.Select(c => c.Call));
