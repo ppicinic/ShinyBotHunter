@@ -634,20 +634,47 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task TheShinySaveWaitsForTheScenesScriptsToEnd()
+        public async Task TheShinyEndingClosesEachScreenBeforeTheNextAndSavesFromTheField()
         {
-            List<string> presses = [];
-            // After B from the summary, after B from the list, after an X that met a script, after its A, after X, after B
-            // from the start menu, after the save.
-            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Script(Printing, 2)], [Free], [StartMenu], [Free], [Free]];
-            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
-            Boundaries boundaries = new(ShinyPid);
+            // Each confirm comes only after two reads of the snapshot the press was sent at.
+            PressedReader reader = new([SummaryScreen], [SummaryScreen, SummaryScreen, PartyList], [PartyList, PartyList, StartMenu],
+                [StartMenu, StartMenu, Free], [Free]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+            List<string> order = [];
+            int caught = 0;
+            PersistPokemonData persist = new() { PokemonData = new PokemonData { PID = ShinyPid }, Phase = "", GameFileName = "" };
 
-            string? stop = await HuntAsync(Running(), bot, Config(), boundaries);
+            await HgssStaticEncounterEvent.FinishAsync(bot, Table, macro => { order.Add(macro); bot.RunMacroString(macro); return Task.CompletedTask; },
+                persist, _ => { order.Add("alert"); return Task.CompletedTask; }, _ => { caught++; return Task.CompletedTask; }, Long, TimeSpan.Zero,
+                CancellationToken.None);
 
-            Assert.Null(stop);
-            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", HoldA, "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^7..]);
-            Assert.Equal(["readParty", "addEncounter", "alert", "addCaught"], boundaries.Calls.Select(c => c.Call));
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses.Select(p => p.Macro));
+            // The first B's gate, the drawn summary, was confirmed by SummaryAsync before the ending; each later press is sent
+            // at the confirm before it.
+            Assert.Equal([PartyList, StartMenu, Free], presses.Skip(1).Select(p => p.At));
+            Assert.Equal("alert", order[0]);
+            Assert.Equal(1, caught);
+        }
+
+        [Fact]
+        public async Task APartyListBThatDoesNotReachTheStartMenuStopsWithoutSaving()
+        {
+            // B from the party list lands on the field, as the old ending expected.
+            PressedReader reader = new([SummaryScreen], [PartyList], [Free]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+            int caught = 0;
+            PersistPokemonData persist = new() { PokemonData = new PokemonData { PID = ShinyPid }, Phase = "", GameFileName = "" };
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.FinishAsync(bot, Table,
+                macro => { bot.RunMacroString(macro); return Task.CompletedTask; }, persist, _ => Task.CompletedTask,
+                _ => { caught++; return Task.CompletedTask; }, Stale, TimeSpan.Zero, CancellationToken.None));
+
+            Assert.Equal("the start menu after B from the party list", ex.WaitingFor);
+            Assert.Contains("Screen = FieldFree", ex.Message);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6"], presses.Select(p => p.Macro));
+            Assert.Equal(0, caught);
         }
 
         public static TheoryData<string> Stops => ["did not respond", "no hand-over", "stale cutscene"];
@@ -713,8 +740,8 @@ namespace ShinyBotHunter.Tests
         public async Task AShinyAlertsOnceSavesRecordsAndCompletes()
         {
             List<string> presses = [];
-            // After B from the summary, after B from the list, after X, after B from the start menu, after the save.
-            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [StartMenu], [Free], [Free]];
+            // After B from the summary, after B from the list, after B from the start menu, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [StartMenu], [Free], [Free]];
             FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
             Boundaries boundaries = new(ShinyPid);
             GameState state = Running();
@@ -722,7 +749,9 @@ namespace ShinyBotHunter.Tests
             string? stop = await HuntAsync(state, bot, Config(), boundaries);
 
             Assert.Null(stop);
-            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^5..]);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses[^4..]);
+            // Only the X before the summary; the ending sends none.
+            Assert.Single(presses, p => p == "H.X.6");
             Assert.DoesNotContain(Macro("SoftResetHeld"), presses);
             // Only the walk's clear, once the circle's script started; no stop's.
             Assert.Equal(["clear"], bot.Macros);
