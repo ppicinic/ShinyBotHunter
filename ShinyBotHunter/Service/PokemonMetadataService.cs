@@ -100,6 +100,10 @@ namespace ShinyBotHunter.Service
                     return $"unown-{c}";
                 }
             }
+            if (species == 487 && formIndex == 1)
+            {
+                return "giratina-origin";
+            }
             if (_metadata[species].HasFemaleForm && gender == 2)
             {
                 return _metadata[species].PokeApiName + ";f";
