@@ -114,6 +114,7 @@ namespace ShinyBotHunter.Service
         /// which ROM to launch and renders as a ROM picker.
         /// </summary>
         public string? RecordingName { get; set; }
+        public string? StaticEncounter { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 

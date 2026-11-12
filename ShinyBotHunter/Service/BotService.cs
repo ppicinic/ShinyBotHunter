@@ -384,6 +384,15 @@ namespace ShinyBotHunter.Service
             return GetBotDashboardState();
         }
 
+        internal Task<Dictionary<int, EmulatorState>> StartStaticEncounterAsync(NewEventArguments args, int pos)
+        {
+            if (args.PhaseName is null)
+            {
+                throw new ArgumentException("PhaseName cannot be null for the static encounter hunt.");
+            }
+            throw new InvalidOperationException("HGSS Static Encounter's hunt is not built yet (#349).");
+        }
+
         internal async Task<Dictionary<int, EmulatorState>> ResumeAsync(NewEventArguments args, int pos)
         {
             if (slots.Entries[pos].Event is MultiStarterHuntEvent multiHunt)
