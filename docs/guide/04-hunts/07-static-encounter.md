@@ -57,7 +57,7 @@ Then each attempt:
 5. It presses through the dialogue until you can walk again. On a first visit Cynthia speaks, then you are warped to the Ruins of Alph and the researcher speaks.
 6. It opens the menu, then POKéMON, slot 2, and SUMMARY.
 7. It reads the Pokémon and writes it to the encounter log.
-8. If the Pokémon is shiny, the bot sends a shiny alert to [Discord](../05-discord.md), closes the summary and the party list, opens and closes the menu to make sure the dialogue is over, saves the game, records it as caught, and finishes.
+8. If the Pokémon is shiny, the bot sends a shiny alert to [Discord](../05-discord.md), closes the summary, the party list and the menu, saves the game, records it as caught, and finishes.
 9. If not, it soft resets and continues the game, then checks you are back on the stage, on the same tile, facing the same way.
 
 An attempt takes about three and a half minutes, most of it the cutscene and the dialogue after it.
@@ -113,12 +113,12 @@ If the hunt stops while closing the summary of a shiny, or anywhere else before 
 **It means** after the soft reset your character was not where the hunt saved, so the save the game loaded is not the one the hunt made.
 **Do** load the save the hunt made and press **Run** again.
 
-**You see** "3 times in a row a script started after the field was free, instead of the start menu after X (...)." (with "the scripts after the hand-over" or "the scripts before the save" in place of the dots).
+**You see** "3 times in a row a script started after the field was free, instead of the start menu after X (...)." (with "the scripts after the hand-over" in place of the dots).
 **It means** each time the bot tried to open the menu, the dialogue kept going instead.
 **Do** look at the emulator to see what is still talking, then load the save and press **Run** again.
 
-**You see** "Waited for" followed by a step, then "; the game state stayed" and what the game showed. The steps are "the overworld ready" (after the save at **Run**, and after each soft reset), "the circle script", "the circle menu to take the Yes", "the cutscene to reach the nickname question", "the nickname menu to take the No", "the scripts after the hand-over", "the start menu after X", "the party list after POKéMON", "slot 2's context menu", "slot 2's summary after SUMMARY", "the soft reset to leave the summary" (after the result of a Pokémon that is not shiny), and, on a shiny, "the party list after B from the summary", "the field free after B from the party list", "the scripts before the save" and "the field free after B from the start menu".
-**It means** that step did not happen: the game showed the same thing for too long. The cutscene may show nothing new for 200 seconds; the other steps for 10 to 20 seconds. The last four are the shiny case above.
+**You see** "Waited for" followed by a step, then "; the game state stayed" and what the game showed. The steps are "the overworld ready" (after the save at **Run**, and after each soft reset), "the circle script", "the circle menu to take the Yes", "the cutscene to reach the nickname question", "the nickname menu to take the No", "the scripts after the hand-over", "the start menu after X", "the party list after POKéMON", "slot 2's context menu", "slot 2's summary after SUMMARY", "the soft reset to leave the summary" (after the result of a Pokémon that is not shiny), and, on a shiny, "the party list after B from the summary", "the start menu after B from the party list" and "the field free after B from the start menu".
+**It means** that step did not happen: the game showed the same thing for too long. The cutscene may show nothing new for 200 seconds; the other steps for 10 to 20 seconds. The last three are the shiny case above.
 **Do** look at the emulator to see where it stopped, then load the save and press **Run** again.
 
 **You see** "[Static] the party count read failed: ..." (with where the read stopped in place of the dots).
