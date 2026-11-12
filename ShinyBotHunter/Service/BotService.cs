@@ -392,7 +392,7 @@ namespace ShinyBotHunter.Service
         private const string NotTheEventArceus = "This Arceus is not the event Arceus or the Hall of Origin one.";
         // MAPSEC_HALL_OF_ORIGIN as a Gen 4 met location; the rule is MonMetadataMatchesEvent's, src/trainer_memo.c.
         private const int MetLocationHallOfOrigin = 86;
-        private const string NoPathToTheCircle ="No path from here to the circle. Stand on the stage in front of the circles.";
+        private const string NoPathToTheCircle = "No path from here to the circle. Stand on the stage in front of the circles.";
 
         // Null when the live game can start the encounter, otherwise the sentence (FR-2). Each check is a fresh read.
         // Run calls it once; the hunt calls it again after every reset.
@@ -448,7 +448,19 @@ namespace ShinyBotHunter.Service
             {
                 throw new InvalidOperationException(NoPathToTheCircle);
             }
-            throw new InvalidOperationException("HGSS Static Encounter's hunt is not built yet (#349).");
+            var staticEvent = new HgssStaticEncounterEvent(bot, config, encounter, walkMacro, x, y, facing, this);
+            slots.Entries[pos].GameState = new GameState()
+            {
+                Profile = bot.Profile,
+                BotService = this,
+                Bot = bot,
+                Milestone = args.PhaseName,
+                // GameState requires a target; the event looks only at the encounter.
+                Target = new ShinyTarget(),
+            };
+            runner.StartEvent(pos, slots.Entries[pos], staticEvent, slots.Entries[pos].GameState!, $"Static: {encounter.Name}", removeWhenDone: false);
+
+            return GetBotDashboardState();
         }
 
         internal async Task<Dictionary<int, EmulatorState>> ResumeAsync(NewEventArguments args, int pos)
@@ -636,7 +648,7 @@ namespace ShinyBotHunter.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[BotService] Could not read the party for the Run checks:{ex}");
+                Console.WriteLine($"[BotService] Could not read the party for the Run checks: {ex}");
                 return null;
             }
             // A game in the field always has a party member; none means the title screen.

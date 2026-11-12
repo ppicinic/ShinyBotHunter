@@ -28,7 +28,6 @@ namespace ShinyBotHunter.Tests
         private const string FieldNotFree = "Close any menu or text first: the player must be free to walk on the stage.";
         private const string NotOneArceus = "The party must be one Arceus and nothing else.";
         private const string NoPath = "No path from here to the circle. Stand on the stage in front of the circles.";
-        private const string Seam = "HGSS Static Encounter's hunt is not built yet (#349).";
 
         public StaticEncounterRunTests()
         {
@@ -106,6 +105,15 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
+        // Run starts the hunt; cancelled at once, because the hunt's steps are HgssStaticEncounterEventTests'.
+        private static async Task AssertStartedAsync(BotService service)
+        {
+            var result = await new BotController(service).StartAction(0, Run());
+
+            Assert.IsType<OkObjectResult>(result.Result);
+            await service.CancelBotOrEventAsync(0);
+        }
+
         [Fact]
         public async Task OffTheStageIsRefused()
         {
@@ -158,7 +166,7 @@ namespace ShinyBotHunter.Tests
         {
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493, fateful: true, version: GameVersion.HG));
 
-            await AssertRefusedAsync(service, Run(), Seam);
+            await AssertStartedAsync(service);
         }
 
         [Fact]
@@ -166,7 +174,7 @@ namespace ShinyBotHunter.Tests
         {
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493, fateful: false, version: GameVersion.Pt, metLocation: 86));
 
-            await AssertRefusedAsync(service, Run(), Seam);
+            await AssertStartedAsync(service);
         }
 
         [Fact]
@@ -179,11 +187,11 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task AllChecksPassReachTheSeam()
+        public async Task AllChecksPassStartTheHunt()
         {
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493));
 
-            await AssertRefusedAsync(service, Run(), Seam);
+            await AssertStartedAsync(service);
         }
 
         [Fact]
