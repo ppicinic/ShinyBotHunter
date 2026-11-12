@@ -379,6 +379,10 @@ namespace ShinyBotHunter.Service.Pointers
         // HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
         public uint SummaryInit => 0x02088299;
 
+        // the summary app's app.state once the summary is drawn (app + 0x14); 0 (black screen) and 1 are
+        // loading, about 1 s, and a soft reset pressed in them is ignored; constant; observed; QA: none yet: hgss-static-dialga (S4)
+        public int SummaryShown => 2;
+
         // Layout flag, not an address.
         public PartyAddressing PartyAddressing => PartyAddressing.Anchor;
 
