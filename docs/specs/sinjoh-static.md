@@ -144,20 +144,25 @@ One action, `HGSS Static Encounter`, with a dropdown of the three Sinjoh encount
 - The navigator's script presser sends one-frame-style taps (`T.A;W.20`). This hunt passes holds through two new optional parameters; the other hunts keep their taps. Moving every hunt to holds is not done.
 - Run's Arceus check is simpler than the game's: a fateful encounter, or an origin game of Diamond, Pearl or Platinum with met location 86 (the Hall of Origin). The game also tests the met condition, so a traded Hall of Origin Arceus passes Run and stops at "The circle did not respond".
 - A stop leaves the bot idle (`EventState.None`) with Run offered again, not `Waiting`: Resume would repeat the save at Run from an unchecked place.
-- The task split grew from S1 to S5 to S1, S2, S2b, S3a to S3g, S4, S5 and S6; S3c to S3g are QA fixes.
+- The task split grew from S1 to S5 to S1, S2, S2b, S3a to S3h, S4, S5, S6 and S7; S3c to S3h are QA fixes and S7 is the Giratina form code.
 - NFR-1: an attempt measured about 200 s from its start to its result and the reset 37 to 39 s, 236 s together in the final Dialga run, against the limit of 240 s. The spike's 209 to 214 s did not include the checks, the summary wait or the menu confirms.
 - Tested on English HeartGold only. The two init functions, the start menu task and its state are revision-dependent addresses observed on that ROM; SoulSilver is untested.
 - The state reader now sends 16 blocks, ApiHawk's limit per read.
-- In every attempt of the final runs, three of the sixteen text boxes after the hand-over took a second press from the navigator's script presser (`T.A … (printer 3) after 2 press(es)`), the same three each time. That is the presser's existing retry at a box whose printer state is 3; whether the first press was dropped or those boxes need two presses was not established.
+- The scene after the hand-over has 19 text boxes. The navigator's script presser logged three of them as taking two presses: no press was dropped. At a scroll arrow the next line reached its own arrow before the presser read again, and its confirm ("no longer at an arrow") could not tell the new box from the old one, so it waited a second and counted the next box's press as a retry. The state reader now carries the text printer's current-character pointer while the printer waits at an arrow (`GameSnapshot.TextCursor`, in the block it already read), and the presser's box confirm accepts an arrow with a different pointer (#374). Every attempt since logs 19 boxes with one press each, and the scene takes 36 to 39 s instead of about 41. The presser is shared: the nurse, Primo, Headbutt and poison flows get the same confirm; their unit tests pass unchanged, and their QA saves were not on the dev PC to run.
+- The Giratina this hunt gives is in its Origin Forme (form 1, Griseous Orb). `GetFormCode` ignored the form index for every species but Unown, so it was logged as `giratina-altered`; it now returns `giratina-origin` for Giratina with form 1 (#376). Other species' alternate forms are still logged under the default form name: the metadata's form lists are not in the games' form order, so a general mapping is its own feature.
 
 ## Evidence
 
-- PRs into `feature/sinjoh-static`: #353 (S1), #355 (S2), #357 (S2b), #358 (S3a), #359 (S3b), #363 (S3c), #365 (S3d), #367 (S3e), #369 (S3f), #372 (S3g), #362 and #371 (S4), #360 (S5).
+- PRs into `feature/sinjoh-static`: #353 (S1), #355 (S2), #357 (S2b), #358 (S3a), #359 (S3b), #363 (S3c), #365 (S3d), #367 (S3e), #369 (S3f), #372 (S3g), #375 (S3h), #377 (S7), #362, #371 and #378 (S4), #360 (S5).
 - QA on c74e226 (2026-11-12, the four scenarios in sequence, each with `emulator.mp4`), in `ShinyBotHunter.Qa/dashboard/qa-runs/`:
   - `hgss-static-refusals`: `20261112-205409-hgss-route33-dashboard`
   - `hgss-static-dialga`: `20261112-205510-hgss-route33-dashboard`
   - `hgss-static-giratina`: `20261112-210406-hgss-route33-dashboard`
   - `hgss-static-shiny`: `20261112-210825-hgss-route33-dashboard`
+- After those four runs the presser confirm (#374) and the form code (#376) landed. On them, with `emulator.mp4` (the owner's recordings; `hgss-static-shiny` with `QA_STATIC_SHINY_ENCOUNTER` and `QA_STATIC_SHINY_ATTEMPT`):
+  - `20261112-220318-hgss-route33-dashboard`: Palkia, three not-shiny attempts with their resets, then the shiny on the fourth; on the presser fix. Every bot check passed (four encounter rows, one alert, the caught record, the save, Complete); the scenario's teardown then failed to click Cancel because the Admin window had been moved off Bot Control by hand.
+  - `20261112-223145-hgss-route33-dashboard`: Giratina, one not-shiny attempt with its reset, then the shiny on the second; passed; both logged as `giratina-origin` (on 4b1e34c).
+  - The four scenarios above were not run again on the last commit (owner, 2026-11-12: the QA is good).
 - Earlier runs that found the bugs above: `20261112-183938-…` and `20261112-185604-…` (the reset ignored), `20261112-190155-…` and `20261112-190350-…` (the summary's states), `20261112-192129-…` (the scene's free moment), `20261112-201515-…` and `20261112-203021-…` (the shiny ending).
 
 ## Open questions
@@ -173,6 +178,7 @@ None.
 
 ## Changelog
 
+- 2026-11-12: after the first close-out: the presser's box confirm (#374) and the Giratina form code (#376); "What diverged" and "Evidence" updated.
 - 2026-11-12: implemented. FR-3, FR-4, FR-5, FR-9, FR-11, FR-13, "Where it lives" and the QA section corrected to what was built; "As built", "What diverged" and "Evidence" added.
 - 2026-11-12: drafted from the spike.
 - 2026-11-12: owner review. Save at Run, the name and one emulator confirmed; the hand-over reset removed as a question (it was never open: the global decision settles it).

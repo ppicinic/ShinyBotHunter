@@ -66,6 +66,7 @@ An attempt takes about four minutes with its soft reset, most of it the cutscene
 
 - Every Pokémon received goes into the encounter log with the game, the milestone, the Pokémon, the time and the game file.
 - The shiny one is added to your caught Pokémon.
+- Giratina is recorded in its Origin Forme (`giratina-origin`), as the game gives it.
 
 [Your data](../06-your-data.md) explains where these are kept.
 
