@@ -132,4 +132,4 @@ These messages show in the backend's window, as `[BotService] Event '<name>' cra
 
 For anything else, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
-Next: [Discord](../05-discord.md)
+Next: [Static encounter hunt](07-static-encounter.md)
