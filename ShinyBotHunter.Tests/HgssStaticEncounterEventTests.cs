@@ -257,11 +257,14 @@ namespace ShinyBotHunter.Tests
         private const uint SummaryInit = 0x02088299;
         private const uint StartMenuTask = 0x0203BEF1;
 
-        private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask);
+        // The start menu idle (3), the only state that takes input.
+        private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask) with { StartMenuState = 3 };
         private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
         private static readonly GameSnapshot SummaryScreen = new(GameScreen.OtherApp, null, null, null, null, AppState: 2, AppInit: SummaryInit);
 
         private static GameSnapshot SummaryLoading(int state) => new(GameScreen.OtherApp, null, null, null, null, AppState: state, AppInit: SummaryInit);
+
+        private static GameSnapshot StartMenuAt(int state) => ChildTask(StartMenuTask) with { StartMenuState = state };
 
         private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
 
@@ -400,6 +403,20 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("the start menu after X", ex.WaitingFor);
             Assert.Contains($"TaskFunction = {FadeTask}", ex.Message);
+            Assert.Equal(["H.X.6"], presses.Select(p => p.Macro));
+        }
+
+        [Fact]
+        public async Task XConfirmedByAStartMenuNotYetIdleDoesNotCount()
+        {
+            PressedReader reader = new([Free], [StartMenuAt(0x11)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() =>
+                HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Stale, CancellationToken.None));
+
+            Assert.Equal("the start menu after X", ex.WaitingFor);
+            Assert.Contains("StartMenuState = 17", ex.Message);
             Assert.Equal(["H.X.6"], presses.Select(p => p.Macro));
         }
 
@@ -673,6 +690,41 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("the start menu after B from the party list", ex.WaitingFor);
             Assert.Contains("Screen = FieldFree", ex.Message);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6"], presses.Select(p => p.Macro));
+            Assert.Equal(0, caught);
+        }
+
+        // The menu returning from the party app (0x0F, then 0x11) ignores B; the closing B waits for it to be idle (#370).
+        [Fact]
+        public async Task TheClosingBWaitsForTheStartMenuToBeIdle()
+        {
+            PressedReader reader = new([SummaryScreen], [PartyList], [StartMenuAt(0x0F), StartMenuAt(0x11), StartMenu], [Free], [Free]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+            PersistPokemonData persist = new() { PokemonData = new PokemonData { PID = ShinyPid }, Phase = "", GameFileName = "" };
+
+            await HgssStaticEncounterEvent.FinishAsync(bot, Table, macro => { bot.RunMacroString(macro); return Task.CompletedTask; },
+                persist, _ => Task.CompletedTask, _ => Task.CompletedTask, Long, TimeSpan.Zero, CancellationToken.None);
+
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses.Select(p => p.Macro));
+            Assert.Equal(StartMenu, presses[2].At);
+        }
+
+        [Fact]
+        public async Task AStartMenuThatNeverIdlesIsAStaleTimeoutAndNothingIsSaved()
+        {
+            PressedReader reader = new([SummaryScreen], [PartyList], [StartMenuAt(0x11)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+            int caught = 0;
+            PersistPokemonData persist = new() { PokemonData = new PokemonData { PID = ShinyPid }, Phase = "", GameFileName = "" };
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.FinishAsync(bot, Table,
+                macro => { bot.RunMacroString(macro); return Task.CompletedTask; }, persist, _ => Task.CompletedTask,
+                _ => { caught++; return Task.CompletedTask; }, Stale, TimeSpan.Zero, CancellationToken.None));
+
+            Assert.Equal("the start menu after B from the party list", ex.WaitingFor);
+            Assert.Contains("StartMenuState = 17", ex.Message);
             Assert.Equal(["W.5;H.B.6", "W.5;H.B.6"], presses.Select(p => p.Macro));
             Assert.Equal(0, caught);
         }

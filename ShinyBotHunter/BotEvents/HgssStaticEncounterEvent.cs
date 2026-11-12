@@ -288,7 +288,7 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // Presses through the scene's scripts to a free field, then X, confirmed by the start menu itself: its task function
-        // with no script. A free field also occurs between two scripts of one scene, so a script running after the X means
+        // with no script, in its idle state (3), the only state that takes input. A free field also occurs between two scripts of one scene, so a script running after the X means
         // the scene was not over: X opened nothing, the script is pressed through and X is gated again on the next free field.
         // X is sent once per free field and never while a script runs. Null with the start menu open.
         internal static async Task<string?> StartMenuAsync(IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, string scene,
@@ -299,7 +299,7 @@ namespace ShinyBotHunter.BotEvents
                 await NavigatorEvent.PressThroughScriptAsync(game, addresses, press, scene, scriptStale, ct, pressA: HoldA, pressB: HoldB);
                 await press("H.X.6");
                 GameSnapshot after = await GameStateWait.UntilAsync(game, "the start menu after X",
-                    s => s.Screen == GameScreen.FieldTask && (s.TaskFunction == addresses.StartMenuTask && s.Script is null || s.Script is not null), menuStale, ct);
+                    s => s.Screen == GameScreen.FieldTask && (s.TaskFunction == addresses.StartMenuTask && s.Script is null && s.StartMenuState == addresses.StartMenuIdle || s.Script is not null), menuStale, ct);
                 if (after.Script is null)
                 {
                     return null;
@@ -374,7 +374,7 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // The shiny (FR-11): the alert first, then B at the summary to the party list, B at the party list to the start menu
-        // it was opened from (not the field), and B at the start menu to the free field, each confirmed before the next,
+        // it was opened from (not the field) in its idle state (3), the only state that takes input, and B at the start menu to the free field, each confirmed before the next,
         // because the save macro starts from the field. Then the save, the caught record and the flush, uncancellable as the
         // Primo hunt's are.
         internal static async Task FinishAsync(IBot bot, HgssPointerService addresses, Func<string, Task> press, PersistPokemonData persist,
@@ -387,7 +387,7 @@ namespace ShinyBotHunter.BotEvents
                 s => s.AppInit == addresses.PartyMenuInit && s.AppState == addresses.PartyMenuList, stale, ct);
             await press(GameStateWait.MenuWait + "H.B.6");
             await GameStateWait.UntilAsync(bot.State, "the start menu after B from the party list",
-                s => s.Screen == GameScreen.FieldTask && s.Script is null && s.TaskFunction == addresses.StartMenuTask, stale, ct);
+                s => s.Screen == GameScreen.FieldTask && s.Script is null && s.TaskFunction == addresses.StartMenuTask && s.StartMenuState == addresses.StartMenuIdle, stale, ct);
             await press(GameStateWait.MenuWait + "H.B.6");
             await GameStateWait.UntilAsync(bot.State, "the field free after B from the start menu", s => s.Screen == GameScreen.FieldFree, stale, ct);
 
