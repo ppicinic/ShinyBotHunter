@@ -708,6 +708,21 @@ namespace ShinyBotHunter.Service
         public async Task<List<EventArgumentOptions>> GetBotActionsAsync(int pos)
         {
             var actions = GetAvailableActions(pos);
+            // Read per listing, as Run reads it, so an edit shows without a restart. A bad file leaves
+            // the entry without choices, so its field is a text box, and Run returns the error as a 400.
+            int staticIndex = actions.FindIndex(a => a.Name == "HGSS Static Encounter");
+            if (staticIndex >= 0)
+            {
+                try
+                {
+                    StaticEncounterConfig config = StaticEncounterConfig.Load(StaticEncounterConfig.DefaultPath);
+                    actions[staticIndex] = actions[staticIndex] with { Choices = new() { ["StaticEncounter"] = config.Encounters.Select(e => e.Name).ToArray() } };
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException)
+                {
+                    Console.WriteLine($"[BotService] {StaticEncounterConfig.DefaultPath} could not be read for the action list: {ex}");
+                }
+            }
             // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
             // can still be closed between the two reads.
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
