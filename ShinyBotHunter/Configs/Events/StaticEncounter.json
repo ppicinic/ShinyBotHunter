@@ -1,0 +1,44 @@
+{
+  // Macros are looked up by name in Macro/Configs/HGSS.
+  "softResetMacro": "SoftReset",
+  "continueMacro": "ContinueGameWithRandom",
+
+  "softResetDelayMs": 15000,
+  "postContinueDelayMs": 4000,
+
+  // How long the cutscene may show no change before the hunt stops. The spike measured 131 to 133 s from Yes to the
+  // hand-over, about 127 s of it with no script native (docs/research/sinjoh-static.md).
+  "cutsceneStaleMs": 200000,
+
+  // The Mystri Stage (map 522): one-tile coordinate events from files/fielddata/eventdata/zone_event/474_D51R0201.json.
+  // The touches are the party menu route to the summary: POKéMON, slot 2, SUMMARY (docs/research/sinjoh-static.md).
+  "encounters": [
+    {
+      "name": "Dialga (Sinjoh Ruins)",
+      "species": 483,
+      "mapId": 522,
+      "spot": [12, 15],
+      "pokemonTouch": [44, 77],
+      "slotTouch": [195, 34],
+      "summaryTouch": [195, 41]
+    },
+    {
+      "name": "Palkia (Sinjoh Ruins)",
+      "species": 484,
+      "mapId": 522,
+      "spot": [20, 15],
+      "pokemonTouch": [44, 77],
+      "slotTouch": [195, 34],
+      "summaryTouch": [195, 41]
+    },
+    {
+      "name": "Giratina (Sinjoh Ruins)",
+      "species": 487,
+      "mapId": 522,
+      "spot": [16, 8],
+      "pokemonTouch": [44, 77],
+      "slotTouch": [195, 34],
+      "summaryTouch": [195, 41]
+    }
+  ]
+}

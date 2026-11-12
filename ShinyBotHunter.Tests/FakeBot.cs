@@ -17,8 +17,8 @@ namespace ShinyBotHunter.Tests
     public class FakeBot : IBot
     {
         private readonly Task launch;
-        private readonly IGameStateReader? state;
         // Set by a test before the bot is used; written and read by the test's one async flow.
+        private IGameStateReader? state;
         private IOverworldReader? overworld;
 
         public FakeBot(Task launch, GameProfile? profile = null)
@@ -93,6 +93,6 @@ namespace ShinyBotHunter.Tests
 
         // Settable after construction because FakeBotFactory builds the bot; throws when no test placed one.
         public IOverworldReader Overworld { get => overworld ?? throw new NotImplementedException(); set => overworld = value; }
-        public IGameStateReader State { get => state ?? throw new NotImplementedException(); init => state = value; }
+        public IGameStateReader State { get => state ?? throw new NotImplementedException(); set => state = value; }
     }
 }
