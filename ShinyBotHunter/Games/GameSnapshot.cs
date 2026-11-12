@@ -3,7 +3,7 @@ namespace ShinyBotHunter.Games
     public readonly record struct GameSnapshot(
         GameScreen Screen,
         BattleOutcome? Outcome, int? Script, int? Prompt, uint? TaskFunction, uint? Native = null, int? SummaryState = null,
-        int? TextPrinter = null, int? AppState = null, int? PartyMonIndex = null)
+        int? TextPrinter = null, int? AppState = null, int? PartyMonIndex = null, uint? AppInit = null)
     {
         // RenderText's waits for A or B at the arrow (pointer-discovery.md, "Text printer state (2026-10-24)"); 3, 7 and 8
         // are decomp only.
@@ -15,5 +15,6 @@ namespace ShinyBotHunter.Games
     // app's proc_state); TextPrinter on Evolution and on FieldTask while a field script runs, pr.state of the screen's
     // printer when its slot (evo.printer, env.printer) is 0 and not NULL, and on BattleMoveLearnPrompt and OtherApp, pr.state
     // of slot 0. AppState on OtherApp, app.state (the party menu's PartyMenuState); PartyMonIndex on OtherApp, the party
-    // menu's partyMonIndex, null when [app + 0x1C] is NULL.
+    // menu's partyMonIndex, null when [app + 0x1C] is NULL; AppInit on OtherApp, the word at app + 0x00 (the app's init
+    // function).
 }
