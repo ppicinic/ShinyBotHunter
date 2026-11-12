@@ -34,6 +34,9 @@ namespace ShinyBotHunter.Service
         // Parameter name -> choice -> the reason it cannot be picked on this bot. Null when nothing
         // is disabled. Set only on per-request copies, never on the registry's own options.
         public Dictionary<string, Dictionary<string, string>>? DisabledChoices { get; set; }
+        // Parameter name -> the values it allows. Null when the server offers no list. Set only on
+        // per-request copies, never on the registry's own options.
+        public Dictionary<string, string[]>? Choices { get; set; }
     }
 
     public class GameFilter
