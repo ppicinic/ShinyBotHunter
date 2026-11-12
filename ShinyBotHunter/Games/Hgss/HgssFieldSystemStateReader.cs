@@ -51,6 +51,7 @@ namespace ShinyBotHunter.Games.Hgss
         private const int SummaryBlock = 12;
         private const int PrinterBlock = 13;
         private const int PartyMenuBlock = 14;
+        private const int StartMenuBlock = 15;
 
         // The one sTextPrinterTasks slot read; every message observed used it (pointer-discovery.md, "Text printer state").
         private const byte ReadPrinterSlot = 0;
@@ -81,6 +82,7 @@ namespace ShinyBotHunter.Games.Hgss
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppSetupOffset, a.EvolutionTaskOffset, a.EvolutionSummaryOffset, a.OverlayProcStateOffset], 4),
                 new(a.TextPrinterTasks, [a.TextPrinterTaskDataOffset, a.TextPrinterStateOffset], 1),
                 new(a.Anchor, [a.AppSlotsOffset, a.SubAppOffset, a.AppDataOffset, a.PartyMenuMonIndexOffset], 1),
+                new(a.Anchor, [a.TaskManagerOffset, a.ScriptEnvironmentOffset, a.StartMenuStateOffset], 2),
             ];
         }
 
@@ -102,10 +104,14 @@ namespace ShinyBotHunter.Games.Hgss
                 {
                     if (!Ok(r[TaskBlock])) return Snapshot(GameScreen.Transitioning);
                     uint function = U32(r[TaskBlock].Bytes, addresses.TaskFunctionOffset);
-                    // A child task on top of the script (the fade, the heal animation) carries only its function.
-                    return function == addresses.RunScriptsTask
-                        ? FieldScript(r, function)
-                        : Snapshot(GameScreen.FieldTask) with { TaskFunction = function };
+                    if (function == addresses.RunScriptsTask) return FieldScript(r, function);
+                    // A child task on top of the script (the fade, the heal animation) carries only its function; the
+                    // start menu's task also its state.
+                    GameSnapshot task = Snapshot(GameScreen.FieldTask) with { TaskFunction = function };
+                    if (function != addresses.StartMenuTask) return task;
+                    return Ok(r[StartMenuBlock])
+                        ? task with { StartMenuState = BitConverter.ToUInt16(r[StartMenuBlock].Bytes, 0) }
+                        : Snapshot(GameScreen.Transitioning);
                 }
                 return mapReady && taskman == 0 && U32(sub0, addresses.PausedOffset) == 0
                     ? Snapshot(GameScreen.FieldFree)
