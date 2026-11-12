@@ -1,6 +1,8 @@
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -22,6 +24,9 @@ namespace ShinyBotHunter.Tests
         private const uint Printing = 0x021EF349;
         private const uint MenuChoice = 0x020477C1;
         private const int CircleScript = 1;
+        // Two of the cutscene's task functions, with no script native; any values work.
+        private const uint CutsceneTask = 0x0221A001;
+        private const uint CutsceneTask2 = 0x0221A101;
 
         private const string HoldA = "H.A.6;W.20";
         private const string HoldB = "H.B.6;W.20";
@@ -43,8 +48,22 @@ namespace ShinyBotHunter.Tests
             public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
         }
 
+        // Serves each stage's snapshots in turn, the last repeating; every press moves to the next stage, so a test does not
+        // depend on how many polls a step makes.
+        private sealed class PressedReader(params GameSnapshot[][] stages) : IGameStateReader
+        {
+            private int stage;
+            private Queue<GameSnapshot> queue = new(stages[0]);
+
+            public void Advance() => queue = new(stages[++stage]);
+
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
+        }
+
         private static GameSnapshot Script(uint? native, int? textPrinter = null)
             => new(GameScreen.FieldTask, null, CircleScript, null, RunScripts, native, TextPrinter: textPrinter);
+
+        private static GameSnapshot ChildTask(uint function) => new(GameScreen.FieldTask, null, null, null, function);
 
         private static readonly GameSnapshot Free = new(GameScreen.FieldFree, null, null, null, null);
 
@@ -57,6 +76,14 @@ namespace ShinyBotHunter.Tests
             memory.Place((uint)(FieldSystem + Table.FacingOffset), [(byte)facing]);
             memory.Place(Table.TrainerX, BitConverter.GetBytes((uint)x << 16));
             memory.Place(Table.TrainerY, BitConverter.GetBytes((uint)y << 16));
+        }
+
+        private static FakeMemoryClient PartyCount(int count)
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(Table.Anchor, BitConverter.GetBytes(FieldSystem));
+            memory.Place((uint)(FieldSystem + Table.PartySize), [(byte)count]);
+            return memory;
         }
 
         // The press completes at once and is recorded.
@@ -158,6 +185,168 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("the circle menu to take the Yes", ex.WaitingFor);
             Assert.Equal([Yes], presses);
+        }
+
+        [Fact]
+        public async Task PartyCountIsReadFromTheFieldSystem()
+        {
+            FakeMemoryClient memory = PartyCount(2);
+
+            int count = await HgssStaticEncounterEvent.ReadPartyCountAsync(memory, Table, CancellationToken.None);
+
+            Assert.Equal(2, count);
+            var (blocks, _) = Assert.Single(memory.ChainReads);
+            ChainBlockRequest block = Assert.Single(blocks);
+            Assert.Equal(Table.Anchor, block.Anchor);
+            Assert.Equal([Table.PartySize], block.Hops);
+            Assert.Equal(1, block.Length);
+        }
+
+        // Three task functions with no native, the printer drawing, at its arrow and drawing again, then the nickname menu,
+        // which stays up until after the No.
+        [Fact]
+        public async Task TheCutscenePressesAOnlyAtTheArrow()
+        {
+            ScriptedReader reader = new(
+                ChildTask(CutsceneTask), ChildTask(CutsceneTask2), ChildTask(CutsceneTask), Script(Printing, 0), Script(Printing, 2), Script(Printing, 0),
+                Script(MenuChoice), Script(MenuChoice), Script(MenuChoice), Script(null));
+
+            List<string> presses = [];
+            string? stop = await HgssStaticEncounterEvent.CutsceneAsync(reader, PartyCount(2), Table, Recording(presses), Long, Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal([HoldA, "W.5;H.B.6;W.20"], presses);
+        }
+
+        [Fact]
+        public async Task TheCutscenesStaleTimeoutNamesWhatItSaw()
+        {
+            ScriptedReader reader = new(ChildTask(CutsceneTask));
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() =>
+                HgssStaticEncounterEvent.CutsceneAsync(reader, PartyCount(1), Table, Recording([]), Stale, Long, CancellationToken.None));
+
+            Assert.StartsWith("Waited for the cutscene to reach the nickname question; the game state stayed", ex.Message);
+            Assert.Contains($"TaskFunction = {CutsceneTask}", ex.Message);
+        }
+
+        [Fact]
+        public async Task TheNicknameQuestionWithoutTheHandOverStops()
+        {
+            ScriptedReader reader = new(Script(MenuChoice));
+
+            List<string> presses = [];
+            string? stop = await HgssStaticEncounterEvent.CutsceneAsync(reader, PartyCount(1), Table, Recording(presses), Long, Long, CancellationToken.None);
+
+            Assert.Equal("At the nickname question the party holds 1, not 2.", stop);
+            Assert.Empty(presses);
+        }
+
+        // -- The run ------------------------------------------------------------------------------
+
+        private const string SummaryNotBuilt = "The summary step is not built yet (#356).";
+
+        // Before any press, after the save, after the walk.
+        private static readonly GameSnapshot[][] ToTheCircle = [[Free], [Free], [Free, Script(null), Script(MenuChoice)]];
+
+        // After the Yes, after the cutscene's A at the arrow, after the nickname's No.
+        private static readonly GameSnapshot[][] ThroughTheHandOver =
+        [
+            [ChildTask(CutsceneTask), ChildTask(CutsceneTask2), Script(Printing, 0), Script(Printing, 2)],
+            [Script(Printing), Script(MenuChoice)],
+            [Script(null), Free],
+        ];
+
+        private static StaticEncounterConfig Config(int cutsceneStaleMs = 200000)
+        {
+            StaticEncounterConfig config = StaticEncounterConfig.Load(StaticEncounterConfig.DefaultPath);
+            config.SoftResetDelayMs = 0;
+            config.PostContinueDelayMs = 0;
+            config.CutsceneStaleMs = cutsceneStaleMs;
+            return config;
+        }
+
+        // A bot standing on Dialga's circle, whose snapshots follow its presses and whose party count is the given one.
+        private static FakeBot HuntingBot(List<string> presses, PressedReader reader, int partyCount)
+        {
+            FakeMemoryClient memory = new();
+            Stand(memory, 522, 12, 15, Direction.Down);
+            return new FakeBot(Task.CompletedTask)
+            {
+                Pressed = macro =>
+                {
+                    presses.Add(macro);
+                    reader.Advance();
+                },
+                ChainBlocks = _ => [new ChainBlockResult(ChainBlockStatus.Ok, 1, [(byte)partyCount])],
+                State = reader,
+                Overworld = new HgssOverworldReader(memory, Table),
+            };
+        }
+
+        private static Task<string?> HuntAsync(GameState state, FakeBot bot, StaticEncounterConfig config)
+            => HgssStaticEncounterEvent.HuntAsync(state, bot, config, config.Find("Dialga (Sinjoh Ruins)"), WalkMacro, (16, 14, Direction.Up),
+                TimeSpan.Zero, CancellationToken.None);
+
+        private static GameState Running()
+        {
+            GameState state = new();
+            state.State.Push(EventState.Running);
+            return state;
+        }
+
+        [Fact]
+        public async Task TheSaveAtRunIsTheFirstPressAndHappensOnce()
+        {
+            List<string> presses = [];
+            FakeBot bot = HuntingBot(presses, new PressedReader([.. ToTheCircle, .. ThroughTheHandOver]), partyCount: 2);
+
+            string? stop = await HuntAsync(Running(), bot, Config());
+
+            string save = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame");
+            Assert.Equal(SummaryNotBuilt, stop);
+            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20"], presses);
+            Assert.Single(presses, p => p == save);
+        }
+
+        public static TheoryData<string> Stops => ["did not respond", "no hand-over", "stale cutscene"];
+
+        [Theory]
+        [MemberData(nameof(Stops))]
+        public async Task EveryStopClearsTheMacroAndThrowsNothing(string stopAt)
+        {
+            List<string> presses = [];
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver];
+            int partyCount = 2;
+            int cutsceneStaleMs = 200000;
+            string expected;
+            switch (stopAt)
+            {
+                case "did not respond":
+                    // The circle's script prints its refusal and ends with the field free.
+                    stages = [[Free], [Free], [Free, Script(null), Script(Printing, 0), Script(Printing, 2)], [Script(Printing), Free]];
+                    expected = HgssStaticEncounterEvent.DidNotRespond;
+                    break;
+                case "no hand-over":
+                    partyCount = 1;
+                    expected = "At the nickname question the party holds 1, not 2.";
+                    break;
+                default:
+                    stages = [.. ToTheCircle, [ChildTask(CutsceneTask)]];
+                    cutsceneStaleMs = 100;
+                    expected = "Waited for the cutscene to reach the nickname question; the game state stayed";
+                    break;
+            }
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount);
+            GameState state = Running();
+
+            string? stop = await HuntAsync(state, bot, Config(cutsceneStaleMs));
+
+            Assert.StartsWith(expected, stop);
+            // The walk's, once the circle's script started, and the stop's.
+            Assert.Equal(["clear", "clear"], bot.Macros);
+            Assert.Equal(EventState.None, state.State.Peek());
+            Assert.Single(presses, p => p == WalkMacro);
         }
     }
 }

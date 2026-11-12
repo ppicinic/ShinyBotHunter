@@ -1,4 +1,5 @@
 using ShinyBotHunter.Bot;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service;
@@ -130,6 +131,14 @@ namespace ShinyBotHunter.BotEvents
                     {
                         return Stop(state, bot, promptStop);
                     }
+                    if (await CutsceneAsync(bot.State, bot, addresses, press, TimeSpan.FromMilliseconds(config.CutsceneStaleMs), MenuStale, ct) is { } cutsceneStop)
+                    {
+                        return Stop(state, bot, cutsceneStop);
+                    }
+                    Stopwatch after = Stopwatch.StartNew();
+                    await NavigatorEvent.PressThroughScriptAsync(bot.State, addresses, press, "the scripts after the hand-over", ScriptStale, ct,
+                        pressA: HoldA, pressB: HoldB);
+                    Console.WriteLine($"[Static] after the hand-over {after.ElapsedMilliseconds} ms, field free on map {await bot.Overworld.GetMapIdAsync(ct)}");
                     return Stop(state, bot, SummaryNotBuilt);
                 }
             }
@@ -185,6 +194,37 @@ namespace ShinyBotHunter.BotEvents
             await press(GameStateWait.MenuWait + HoldA);
             await GameStateWait.UntilAsync(game, "the circle menu to take the Yes", s => s.Native != addresses.MenuChoiceNative, menuStale, ct);
             Console.WriteLine("[Static] Yes");
+            return null;
+        }
+
+        // The party count, [FieldSystem] - 0x23F44: the count only, never a slot, so nothing of the Pokémon is read here.
+        internal static async Task<int> ReadPartyCountAsync(IMemoryClient memory, HgssPointerService addresses, CancellationToken ct)
+        {
+            ChainBlockResult read = (await memory.ReadChainBlocksAsync(
+                new[] { new ChainBlockRequest(addresses.Anchor, new[] { addresses.PartySize }, 1) }, ct: ct))[0];
+            if (read.Status != ChainBlockStatus.Ok)
+                throw new InvalidOperationException($"[Static] the party count read failed: {read.Status} at hop {read.Hop}");
+            return read.Bytes[0];
+        }
+
+        // From the Yes to the nickname question, then its No (FR-7, FR-8). The presser's only press here is A at the printer's
+        // arrow, confirmed by the printer leaving it. About 127 s of the cutscene shows no native; that is pressed through by
+        // nothing and is a stall only if the whole snapshot stays the same for cutsceneStale. The No is one press, not repeated.
+        internal static async Task<string?> CutsceneAsync(IGameStateReader game, IMemoryClient memory, HgssPointerService addresses, Func<string, Task> press,
+            TimeSpan cutsceneStale, TimeSpan menuStale, CancellationToken ct)
+        {
+            Stopwatch cutscene = Stopwatch.StartNew();
+            await NavigatorEvent.PressThroughScriptAsync(game, addresses, press, "the cutscene to reach the nickname question", cutsceneStale, ct,
+                s => s.Native == addresses.MenuChoiceNative, HoldA, HoldB);
+            int count = await ReadPartyCountAsync(memory, addresses, ct);
+            if (count != 2)
+            {
+                return $"At the nickname question the party holds {count}, not 2.";
+            }
+            Console.WriteLine($"[Static] cutscene {cutscene.ElapsedMilliseconds} ms (Yes to party count 2)");
+            await press(GameStateWait.MenuWait + HoldB);
+            await GameStateWait.UntilAsync(game, "the nickname menu to take the No", s => s.Native != addresses.MenuChoiceNative, menuStale, ct);
+            Console.WriteLine("[Static] No to the nickname");
             return null;
         }
     }
