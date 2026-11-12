@@ -106,6 +106,7 @@ The actions, in the order the dashboard lists them. "Start Action" is the list o
 | Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
 | HGSS Togepi Egg | Emulator | **Milestone** | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
 | HGSS Primo Egg | Emulator | **Milestone** | [Primo egg hunt](04-hunts/06-primo-egg.md) |
+| HGSS Static Encounter | Emulator | **Milestone**, **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
 | Resume | Emulator | None | [Resume a hunt that is waiting](#resume-a-hunt-that-is-waiting) |
 
 ## Make a milestone
