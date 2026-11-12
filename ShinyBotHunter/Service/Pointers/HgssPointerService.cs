@@ -376,6 +376,14 @@ namespace ShinyBotHunter.Service.Pointers
         // HeartGold); observed (#366, runs 20261112-192129 and -192630); QA: none yet: hgss-static-dialga (S4)
         public uint StartMenuTask => 0x0203BEF1;
 
+        // the start menu's state, a u16 in the start menu task's environment (task.env + 0x26); offset
+        // (revision-independent); observed (#370, the 2026-11-12 watcher); QA: hgss-static-shiny
+        public int StartMenuStateOffset => 0x26;
+
+        // the start menu's state while it is open and idle, the only state that takes input; 4 and 5 while the app starts
+        // and runs, 0x0F and 0x11 while it returns; constant; observed (#370, the 2026-11-12 watcher); QA: hgss-static-shiny
+        public int StartMenuIdle => 3;
+
         // the party menu app's init function (app + 0x00; symbol not traced); root (revision-dependent; static ARM9,
         // English HeartGold); observed; QA: none yet: hgss-static-dialga (S4)
         public uint PartyMenuInit => 0x02078E31;
