@@ -323,16 +323,18 @@ async function readApp(): Promise<{ init: number; state: number }> {
   return { init: bytes.readUInt32LE(0), state: bytes.readUInt32LE(0x14) }
 }
 
-// The summary's app state once it is drawn; it loads in state 0 (black) and 1 first, about 1 s with the init function set.
-const SUMMARY_DRAWN = 2
+// The summary's app states while it loads, 0 (black) and 1, about 1 s with the init function set. Any other state is
+// drawn: 2, or the closing states (15, 22) the shiny path's B reaches within one poll of the result line.
+const SUMMARY_LOADING = [0, 1]
 
 /**
- * Polls the app every 50 ms until the summary is drawn (its init function in state 2), logging when the init function
- * and when state 2 were first seen. At that moment it asks the recorder for the emulator frame `<shot>-emulator.png`
- * before anything else, since a not-shiny summary is on screen for well under a second. It fails if this attempt's
- * result line (one beyond `resultsBefore`) was in the log at any poll before state 2: the order proof that the summary
- * was drawn before the result was written. The bot may log the result within the poll that sees state 2, so that
- * poll's log is not held against it. The caller then calls shotPages.
+ * Polls the app every 50 ms until the summary is drawn (its init function in a state other than 0 and 1), logging when
+ * the init function and when that state were first seen. At that moment it asks the recorder for the emulator frame
+ * `<shot>-emulator.png` before anything else, since a not-shiny summary is on screen for well under a second. It fails
+ * if this attempt's result line (one beyond `resultsBefore`) was in the log at any poll before then: the order proof
+ * that the summary was drawn before the result was written, which holds because the closing states come only after 2.
+ * The bot may log the result within the poll that sees the drawn state, so that poll's log is not held against it. The
+ * caller then calls shotPages.
  */
 export async function waitForSummary(resultsBefore: number, timeoutMs: number, shot: string): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -341,10 +343,10 @@ export async function waitForSummary(resultsBefore: number, timeoutMs: number, s
   while (true) {
     last = await readApp()
     if (last.init === SUMMARY_INIT && initSeenAt === 0) initSeenAt = Date.now()
-    if (last.init === SUMMARY_INIT && last.state === SUMMARY_DRAWN) {
+    if (last.init === SUMMARY_INIT && !SUMMARY_LOADING.includes(last.state)) {
       fs.writeFileSync(path.join(runDir, `shot-${shot}-emulator.request`), '')
       const drawnAt = Date.now()
-      step(`summary init 0x${hex8(SUMMARY_INIT)} first seen ${new Date(initSeenAt).toISOString()}, state ${SUMMARY_DRAWN} first seen ` +
+      step(`summary init 0x${hex8(SUMMARY_INIT)} first seen ${new Date(initSeenAt).toISOString()}, state ${last.state} first seen ` +
         `${new Date(drawnAt).toISOString()} (${drawnAt - initSeenAt} ms later); emulator screenshot ${shot} requested`)
       return
     }
@@ -376,7 +378,8 @@ export type Attempt = { walkMs: number; cutsceneMs: number; afterMs: number; sum
 /**
  * Attempt n's lines, from its attempt line to the next one or the end of the log: walk, Yes, cutscene, No, after,
  * summary and result exactly once each, in that order. Every navigator A is at the printing native's arrow, and the
- * navigator gave no Yes of its own at either menu. The arrow presses and the retries among them go to steps.log.
+ * navigator gave no Yes of its own at either menu, and every box took one press (a retry fails the attempt). The arrow
+ * presses go to steps.log.
  */
 export function checkAttempt(log: string[], n: number): Attempt {
   const start = log.findIndex((l) => ATTEMPT.exec(l)?.[1] === String(n))
@@ -410,7 +413,10 @@ export function checkAttempt(log: string[], n: number): Attempt {
     counts.set(waitingFor, (counts.get(waitingFor) ?? 0) + 1)
   }
   step(`attempt ${n}: navigator presses ${JSON.stringify(Object.fromEntries(counts))}`)
-  for (const line of arrows.filter((l) => /after ([2-9]|\d\d+) press\(es\)/.test(l))) step(`attempt ${n}: gated retry: ${line.trim()}`)
+  for (const line of arrows) {
+    const presses = /after (\d+) press\(es\)/.exec(line)?.[1]
+    if (presses !== undefined && Number(presses) > 1) throw new Error(`attempt ${n}: a box took ${presses} presses: ${line.trim()}`)
+  }
 
   const ms = (pattern: RegExp, i: number): number => Number(pattern.exec(lines[at[i]])![1])
   const result = parseResult(lines[at[6]])
