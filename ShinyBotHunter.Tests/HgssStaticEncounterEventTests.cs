@@ -371,6 +371,54 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(SummaryRoute[..2], presses.Select(p => p.Macro));
         }
 
+        // -- The start menu ------------------------------------------------------------------------
+
+        // The warp's fade task, a field task with no script that is not the start menu.
+        private const uint FadeTask = 0x0205528D;
+
+        [Fact]
+        public async Task EachXIsSentAtAFreeFieldAndTheMenuIsItsOwnState()
+        {
+            PressedReader reader = new([Free], [Script(Printing, 2)], [Free], [StartMenu]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            string? stop = await HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal(["H.X.6", HoldA, "H.X.6"], presses.Select(p => p.Macro));
+            Assert.All(presses.Where(p => p.Macro == "H.X.6"), p => Assert.Equal(Free, p.At));
+        }
+
+        [Fact]
+        public async Task XConfirmedByAFieldTaskThatIsNotTheStartMenuDoesNotCount()
+        {
+            PressedReader reader = new([Free], [ChildTask(FadeTask)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() =>
+                HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Stale, CancellationToken.None));
+
+            Assert.Equal("the start menu after X", ex.WaitingFor);
+            Assert.Contains($"TaskFunction = {FadeTask}", ex.Message);
+            Assert.Equal(["H.X.6"], presses.Select(p => p.Macro));
+        }
+
+        [Fact]
+        public async Task AScriptAfterEveryXStopsAfterTheRounds()
+        {
+            // Each X meets a script at its arrow, and each A frees the field.
+            GameSnapshot[][] stages = [.. Enumerable.Range(0, HgssStaticEncounterEvent.StartMenuRounds).SelectMany(_ => new[] { new[] { Free }, [Script(Printing, 2)] })];
+            PressedReader reader = new(stages);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            string? stop = await HgssStaticEncounterEvent.StartMenuAsync(reader, Table, Advancing(reader, presses), "the scene", Long, Long, CancellationToken.None);
+
+            Assert.Equal($"{HgssStaticEncounterEvent.StartMenuRounds} times in a row a script started after the field was free, instead of the start menu after X (the scene).", stop);
+            var xs = presses.Where(p => p.Macro == "H.X.6").ToList();
+            Assert.Equal(HgssStaticEncounterEvent.StartMenuRounds, xs.Count);
+            Assert.All(xs, p => Assert.Equal(Free, p.At));
+        }
+
         [Fact]
         public async Task AWrongSpeciesInSlotTwoStops()
         {
@@ -568,6 +616,38 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(NotOneArceus, stop);
             Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", "H.X.6", .. SummaryRoute, Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
             Assert.Single(presses, p => p == save);
+        }
+
+        [Fact]
+        public async Task AScriptAfterTheFreeFieldIsPressedThroughAndXGatedAgain()
+        {
+            List<string> presses = [];
+            // The first X meets the researcher's script at its arrow; its A frees the field; the second X opens the start menu.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, [Script(Printing, 2)], [Free], .. ToTheSummary, .. ThroughTheReset];
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
+
+            string? stop = await HuntAsync(Running(), bot, Config());
+
+            Assert.Equal(NotOneArceus, stop);
+            Assert.Equal([Macro("SaveGame"), WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", "H.X.6", HoldA, "H.X.6", .. SummaryRoute,
+                Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses);
+        }
+
+        [Fact]
+        public async Task TheShinySaveWaitsForTheScenesScriptsToEnd()
+        {
+            List<string> presses = [];
+            // After B from the summary, after B from the list, after an X that met a script, after its A, after X, after B
+            // from the start menu, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Script(Printing, 2)], [Free], [StartMenu], [Free], [Free]];
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
+            Boundaries boundaries = new(ShinyPid);
+
+            string? stop = await HuntAsync(Running(), bot, Config(), boundaries);
+
+            Assert.Null(stop);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", "H.X.6", HoldA, "H.X.6", "W.5;H.B.6", Macro("SaveGame")], presses[^7..]);
+            Assert.Equal(["readParty", "addEncounter", "alert", "addCaught"], boundaries.Calls.Select(c => c.Call));
         }
 
         public static TheoryData<string> Stops => ["did not respond", "no hand-over", "stale cutscene"];
