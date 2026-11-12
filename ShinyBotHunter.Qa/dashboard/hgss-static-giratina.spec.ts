@@ -3,16 +3,17 @@ import { shotAll, step } from './driver'
 import { decodeMon } from './egg-pid'
 import {
   backendLog, cancelEventAndBot, checkAttempt, GIRATINA, hex8, installPristine, launchBot, MACROS, MINUTE, parseResult,
-  parseRunLine, pristineSha, readPartyCount, readSlot, readTile, RESULT, ROM, RUN_LINE, runStatic, SAVED, savedSha, shotPages,
-  shutdown, START_TILE, startFrame, teardown, WALK, waitForLine, waitForSummary, type Frame
+  parseRunLine, PHASE, pristineSha, psql, readPartyCount, readSlot, readTile, RESULT, ROM, RUN_LINE, runStatic, SAVED, savedSha,
+  settings, shotPages, shutdown, START_TILE, startFrame, teardown, WALK, waitForLine, waitForSummary, type Frame
 } from './static'
 
 // ITEM_GRISEOUS_ORB: the gift Giratina holds it and is in its Origin form (1).
 const GRISEOUS_ORB = 112
 
-test('HGSS Static Encounter Giratina: the six-step walk, slot 2 read with the summary on screen as Origin Giratina', async () => {
+test('HGSS Static Encounter Giratina: the six-step walk, slot 2 read with the summary on screen as Origin Giratina, logged as giratina-origin', async () => {
   test.setTimeout(20 * MINUTE)
   const frame: Frame = { backend: null, app: null }
+  const { pg } = settings()
   installPristine()
   try {
     const admin = await startFrame(frame)
@@ -21,7 +22,7 @@ test('HGSS Static Encounter Giratina: the six-step walk, slot 2 read with the su
     expect(await readTile(), 'not the save\'s start tile').toEqual(START_TILE)
     expect(await readPartyCount(), 'the save\'s party is not one').toBe(1)
     await shotAll('01-launched', pages)
-    await runStatic(card, GIRATINA)
+    const runStart = await runStatic(card, GIRATINA)
 
     // 1. The pathfinder's walk is six steps up, from the start tile to the circle.
     const run = parseRunLine(await waitForLine(RUN_LINE, 1, MINUTE))
@@ -56,6 +57,15 @@ test('HGSS Static Encounter Giratina: the six-step walk, slot 2 read with the su
     step(`${ROM} SaveRAM sha256 ${savedSha()} differs from the pristine copy`)
 
     await shutdown(frame, admin)
+
+    // 6. One encounter row since the Run: QA's PID, logged as the Origin form (FR-11).
+    const rows = psql(pg, `SELECT "PID","Species","FormCode" FROM encounters WHERE "Milestone"='${PHASE}' ` +
+      `AND "GameFileName"='${ROM}' AND "Timestamp" >= '${runStart}' ORDER BY "Timestamp"`)
+    step(`encounter rows since the Run: ${rows.join(' ; ')}`)
+    expect(rows.map((r) => {
+      const [pid, species, formCode] = r.split('|')
+      return [hex8(Number(pid)), species, formCode]
+    }), 'the encounter row').toEqual([[hex8(mon.pid), '487', 'giratina-origin']])
   } finally {
     await teardown(frame)
   }

@@ -235,6 +235,22 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void GiratinaFormIndexOneIsTheOriginForm()
+        {
+            var parser = new HgssPokemonParser(MetadataFor(
+                new PokemonMetadata { Id = 487, PokemonName = "Giratina", PokeApiName = "giratina-altered" }, Cyndaquil));
+
+            var origin = parser.Parse(Build(0x0BADF00D, species: 487, formByte: 1 << 3))!;
+            var altered = parser.Parse(Build(0x0BADF00D, species: 487, formByte: 0))!;
+            var other = parser.Parse(Build(0x0BADF00D, species: 155, formByte: 1 << 3))!;
+
+            Assert.Equal(1, origin.FormIndex);
+            Assert.Equal("giratina-origin", origin.FormCode);
+            Assert.Equal("giratina-altered", altered.FormCode);
+            Assert.Equal("cyndaquil", other.FormCode);
+        }
+
+        [Fact]
         public void PartyBlockDecryptsBattleStatsWithThePidSeed()
         {
             var parser = new HgssPokemonParser(MetadataFor(Cyndaquil));
