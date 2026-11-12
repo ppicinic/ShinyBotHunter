@@ -458,11 +458,65 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = WalkingBot(presses, new ScriptedReader(Free), 16, 15, Direction.Down);
             StaticEncounterConfig config = Config();
 
-            string? stop = await HgssStaticEncounterEvent.ResetAsync(bot, config, (16, 14, Direction.Up), () => Task.FromResult<string?>(null), CancellationToken.None);
+            string? stop = await HgssStaticEncounterEvent.ResetAsync(bot, Table, config, (16, 14, Direction.Up), () => Task.FromResult<string?>(null),
+                Long, CancellationToken.None);
 
             Assert.Equal("After the soft reset the player is at tile (16, 15) facing down, not (16, 14) facing up, where the walk was made from.", stop);
             Assert.Equal([MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.SoftResetMacro), MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.ContinueMacro)],
                 presses);
+        }
+
+        // A bot standing where the walk was made from, whose snapshots follow its presses, recording each press with the
+        // snapshot that was current when it was sent.
+        private static FakeBot ResettingBot(PressedReader reader, List<(string Macro, GameSnapshot At)> presses)
+        {
+            FakeMemoryClient memory = new();
+            Stand(memory, 522, 16, 14, Direction.Up);
+            return new FakeBot(Task.CompletedTask)
+            {
+                Pressed = macro =>
+                {
+                    presses.Add((macro, reader.Last));
+                    reader.Advance();
+                },
+                State = reader,
+                Overworld = new HgssOverworldReader(memory, Table),
+            };
+        }
+
+        private static readonly GameSnapshot Rebooting = new(GameScreen.Transitioning, null, null, null, null);
+
+        [Fact]
+        public async Task TheContinueWaitsForTheSummaryToLeave()
+        {
+            // Before the reset, after the reset, after the continue.
+            PressedReader reader = new([SummaryScreen], [SummaryScreen, SummaryScreen, Rebooting], [Free]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+
+            string? stop = await HgssStaticEncounterEvent.ResetAsync(bot, Table, Config(), (16, 14, Direction.Up), () => Task.FromResult<string?>(null),
+                Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal([Macro("SoftResetHeld"), Macro("ContinueGameWithRandom")], presses.Select(p => p.Macro));
+            Assert.Equal(Rebooting, presses[1].At);
+        }
+
+        [Fact]
+        public async Task AResetThatDoesNotTakeStopsBeforeTheContinue()
+        {
+            PressedReader reader = new([SummaryScreen], [SummaryScreen]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+            FakeBot bot = ResettingBot(reader, presses);
+            int checks = 0;
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.ResetAsync(bot, Table, Config(), (16, 14, Direction.Up),
+                () => { checks++; return Task.FromResult<string?>(null); }, Stale, CancellationToken.None));
+
+            Assert.StartsWith("Waited for the soft reset to leave the summary; the game state stayed", ex.Message);
+            Assert.Contains($"AppInit = {SummaryInit}", ex.Message);
+            Assert.Equal([Macro("SoftResetHeld")], presses.Select(p => p.Macro));
+            Assert.Equal(0, checks);
         }
 
         [Fact]
