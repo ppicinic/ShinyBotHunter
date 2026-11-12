@@ -3,6 +3,8 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -55,9 +57,16 @@ namespace ShinyBotHunter.Tests
             private int stage;
             private Queue<GameSnapshot> queue = new(stages[0]);
 
+            // The snapshot last served.
+            public GameSnapshot Last { get; private set; }
+
             public void Advance() => queue = new(stages[++stage]);
 
-            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                Last = queue.Count > 1 ? queue.Dequeue() : queue.Peek();
+                return Task.FromResult(Last);
+            }
         }
 
         private static GameSnapshot Script(uint? native, int? textPrinter = null)
@@ -242,12 +251,109 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(presses);
         }
 
+        // -- The summary --------------------------------------------------------------------------
+
+        private const uint PartyMenuInit = 0x02078E31;
+        private const uint SummaryInit = 0x02088299;
+        private const uint StartMenuTask = 0x0203D001;
+
+        private static readonly GameSnapshot StartMenu = ChildTask(StartMenuTask);
+        private static readonly GameSnapshot PartyList = new(GameScreen.OtherApp, null, null, null, null, AppState: 1, PartyMonIndex: 0, AppInit: PartyMenuInit);
+        private static readonly GameSnapshot SummaryScreen = new(GameScreen.OtherApp, null, null, null, null, AppState: 2, AppInit: SummaryInit);
+
+        private static GameSnapshot ContextMenu(int slot) => new(GameScreen.OtherApp, null, null, null, null, AppState: 2, PartyMonIndex: slot, AppInit: PartyMenuInit);
+
+        private static readonly string[] SummaryRoute = ["H.X.6", "W.5;S.44.77.3", "W.5;S.195.34.3", "W.5;S.195.41.3"];
+
+        // Each confirm comes only after two reads of the snapshot the press was sent at.
+        private static readonly GameSnapshot[][] ToTheSummarySlowly =
+        [
+            [Free],
+            [Free, Free, StartMenu],
+            [StartMenu, StartMenu, PartyList],
+            [PartyList, PartyList, ContextMenu(1)],
+            [ContextMenu(1), ContextMenu(1), SummaryScreen],
+        ];
+
+        private static PokemonState Party(ushort species, uint pid) => new()
+        {
+            PartySize = 2,
+            PartyPokemon = [new PokemonData { Species = 493 }, new PokemonData { Species = species, PID = pid }, null, null, null, null],
+        };
+
+        // Every press is recorded with the snapshot that was current when it was sent.
+        private static Func<string, Task> Advancing(PressedReader reader, List<(string Macro, GameSnapshot At)> presses) => macro =>
+        {
+            presses.Add((macro, reader.Last));
+            reader.Advance();
+            return Task.CompletedTask;
+        };
+
+        [Fact]
+        public async Task TheSummaryRouteWaitsOnEachStateBeforeTheNext()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var (mon, stop) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses), Dialga,
+                () => Task.FromResult(Party(483, 0x12345678)), Long, CancellationToken.None);
+
+            Assert.Null(stop);
+            Assert.Equal(0x12345678u, mon!.PID);
+            Assert.Equal(SummaryRoute, presses.Select(p => p.Macro));
+            // X's gate, the free field, was seen by the presser before the step; each touch is sent at the confirm before it.
+            Assert.Equal([StartMenu, PartyList, ContextMenu(1)], presses.Skip(1).Select(p => p.At));
+        }
+
+        [Fact]
+        public async Task SlotTwoIsReadOnlyWithTheSummaryOnScreen()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+            List<GameSnapshot> readAt = [];
+
+            await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga, () =>
+            {
+                readAt.Add(reader.Last);
+                return Task.FromResult(Party(483, 0x12345678));
+            }, Long, CancellationToken.None);
+
+            GameSnapshot at = Assert.Single(readAt);
+            Assert.Equal(SummaryInit, at.AppInit);
+        }
+
+        [Fact]
+        public async Task AContextMenuOnAnotherSlotIsNotTheSummaryRoute()
+        {
+            PressedReader reader = new([Free], [StartMenu], [PartyList], [ContextMenu(0)]);
+            List<(string Macro, GameSnapshot At)> presses = [];
+
+            var ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() => HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, presses),
+                Dialga, () => throw new InvalidOperationException("slot 2 read"), Stale, CancellationToken.None));
+
+            Assert.Equal("slot 2's context menu", ex.WaitingFor);
+            Assert.Equal(SummaryRoute[..3], presses.Select(p => p.Macro));
+        }
+
+        [Fact]
+        public async Task AWrongSpeciesInSlotTwoStops()
+        {
+            PressedReader reader = new(ToTheSummarySlowly);
+
+            var (mon, stop) = await HgssStaticEncounterEvent.SummaryAsync(reader, Table, Advancing(reader, []), Dialga,
+                () => Task.FromResult(Party(25, 0x12345678)), Long, CancellationToken.None);
+
+            Assert.Null(mon);
+            Assert.Equal("Party slot 2 is species 25, not Dialga (Sinjoh Ruins)'s species 483.", stop);
+        }
+
         // -- The run ------------------------------------------------------------------------------
 
-        private const string SummaryNotBuilt = "The summary step is not built yet (#356).";
+        private const string NotOneArceus = "The party must be one Arceus and nothing else.";
+
+        private static readonly GameSnapshot[] AfterTheWalk = [Free, Script(null), Script(MenuChoice)];
 
         // Before any press, after the save, after the walk.
-        private static readonly GameSnapshot[][] ToTheCircle = [[Free], [Free], [Free, Script(null), Script(MenuChoice)]];
+        private static readonly GameSnapshot[][] ToTheCircle = [[Free], [Free], AfterTheWalk];
 
         // After the Yes, after the cutscene's A at the arrow, after the nickname's No.
         private static readonly GameSnapshot[][] ThroughTheHandOver =
@@ -256,6 +362,49 @@ namespace ShinyBotHunter.Tests
             [Script(Printing), Script(MenuChoice)],
             [Script(null), Free],
         ];
+
+        // After X, after POKéMON, after slot 2, after SUMMARY.
+        private static readonly GameSnapshot[][] ToTheSummary = [[StartMenu], [PartyList], [ContextMenu(1)], [SummaryScreen]];
+
+        // After the soft reset, after the continue.
+        private static readonly GameSnapshot[][] ThroughTheReset = [[Free], [Free]];
+
+        private static readonly GameSnapshot[][] FirstAttempt = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, .. ThroughTheReset];
+
+        // From the walk's press to the reset's continue.
+        private static readonly GameSnapshot[][] AnotherAttempt = [AfterTheWalk, .. ThroughTheHandOver, .. ToTheSummary, .. ThroughTheReset];
+
+        // Trainer ID and secret ID are 0, so PID 0x00010001 has shiny value 0.
+        private const uint NotShinyPid = 0x12345678;
+        private const uint ShinyPid = 0x00010001;
+
+        // The hunt's boundaries, recording each call in order; checks answers from the list given, one per call.
+        private sealed class Boundaries(uint pid, params string?[] checkAnswers)
+        {
+            private int checks;
+
+            public List<(string Call, PokemonData? Mon)> Calls { get; } = [];
+
+            public Task<string?> Checks()
+            {
+                Calls.Add(("checks", null));
+                return Task.FromResult(checkAnswers[checks++]);
+            }
+
+            public Task<PokemonState> ReadParty()
+            {
+                Calls.Add(("readParty", null));
+                return Task.FromResult(Party(483, pid));
+            }
+
+            public Func<PersistPokemonData, Task> Record(string call) => persist =>
+            {
+                Calls.Add((call, persist.PokemonData));
+                return Task.CompletedTask;
+            };
+
+            public int Count(string call) => Calls.Count(c => c.Call == call);
+        }
 
         private static StaticEncounterConfig Config(int cutsceneStaleMs = 200000)
         {
@@ -266,11 +415,12 @@ namespace ShinyBotHunter.Tests
             return config;
         }
 
-        // A bot standing on Dialga's circle, whose snapshots follow its presses and whose party count is the given one.
+        // A bot standing where the walk was made from, whose snapshots follow its presses and whose party count is the given
+        // one. Its profile's map service is empty, so a search would throw.
         private static FakeBot HuntingBot(List<string> presses, PressedReader reader, int partyCount)
         {
             FakeMemoryClient memory = new();
-            Stand(memory, 522, 12, 15, Direction.Down);
+            Stand(memory, 522, 16, 14, Direction.Up);
             return new FakeBot(Task.CompletedTask)
             {
                 Pressed = macro =>
@@ -284,9 +434,15 @@ namespace ShinyBotHunter.Tests
             };
         }
 
-        private static Task<string?> HuntAsync(GameState state, FakeBot bot, StaticEncounterConfig config)
-            => HgssStaticEncounterEvent.HuntAsync(state, bot, config, config.Find("Dialga (Sinjoh Ruins)"), WalkMacro, (16, 14, Direction.Up),
+        private static Task<string?> HuntAsync(GameState state, FakeBot bot, StaticEncounterConfig config, Boundaries? boundaries = null)
+        {
+            boundaries ??= new Boundaries(NotShinyPid, NotOneArceus);
+            return HgssStaticEncounterEvent.HuntAsync(state, bot, config, config.Find("Dialga (Sinjoh Ruins)"), WalkMacro, (16, 14, Direction.Up),
+                boundaries.Checks, boundaries.ReadParty, boundaries.Record("addEncounter"), boundaries.Record("alert"), boundaries.Record("addCaught"),
                 TimeSpan.Zero, CancellationToken.None);
+        }
+
+        private static string Macro(string name) => MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, name);
 
         private static GameState Running()
         {
@@ -296,16 +452,30 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task AResetLandingOnAnotherTileStops()
+        {
+            List<string> presses = [];
+            FakeBot bot = WalkingBot(presses, new ScriptedReader(Free), 16, 15, Direction.Down);
+            StaticEncounterConfig config = Config();
+
+            string? stop = await HgssStaticEncounterEvent.ResetAsync(bot, config, (16, 14, Direction.Up), () => Task.FromResult<string?>(null), CancellationToken.None);
+
+            Assert.Equal("After the soft reset the player is at tile (16, 15) facing down, not (16, 14) facing up, where the walk was made from.", stop);
+            Assert.Equal([MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.SoftResetMacro), MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, config.ContinueMacro)],
+                presses);
+        }
+
+        [Fact]
         public async Task TheSaveAtRunIsTheFirstPressAndHappensOnce()
         {
             List<string> presses = [];
-            FakeBot bot = HuntingBot(presses, new PressedReader([.. ToTheCircle, .. ThroughTheHandOver]), partyCount: 2);
+            FakeBot bot = HuntingBot(presses, new PressedReader(FirstAttempt), partyCount: 2);
 
             string? stop = await HuntAsync(Running(), bot, Config());
 
-            string save = MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame");
-            Assert.Equal(SummaryNotBuilt, stop);
-            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20"], presses);
+            string save = Macro("SaveGame");
+            Assert.Equal(NotOneArceus, stop);
+            Assert.Equal([save, WalkMacro, Yes, HoldA, "W.5;H.B.6;W.20", .. SummaryRoute, Macro("SoftReset"), Macro("ContinueGameWithRandom")], presses);
             Assert.Single(presses, p => p == save);
         }
 
@@ -347,6 +517,49 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["clear", "clear"], bot.Macros);
             Assert.Equal(EventState.None, state.State.Peek());
             Assert.Single(presses, p => p == WalkMacro);
+        }
+
+        [Fact]
+        public async Task SeveralAttemptsReplayTheMacroAndNeverSearch()
+        {
+            List<string> presses = [];
+            FakeBot bot = HuntingBot(presses, new PressedReader([.. FirstAttempt, .. AnotherAttempt]), partyCount: 2);
+            Boundaries boundaries = new(NotShinyPid, null, NotOneArceus);
+
+            string? stop = await HuntAsync(Running(), bot, Config(), boundaries);
+
+            Assert.Equal(NotOneArceus, stop);
+            Assert.Equal([WalkMacro, WalkMacro], presses.Where(p => p.StartsWith("M.")));
+            Assert.Single(presses, p => p == Macro("SaveGame"));
+            Assert.Equal(2, presses.Count(p => p == Macro("SoftReset")));
+            Assert.Equal(2, boundaries.Count("addEncounter"));
+            Assert.Equal(2, boundaries.Count("checks"));
+            Assert.Equal(0, boundaries.Count("alert"));
+            Assert.Equal(0, boundaries.Count("addCaught"));
+        }
+
+        [Fact]
+        public async Task AShinyAlertsOnceSavesRecordsAndCompletes()
+        {
+            List<string> presses = [];
+            // After B from the summary, after B from the list, after the save.
+            GameSnapshot[][] stages = [.. ToTheCircle, .. ThroughTheHandOver, .. ToTheSummary, [PartyList], [Free], [Free]];
+            FakeBot bot = HuntingBot(presses, new PressedReader(stages), partyCount: 2);
+            Boundaries boundaries = new(ShinyPid);
+            GameState state = Running();
+
+            string? stop = await HuntAsync(state, bot, Config(), boundaries);
+
+            Assert.Null(stop);
+            Assert.Equal(["W.5;H.B.6", "W.5;H.B.6", Macro("SaveGame")], presses[^3..]);
+            Assert.DoesNotContain(Macro("SoftReset"), presses);
+            // Only the walk's clear, once the circle's script started; no stop's.
+            Assert.Equal(["clear"], bot.Macros);
+            Assert.Equal(["readParty", "addEncounter", "alert", "addCaught"], boundaries.Calls.Select(c => c.Call));
+            PokemonData alerted = boundaries.Calls.Single(c => c.Call == "alert").Mon!;
+            Assert.Equal(ShinyPid, alerted.PID);
+            Assert.Same(alerted, boundaries.Calls.Single(c => c.Call == "addCaught").Mon);
+            Assert.Equal(EventState.Complete, state.State.Peek());
         }
     }
 }
