@@ -250,7 +250,8 @@ Mapped by the reader, not branched on by any event until a scenario observes the
 
 | Loop (after the profile spec) | Waits for | `stale` | Basis |
 |---|---|---|---|
-| encounter wait (`RunEncounterEvent`, `SpinEncounterEvent`, `NavigatorEvent.WaitForBattleAsync`) | any `Battle*` | none: the pacing macro bounds it; cancellation only | the loop is the hunt |
+| encounter wait (`RunEncounterEvent`, `SpinEncounterEvent`) | any `Battle*` | none while the field is free; 15 s from the field leaving free to a battle screen. That is a deadline in `SpinEncounterEvent.SeekAsync`, not a stale; when it passes, the bot stops with "Something other than a wild battle started." (#393) | a lock with no battle is not a wild encounter, and an RS field snapshot is the screen alone |
+| encounter wait (`NavigatorEvent.WaitForBattleAsync`) | any `Battle*` | none: the pacing macro bounds it; cancellation only | the loop is the hunt |
 | battle start (`PokemonDataPending`, then menu) | `BattleMenu` with the foe readable | 30 s | encounter intro observed under 10 s |
 | turn end (`WaitForMoveEnd`) | `BattleMenu`, app gone, script 6, a prompt | 20 s | longest move animation observed under 6 s; `BattleScript` with the same id counts as unchanged |
 | Run press | the screen leaving `BattleMenu` | no wait to see the "What will X do?" printer (a zero window: it prints and clears before the turn's first `BattleMenu` snapshot); a printer still up at that snapshot is waited out (stale 15 s), then a repeating `W.10;S.Run.3` (a press every 13 frames, frame-counted) until the screen leaves `BattleMenu` (stale 15 s); no confirm, no attempt count | "What will X do?" prints and clears about 0.9 s before `ctx.sel` turns 1 (probe, changelog 2026-11-06), so the printer cannot gate the press; the menu accepts input somewhere between 10 frames and about 1 s after its first snapshot and `isTouchDisabled` is not read (research doc, battle menu input-ready gap), so a single press at W.10 was lost two times in three and a confirmed retry cost 500 ms each time; repeating the press lands it at the first accepted frame, and a touch at Run after the menu is harmless |
@@ -375,3 +376,4 @@ None. (S2 shipped as S2a-0, S2a and S2b, then S2c to S2e for the move-learn path
 - 2026-11-12: Sinjoh static (#347, epic #346): OtherApp's AppInit (app + 0x00), R41; no new block.
 - 2026-11-12: #370 (epic #346): the sixteenth block `startMenu` (`[[FS + 0x10] + 0x0C] + 0x26`, 2 bytes), `FieldTask`'s `StartMenuState` under the start menu's task, R42.
 - 2026-11-12: #374 (epic #346): the `printer` block starts at the printer (`0x10, 0`, 0x29 bytes), so it also gives `pr.currentChar`; `TextCursor` beside `TextPrinter` at the arrow, R43. No new block.
+- 2026-11-15: #393 (epic #380): the encounter-wait row split in two. Spin and Run stop when the field has left free for 15 s with no battle screen (`SpinEncounterEvent.SeekAsync`); `NavigatorEvent.WaitForBattleAsync` is unchanged.
