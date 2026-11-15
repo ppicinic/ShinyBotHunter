@@ -10,6 +10,10 @@ namespace ShinyBotHunter.BotEvents
     public class SpinEncounterEvent : AbstractBotEvent<bool>
     {
         internal const string MovedWhileTurning = "The player moved while turning.";
+        internal const string NotAWildBattle = "Something other than a wild battle started.";
+
+        // FR-9; init so a test can shorten it.
+        internal TimeSpan NoBattleWithin { get; init; } = TimeSpan.FromSeconds(15);
 
         private IBot bot;
         Queue<Direction> directions = new Queue<Direction>();
@@ -56,17 +60,26 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
 
+            bool battle = true;
             try
             {
-                await GameStateWait.UntilAsync(bot.State, "a battle",
-                    s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp),
-                    stale: null, cancellationToken);
+                await SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+            }
+            catch (GameStateTimeoutException ex)
+            {
+                Console.WriteLine($"[Spin] {NotAWildBattle} {ex.Message}");
+                battle = false;
             }
             finally
             {
                 bot.ClearMacro();
             }
             await bot.WaitForMacroAsync();
+            if (!battle)
+            {
+                state.SwapState(EventState.Waiting);
+                return false;
+            }
 
             Console.WriteLine($"[Spin] Found battle after {sinceReady.ElapsedMilliseconds} ms");
             // The orchestrator expects the encounter event to advance the state itself, the same
@@ -76,6 +89,33 @@ namespace ShinyBotHunter.BotEvents
             // TODO we should go into Waiting if its a non wild battle
             state.State.Push(EventState.BattleStart);
             return true;
+        }
+
+        // Waits for a battle while the seek macro repeats. A deadline from the moment the field leaves free, not a stale:
+        // an RS field snapshot is the screen alone, so spinning in the free field looks unchanged, and an HGSS lock whose
+        // task fields change would keep restarting a stale clock. Seeking in the free field stays unbounded; any other
+        // non-battle screen (a field task, a load, an app) has 15 s to become a battle (FR-9, G7).
+        internal static Task<GameSnapshot> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, CancellationToken ct)
+        {
+            Stopwatch? sinceLeftFree = null;
+            return GameStateWait.UntilAsync(game, "a battle", s =>
+            {
+                if (s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp))
+                {
+                    return true;
+                }
+                if (s.Screen == GameScreen.FieldFree)
+                {
+                    sinceLeftFree = null;
+                    return false;
+                }
+                sinceLeftFree ??= Stopwatch.StartNew();
+                if (sinceLeftFree.Elapsed >= noBattleWithin)
+                {
+                    throw new GameStateTimeoutException($"a battle within {noBattleWithin.TotalSeconds} s of the field leaving free", s);
+                }
+                return false;
+            }, stale: null, ct);
         }
 
         private string GetSpinMacro(Direction facing)

@@ -10,6 +10,9 @@ namespace ShinyBotHunter.BotEvents
     {
         internal const string OffTheRunLine = "The player is off the run line.";
 
+        // FR-9; init so a test can shorten it.
+        internal TimeSpan NoBattleWithin { get; init; } = TimeSpan.FromSeconds(15);
+
         private EncounterParams param;
         private IBot bot;
         private readonly IPointerService addresses;
@@ -39,17 +42,26 @@ namespace ShinyBotHunter.BotEvents
             }
 
             bot.RunRepeatMacro(state.EncounterMacros["Run"]);
+            bool battle = true;
             try
             {
-                await GameStateWait.UntilAsync(bot.State, "a battle",
-                    s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp),
-                    stale: null, cancellationToken);
+                await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+            }
+            catch (GameStateTimeoutException ex)
+            {
+                Console.WriteLine($"[Run] {SpinEncounterEvent.NotAWildBattle} {ex.Message}");
+                battle = false;
             }
             finally
             {
                 bot.ClearMacro();
             }
             await bot.WaitForMacroAsync();
+            if (!battle)
+            {
+                state.SwapState(EventState.Waiting);
+                return state;
+            }
             state.State.Pop();
             // TODO we should go into Waiting if its a non wild battle
             state.State.Push(EventState.BattleStart);
