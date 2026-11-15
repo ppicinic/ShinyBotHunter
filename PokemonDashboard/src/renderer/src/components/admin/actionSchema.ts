@@ -94,18 +94,28 @@ export function gamesFor(schema: EventArgumentOptions, games: GameRomInfo[]): Ga
 
 const ENCOUNTER_TYPE_OPTIONS: EncounterType[] = ['Spin', 'Run', 'Headbutt']
 
-/** The encounter-type dropdown for one schema: each choice, with any the schema's disabledChoices names
- *  disabled and its reason in the label (Chromium shows no tooltip on a disabled option), and the
- *  selection to keep, which is '' when the selected choice is now disabled. */
+/** One dropdown's choices for one schema: each value, with any the schema's disabledChoices names for
+ *  this parameter disabled and its reason in the label (Chromium shows no tooltip on a disabled option). */
+export function choiceOptions<T extends string>(
+  schema: EventArgumentOptions,
+  param: string,
+  values: T[]
+): { value: T; label: string; disabled: boolean }[] {
+  const reasons = schema.disabledChoices?.[param] ?? {}
+  return values.map((value) => {
+    const reason = reasons[value]
+    return { value, label: reason ? `${value} (${reason})` : value, disabled: reason !== undefined }
+  })
+}
+
+/** The encounter-type dropdown for one schema: its choiceOptions, and the selection to keep, which is ''
+ *  when the selected choice is now disabled. */
 export function encounterTypeChoices(
   schema: EventArgumentOptions,
   selected: string | undefined
 ): { options: { value: EncounterType; label: string; disabled: boolean }[]; selected: string } {
   const reasons = schema.disabledChoices?.EncounterType ?? {}
-  const options = ENCOUNTER_TYPE_OPTIONS.map((value) => {
-    const reason = reasons[value]
-    return { value, label: reason ? `${value} (${reason})` : value, disabled: reason !== undefined }
-  })
+  const options = choiceOptions(schema, 'EncounterType', ENCOUNTER_TYPE_OPTIONS)
   const keep = selected ?? ''
   return { options, selected: reasons[keep] !== undefined ? '' : keep }
 }
