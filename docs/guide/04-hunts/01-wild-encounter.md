@@ -7,7 +7,7 @@ Part of the [ShinyBotHunter guide](../README.md)
 
 The bot walks back and forth, turns on the spot, or headbutts a tree, until a wild battle starts. It reads the wild Pokémon, writes it to the encounter log, and then either runs away or fights. It stops when it finds a Pokémon you are hunting for, or when it has reached the goal you set.
 
-It works in HeartGold and SoulSilver only.
+This page is for HeartGold and SoulSilver. Ruby and Sapphire have their own page: [Ruby and Sapphire wild encounters](08-rs-wild-encounter.md).
 
 There are two actions for it on the dashboard:
 
@@ -24,7 +24,7 @@ There are two actions for it on the dashboard:
    If no Pokémon in your party knows Headbutt, the Headbutt choice is greyed out with "No Pokémon in your party knows Headbutt." after it. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
 6. **If the bot will fight (any Train Type other than None):** the Pokémon that does the fighting needs damaging moves with at least 3 PP between them, and more than a quarter of its HP. That is the Pokémon in your first party slot, or in Switch training the Pokémon in the Battler slot.
 
-The bot checks nothing about the tile or the line. It holds the direction until your character reaches the end of the range, then turns back, and keeps doing that until a battle starts, with no time limit. So stand where walking starts wild battles, on a line nothing blocks. If something blocks it, your character stays pressed against it and the bot waits for a battle that does not come.
+Before each walk the bot checks that your character is on the line, inside its two ends. Before each round of turning it checks that you are on the tile you started on. Otherwise it stops. It holds the direction until your character reaches the end of the range, then turns back, and keeps doing that until a battle starts. While your character is free to walk there is no time limit, so stand where walking starts wild battles, on a line nothing blocks. If something blocks it, your character stays pressed against it and the bot waits for a battle that does not come. If the field stops being free (a message, a script) and no battle starts within 15 s, the bot stops.
 
 The bot looks up the nearest Pokémon Center on its own map of HeartGold and SoulSilver, which covers the whole game. It walks only where no field move is needed: no Cut, Surf, Rock Smash, Waterfall, Whirlpool, Strength or Rock Climb.
 
@@ -142,7 +142,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 
 - **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough.
 - **It finishes where it stands.** It could not find a way home, or a way to a Pokémon Center.
-- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
+- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or your character is off the run line, or off the tile it turns on. Or the field stayed locked for 15 s with no battle. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
 ## If it stops early
@@ -214,6 +214,18 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **You see** the bot waiting, and the backend's window shows a `[Pickup]` message naming a step of the trip and what the game showed.
 **It means** the game did not reach the next screen of the trip in time, for example a message stayed on screen.
 **Do** close any menu or message in the emulator until your character stands in the field, and press **Resume**. The bot reads your party again and carries on.
+
+**You see** the bot waiting, and the backend's window shows `[Run] The player is off the run line. At (<x>, <y>); the line is <x or y> +-<range> from (<x>, <y>).`
+**It means** before a walk, your character was not on the line, or was past one of its ends. A word in angle brackets stands for the value the bot fills in.
+**Do** put your character back on the line, and press **Resume**.
+
+**You see** the bot waiting, and the backend's window shows `[Spin] The player moved while turning. At (<x>, <y>), started on (<x>, <y>).`
+**It means** before a round of turning, your character was not on the tile the hunt started on.
+**Do** put your character back on the start tile, and press **Resume**.
+
+**You see** the bot waiting, and the backend's window shows `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
+**It means** something stopped your character walking, such as a message or a script, and no battle started within 15 s.
+**Do** look at that emulator, finish what the game shows yourself (end or run from the battle, close the message) until your character can walk, put your character back on the start tile or the line, and press **Resume**.
 
 For anything else, including the bot waiting because the game stopped changing, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
