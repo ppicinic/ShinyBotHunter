@@ -1,0 +1,6 @@
+# One quarter of the Spin turn: tap Down, then let the turn finish before the next tap.
+name: SpinDown
+flavor: HGSS
+steps:
+  - T.Down
+  - W.5

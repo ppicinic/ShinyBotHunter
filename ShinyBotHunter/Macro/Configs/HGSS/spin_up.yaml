@@ -1,0 +1,6 @@
+# One quarter of the Spin turn: tap Up, then let the turn finish before the next tap.
+name: SpinUp
+flavor: HGSS
+steps:
+  - T.Up
+  - W.5

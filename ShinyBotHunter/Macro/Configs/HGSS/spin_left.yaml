@@ -1,0 +1,6 @@
+# One quarter of the Spin turn: tap Left, then let the turn finish before the next tap.
+name: SpinLeft
+flavor: HGSS
+steps:
+  - T.Left
+  - W.5
