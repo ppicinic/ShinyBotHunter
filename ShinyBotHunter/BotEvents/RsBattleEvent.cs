@@ -120,8 +120,7 @@ namespace ShinyBotHunter.BotEvents
                     if (s.Screen == GameScreen.BattleMessage)
                     {
                         int? window = s.TextPrinter;
-                        await PressAsync(bot, Macro("BattleAdvance"), ct);
-                        presses++;
+                        presses += await PressAsync(bot, Macro("BattleAdvance"), ct);
                         GameSnapshot advanced = await GameStateWait.UntilAsync(reader, $"the battle window to leave {window}",
                             x => x.TextPrinter != window, stale, ct);
                         Console.WriteLine($"[RsBattle] BattleAdvance at window {window}, {since.ElapsedMilliseconds} ms: {advanced}");
@@ -170,8 +169,7 @@ namespace ShinyBotHunter.BotEvents
                     if (s.Prompt != RunCursor)
                     {
                         int? from = s.Prompt;
-                        await PressAsync(bot, Macro("BattleCursorToRun"), ct);
-                        presses++;
+                        presses += await PressAsync(bot, Macro("BattleCursorToRun"), ct);
                         // A cursor read a frame early is not a dropped press: the missing press goes only once the cursor has
                         // stayed short of RUN for cursorWait.
                         Stopwatch sinceCursor = Stopwatch.StartNew();
@@ -190,8 +188,7 @@ namespace ShinyBotHunter.BotEvents
                             Console.WriteLine($"[RsBattle] cursor {s.Prompt} after BattleCursorToRun; sending {missing ?? "nothing"}");
                             if (missing is not null)
                             {
-                                await PressAsync(bot, missing, ct);
-                                presses++;
+                                presses += await PressAsync(bot, missing, ct);
                             }
                             s = await GameStateWait.UntilAsync(reader, "the cursor on RUN after the missing press", x => x.Prompt == RunCursor, stale, ct);
                         }
@@ -200,8 +197,7 @@ namespace ShinyBotHunter.BotEvents
                     }
 
                     // The cursor is on the snapshot only at the action menu, so s is the menu with the cursor on RUN.
-                    await PressAsync(bot, Macro("BattleConfirm"), ct);
-                    presses++;
+                    presses += await PressAsync(bot, Macro("BattleConfirm"), ct);
                     runPresses++;
                     GameSnapshot left = await GameStateWait.UntilAsync(reader, "the screen to leave the action menu",
                         x => x.Screen != GameScreen.BattleMenu, stale, ct);
@@ -222,10 +218,12 @@ namespace ShinyBotHunter.BotEvents
 
         private static string Macro(string name) => MacroRegistry.Instance.GetMacro(GameFlavor.RS, name);
 
-        private static async Task PressAsync(IBot bot, string macro, CancellationToken ct)
+        // Sends the macro and waits for it; returns its presses, one a step (BattleCursorToRun is Right and Down).
+        private static async Task<int> PressAsync(IBot bot, string macro, CancellationToken ct)
         {
             bot.RunMacroString(macro);
             await bot.WaitForMacroAsync(ct);
+            return macro.Split(';').Length;
         }
 
         // Logs the sentence with what was read and parks the bot for the operator.

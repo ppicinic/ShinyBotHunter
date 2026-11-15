@@ -170,23 +170,26 @@ namespace ShinyBotHunter.Tests
             return battle;
         }
 
+        // Every stage after a press opens with the snapshot the press was sent at, so only that press's confirm wait gets the
+        // event past it: a missing confirm shows as a doubled press in the exact press list.
+
         // The spike's cycle: "Wild ... appeared!", the menu at FIGHT, the cursor on RUN, "Got away safely!", the free field.
         private static PressedReader Fled() => new(
             [Locked, Turn, Message()],
-            [Turn, Menu(0)],
-            [Menu(3)],
-            [Turn, Message(BattleOutcome.Fled)],
-            [Turn, Locked, Free]);
+            [Message(), Turn, Menu(0)],
+            [Menu(0), Menu(3)],
+            [Menu(3), Turn, Message(BattleOutcome.Fled)],
+            [Message(BattleOutcome.Fled), Turn, Locked, Free]);
 
         // One "Can't escape!" before getting away; the menu comes back with the cursor still on RUN.
         private static PressedReader FailedEscape() => new(
             [Locked, Turn, Message()],
-            [Turn, Menu(0)],
-            [Menu(3)],
-            [Turn, Message()],
-            [Turn, Menu(3)],
-            [Turn, Message(BattleOutcome.Fled)],
-            [Turn, Locked, Free]);
+            [Message(), Turn, Menu(0)],
+            [Menu(0), Menu(3)],
+            [Menu(3), Turn, Message()],
+            [Message(), Turn, Menu(3)],
+            [Menu(3), Turn, Message(BattleOutcome.Fled)],
+            [Message(BattleOutcome.Fled), Turn, Locked, Free]);
 
         [Fact]
         public void MacrosAreTheResearchedHolds()
@@ -223,7 +226,8 @@ namespace ShinyBotHunter.Tests
         public async Task ConfirmIsOnlyPressedWithTheCursorAtThree()
         {
             // Start's press callback asserts the cursor at every A at the menu; these are the scripts that press it.
-            PressedReader repair = new([Locked, Turn, Message()], [Turn, Menu(0)], [Menu(1)], [Menu(3)], [Turn, Message(BattleOutcome.Fled)], [Turn, Free]);
+            PressedReader repair = new([Locked, Turn, Message()], [Message(), Turn, Menu(0)], [Menu(0), Menu(1)], [Menu(1), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)], [Message(BattleOutcome.Fled), Turn, Free]);
             foreach (PressedReader reader in new[] { Fled(), FailedEscape(), repair })
             {
                 Battle battle = Start(reader);
@@ -243,11 +247,11 @@ namespace ShinyBotHunter.Tests
         {
             Battle battle = Start(new PressedReader(
                 [Locked, Turn, Message()],
-                [Turn, Menu(0)],
-                [Menu(cursor)],
-                [Menu(3)],
-                [Turn, Message(BattleOutcome.Fled)],
-                [Turn, Free]));
+                [Message(), Turn, Menu(0)],
+                [Menu(0), Menu(cursor)],
+                [Menu(cursor), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Free]));
 
             string? stop = await battle.RunAsync(cursorWait: Short);
 
@@ -261,10 +265,10 @@ namespace ShinyBotHunter.Tests
             // The cursor reads 1 on the first poll after the macro and 3 on the next.
             Battle battle = Start(new PressedReader(
                 [Locked, Turn, Message()],
-                [Turn, Menu(0)],
-                [Menu(1), Menu(3)],
-                [Turn, Message(BattleOutcome.Fled)],
-                [Turn, Free]));
+                [Message(), Turn, Menu(0)],
+                [Menu(0), Menu(1), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Free]));
 
             string? stop = await battle.RunAsync(cursorWait: TimeSpan.FromSeconds(1));
 
@@ -302,9 +306,9 @@ namespace ShinyBotHunter.Tests
         {
             Battle battle = Start(new PressedReader(
                 [Locked, Turn, Message()],
-                [Turn, Menu(0)],
-                [Menu(3)],
-                [Turn, Message(BattleOutcome.Lost)]));
+                [Message(), Turn, Menu(0)],
+                [Menu(0), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Lost)]));
 
             string? stop = await battle.RunAsync();
 
@@ -320,10 +324,10 @@ namespace ShinyBotHunter.Tests
             GameSnapshot lostTurn = Turn with { Outcome = BattleOutcome.Lost };
             Battle battle = Start(new PressedReader(
                 [Locked, lostTurn, Message(BattleOutcome.Lost)],
-                [lostTurn, Menu(0)],
-                [Menu(3)],
-                [Turn, Message(BattleOutcome.Fled)],
-                [Turn, Free]));
+                [Message(BattleOutcome.Lost), lostTurn, Menu(0)],
+                [Menu(0), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Free]));
 
             string? stop = await battle.RunAsync();
 
@@ -334,11 +338,11 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task TwelveTries_Stops()
         {
-            List<GameSnapshot[]> stages = [[Locked, Turn, Message()], [Turn, Menu(0)], [Menu(3)]];
+            List<GameSnapshot[]> stages = [[Locked, Turn, Message()], [Message(), Turn, Menu(0)], [Menu(0), Menu(3)]];
             for (int i = 0; i < RsBattleEvent.MaxRunPresses; i++)
             {
-                stages.Add([Turn, Message()]);
-                stages.Add([Turn, Menu(3)]);
+                stages.Add([Menu(3), Turn, Message()]);
+                stages.Add([Message(), Turn, Menu(3)]);
             }
             Battle battle = Start(new PressedReader([.. stages]));
 
@@ -346,13 +350,19 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(RsBattleEvent.Trapped, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
-            Assert.Equal(12, battle.Presses.Count(p => p == "Confirm"));
-            Assert.Equal("Advance", battle.Presses[^1]);
+            // Twelve A on RUN, each after "Can't escape!" was answered; then the thirteenth menu stops.
+            List<string> expected = ["Advance", "ToRun", "Confirm"];
+            for (int i = 1; i < RsBattleEvent.MaxRunPresses; i++)
+            {
+                expected.AddRange(["Advance", "Confirm"]);
+            }
+            expected.Add("Advance");
+            Assert.Equal(expected, battle.Presses);
         }
 
         [Theory]
         [InlineData((ushort)(0x0008 | 0x0004))]
-        [InlineData((ushort)0x0080)]
+        [InlineData((ushort)(0x0080 | 0x0004))]
         public async Task NotAWildBattle_Stops(ushort flags)
         {
             Battle battle = Start(new PressedReader([Locked, Turn]), flags: flags);
@@ -406,7 +416,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task StaleTimeout_NamesTheSnapshot()
         {
-            Battle battle = Start(new PressedReader([Locked, Turn, Message()], [Turn]));
+            Battle battle = Start(new PressedReader([Locked, Turn, Message()], [Message(), Turn]));
 
             string? stop = await battle.RunAsync(stale: Short);
 
@@ -462,6 +472,8 @@ namespace ShinyBotHunter.Tests
             }
 
             Assert.Contains("[RsBattle] battle over: 692 frames from the battle bit", log.ToString());
+            // A, Right, Down, A on RUN, A: BattleCursorToRun is two presses.
+            Assert.Contains("5 presses, 1 on RUN", log.ToString());
         }
 
         [Fact]
