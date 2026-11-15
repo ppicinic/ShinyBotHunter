@@ -83,5 +83,27 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Null(new RsPointerService().BoxLayout);
         }
+
+        [Fact]
+        public void MembersForLaterTasksAreThePretAddresses()
+        {
+            RsPointerService table = new();
+
+            Assert.Equal(0x020239F8u, table.BattleTypeFlags);
+            Assert.Equal(0x030045C0u, table.EnemyParty);
+            Assert.Equal(0x02025732u, table.RunWatchX);
+            Assert.Equal(0x02025734u, table.RunWatchY);
+            Assert.Equal(0x0802C099u, table.HandleInputChooseAction);
+            Assert.Equal(0x0802C68Du, table.HandleInputChooseMove);
+        }
+
+        [Fact]
+        public void HgssRunWatchIsTheTrainerCoordinates()
+        {
+            HgssPointerService table = new();
+
+            Assert.Equal(table.TrainerX, table.RunWatchX);
+            Assert.Equal(table.TrainerY, table.RunWatchY);
+        }
     }
 }

@@ -13,6 +13,12 @@ namespace ShinyBotHunter.Service.Pointers
         // no symbol in pointer-discovery.md; root (revision-dependent); QA: hgss-route33, hgss-route33-train (Run macro)
         public uint TrainerY => 0x21DA6FC;
 
+        // TrainerX, x as 16.16 fixed point, so the M action's upper half is the tile; root (revision-dependent); QA: hgss-route33 (Run macro)
+        public uint RunWatchX => TrainerX;
+
+        // TrainerY, y as 16.16 fixed point, so the M action's upper half is the tile; root (revision-dependent); QA: hgss-route33 (Run macro)
+        public uint RunWatchY => TrainerY;
+
         // no symbol in pointer-discovery.md; offset (revision-independent); QA: hgss-route33, hgss-route33-train (start tile)
         public int MapIdOffset => -0x22DA4;
 

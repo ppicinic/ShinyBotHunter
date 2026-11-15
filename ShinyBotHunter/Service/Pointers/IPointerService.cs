@@ -29,6 +29,12 @@ namespace ShinyBotHunter.Service.Pointers
 
         /// <summary>Which generation's structure the emulator validates party slots against.</summary>
         PokemonScheme PokemonScheme { get; }
+
+        /// <summary>The address the <c>M</c> action reads four bytes at, comparing their upper half with the destination x.</summary>
+        uint RunWatchX { get; }
+
+        /// <summary>The address the <c>M</c> action reads four bytes at, comparing their upper half with the destination y.</summary>
+        uint RunWatchY { get; }
     }
 
     /// <param name="Storage">Offset from the dereferenced anchor to the start of box storage.</param>
