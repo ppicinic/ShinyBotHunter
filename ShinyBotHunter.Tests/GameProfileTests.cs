@@ -57,7 +57,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameFlavor.RS, profile.Flavor);
             Assert.Equal(new GameCapabilities(
                 HasOverworldNavigation: false,
-                HasWildEncounters: false,
+                HasWildEncounters: true,
                 HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: false,
@@ -74,7 +74,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
             Assert.NotNull(profile.CreateBattleEvent);
-            Assert.Null(profile.SaveGame);
+            Assert.NotNull(profile.SaveGame);
         }
 
         [Fact]

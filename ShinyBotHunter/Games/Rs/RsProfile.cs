@@ -18,7 +18,7 @@ namespace ShinyBotHunter.Games.Rs
             GameFlavor.RS,
             new GameCapabilities(
                 HasOverworldNavigation: false,
-                HasWildEncounters: false,
+                HasWildEncounters: true,
                 HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: false,
@@ -31,6 +31,13 @@ namespace ShinyBotHunter.Games.Rs
             battleParser: null,
             createOverworldReader: (memory, table) => new RsOverworldReader(memory, (RsPointerService)table),
             createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table),
-            createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>()));
+            createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>()),
+            saveGame: (provider, bot) =>
+            {
+                // The starter hunt's save step and its values (FR-13); loaded per save, as the hunt loads it per start.
+                StarterHuntConfig config = StarterHuntConfig.Load();
+                return provider.GetRequiredService<RsStartMenuService>().SaveViaStartMenuAsync(bot, Table,
+                    config.SaveMenuActionId, config.SaveConfirmMacro, config.BattleWaitTimeoutMs, config.BattlePollIntervalMs, CancellationToken.None);
+            });
     }
 }
