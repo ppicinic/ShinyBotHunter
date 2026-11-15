@@ -303,15 +303,26 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException(PickupNeedsTrainMode);
             }
+            PokemonData? lead = null;
             if (!caps.HasTraining)
             {
-                await WildRefusalAsync(bot);
+                lead = await WildRefusalAsync(bot);
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
             var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
             slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            if (lead is not null)
+            {
+                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
+                foreach (string line in lines)
+                {
+                    Console.WriteLine($"[BotService] {line}");
+                }
+                slots.Entries[pos].GameState!.SpeedLines = lines;
+                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+            }
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
             runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
@@ -731,6 +742,10 @@ namespace ShinyBotHunter.Service
         internal const string StandInTheField = "Close any menu or message and stand in the field.";
         internal const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
         internal const string LeadFainted = "The first Pokémon in the party has fainted.";
+        internal const string ShinyLeadLine = "A shiny first Pokémon adds about 1.2 s to every battle.";
+
+        // FR-15's lines at Run. The slow-transition line cannot hold yet: no wild level has been seen in this run.
+        internal static IReadOnlyList<string> SpeedLinesAtRun(PokemonData lead) => lead.IsShiny ? [ShinyLeadLine] : [];
 
         // The live game's refusals for a wild hunt on a profile without training (FR-12), and the lead they read. Each
         // check is a fresh read, and the first failure throws its sentence.
@@ -950,7 +965,7 @@ namespace ShinyBotHunter.Service
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
-                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS));
+                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
             }).ToDictionary();
         }
 

@@ -11,7 +11,7 @@ namespace ShinyBotHunter.Service
         NoTarget
     }
 
-    public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor);
+    public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor, IReadOnlyList<string>? SpeedLines);
 
     /// <summary>One occupied party slot, as offered to the dashboard for picking a switch-train battler.</summary>
     public record PartySlotInfo(int Slot, string Name, int Level, int Hp, int MaxHp, bool IsShiny);

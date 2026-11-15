@@ -29,6 +29,7 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadRetryDelayMs = 1000;
 
         internal const string LeaveAFreePartySlot = "Leave a free party slot so a caught Pokémon stays in the party.";
+        internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
 
         private EncounterParams encounterParams;
         private IServiceProvider provider;
@@ -300,6 +301,13 @@ namespace ShinyBotHunter.BotEvents
                 GameFileName = state.Bot.GameFileName,
             };
             await addEncounter(persistPokemon);
+            // The first wild Pokémon at or above the lead's level is the first time the lead is not above every wild level seen.
+            if (state.SpeedLines is { } lines && pokemon.Level >= state.LeadLevel && !lines.Contains(SlowTransitionLine))
+            {
+                state.SpeedLines = [.. lines, SlowTransitionLine];
+                Console.WriteLine($"[Orchestrator] {SlowTransitionLine}");
+                await RefreshDashboardAsync(state);
+            }
             if (await state.Target.IsTargetAsync(pokemon))
             {
                 state.TargetPokemon = persistPokemon;

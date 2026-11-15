@@ -205,5 +205,18 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal("A x or y range must be supplied for Run Encounter Event", await RefusalAsync(service, Run()));
         }
+
+        [Fact]
+        public void SpeedLinesAtRun_ShinyLeadGivesTheShinyLine()
+        {
+            // PID, TID and SID all zero: shiny.
+            Assert.Equal(["A shiny first Pokémon adds about 1.2 s to every battle."], BotService.SpeedLinesAtRun(new PokemonData()));
+        }
+
+        [Fact]
+        public void SpeedLinesAtRun_PlainLeadGivesNone()
+        {
+            Assert.Empty(BotService.SpeedLinesAtRun(new PokemonData { PID = 0x12345678 }));
+        }
     }
 }

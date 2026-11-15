@@ -204,6 +204,38 @@ namespace ShinyBotHunter.Tests
 
         private static PokemonState Party(int size) => new() { PartySize = size };
 
+        private const string SlowTransition = "A first Pokémon at or below the wild level gets the long battle transition.";
+
+        private static Task LogWildAsync(GameState state, byte level) => OrchestratorEvent.LogEncounterAndAskTargetAsync(state,
+            new PokemonData { Level = level, PID = 0x12345678 }, _ => Task.CompletedTask, _ => Task.CompletedTask);
+
+        [Fact]
+        public async Task LevelLine_AddedOnceWhenAWildIsAtOrAboveTheLead()
+        {
+            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.PokemonDataPending);
+            state.SpeedLines = [];
+            state.LeadLevel = 7;
+
+            await LogWildAsync(state, 3);
+            Assert.Empty(state.SpeedLines);
+            await LogWildAsync(state, 7);
+            Assert.Equal([SlowTransition], state.SpeedLines);
+            await LogWildAsync(state, 8);
+            Assert.Equal([SlowTransition], state.SpeedLines);
+        }
+
+        [Fact]
+        public async Task LevelLine_NotAddedWithoutSpeedLines()
+        {
+            FakeBot bot = new(Task.CompletedTask);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.PokemonDataPending);
+
+            await LogWildAsync(state, 50);
+
+            Assert.Null(state.SpeedLines);
+        }
+
         [Fact]
         public async Task FullPartyWithoutBoxReads_StopsComplete()
         {
