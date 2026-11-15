@@ -59,11 +59,15 @@ namespace ShinyBotHunter.BotEvents
             string macro = GetSpinMacro(facing);
             Console.WriteLine($"[Spin] facing={facing} macro={macro}");
             bot.RunRepeatMacro(macro);
+            Stopwatch sinceMacro = Stopwatch.StartNew();
 
             bool battle = true;
+            TimeSpan toBattle = TimeSpan.Zero;
+            long seekMs = 0;
             try
             {
-                await SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                toBattle = await SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)
             {
@@ -81,6 +85,7 @@ namespace ShinyBotHunter.BotEvents
                 return false;
             }
 
+            Console.WriteLine($"[Spin] seek: {seekMs} ms from the macro to the field leaving free, {(long)toBattle.TotalMilliseconds} ms to the battle screen");
             Console.WriteLine($"[Spin] Found battle after {sinceReady.ElapsedMilliseconds} ms");
             // The orchestrator expects the encounter event to advance the state itself, the same
             // way RunEncounterEvent does. Returning the flag alone left Encountering on top of
@@ -95,10 +100,10 @@ namespace ShinyBotHunter.BotEvents
         // an RS field snapshot is the screen alone, so spinning in the free field looks unchanged, and an HGSS lock whose
         // task fields change would keep restarting a stale clock. Seeking in the free field stays unbounded; any other
         // non-battle screen (a field task, a load, an app) has 15 s to become a battle (FR-9, G7).
-        internal static Task<GameSnapshot> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, CancellationToken ct)
+        internal static async Task<TimeSpan> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, CancellationToken ct)
         {
             Stopwatch? sinceLeftFree = null;
-            return GameStateWait.UntilAsync(game, "a battle", s =>
+            await GameStateWait.UntilAsync(game, "a battle", s =>
             {
                 if (s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp))
                 {
@@ -116,6 +121,8 @@ namespace ShinyBotHunter.BotEvents
                 }
                 return false;
             }, stale: null, ct);
+            // The time since the last poll that saw the field leave free; zero when no poll saw it before the battle screen.
+            return sinceLeftFree?.Elapsed ?? TimeSpan.Zero;
         }
 
         private string GetSpinMacro(Direction facing)

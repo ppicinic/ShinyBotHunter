@@ -168,6 +168,30 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["RP:" + RsUpSpin, "clear"], bot.Macros);
         }
 
+        [Fact]
+        public async Task SpinLogsTheSeekInTwoParts()
+        {
+            FakeBot bot = RsBot(14, 4, 0x22);
+            bot.State = new ScriptedReader(Free, Free, At(GameScreen.FieldTask), Battle);
+            GameState state = Encountering(14, 4);
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await new SpinEncounterEvent(bot).ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            string text = log.ToString();
+            Assert.Matches(@"\[Spin\] seek: (\d+) ms from the macro to the field leaving free, (\d+) ms to the battle screen", text);
+            Assert.Contains("[Spin] facing=", text);
+            Assert.Contains("[Spin] Found battle after ", text);
+        }
+
         // Three locks add up to more than the bound, but none reaches it alone: each FieldFree resets the clock, and the
         // macro is neither cleared nor sent again.
         [Fact]
