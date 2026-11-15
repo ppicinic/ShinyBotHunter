@@ -73,7 +73,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(profile.Maps);
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
-            Assert.Null(profile.CreateBattleEvent);
+            Assert.NotNull(profile.CreateBattleEvent);
             Assert.Null(profile.SaveGame);
         }
 

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
@@ -460,6 +462,18 @@ namespace ShinyBotHunter.Tests
             }
 
             Assert.Contains("[RsBattle] battle over: 692 frames from the battle bit", log.ToString());
+        }
+
+        [Fact]
+        public void RsProfileBattleEventIsRsBattleEvent()
+        {
+            // The event's constructor only stores what it is given, so the services it never reaches here are null.
+            var provider = new ServiceCollection()
+                .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
+                .AddSingleton(new ShinyAlertService(null!, Options.Create(new ApplicationSettings())))
+                .BuildServiceProvider();
+
+            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
         }
     }
 }
