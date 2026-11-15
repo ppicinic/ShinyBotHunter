@@ -35,7 +35,7 @@ A fifth tab, **Dev Mode**, appears only when macro recording is switched on in t
 
 You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name. When nothing is running, **Active Emulators** reads "No active emulators."
 
-**Launch Bot + Continue** works the same way. After the emulator opens, it waits about four seconds, then presses Continue on the game's menu for you, so the game loads your save. On HeartGold and SoulSilver its entry under **Active Emulators** only appears once the game has loaded and you are standing in the field, so nothing reads the game before then.
+**Launch Bot + Continue** works the same way. After the emulator opens, it waits about four seconds, then presses Continue on the game's menu for you, so the game loads your save. Its entry under **Active Emulators** only appears once the game has loaded and you are standing in the field, so nothing reads the game before then.
 
 **Start** stays greyed out until every field the box needs is filled in.
 
@@ -92,6 +92,8 @@ You see a green message such as `Started "Wild Encounter" on bot #1`, or a red m
 
 An emulator offers only the actions its game supports, and only while it is not busy. While an action is running, the entry shows no actions; you can only cancel it.
 
+While a Ruby or Sapphire wild hunt runs, its entry can show small grey lines under its name, each naming something in your save that slows the hunt. These are the [speed lines](04-hunts/08-rs-wild-encounter.md#the-speed-lines).
+
 ## What each action asks for
 
 The actions, in the order the dashboard lists them. "Start Action" is the list on the Bot Control tab; "Emulator" means under an entry in **Active Emulators**.
@@ -102,8 +104,8 @@ The actions, in the order the dashboard lists them. "Start Action" is the list o
 | Launch Bot + Continue | Start Action | **Game**; optional **Sound On** | [Launch an emulator](#launch-an-emulator) |
 | Shiny Starter Hunt | Start Action | **Game** (HeartGold / SoulSilver or Ruby / Sapphire). For Ruby / Sapphire only: **Milestone**, **Emulators**, and one or more **Starter** entries, each with **Game**, **Starter**, optional **RecordingName** and optional **RequireFemale** | [HGSS starter](04-hunts/02-hgss-starter.md), [RS starter](04-hunts/03-rs-starter.md) |
 | Wishmaker Jirachi Hunt | Start Action | **Game**, **Milestone** | [Wishmaker Jirachi](04-hunts/05-wishmaker-jirachi.md) |
-| Wild Encounter | Emulator | **Milestone**; **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
-| Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
+| Wild Encounter | Emulator | **Milestone**; **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it. For Ruby and Sapphire, Headbutt, NoTarget, Standard and Switch are greyed out with the reason in brackets, so Train Type stays None | [Wild and chained encounters](04-hunts/01-wild-encounter.md), [RS wild encounters](04-hunts/08-rs-wild-encounter.md) |
+| Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works. HeartGold and SoulSilver only | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
 | HGSS Togepi Egg | Emulator | **Milestone** | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
 | HGSS Primo Egg | Emulator | **Milestone** | [Primo egg hunt](04-hunts/06-primo-egg.md) |
 | HGSS Static Encounter | Emulator | **Milestone**, **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
@@ -187,7 +189,7 @@ Some hunts stop and wait for you, for example after finding a shiny. The entry u
 
 1. Click **Run** beside **Resume**.
 
-The hunt carries on. When and why a hunt waits is on its page: [Ruby and Sapphire starter hunt](04-hunts/03-rs-starter.md), [Wild and chained encounters](04-hunts/01-wild-encounter.md).
+The hunt carries on. When and why a hunt waits is on its page: [Ruby and Sapphire starter hunt](04-hunts/03-rs-starter.md), [Wild and chained encounters](04-hunts/01-wild-encounter.md), [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md).
 
 ## Stop an action or close an emulator
 
