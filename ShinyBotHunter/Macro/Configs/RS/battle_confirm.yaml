@@ -1,0 +1,7 @@
+# A on RUN. Sent only at the action menu with the cursor (0x02024E60) at 3, and confirmed by the player's controller
+# function (0x03004330) leaving HandleInputChooseAction, that is the screen leaving the action menu. A 2-frame hold.
+# docs/research/rs-wild-encounter.md, "Presses".
+name: BattleConfirm
+flavor: RS
+steps:
+  - H.A.2
