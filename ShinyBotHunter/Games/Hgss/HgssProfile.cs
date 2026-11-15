@@ -26,6 +26,7 @@ namespace ShinyBotHunter.Games.Hgss
             new GameCapabilities(
                 HasOverworldNavigation: true,
                 HasWildEncounters: true,
+                HasTraining: true,
                 HasEggs: true,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,

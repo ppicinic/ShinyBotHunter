@@ -61,7 +61,7 @@ namespace ShinyBotHunter.Games
                 (s, args, pos) => s.StartWildEncounter(args, pos)),
             new("Chained Encounter",
                 new EventArgumentOptions() { Name = "Chained Encounter", LegParameters = EncounterParameters("Leg") },
-                (nameof(GameCapabilities.HasWildEncounters), c => c.HasWildEncounters), OwnsEmulators: false,
+                (nameof(GameCapabilities.HasOverworldNavigation), c => c.HasOverworldNavigation), OwnsEmulators: false,
                 (s, args, pos) => s.StartChainedEncounter(args, pos)),
             // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
             // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.

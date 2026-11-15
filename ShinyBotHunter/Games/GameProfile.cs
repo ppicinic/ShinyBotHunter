@@ -68,17 +68,17 @@ namespace ShinyBotHunter.Games
             {
                 throw new ArgumentException($"{flavor} declares HasOverworldNavigation but has no pathfinding.");
             }
-            if (capabilities.HasWildEncounters && battleParser is null)
-            {
-                throw new ArgumentException($"{flavor} declares HasWildEncounters but has no battle parser.");
-            }
             if (capabilities.HasWildEncounters && createStateReader is null)
             {
                 throw new ArgumentException($"{flavor} declares HasWildEncounters but has no state reader.");
             }
-            if (capabilities.HasWildEncounters && !capabilities.HasOverworldNavigation)
+            if (capabilities.HasTraining && battleParser is null)
             {
-                throw new ArgumentException($"{flavor} declares HasWildEncounters but not HasOverworldNavigation.");
+                throw new ArgumentException($"{flavor} declares HasTraining but has no battle parser.");
+            }
+            if (capabilities.HasTraining && !capabilities.HasOverworldNavigation)
+            {
+                throw new ArgumentException($"{flavor} declares HasTraining but not HasOverworldNavigation.");
             }
             if (capabilities.CanReadBoxes)
             {

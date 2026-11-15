@@ -18,6 +18,7 @@ namespace ShinyBotHunter.Games.Rs
             new GameCapabilities(
                 HasOverworldNavigation: false,
                 HasWildEncounters: false,
+                HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: false,
                 HasSoftResetStarterHunt: true,

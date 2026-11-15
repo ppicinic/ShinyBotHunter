@@ -28,6 +28,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new GameCapabilities(
                 HasOverworldNavigation: true,
                 HasWildEncounters: true,
+                HasTraining: true,
                 HasEggs: true,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
@@ -51,6 +52,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new GameCapabilities(
                 HasOverworldNavigation: false,
                 HasWildEncounters: false,
+                HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: false,
                 HasSoftResetStarterHunt: true,
@@ -90,13 +92,14 @@ namespace ShinyBotHunter.Tests
             GameCapabilities capabilities = new(
                 HasOverworldNavigation: hasOverworldNavigation,
                 HasWildEncounters: hasWildEncounters,
+                HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: canReadBoxes,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false);
 
-            // No battle parser, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
+            // No state reader, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
             Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.RS,
                 capabilities,
@@ -118,6 +121,7 @@ namespace ShinyBotHunter.Tests
                 new GameCapabilities(
                     HasOverworldNavigation: true,
                     HasWildEncounters: true,
+                    HasTraining: false,
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
@@ -136,13 +140,14 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void WildEncountersWithoutOverworldNavigationThrows()
+        public void TrainingWithoutOverworldNavigationThrows()
         {
             var error = Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.HGSS,
                 new GameCapabilities(
                     HasOverworldNavigation: false,
-                    HasWildEncounters: true,
+                    HasWildEncounters: false,
+                    HasTraining: true,
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
@@ -151,10 +156,39 @@ namespace ShinyBotHunter.Tests
                 [0],
                 _ => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),
-                new HgssBattlePokemonParser(),
-                createStateReader: (memory, t) => new HgssFieldSystemStateReader(memory, (HgssPointerService)t)));
+                new HgssBattlePokemonParser()));
 
-            Assert.Contains("not HasOverworldNavigation", error.Message);
+            Assert.Contains("declares HasTraining but not HasOverworldNavigation", error.Message);
+        }
+
+        [Fact]
+        public void TrainingWithoutBattleParserThrows()
+        {
+            HgssPointerService table = new();
+            MapService maps = new(new Dictionary<int, Map>());
+            GraphService graph = new();
+
+            var error = Assert.Throws<ArgumentException>(() => new GameProfile(
+                GameFlavor.HGSS,
+                new GameCapabilities(
+                    HasOverworldNavigation: true,
+                    HasWildEncounters: false,
+                    HasTraining: true,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
+                [0],
+                _ => table,
+                new HgssPokemonParser(Metadata()),
+                battleParser: null,
+                createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
+                maps,
+                graph,
+                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset)));
+
+            Assert.Contains("declares HasTraining but has no battle parser", error.Message);
         }
     }
 }

@@ -113,6 +113,13 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void ChainedEncounterNeedsOverworldNavigation()
+        {
+            Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), EventRegistry.Get("Chained Encounter").Requires?.Capability);
+            Assert.Equal(nameof(GameCapabilities.HasWildEncounters), EventRegistry.Get("Wild Encounter").Requires?.Capability);
+        }
+
+        [Fact]
         public async Task UnsupportedActionIs400()
         {
             var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
