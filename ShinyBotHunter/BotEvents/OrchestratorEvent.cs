@@ -272,6 +272,20 @@ namespace ShinyBotHunter.BotEvents
             await RefreshDashboardAsync(state);
         }
 
+        // A profile that cannot read boxes finds a catch only in the party (FR-12), so with six it stops before the next encounter.
+        internal static async Task<bool> StopForFullPartyAsync(GameState state, PokemonState party)
+        {
+            if (state.Bot.Profile.Capabilities.CanReadBoxes || party.PartySize != 6)
+            {
+                return false;
+            }
+            Console.WriteLine($"[Orchestrator] {LeaveAFreePartySlot}");
+            state.BattleMode = BattleMode.Flee;
+            state.SwapState(EventState.Complete);
+            await RefreshDashboardAsync(state);
+            return true;
+        }
+
         /// <summary>Logs the wild Pokemon and asks the target. A target is kept for the catch check, alerted, and parks the
         /// stack in Waiting; on false the caller moves on.</summary>
         internal static async Task<bool> LogEncounterAndAskTargetAsync(GameState state, PokemonData pokemon,
@@ -325,6 +339,10 @@ namespace ShinyBotHunter.BotEvents
             if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
                 await FinishAsync(state);
+                return;
+            }
+            if (await StopForFullPartyAsync(state, pokeState))
+            {
                 return;
             }
 

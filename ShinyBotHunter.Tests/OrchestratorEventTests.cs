@@ -201,5 +201,44 @@ namespace ShinyBotHunter.Tests
             Assert.True(state.CompleteAfterReturn);
             Assert.Equal(BattleMode.Flee, state.BattleMode);
         }
+
+        private static PokemonState Party(int size) => new() { PartySize = size };
+
+        [Fact]
+        public async Task FullPartyWithoutBoxReads_StopsComplete()
+        {
+            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(6));
+
+            Assert.True(stopped);
+            Assert.Equal([EventState.Complete], state.State);
+            Assert.Equal(BattleMode.Flee, state.BattleMode);
+        }
+
+        [Fact]
+        public async Task FivePartyWithoutBoxReads_Continues()
+        {
+            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(5));
+
+            Assert.False(stopped);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
+        [Fact]
+        public async Task FullPartyWithBoxReads_Continues()
+        {
+            FakeBot bot = new(Task.CompletedTask);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(6));
+
+            Assert.False(stopped);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
     }
 }
