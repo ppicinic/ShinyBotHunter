@@ -89,7 +89,7 @@ namespace ShinyBotHunter.Tests
         {
             GameProfile profile = new(
                 GameFlavor.HGSS,
-                new GameCapabilities(false, false, false, true, false, false, false),
+                new GameCapabilities(false, false, false, false, true, false, false, false),
                 [0],
                 _ => Table,
                 new BlockParser(onParse ?? (() => { })),

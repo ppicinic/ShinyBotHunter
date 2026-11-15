@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
@@ -11,6 +14,7 @@ using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
+    [Collection("macro-registry")]
     public class GameProfileTests
     {
         // The DAO is only read by InitAsync, so a null one is never touched by these tests.
@@ -28,6 +32,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new GameCapabilities(
                 HasOverworldNavigation: true,
                 HasWildEncounters: true,
+                HasTraining: true,
                 HasEggs: true,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
@@ -40,6 +45,8 @@ namespace ShinyBotHunter.Tests
             Assert.Same(maps, profile.Maps);
             Assert.Same(graph, profile.Graph);
             Assert.NotNull(profile.Pathfinding);
+            Assert.NotNull(profile.CreateBattleEvent);
+            Assert.NotNull(profile.SaveGame);
         }
 
         [Fact]
@@ -51,6 +58,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new GameCapabilities(
                 HasOverworldNavigation: false,
                 HasWildEncounters: false,
+                HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: false,
                 HasSoftResetStarterHunt: true,
@@ -65,6 +73,8 @@ namespace ShinyBotHunter.Tests
             Assert.Null(profile.Maps);
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
+            Assert.Null(profile.CreateBattleEvent);
+            Assert.Null(profile.SaveGame);
         }
 
         [Fact]
@@ -90,13 +100,14 @@ namespace ShinyBotHunter.Tests
             GameCapabilities capabilities = new(
                 HasOverworldNavigation: hasOverworldNavigation,
                 HasWildEncounters: hasWildEncounters,
+                HasTraining: false,
                 HasEggs: false,
                 CanReadBoxes: canReadBoxes,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false);
 
-            // No battle parser, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
+            // No state reader, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
             Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.RS,
                 capabilities,
@@ -118,6 +129,7 @@ namespace ShinyBotHunter.Tests
                 new GameCapabilities(
                     HasOverworldNavigation: true,
                     HasWildEncounters: true,
+                    HasTraining: false,
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
@@ -136,13 +148,14 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void WildEncountersWithoutOverworldNavigationThrows()
+        public void TrainingWithoutOverworldNavigationThrows()
         {
             var error = Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.HGSS,
                 new GameCapabilities(
                     HasOverworldNavigation: false,
-                    HasWildEncounters: true,
+                    HasWildEncounters: false,
+                    HasTraining: true,
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
@@ -151,10 +164,104 @@ namespace ShinyBotHunter.Tests
                 [0],
                 _ => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),
-                new HgssBattlePokemonParser(),
-                createStateReader: (memory, t) => new HgssFieldSystemStateReader(memory, (HgssPointerService)t)));
+                new HgssBattlePokemonParser()));
 
-            Assert.Contains("not HasOverworldNavigation", error.Message);
+            Assert.Contains("declares HasTraining but not HasOverworldNavigation", error.Message);
+        }
+
+        [Fact]
+        public void TrainingWithoutBattleParserThrows()
+        {
+            HgssPointerService table = new();
+            MapService maps = new(new Dictionary<int, Map>());
+            GraphService graph = new();
+
+            var error = Assert.Throws<ArgumentException>(() => new GameProfile(
+                GameFlavor.HGSS,
+                new GameCapabilities(
+                    HasOverworldNavigation: true,
+                    HasWildEncounters: false,
+                    HasTraining: true,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
+                [0],
+                _ => table,
+                new HgssPokemonParser(Metadata()),
+                battleParser: null,
+                createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
+                maps,
+                graph,
+                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset)));
+
+            Assert.Contains("declares HasTraining but has no battle parser", error.Message);
+        }
+
+        // Wild encounters with every part they need, and no navigation or battle parser.
+        private static GameProfile RsShapedWildProfile(bool overworldReader = true, bool battleEvent = true, bool save = true) => new(
+            GameFlavor.RS,
+            new GameCapabilities(
+                HasOverworldNavigation: false,
+                HasWildEncounters: true,
+                HasTraining: false,
+                HasEggs: false,
+                CanReadBoxes: false,
+                HasSoftResetStarterHunt: false,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: false),
+            [1],
+            _ => new RsPointerService(),
+            new Gen3PokemonParser(Metadata()),
+            battleParser: null,
+            createOverworldReader: overworldReader ? (memory, t) => new RsOverworldReader(memory, (RsPointerService)t) : null,
+            createStateReader: (memory, t) => new RsStateReader(memory, (RsPointerService)t),
+            createBattleEvent: battleEvent ? _ => throw new NotImplementedException() : null,
+            saveGame: save ? (_, _) => Task.CompletedTask : null);
+
+        [Fact]
+        public void WildEncountersWithoutNavigationOrBattleParserIsAccepted()
+        {
+            GameProfile profile = RsShapedWildProfile();
+
+            Assert.True(profile.Capabilities.HasWildEncounters);
+            Assert.Null(profile.BattleParser);
+            Assert.Null(profile.Pathfinding);
+        }
+
+        [Theory]
+        [InlineData(false, true, true, "no overworld reader")]
+        [InlineData(true, false, true, "no battle event")]
+        [InlineData(true, true, false, "no save")]
+        public void WildEncountersWithoutItsPartThrows(bool overworldReader, bool battleEvent, bool save, string missing)
+        {
+            var error = Assert.Throws<ArgumentException>(() => RsShapedWildProfile(overworldReader, battleEvent, save));
+
+            Assert.Contains($"declares HasWildEncounters but has {missing}", error.Message);
+        }
+
+        [Fact]
+        public void HgssBattleEventIsBattleOrchestratorEvent()
+        {
+            // The battle event's constructor only stores what it is given, so the services it never reaches here are null.
+            BattleOrchestratorEvent battle = new(null!, Options.Create(new ApplicationSettings()), null!, new PokemonStateReader(), Metadata(), null!, null!, null!);
+            var provider = new ServiceCollection().AddSingleton(battle).BuildServiceProvider();
+            GameProfile profile = HgssProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()), new GraphService());
+
+            Assert.Same(battle, profile.CreateBattleEvent!(provider));
+        }
+
+        [Fact]
+        public async Task HgssSaveGamePressesTheSaveGameMacro()
+        {
+            Directory.SetCurrentDirectory(RepoPaths.AppProject);
+            List<string> pressed = [];
+            FakeBot bot = new(Task.CompletedTask) { Pressed = pressed.Add };
+
+            await bot.Profile.SaveGame!(new ServiceCollection().BuildServiceProvider(), bot);
+
+            Assert.Equal([MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame")], pressed);
         }
     }
 }
