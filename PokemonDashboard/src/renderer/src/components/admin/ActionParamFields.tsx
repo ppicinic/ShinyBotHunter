@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
 import { romLabel } from '../../types/api'
-import { encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
+import { choiceOptions, encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
@@ -77,8 +77,8 @@ export function ActionParamFields({
               className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
             >
               <option value="">Select target type...</option>
-              {TARGET_TYPE_OPTIONS.map((t) => (
-                <option key={t} value={t}>{t}</option>
+              {choiceOptions(schema, 'TargetType', TARGET_TYPE_OPTIONS).map((o) => (
+                <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
               ))}
             </select>
           ) : param === 'EncounterType' ? (
@@ -133,8 +133,8 @@ export function ActionParamFields({
                   onChange={(e) => onChange(param, e.target.value)}
                   className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
                 >
-                  {TRAIN_TYPE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
+                  {choiceOptions(schema, 'TrainType', TRAIN_TYPE_OPTIONS).map((o) => (
+                    <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
                   ))}
                 </select>
               ) : (
