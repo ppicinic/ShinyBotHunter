@@ -106,7 +106,7 @@ namespace ShinyBotHunter.Service
             // StepsTo carries the validation and its diagnostic message; the movement itself is done
             // one verified step at a time below.
             RsStartMenuService.StepsTo(menu, saveMenuActionId);
-            Console.WriteLine($"[StarterHunt] Start menu: {menu.Describe()}; SAVE is at position {target}.");
+            Console.WriteLine($"[StartMenu] Start menu: {menu.Describe()}; SAVE is at position {target}.");
 
             await MoveCursorToAsync(bot, pointers, target, pollIntervalMs, cancellationToken);
 

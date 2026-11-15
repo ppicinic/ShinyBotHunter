@@ -6,8 +6,10 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
 using static ShinyBotHunter.Service.PhaseInfoService;
@@ -286,15 +288,41 @@ namespace ShinyBotHunter.Service
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
+            IBot bot = slots.Entries[pos].Bot!;
+            GameCapabilities caps = bot.Profile.Capabilities;
+            // A greyed choice is refused with its reason before anything is read.
+            var ruledOut = DisabledByCapabilities(caps);
+            foreach (var (param, value) in new[] { ("EncounterType", args.EncounterType?.ToString()), ("TargetType", args.TargetType), ("TrainType", args.TrainType?.ToString()), ("Pickup", args.Pickup == true ? "true" : null) })
+            {
+                if (value is not null && ruledOut.TryGetValue(param, out var reasons) && reasons.TryGetValue(value, out var reason))
+                {
+                    throw new ArgumentException(reason);
+                }
+            }
             if (args.Pickup == true && (args.TrainType ?? TrainType.None) == TrainType.None)
             {
                 throw new ArgumentException(PickupNeedsTrainMode);
+            }
+            PokemonData? lead = null;
+            if (!caps.HasTraining)
+            {
+                lead = await WildRefusalAsync(bot);
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
 
             var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
             slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            if (lead is not null)
+            {
+                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
+                foreach (string line in lines)
+                {
+                    Console.WriteLine($"[BotService] {line}");
+                }
+                slots.Entries[pos].GameState!.SpeedLines = lines;
+                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+            }
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
             runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
@@ -634,6 +662,27 @@ namespace ShinyBotHunter.Service
         private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
         private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
         private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
+        internal const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
+        internal const string NoTargetNeedsTraining = "No Target needs a train mode, which Ruby and Sapphire do not have yet.";
+        internal const string NoTraining = "Training is not available on Ruby and Sapphire yet.";
+
+        // The choices a profile's capabilities rule out, with the reason the dashboard shows and Run refuses with.
+        // Empty for HGSS, so its list and its start are unchanged.
+        internal static Dictionary<string, Dictionary<string, string>> DisabledByCapabilities(GameCapabilities c)
+        {
+            var disabled = new Dictionary<string, Dictionary<string, string>>();
+            if (!c.HasOverworldNavigation)
+            {
+                disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = NoHeadbuttTrees };
+            }
+            if (!c.HasTraining)
+            {
+                disabled["TargetType"] = new() { [nameof(TargetType.NoTarget)] = NoTargetNeedsTraining };
+                disabled["TrainType"] = new() { [nameof(TrainType.Standard)] = NoTraining, [nameof(TrainType.Switch)] = NoTraining };
+                disabled["Pickup"] = new() { ["true"] = NoTraining };
+            }
+            return disabled;
+        }
 
         /// <summary>
         /// The live party, or null when it could not be read or is empty. Never faults: a failed
@@ -690,6 +739,48 @@ namespace ShinyBotHunter.Service
             return NoPickupMember;
         }
 
+        internal const string StandInTheField = "Close any menu or message and stand in the field.";
+        internal const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
+        internal const string LeadFainted = "The first Pokémon in the party has fainted.";
+        internal const string ShinyLeadLine = "A shiny first Pokémon adds about 1.2 s to every battle.";
+
+        // FR-15's lines at Run. The slow-transition line cannot hold yet: no wild level has been seen in this run.
+        internal static IReadOnlyList<string> SpeedLinesAtRun(PokemonData lead) => lead.IsShiny ? [ShinyLeadLine] : [];
+
+        // The live game's refusals for a wild hunt on a profile without training (FR-12), and the lead they read. Each
+        // check is a fresh read, and the first failure throws its sentence.
+        private async Task<PokemonData> WildRefusalAsync(IBot bot)
+        {
+            if ((await bot.State.ReadAsync(CancellationToken.None)).Screen != GameScreen.FieldFree)
+            {
+                throw new InvalidOperationException(StandInTheField);
+            }
+            if (bot.Overworld is RsOverworldReader rs && await rs.GetPlayerObjectIdAsync(CancellationToken.None) != 0)
+            {
+                throw new InvalidOperationException(NotTheFirstObject);
+            }
+            // Not ReadPartyAsync, which folds an empty party into an unreadable one; an empty party has its own sentence.
+            PokemonState party;
+            try
+            {
+                party = await provider.GetRequiredService<PokemonStateReader>().GetPartyState(bot);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BotService] Could not read the party for the Run checks: {ex}");
+                throw new InvalidOperationException(PartyUnreadable, ex);
+            }
+            if (party.PartySize == 0 || party.PartyPokemon[0]!.HP == 0)
+            {
+                throw new InvalidOperationException(LeadFainted);
+            }
+            if (!bot.Profile.Capabilities.CanReadBoxes && party.PartySize == 6)
+            {
+                throw new InvalidOperationException(OrchestratorEvent.LeaveAFreePartySlot);
+            }
+            return party.PartyPokemon[0]!;
+        }
+
         /// <summary>
         /// Throws the Headbutt reason, then the Pickup reason, for the checks asked for. A fresh read,
         /// not the cached one, which may predate a party change; no read when neither is asked.
@@ -735,8 +826,8 @@ namespace ShinyBotHunter.Service
                     Console.WriteLine($"[BotService] {StaticEncounterConfig.DefaultPath} could not be read for the action list: {ex}");
                 }
             }
-            // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
-            // can still be closed between the two reads.
+            // Only an idle bot is offered these (Wild Encounter needs HasWildEncounters, Chained Encounter
+            // HasOverworldNavigation), so the entry has a bot. It can still be closed between the two reads.
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
             {
                 return actions;
@@ -772,20 +863,21 @@ namespace ShinyBotHunter.Service
                     slots.Gate.Release();
                 }
             }
-            string? headbutt = HeadbuttRefusal(party);
-            string? pickup = PickupRefusal(party);
-            if (headbutt is null && pickup is null)
+            // A capability reason wins over the party's for the same choice.
+            var disabled = DisabledByCapabilities(entry.Bot!.Profile.Capabilities);
+            if (HeadbuttRefusal(party) is { } headbutt)
+            {
+                disabled.TryAdd("EncounterType", new());
+                disabled["EncounterType"].TryAdd(nameof(EncounterType.Headbutt), headbutt);
+            }
+            if (PickupRefusal(party) is { } pickup)
+            {
+                disabled.TryAdd("Pickup", new());
+                disabled["Pickup"].TryAdd("true", pickup);
+            }
+            if (disabled.Count == 0)
             {
                 return actions;
-            }
-            var disabled = new Dictionary<string, Dictionary<string, string>>();
-            if (headbutt is not null)
-            {
-                disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = headbutt };
-            }
-            if (pickup is not null)
-            {
-                disabled["Pickup"] = new() { ["true"] = pickup };
             }
             // Copies of the two that change, so the registry's own options are never touched.
             return actions.Select(a => a.Name switch
@@ -873,7 +965,7 @@ namespace ShinyBotHunter.Service
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
-                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS));
+                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
             }).ToDictionary();
         }
 

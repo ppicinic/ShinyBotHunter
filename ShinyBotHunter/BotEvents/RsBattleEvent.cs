@@ -16,7 +16,7 @@ namespace ShinyBotHunter.BotEvents
     // by the byte it changes; anything else stops the bot in Waiting for the operator.
     public class RsBattleEvent : AbstractBotEvent<GameState>
     {
-        internal const string NotWild = "Something other than a wild battle started.";
+        internal const string NotWild = SpinEncounterEvent.NotAWildBattle;
         internal const string Fainted = "The first Pokémon fainted.";
         internal const string Trapped = "Could not run from this battle.";
         internal const string Corrupt = "The wild Pokémon's record failed its checksum for 2 s.";

@@ -28,6 +28,9 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
+        internal const string LeaveAFreePartySlot = "Leave a free party slot so a caught Pokémon stays in the party.";
+        internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
+
         private EncounterParams encounterParams;
         private IServiceProvider provider;
         // Made at the first BattleStart from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
@@ -270,6 +273,20 @@ namespace ShinyBotHunter.BotEvents
             await RefreshDashboardAsync(state);
         }
 
+        // A profile that cannot read boxes finds a catch only in the party (FR-12), so with six it stops before the next encounter.
+        internal static async Task<bool> StopForFullPartyAsync(GameState state, PokemonState party)
+        {
+            if (state.Bot.Profile.Capabilities.CanReadBoxes || party.PartySize != 6)
+            {
+                return false;
+            }
+            Console.WriteLine($"[Orchestrator] {LeaveAFreePartySlot}");
+            state.BattleMode = BattleMode.Flee;
+            state.SwapState(EventState.Complete);
+            await RefreshDashboardAsync(state);
+            return true;
+        }
+
         /// <summary>Logs the wild Pokemon and asks the target. A target is kept for the catch check, alerted, and parks the
         /// stack in Waiting; on false the caller moves on.</summary>
         internal static async Task<bool> LogEncounterAndAskTargetAsync(GameState state, PokemonData pokemon,
@@ -284,6 +301,13 @@ namespace ShinyBotHunter.BotEvents
                 GameFileName = state.Bot.GameFileName,
             };
             await addEncounter(persistPokemon);
+            // The first wild Pokémon at or above the lead's level is the first time the lead is not above every wild level seen.
+            if (state.SpeedLines is { } lines && pokemon.Level >= state.LeadLevel && !lines.Contains(SlowTransitionLine))
+            {
+                state.SpeedLines = [.. lines, SlowTransitionLine];
+                Console.WriteLine($"[Orchestrator] {SlowTransitionLine}");
+                await RefreshDashboardAsync(state);
+            }
             if (await state.Target.IsTargetAsync(pokemon))
             {
                 state.TargetPokemon = persistPokemon;
@@ -323,6 +347,10 @@ namespace ShinyBotHunter.BotEvents
             if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
                 await FinishAsync(state);
+                return;
+            }
+            if (await StopForFullPartyAsync(state, pokeState))
+            {
                 return;
             }
 

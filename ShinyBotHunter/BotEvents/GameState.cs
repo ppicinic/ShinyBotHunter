@@ -68,6 +68,11 @@ namespace ShinyBotHunter.BotEvents
         // Set once the run's end condition is met. ReturnToStart reads it to decide whether arriving
         // back at the start tile finishes the event or hands back to the overworld loop.
         public bool CompleteAfterReturn { get; set; } = false;
+        // What slows this hunt's battles (FR-15); null when the profile reports none. Replaced, never mutated: written by the
+        // event's loop, read by GetBotDashboardState on request threads; the reference swap is atomic.
+        public IReadOnlyList<string>? SpeedLines { get; set; }
+        // The lead's level at Run, which the slow-transition line compares each wild level with.
+        public int LeadLevel { get; set; }
 
         public void SwapState(EventState newState)
         {
