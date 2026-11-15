@@ -1,0 +1,8 @@
+# Right then Down at the action menu, which moves the cursor from FIGHT (0) to RUN (3): Right sets bit 0, Down bit 1.
+# Sent only at the action menu with the cursor not 3, and confirmed by the action cursor (0x02024E60) reading 3. Two
+# 2-frame holds. docs/research/rs-wild-encounter.md, "Tuned for speed".
+name: BattleCursorToRun
+flavor: RS
+steps:
+  - H.Right.2
+  - H.Down.2

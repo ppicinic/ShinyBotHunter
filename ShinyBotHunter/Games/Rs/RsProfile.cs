@@ -1,3 +1,4 @@
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -29,6 +30,7 @@ namespace ShinyBotHunter.Games.Rs
             new Gen3PokemonParser(metadata),
             battleParser: null,
             createOverworldReader: (memory, table) => new RsOverworldReader(memory, (RsPointerService)table),
-            createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table));
+            createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table),
+            createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>()));
     }
 }
