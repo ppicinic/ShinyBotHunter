@@ -114,6 +114,9 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: none yet: rs-wild-sapphire
         public uint EnemyParty => 0x030045C0;
 
+        // gMain.vblankCounter1 (u32), frames since boot; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-speed
+        public uint VBlankCounter => 0x03001790;
+
         // gSaveBlock1.pos, s16 x then s16 y; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
         public uint PlayerPosition => 0x02025734;
 
