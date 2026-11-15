@@ -6,8 +6,10 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
 using static ShinyBotHunter.Service.PhaseInfoService;
@@ -286,9 +288,24 @@ namespace ShinyBotHunter.Service
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
+            IBot bot = slots.Entries[pos].Bot!;
+            GameCapabilities caps = bot.Profile.Capabilities;
+            // A greyed choice is refused with its reason before anything is read.
+            var ruledOut = DisabledByCapabilities(caps);
+            foreach (var (param, value) in new[] { ("EncounterType", args.EncounterType?.ToString()), ("TargetType", args.TargetType), ("TrainType", args.TrainType?.ToString()), ("Pickup", args.Pickup == true ? "true" : null) })
+            {
+                if (value is not null && ruledOut.TryGetValue(param, out var reasons) && reasons.TryGetValue(value, out var reason))
+                {
+                    throw new ArgumentException(reason);
+                }
+            }
             if (args.Pickup == true && (args.TrainType ?? TrainType.None) == TrainType.None)
             {
                 throw new ArgumentException(PickupNeedsTrainMode);
+            }
+            if (!caps.HasTraining)
+            {
+                await WildRefusalAsync(bot);
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
@@ -709,6 +726,44 @@ namespace ShinyBotHunter.Service
                 }
             }
             return NoPickupMember;
+        }
+
+        internal const string StandInTheField = "Close any menu or message and stand in the field.";
+        internal const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
+        internal const string LeadFainted = "The first Pokémon in the party has fainted.";
+
+        // The live game's refusals for a wild hunt on a profile without training (FR-12), and the lead they read. Each
+        // check is a fresh read, and the first failure throws its sentence.
+        private async Task<PokemonData> WildRefusalAsync(IBot bot)
+        {
+            if ((await bot.State.ReadAsync(CancellationToken.None)).Screen != GameScreen.FieldFree)
+            {
+                throw new InvalidOperationException(StandInTheField);
+            }
+            if (bot.Overworld is RsOverworldReader rs && await rs.GetPlayerObjectIdAsync(CancellationToken.None) != 0)
+            {
+                throw new InvalidOperationException(NotTheFirstObject);
+            }
+            // Not ReadPartyAsync, which folds an empty party into an unreadable one; an empty party has its own sentence.
+            PokemonState party;
+            try
+            {
+                party = await provider.GetRequiredService<PokemonStateReader>().GetPartyState(bot);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[BotService] Could not read the party for the Run checks: {ex}");
+                throw new InvalidOperationException(PartyUnreadable, ex);
+            }
+            if (party.PartySize == 0 || party.PartyPokemon[0]!.HP == 0)
+            {
+                throw new InvalidOperationException(LeadFainted);
+            }
+            if (!bot.Profile.Capabilities.CanReadBoxes && party.PartySize == 6)
+            {
+                throw new InvalidOperationException(OrchestratorEvent.LeaveAFreePartySlot);
+            }
+            return party.PartyPokemon[0]!;
         }
 
         /// <summary>

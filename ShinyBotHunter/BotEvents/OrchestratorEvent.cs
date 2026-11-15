@@ -28,6 +28,8 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
+        internal const string LeaveAFreePartySlot = "Leave a free party slot so a caught Pokémon stays in the party.";
+
         private EncounterParams encounterParams;
         private IServiceProvider provider;
         // Made at the first BattleStart from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
