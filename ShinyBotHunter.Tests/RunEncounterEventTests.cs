@@ -1,4 +1,4 @@
-using ShinyBotHunter.BotEvents;
+﻿using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
@@ -110,6 +110,39 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["RP:M.Up.18.35497724;M.Down.22.35497724", "clear"], bot.Macros);
             Assert.Equal("M.Up.18.35497724;M.Down.22.35497724", state.EncounterMacros["Run"]);
             Assert.Equal(EventState.BattleStart, state.State.Peek());
+        }
+
+        private static readonly GameSnapshot Lock = new(GameScreen.FieldTask, null, null, null, null);
+
+        // FR-9: a field lock with no battle stops the bot.
+        [Fact]
+        public async Task RunLockWithNoBattleStops()
+        {
+            FakeBot bot = HgssBot(10, 20);
+            bot.State = new ScriptedReader(Free, Lock);
+            GameState state = Encountering(10, 20);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)) { NoBattleWithin = TimeSpan.FromMilliseconds(100) }
+                .ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+            Assert.Equal(["RP:M.Up.18.35497724;M.Down.22.35497724", "clear"], bot.Macros);
+        }
+
+        // Three locks add up to more than the bound, but none reaches it alone; the macro is neither cleared nor sent again.
+        [Fact]
+        public async Task RunLockThatClearsGoesOnSeeking()
+        {
+            FakeBot bot = HgssBot(10, 20);
+            GameSnapshot[] lockThenFree = [.. Enumerable.Repeat(Lock, 6), Free];
+            bot.State = new ScriptedReader([Free, Free, .. lockThenFree, .. lockThenFree, .. lockThenFree, Battle]);
+            GameState state = Encountering(10, 20);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)) { NoBattleWithin = TimeSpan.FromMilliseconds(500) }
+                .ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal(EventState.BattleStart, state.State.Peek());
+            Assert.Equal(["RP:M.Up.18.35497724;M.Down.22.35497724", "clear"], bot.Macros);
         }
 
         // A change for HGSS: from off the line the macro used to hold a direction for ever.
