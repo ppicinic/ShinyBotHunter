@@ -128,4 +128,4 @@ If the hunt stops while closing the summary of a shiny, or anywhere else before 
 
 For anything else, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
-Next: [Discord](../05-discord.md)
+Next: [Ruby and Sapphire wild encounters](08-rs-wild-encounter.md)
