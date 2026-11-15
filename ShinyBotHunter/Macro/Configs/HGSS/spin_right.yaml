@@ -1,0 +1,6 @@
+# One quarter of the Spin turn: tap Right, then let the turn finish before the next tap.
+name: SpinRight
+flavor: HGSS
+steps:
+  - T.Right
+  - W.5

@@ -1,4 +1,5 @@
-﻿using YamlDotNet.Serialization;
+﻿using System.Diagnostics.CodeAnalysis;
+using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
 namespace ShinyBotHunter.Macro
@@ -200,6 +201,12 @@ namespace ShinyBotHunter.Macro
         public string GetMacro(GameFlavor flavor, string macro)
         {
             return macros[flavor][macro].Macro;
+        }
+
+        public bool TryGetMacro(GameFlavor flavor, string name, [NotNullWhen(true)] out string? macro)
+        {
+            macro = macros[flavor].TryGetValue(name, out CompiledMacroDefinition? definition) ? definition.Macro : null;
+            return macro != null;
         }
     }
 }
