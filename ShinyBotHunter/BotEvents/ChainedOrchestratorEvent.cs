@@ -123,7 +123,7 @@ namespace ShinyBotHunter.BotEvents
             state.TargetPokemon = null;
             state.NavigationPath = null;
             state.NavigationPathIndex = 0;
-            // Built from the trainer's live position on first use, and this leg's ranges may differ.
+            // Built from the start tile on first use, and this leg's ranges may differ.
             state.EncounterMacros.Remove("Run");
             foreach (string key in state.EncounterMacros.Keys.Where(k => k.StartsWith("Headbutt:")).ToList())
             {

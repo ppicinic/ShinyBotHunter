@@ -1,7 +1,7 @@
 # Spec: game profile
 
 Status: Implemented (epic #118, 2026-10-22); divergences are recorded in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-game-profile-2026-10-22) and marked below
-Last updated: 2026-10-22
+Last updated: 2026-11-15
 Owner: Phil
 Related: [plan rows 5.3 to 5.3e](../plans/2026-10-cleanup-and-hardening.md#phase-5-structural-splits-after-1-3-one-file-per-pr), [architecture, extension axes](../architecture/system-overview.md#axis-1-game-flavors), [pointer discovery](../research/pointer-discovery.md), [HGSS state reader spec](hgss-state-reader.md) (the follow-up), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md)
 
@@ -124,6 +124,8 @@ public sealed record GameProfile
 }
 ```
 
+Added 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md): `CreateBattleEvent` (`Func<IServiceProvider, IBotEvent<GameState>>?`, the battle a wild encounter hands to, made once per orchestrator) and `SaveGame` (`Func<IServiceProvider, IBot, Task>?`, the save after a catch), both required by `HasWildEncounters`.
+
 `GameProfiles` is a class with a dictionary built in `Startup` and one method, `Get(GameFlavor)`, which throws `InvalidOperationException` naming the flavor when nothing is registered (this is the one message `GameServices.Resolve` gives today, kept). It is a singleton in DI. `GameServices` is deleted; its three callers in `PokemonStateReader` and the one in `StarterHuntEvent` take the profile instead.
 
 The `Bot` resolves its profile and address table once in `LaunchAsync` from `context.GameFlavor` and `context.Revision`, and constructs its readers then. `IBot` loses `IDataReader` and gains:
@@ -161,7 +163,8 @@ Any PR that adds a memory read, for any feature, adds the address to the flavor'
 ```csharp
 public sealed record GameCapabilities(
     bool HasOverworldNavigation,   // map, position, facing, pathfinding
-    bool HasWildEncounters,        // run/spin loops and the battle orchestrator
+    bool HasWildEncounters,        // the spin and run loops and a battle that can be fled
+    bool HasTraining,              // a battle parser and overworld navigation: train modes, Pickup, healing
     bool HasEggs,                  // Togepi egg event
     bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
     bool HasSoftResetStarterHunt,  // RS wave hunt
@@ -170,6 +173,8 @@ public sealed record GameCapabilities(
 ```
 
 HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
+
+Changed 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md), FR-1: `HasTraining` is added. HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares `HasWildEncounters`, `HasSoftResetStarterHunt` and `HasWishmakerJirachi`. The constructor checks `HasWildEncounters ⇒ CreateStateReader, CreateOverworldReader, CreateBattleEvent, SaveGame present` and `HasTraining ⇒ BattleParser present, HasOverworldNavigation`; `HasWildEncounters` no longer requires the battle parser or `HasOverworldNavigation`.
 
 `PokemonStateReader.GetPokemonState` checks `CanReadBoxes` and throws `InvalidOperationException` otherwise, replacing today's `NotSupportedException` from the pointer service. `PokemonState`'s hard-coded 18x30 (`PokemonStateReader.cs:17-20`) reads `BoxLayout` instead.
 
@@ -186,7 +191,7 @@ public interface IOverworldReader
 
 `HgssOverworldReader` is `HgssDataReader` minus the battle members: the same four reads through the address table, the `to_s16` decode kept. `Direction` is the existing enum in `PathfindingService.cs:102-108`, moved to `Games/Direction.cs`; the duplicate facing switch in `SpinEncounterEvent.cs:92-107` and `LocationService.cs:81-84` use it. `Overworld.WaitForReadyAsync` keeps its coordinate heuristic; it takes the reader instead of the bot. (Superseded 2026-10-23 by the state reader spec's S3, #140: it now waits for `FieldFree` on `IGameStateReader` with a 10 s stale.)
 
-There is one implementation. The interface exists because RS has none and `Bot` needs a type for the member; it is the test seam for `NavigatorEvent` tests (plan row 4.7), named as such in the commit per principle 2's exception.
+There is one implementation. The interface exists because RS has none and `Bot` needs a type for the member; it is the test seam for `NavigatorEvent` tests (plan row 4.7), named as such in the commit per principle 2's exception. (Since 2026-11-15 there are two: `RsOverworldReader`, rs-wild-encounter FR-8.)
 
 ### Game-state reader, legacy implementation
 
@@ -243,7 +248,7 @@ public static class EventRegistry
 }
 ```
 
-Entries: `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS, `OwnsEmulators`, requires `HasSoftResetStarterHunt`), `HGSS Shiny Starter Hunt` (`OwnsEmulators`, requires `HasShinyStarterHunt`; the `Mode == HGSS` alias in `BotService.cs` goes), `Wild Encounter`, `Chained Encounter` (both require `HasWildEncounters`), `HGSS Togepi Egg` (requires `HasEggs`), `Resume`. The `Create` delegates are the bodies of today's branches, moved verbatim; `ValidateAndBuildLeg` and `EnsurePartyHasRoomForEggAsync` stay as private helpers called from the delegates.
+Entries: `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS, `OwnsEmulators`, requires `HasSoftResetStarterHunt`), `HGSS Shiny Starter Hunt` (`OwnsEmulators`, requires `HasShinyStarterHunt`; the `Mode == HGSS` alias in `BotService.cs` goes), `Wild Encounter`, `Chained Encounter` (both require `HasWildEncounters`; since 2026-11-15 `Chained Encounter` requires `HasOverworldNavigation`), `HGSS Togepi Egg` (requires `HasEggs`), `Resume`. The `Create` delegates are the bodies of today's branches, moved verbatim; `ValidateAndBuildLeg` and `EnsurePartyHasRoomForEggAsync` stay as private helpers called from the delegates.
 
 `BotService` keeps slot allocation, the gate and the runner. `ExecuteEventUnderGate` becomes: look up the entry (unknown name → 400), check `entry.Requires(bot.Profile.Capabilities)` (false → 400 naming the capability), check the bot's state as today, build, start. `ExecuteNewBotOrSpecialEventUnderGate` becomes the same over the `OwnsEmulators` entries, with the capability checked against the profile of the first ROM's flavor. `GetAvailableActions` filters `EventRegistry.All` by the bot's state as today and then by `Requires`. `GetTopLevelOptions` returns the three options the dashboard showed before (`Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt`); `HGSS Shiny Starter Hunt` is reachable by name only, as it was. `SpecialEvents.json` and `BotService.Init` are deleted; the `Shiny Starter Hunt` conditional parameters move into code as an `EventArgumentOptions` literal.
 
@@ -357,3 +362,4 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-10-21: open questions closed by the owner; the chain reader, bounded waits and confirm-and-retry presses split out into the HGSS state reader spec so this one is restructure only; FR-9 (root/offset/scenario comment on every address) and the rule for future reads added.
 - 2026-10-22: references moved to `main` after PR #106; NFR-1 names the two QA scenarios that exist.
 - 2026-10-22: implemented under epic #118 (PRs #126 to #132). "As built" notes mark where the code differs from the draft: get-only profile members, existing address names kept, flavor-only members on the concrete tables, the data directory in `HgssProfile`, the `EventRegistration` shape, the top-level options, and the FR-5 wording. The full list is in the plan's implementation notes.
+- 2026-11-15: Ruby and Sapphire wild encounters (epic #380): `HasTraining`, the as-built declarations and constructor checks, `CreateBattleEvent` and `SaveGame` on the profile, a second overworld reader (`RsOverworldReader`), and `Chained Encounter` requiring `HasOverworldNavigation`.

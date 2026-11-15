@@ -20,4 +20,7 @@ namespace ShinyBotHunter.Games
     // function). StartMenuState on FieldTask while the task function is the start menu's, the u16 at [taskman + 0x0C] +
     // 0x26 (3 idle). TextCursor wherever TextPrinter is at the arrow (AtTextArrow), the u32 at printer + 0x00 (the
     // printer's current character): different for every box, and it does not change while the printer waits at an arrow.
+    // That list is HGSS's (HgssFieldSystemStateReader). On RS (RsStateReader): Outcome on every battle screen when
+    // gBattleOutcome has a shared value; Prompt on BattleMenu, the action cursor; TextPrinter on BattleMessage, the battle
+    // window's state.
 }
