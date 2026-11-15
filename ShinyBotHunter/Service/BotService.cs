@@ -634,6 +634,27 @@ namespace ShinyBotHunter.Service
         private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
         private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
         private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
+        internal const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
+        internal const string NoTargetNeedsTraining = "No Target needs a train mode, which Ruby and Sapphire do not have yet.";
+        internal const string NoTraining = "Training is not available on Ruby and Sapphire yet.";
+
+        // The choices a profile's capabilities rule out, with the reason the dashboard shows and Run refuses with.
+        // Empty for HGSS, so its list and its start are unchanged.
+        internal static Dictionary<string, Dictionary<string, string>> DisabledByCapabilities(GameCapabilities c)
+        {
+            var disabled = new Dictionary<string, Dictionary<string, string>>();
+            if (!c.HasOverworldNavigation)
+            {
+                disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = NoHeadbuttTrees };
+            }
+            if (!c.HasTraining)
+            {
+                disabled["TargetType"] = new() { [nameof(TargetType.NoTarget)] = NoTargetNeedsTraining };
+                disabled["TrainType"] = new() { [nameof(TrainType.Standard)] = NoTraining, [nameof(TrainType.Switch)] = NoTraining };
+                disabled["Pickup"] = new() { ["true"] = NoTraining };
+            }
+            return disabled;
+        }
 
         /// <summary>
         /// The live party, or null when it could not be read or is empty. Never faults: a failed
@@ -735,8 +756,8 @@ namespace ShinyBotHunter.Service
                     Console.WriteLine($"[BotService] {StaticEncounterConfig.DefaultPath} could not be read for the action list: {ex}");
                 }
             }
-            // Only an idle bot with HasWildEncounters is offered these, so the entry has a bot. It
-            // can still be closed between the two reads.
+            // Only an idle bot is offered these (Wild Encounter needs HasWildEncounters, Chained Encounter
+            // HasOverworldNavigation), so the entry has a bot. It can still be closed between the two reads.
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
             {
                 return actions;
@@ -772,20 +793,21 @@ namespace ShinyBotHunter.Service
                     slots.Gate.Release();
                 }
             }
-            string? headbutt = HeadbuttRefusal(party);
-            string? pickup = PickupRefusal(party);
-            if (headbutt is null && pickup is null)
+            // A capability reason wins over the party's for the same choice.
+            var disabled = DisabledByCapabilities(entry.Bot!.Profile.Capabilities);
+            if (HeadbuttRefusal(party) is { } headbutt)
+            {
+                disabled.TryAdd("EncounterType", new());
+                disabled["EncounterType"].TryAdd(nameof(EncounterType.Headbutt), headbutt);
+            }
+            if (PickupRefusal(party) is { } pickup)
+            {
+                disabled.TryAdd("Pickup", new());
+                disabled["Pickup"].TryAdd("true", pickup);
+            }
+            if (disabled.Count == 0)
             {
                 return actions;
-            }
-            var disabled = new Dictionary<string, Dictionary<string, string>>();
-            if (headbutt is not null)
-            {
-                disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = headbutt };
-            }
-            if (pickup is not null)
-            {
-                disabled["Pickup"] = new() { ["true"] = pickup };
             }
             // Copies of the two that change, so the registry's own options are never touched.
             return actions.Select(a => a.Name switch
