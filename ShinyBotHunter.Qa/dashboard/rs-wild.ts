@@ -93,7 +93,8 @@ export const CONFIRM = /\[RsBattle\] BattleConfirm on RUN \(try (\d+)\), (\d+) m
 export const ESCAPE_FAILED = /\[RsBattle\] escape failed \(try (\d+) of 12\), cursor (\d*), lead HP (\d+)\s*$/
 export const TARGET = /\[RsBattle\] a target: waiting at the action menu, nothing pressed\s*$/
 export const OVER = /\[RsBattle\] battle over: (\d+) frames from the battle bit, (\d+) ms, (\d+) presses, (\d+) on RUN\s*$/
-export const SPEED_SHINY = new RegExp(`\\[BotService\\] ${SHINY_LEAD_LINE.replace(/\./g, '\\.')}\\s*$`)
+// backend.log is written in the console's code page, so the é is matched by any one or two characters.
+export const SPEED_SHINY = new RegExp(`\\[BotService\\] ${SHINY_LEAD_LINE.replace(/\./g, '\\.').replace('é', '.{1,2}')}\\s*$`)
 export const STOPPED = /\[(RsBattle|Spin|Run)\] (stopped: |The player moved while turning|The player is off the run line|Something other than a wild battle)/
 export const MOVED = /\[Spin\] The player moved while turning/
 const CRASHED = /\[BotService\] Event '.*' crashed/
