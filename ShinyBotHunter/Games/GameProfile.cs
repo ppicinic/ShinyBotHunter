@@ -1,3 +1,5 @@
+using ShinyBotHunter.Bot;
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
@@ -38,6 +40,12 @@ namespace ShinyBotHunter.Games
         /// <summary>Null when the flavor has no state reads.</summary>
         public Func<IMemoryClient, IPointerService, IGameStateReader>? CreateStateReader { get; }
 
+        /// <summary>The battle a wild encounter hands to, made once per orchestrator. Null when the flavor has no wild encounters.</summary>
+        public Func<IServiceProvider, IBotEvent<GameState>>? CreateBattleEvent { get; }
+
+        /// <summary>Saves the game after a catch; done when the save is. Null when the flavor has no wild encounters.</summary>
+        public Func<IServiceProvider, IBot, Task>? SaveGame { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -50,7 +58,9 @@ namespace ShinyBotHunter.Games
             MapService? maps = null,
             GraphService? graph = null,
             PathfindingService? pathfinding = null,
-            Func<IMemoryClient, IPointerService, IGameStateReader>? createStateReader = null)
+            Func<IMemoryClient, IPointerService, IGameStateReader>? createStateReader = null,
+            Func<IServiceProvider, IBotEvent<GameState>>? createBattleEvent = null,
+            Func<IServiceProvider, IBot, Task>? saveGame = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -71,6 +81,19 @@ namespace ShinyBotHunter.Games
             if (capabilities.HasWildEncounters && createStateReader is null)
             {
                 throw new ArgumentException($"{flavor} declares HasWildEncounters but has no state reader.");
+            }
+            // The orchestrator's Init reads the start tile, and its loop runs the profile's battle and save.
+            if (capabilities.HasWildEncounters && createOverworldReader is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasWildEncounters but has no overworld reader.");
+            }
+            if (capabilities.HasWildEncounters && createBattleEvent is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasWildEncounters but has no battle event.");
+            }
+            if (capabilities.HasWildEncounters && saveGame is null)
+            {
+                throw new ArgumentException($"{flavor} declares HasWildEncounters but has no save.");
             }
             if (capabilities.HasTraining && battleParser is null)
             {
@@ -100,6 +123,8 @@ namespace ShinyBotHunter.Games
             Graph = graph;
             Pathfinding = pathfinding;
             CreateStateReader = createStateReader;
+            CreateBattleEvent = createBattleEvent;
+            SaveGame = saveGame;
         }
     }
 }

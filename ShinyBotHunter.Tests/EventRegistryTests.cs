@@ -10,7 +10,9 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -117,6 +119,37 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), EventRegistry.Get("Chained Encounter").Requires?.Capability);
             Assert.Equal(nameof(GameCapabilities.HasWildEncounters), EventRegistry.Get("Wild Encounter").Requires?.Capability);
+        }
+
+        [Fact]
+        public async Task WildEncountersWithoutNavigationListsWildButNotChained()
+        {
+            // RS as W6 declares it: wild encounters, no navigation.
+            GameProfile profile = new(
+                GameFlavor.RS,
+                new GameCapabilities(
+                    HasOverworldNavigation: false,
+                    HasWildEncounters: true,
+                    HasTraining: false,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
+                [1],
+                _ => new RsPointerService(),
+                new Gen3PokemonParser(new PokemonMetadataService(null!)),
+                battleParser: null,
+                createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),
+                createStateReader: (memory, t) => new RsStateReader(memory, (RsPointerService)t),
+                createBattleEvent: _ => throw new NotImplementedException(),
+                saveGame: (_, _) => Task.CompletedTask);
+            var service = Build(profile);
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
+
+            Assert.Equal(["Wild Encounter"], names);
         }
 
         [Fact]
