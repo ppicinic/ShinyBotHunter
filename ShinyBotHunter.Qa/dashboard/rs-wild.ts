@@ -7,10 +7,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect, type Locator, type Page } from '@playwright/test'
 import {
-  emuHawkRunning, killTree, readMemory, readU16, readU32, repoDir, runDir, sendCheatHotkey, startEmulatorRecorder, step,
-  stopRecorder, writeU8
+  emuHawkRunning, killTree, readMemory, readU16, readU32, repoDir, runDir, sendCheatHotkey, shotAll, startEmulatorRecorder,
+  step, stopRecorder, writeU8
 } from './driver'
-import { API, backendLog, MINUTE, psql, sha256, type Frame } from './static'
+import { API, backendLog, hex8, MINUTE, psql, settings, sha256, shutdown, startFrame, type Frame } from './static'
 
 // --- constants ---------------------------------------------------------------------------------------
 
@@ -450,4 +450,95 @@ export async function pollWhileWaiting(read: () => Promise<number>, predicate: (
   }
   step(`${what}: read ${last}`)
   return last
+}
+
+// --- rs-wild-sapphire and rs-wild-ruby -----------------------------------------------------------------------
+
+/** "Headbutt, No Target and the train types greyed out with their reasons", on the open form before Run. */
+async function checkGreyed(card: Locator): Promise<void> {
+  const criterion = '"Headbutt, No Target and the train types greyed out with their reasons"'
+  const greyed: [string, string, string][] = [
+    ['EncounterType', 'Headbutt', HEADBUTT_SENTENCE],
+    ['TargetType', 'NoTarget', NO_TARGET_SENTENCE],
+    ['TrainType', 'Standard', TRAINING_SENTENCE],
+    ['TrainType', 'Switch', TRAINING_SENTENCE]
+  ]
+  for (const [param, value, reason] of greyed) {
+    const option = card.getByTestId(`param-${param}`).locator(`option[value="${value}"]`)
+    await expect(option, `${criterion}: no ${param} option ${value}`).toBeAttached({ timeout: 30_000 })
+    const label = (await option.textContent()) ?? ''
+    step(`${param} ${value}: "${label}", disabled ${await option.isDisabled()}`)
+    expect(label, `${criterion}: the ${param} ${value} option's label`).toBe(`${value} (${reason})`)
+    expect(await option.isDisabled(), `${criterion}: the ${param} ${value} option is enabled`).toBe(true)
+  }
+}
+
+/**
+ * Spin on the ROM for `n` encounters from the UI, then two cancels with one tile read between them, and the checks of
+ * the spec's rs-wild-sapphire row. rs-wild-ruby runs the same on RU-Wild, which shows one address table serves both.
+ */
+export async function wildSpin(rom: string, n: number): Promise<void> {
+  const frame: Frame = { backend: null, app: null }
+  const { pg } = settings()
+  removeCheats()
+  installPristine(rom)
+  try {
+    const admin = await startFrame(frame)
+    const pages: Record<string, Page> = { admin }
+    const card = await launchRs(admin, rom, 'emulator')
+    await shotAll('01-launched', pages)
+    const runStart = await startWild(card, { mode: 'Spin' }, async () => {
+      await checkGreyed(card)
+      await shotAll('02-greyed', pages)
+    })
+
+    // The shiny-lead speed line at Run: in the log, in the dashboard state and on the card.
+    const speed = '"the shiny-lead speed line at Run"'
+    await waitForLine(SPEED_SHINY, 1, MINUTE, `${speed}: not in backend.log`)
+    const state = await dashboardState()
+    step(`dashboard state: ${JSON.stringify(state)}`)
+    expect(state?.speedLines ?? [], `${speed}: not in getDashboardState's speedLines`).toContain(SHINY_LEAD_LINE)
+    await expect(card.getByText(SHINY_LEAD_LINE, { exact: true }), `${speed}: not on the emulator card`).toBeVisible()
+
+    await waitForLine(OVER, n, n * MINUTE, `"${n} encounters rows": ${n} fled battles`)
+    await shotAll('03-hunting', pages)
+    let tile: Tile | null = null
+    await cancelEventAndBot(card, async () => {
+      tile = await readTile()
+      step(`tile between the cancels: ${JSON.stringify(tile)}`)
+    })
+    await shotAll('04-cancelled', pages)
+    expect(flashUnchanged(rom), `"the save's first 131,072 bytes unchanged": the ${rom} SaveRAM changed`).toBe(true)
+    await shutdown(frame, admin)
+
+    const log = backendLog()
+    // "the player still on (14, 4)": the read between the cancels, and no seek that found the player off the tile.
+    expect(tile, '"the player still on (14, 4)": the tile read between the cancels').toEqual(START)
+    expect(log.filter((l) => MOVED.test(l)), '"the player still on (14, 4)": a moved-while-turning line').toEqual([])
+
+    // "the turns in the order Up, Left, Down, Right": every seek's macro starts after its facing (G3).
+    for (const line of log.filter((l) => SPIN_LINE.test(l))) {
+      const [, facing, macro] = SPIN_LINE.exec(line)!
+      expect(macro, `"the turns in the order Up, Left, Down, Right": facing ${facing}`).toBe(spinMacroFor(facing))
+    }
+
+    // "per encounter exactly five battle presses, each with its confirming value", on the n finished battles.
+    const all = battles(log)
+    for (let k = 0; k < n; k++) checkFlee(all[k], k + 1)
+
+    // "ten encounters rows, species Wurmple, Zigzagoon or Poochyena, Lv 2 or 3": one row per encounter line, by PID.
+    const rowsCriterion = `"${n} encounters rows, species Wurmple, Zigzagoon or Poochyena, Lv 2 or 3"`
+    const encounters = log.filter((l) => ENCOUNTER.test(l)).map(parseEncounter)
+    const rows = psqlRows(pg, runStart, rom)
+    expect(rows.length, `${rowsCriterion}: too few rows`).toBeGreaterThanOrEqual(n)
+    expect(rows.map((r) => hex8(Number(r[0]))), `${rowsCriterion}: the rows' PIDs are not the encounter lines'`)
+      .toEqual(encounters.map((e) => e.pid))
+    for (const [pid, species, level, shiny] of rows) {
+      expect(WILD, `${rowsCriterion}: ${pid} is species ${species}`).toContain(Number(species))
+      expect(LEVELS, `${rowsCriterion}: ${pid} is Lv ${level}`).toContain(Number(level))
+      expect(shiny, `${rowsCriterion}: ${pid} is shiny`).toBe('f')
+    }
+  } finally {
+    await teardown(frame, rom)
+  }
 }
