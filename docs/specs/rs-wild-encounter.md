@@ -1,6 +1,6 @@
 # Spec: wild encounter hunt in Ruby and Sapphire
 
-Status: Draft, from the spike of 2026-11-15 and the owner's notes of the same day. Not started.
+Status: In progress on `feature/rs-wild-encounter` (2026-11-15), from the spike of 2026-11-15 and the owner's notes of the same day.
 Last updated: 2026-11-15
 Owner: Phil
 Related: [research: the spike](../research/rs-wild-encounter.md) (the source for every address, timing and rule here), the HGSS hunt's guide page [Wild and chained encounters](../guide/04-hunts/01-wild-encounter.md), [game profile spec](game-profile.md) (capabilities, the registry), [HGSS state reader spec](hgss-state-reader.md) (the snapshot and the bounded waits this reuses), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the decision [Hunts act as a human would](../decisions/global.md), AGENTS rule 16.
