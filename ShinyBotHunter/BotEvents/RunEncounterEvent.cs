@@ -3,6 +3,7 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Service.Pointers;
+using System.Diagnostics;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -41,11 +42,16 @@ namespace ShinyBotHunter.BotEvents
                 state.EncounterMacros.Add("Run", RunMacro(addresses, bot.GameFlavor, param, state.StartX, state.StartY));
             }
 
+            Console.WriteLine($"[Run] from ({tile.X}, {tile.Y}) macro={state.EncounterMacros["Run"]}");
             bot.RunRepeatMacro(state.EncounterMacros["Run"]);
+            Stopwatch sinceMacro = Stopwatch.StartNew();
             bool battle = true;
+            TimeSpan toBattle = TimeSpan.Zero;
+            long seekMs = 0;
             try
             {
-                await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                toBattle = await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)
             {
@@ -62,6 +68,7 @@ namespace ShinyBotHunter.BotEvents
                 state.SwapState(EventState.Waiting);
                 return state;
             }
+            Console.WriteLine($"[Run] seek: {seekMs} ms from the macro to the field leaving free, {(long)toBattle.TotalMilliseconds} ms to the battle screen");
             state.State.Pop();
             // TODO we should go into Waiting if its a non wild battle
             state.State.Push(EventState.BattleStart);

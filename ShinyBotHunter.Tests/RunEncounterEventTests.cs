@@ -112,6 +112,28 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(EventState.BattleStart, state.State.Peek());
         }
 
+        [Fact]
+        public async Task RunLogsTheStartTileMacroAndSeek()
+        {
+            FakeBot bot = HgssBot(10, 20);
+            GameState state = Encountering(10, 20);
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)).ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            string text = log.ToString();
+            Assert.Contains("[Run] from (10, 20) macro=M.Up.18.35497724;M.Down.22.35497724", text);
+            Assert.Matches(@"\[Run\] seek: (\d+) ms from the macro to the field leaving free, (\d+) ms to the battle screen", text);
+        }
+
         private static readonly GameSnapshot Lock = new(GameScreen.FieldTask, null, null, null, null);
 
         // FR-9: a field lock with no battle stops the bot.
