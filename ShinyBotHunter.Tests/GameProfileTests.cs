@@ -57,8 +57,8 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: true), profile.Capabilities);
             Assert.Null(profile.BattleParser);
-            Assert.Null(profile.CreateOverworldReader);
-            Assert.Null(profile.CreateStateReader);
+            Assert.NotNull(profile.CreateOverworldReader);
+            Assert.NotNull(profile.CreateStateReader);
             Assert.Same(profile.Addresses(1), profile.Addresses(2));
             Assert.IsType<RsPointerService>(profile.Addresses(1));
             Assert.Null(profile.Addresses(1).BoxLayout);

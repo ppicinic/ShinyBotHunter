@@ -26,6 +26,8 @@ namespace ShinyBotHunter.Games.Rs
             revisions: [1, 2],
             Addresses,
             new Gen3PokemonParser(metadata),
-            battleParser: null);
+            battleParser: null,
+            createOverworldReader: (memory, table) => new RsOverworldReader(memory, (RsPointerService)table),
+            createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table));
     }
 }
