@@ -1,14 +1,16 @@
 ﻿using DnsClient;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Util;
 using System.Diagnostics;
-using System.Text;
 
 namespace ShinyBotHunter.BotEvents
 {
     public class SpinEncounterEvent : AbstractBotEvent<bool>
     {
+        internal const string MovedWhileTurning = "The player moved while turning.";
+
         private IBot bot;
         Queue<Direction> directions = new Queue<Direction>();
         Dictionary<Direction, string> cachedMacros = new Dictionary<Direction, string>();
@@ -39,6 +41,15 @@ namespace ShinyBotHunter.BotEvents
                 return false;
             }
             Stopwatch sinceReady = Stopwatch.StartNew();
+
+            // Turning never leaves the tile, so a seek that starts anywhere else stops before anything is pressed.
+            (short x, short y) = await bot.Overworld.GetPositionAsync(cancellationToken);
+            if (x != state.StartX || y != state.StartY)
+            {
+                Console.WriteLine($"[Spin] {MovedWhileTurning} At ({x}, {y}), started on ({state.StartX}, {state.StartY}).");
+                state.SwapState(EventState.Waiting);
+                return false;
+            }
 
             Direction facing = await bot.Overworld.GetFacingAsync(cancellationToken);
             string macro = GetSpinMacro(facing);
@@ -87,21 +98,15 @@ namespace ShinyBotHunter.BotEvents
                     Console.WriteLine($"[Spin] Unexpected facing value {facing}; starting the rotation at {directions.Peek()}.");
                 }
                 directions.Enqueue(directions.Dequeue());
-                StringBuilder sb = new StringBuilder();
+                List<string> turns = new List<string>();
 
                 for (int i = 0; i < 4; i++)
                 {
-                    if (i != 0)
-                    {
-                        sb.Append(";");
-                    }
-                    sb.Append("T.");
                     Direction dir = directions.Dequeue();
-                    sb.Append(dir.ToString());
-                    sb.Append(";W.5");
+                    turns.Add(MacroRegistry.Instance.GetMacro(bot.GameFlavor, "Spin" + dir));
                     directions.Enqueue(dir);
                 }
-                string macro = sb.ToString();
+                string macro = string.Join(";", turns);
                 cachedMacros.Add(facing, macro);
                 return macro;
             }
