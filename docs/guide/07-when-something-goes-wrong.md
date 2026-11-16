@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md, docs/guide/01-install.md (Install from a release) -->
+<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md, docs/guide/01-install.md (Install from a release), ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (StopForFullPartyAsync), ShinyBotHunter/Service/BotService.cs (WildRefusalAsync, DisabledByCapabilities) -->
 # When something goes wrong
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -81,6 +81,21 @@ When you start an action and the bot refuses it, the dashboard shows one of thes
 | `Dolphin is not at <path>: check DolphinBaseDirectory.` | The Dolphin folder setting is wrong. | Fix the Dolphin folder in [Configure](02-configure.md). |
 | `The GBA BIOS is not at <path>: check GbaBiosPath.` | The GBA BIOS setting is wrong. | Fix the GBA BIOS path in [Configure](02-configure.md). |
 | `The Colosseum Bonus Disc is not at <path>: check ColosseumBonusDiscPath.` | The Bonus Disc setting is wrong. | Fix the Bonus Disc path in [Configure](02-configure.md). |
+
+### A Ruby or Sapphire wild hunt is not ready
+
+The bot reads the game when you press Run on a Ruby or Sapphire **Wild Encounter**. The [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md) page has more on each.
+
+| You see | It means | Do |
+|---|---|---|
+| `Close any menu or message and stand in the field.` | A menu, message or script was on screen. | Close it until your character can walk, and start again. |
+| `The player is not the first object on this map, which the bot watches as it turns.` | The bot checks that your character is the first object on the map, and on this map it is not. | |
+| `The party could not be read; try again once the game is in the field.` | The bot could not read your party. | Wait until your character is in the field, and start again. |
+| `The first Pokémon in the party has fainted.` | Your first Pokémon has no HP left, or the party is empty. | Heal it, or put a Pokémon that can battle first, and start again. |
+| `Leave a free party slot so a caught Pokémon stays in the party.` | You have six Pokémon, so a caught one would go to the PC, where the bot does not look. | Put a Pokémon in the PC, and start again. |
+| `Ruby and Sapphire have no Headbutt trees.` | Encounter Type Headbutt was sent, though it is greyed out. | Pick Spin or Run. |
+| `No Target needs a train mode, which Ruby and Sapphire do not have yet.` | Target Type NoTarget was sent, though it is greyed out. | Pick PhaseTarget or ShinyTarget. |
+| `Training is not available on Ruby and Sapphire yet.` | Train Type Standard or Switch, or Pickup, was sent, though it is greyed out. | Leave Train Type at None and Pickup unticked. |
 
 ### Something is missing from the Start form
 
@@ -165,18 +180,33 @@ Each message appears in the backend's window and stops the Jirachi hunt.
 | `Timed out after <n> s waiting for <what> of Dolphin process <id>; its visible windows: [<list>].` | A Dolphin window the bot needs, such as the GBA window, did not appear. | Close Dolphin, run the Dolphin deploy script again, and start again. |
 | `Dolphin process <id> did not exit within 10 s of two kills.` | Dolphin would not close. | Close Dolphin yourself, from Task Manager if needed, then start again. |
 
+## A wild hunt stops with a sentence in the backend's window
+
+On the dashboard, the bot shows as waiting, with **Resume**, except for the full party, which ends the hunt. A word in angle brackets stands for the value the bot fills in.
+
+| You see | It means | Do |
+|---|---|---|
+| `[Spin] The player moved while turning. At (<x>, <y>), started on (<x>, <y>).` | Before a round of turning, your character was not on the tile the hunt started on. Both games. | Put your character back on the start tile, and press **Resume**. |
+| `[Run] The player is off the run line. At (<x>, <y>); the line is <x or y> +-<range> from (<x>, <y>).` | Before a walk, your character was not on the line, or was past one of its ends. Both games. | Put your character back on the line, and press **Resume**. |
+| `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]` | Something stopped your character walking, such as a message or a script, and no battle started within 15 s. Both games. | Finish what the game shows yourself until your character can walk, put it back on the start tile or the line, and press **Resume**. |
+| `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>` | Ruby and Sapphire. After the field locked, no battle showed and nothing changed for 15 s; or, with `battle type`, the battle is not a wild one, such as a trainer battle. | End the battle or close the message yourself, put your character back on the start tile or the line, and press **Resume**. |
+| `[RsBattle] stopped: The first Pokémon fainted. <state>` | Ruby and Sapphire. Your first Pokémon fainted in the battle. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
+| `[RsBattle] stopped: Could not run from this battle. <state>` | Ruby and Sapphire. The bot pressed RUN 12 times in this battle without getting away. A wild Pokémon with Arena Trap, Shadow Tag or Magnet Pull can do this. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
+| `[RsBattle] stopped: The wild Pokémon's record failed its checksum for 2 s. <state>` | Ruby and Sapphire. The wild Pokémon's record in the game's memory kept failing its checksum, so the bot could not read it. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
+| `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` | Ruby and Sapphire. Your party is full, after a catch in practice, so the next caught Pokémon would go to the PC, where the bot does not look. The hunt ended as complete; it is not waiting. | Put a Pokémon in the PC, and start the hunt again. |
+
 ## A hunt stops with "Waited for ...; the game state stayed ..."
 
 This is a stale timeout.
 
-- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]` or `[Spin]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
-- **It means:** the game did not reach the screen the bot expected, and nothing in the game changed for the time limit. The bot stops and waits for you rather than pressing on. This happens in wild and chained encounters in HeartGold and SoulSilver.
+- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]`, `[Spin]`, `[Run]` or `[RsBattle]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
+- **It means:** the game did not reach the screen the bot expected, and nothing in the game changed for the time limit. The bot stops and waits for you rather than pressing on. This happens in wild and chained encounters in HeartGold and SoulSilver, and in wild encounters in Ruby and Sapphire.
 
 The time limits are:
 
 | The bot was waiting for | Time limit |
 |---|---|
-| A battle to start | 30 s |
+| In a HeartGold or SoulSilver battle, the first battle menu once the battle has started | 30 s |
 | The end of a turn | 20 s |
 | A prompt, such as experience or a new move | 15 s |
 | The messages after a new move is learned | 30 s |
@@ -184,6 +214,8 @@ The time limits are:
 | The player to be back on the map | 10 s |
 | A warp to the next map | 15 s |
 | A script in the field, such as the nurse's | 20 s |
+| A battle, once the field stops being free while turning or walking for an encounter, whether or not the game changes | 15 s |
+| In a Ruby or Sapphire battle, the next screen | 30 s |
 
 - **Do:** look at that emulator to see what the game shows. Then press **Resume** on the dashboard, or **Cancel**.
 
