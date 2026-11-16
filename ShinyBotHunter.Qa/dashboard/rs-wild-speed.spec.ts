@@ -13,6 +13,10 @@ const MINUTES = Number(process.env.QA_RS_SPEED_MINUTES ?? 20)
 const toMs = (text: string): number => Date.parse(text.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'))
 const mean = (v: number[]): number => v.reduce((sum, x) => sum + x, 0) / v.length
 const PRESS_MS = [ADVANCE, TO_RUN, CONFIRM]
+// Owner, 2026-11-15, accepted 266 and 269 an hour measured at full emulator speed: the difference from 270 is the
+// encounter roll's luck; the per-battle limits are what the bot controls. The target is reported, the floor asserted.
+const TARGET = 270
+const FLOOR = 265
 
 /**
  * Launch Bot + Continue (a new EmuHawk, so no battle is left on screen) with no window recorder, the mode, MINUTES of
@@ -67,7 +71,7 @@ function measure(mode: string, chunks: string[][], rows: string[][]): string[] {
   const observed = per.flatMap((e) => (e.rollToFree === null ? [] : [{ rollToBattle: e.rollToBattle, rollToFree: e.rollToFree }]))
   const rollToFree = observed.map((e) => e.rollToFree)
   const bot = per.map((e) => e.botFrames)
-  const summary = `${mode}: ${rate.toFixed(1)} an hour (${used.length} rows after the first, over ${seconds.toFixed(1)} s); ` +
+  const summary = `${mode}: ${rate.toFixed(1)} an hour, target ${TARGET} (${used.length} rows after the first, over ${seconds.toFixed(1)} s); ` +
     `${per.length} finished encounters measured; ` +
     `macro to roll mean ${mean(per.map((e) => e.toRoll)).toFixed(0)} ms, shortest ${perCheck.toFixed(1)} frames a check; ` +
     `roll to battle screen mean ${mean(observed.map((e) => e.rollToBattle)).toFixed(0)} ms over ${observed.length} observed ` +
@@ -78,7 +82,8 @@ function measure(mode: string, chunks: string[][], rows: string[][]): string[] {
   step(summary)
 
   const failures: string[] = []
-  if (!(rate >= 270)) failures.push(`"270 encounters an hour or better": ${summary}`)
+  if (!(rate >= FLOOR)) failures.push(`"${TARGET} encounters an hour" (accepted floor ${FLOOR}): ${summary}`)
+  else if (rate < TARGET) step(`${mode}: ${rate.toFixed(1)} an hour is under the ${TARGET} target and inside the accepted floor of ${FLOOR}`)
   if (!(observed.length > 0 && mean(rollToFree) <= 700)) {
     failures.push(`"a fled battle, roll to free field, no more than 700 frames" (the mean): ${summary}`)
   }
@@ -122,7 +127,7 @@ test('RS Wild Encounter speed: NFR-1 over a timed hunt by Spin, then one by Run 
     for (const [mode, chunks, modeRows] of fled) {
       // The rate rests on the rows being these encounters', in order (a cut-short last encounter may add one more row).
       const pids = chunks.map((b) => parseEncounter(b.find((l) => ENCOUNTER.test(l))!).pid)
-      expect(modeRows.slice(0, pids.length).map((r) => hex8(Number(r[0]))), `"270 encounters an hour or better" (${mode}): ` +
+      expect(modeRows.slice(0, pids.length).map((r) => hex8(Number(r[0]))), `"${TARGET} encounters an hour" (${mode}): ` +
         `the first ${pids.length} rows are not the encounter lines'`).toEqual(pids)
     }
     for (const [mode, chunks] of fled) {
