@@ -209,6 +209,25 @@ export function fps(log: string[]): number {
   return overs.reduce((sum, o) => sum + o.frames, 0) / overs.reduce((sum, o) => sum + o.ms, 0)
 }
 
+// The G2 line (bot task W2c, #398), for rs-wild-run and rs-wild-speed: the macro to the field leaving free (the roll),
+// then the roll to the battle screen, 0 when no poll saw the field leave free ("not observed").
+export const SEEK = /\[(Spin|Run)\] seek: (\d+) ms from the macro to the field leaving free, (\d+) ms to the battle screen\s*$/
+export type Seek = { toRoll: number; rollToBattle: number }
+/** The encounter's seek line; null for a seek the cancel cut off. */
+export function seekOf(b: string[]): Seek | null {
+  const m = b.map((l) => SEEK.exec(l)).find((x) => x !== null)
+  return m ? { toRoll: Number(m[2]), rollToBattle: Number(m[3]) } : null
+}
+
+/**
+ * "Seeking at no more than 9 frames a check" (G4): every seek after a battle makes at least five checks (four immune, then
+ * the roll), so the shortest macro-to-roll in frames over 5 bounds the frames a check. It fails falsely only when no seek
+ * rolled on its first open check, (8/9)^seeks.
+ */
+export function seekBound(toRollMs: number[], framesPerMs: number): { perCheck: number; falseFailure: number } {
+  return { perCheck: (Math.min(...toRollMs) * framesPerMs) / 5, falseFailure: (8 / 9) ** toRollMs.length }
+}
+
 /** This run's encounter rows for the ROM and the milestone, in order: PID, Species, Level, IsShiny, Timestamp. */
 export function psqlRows(pg: NodeJS.ProcessEnv, runStart: string, rom: string): string[][] {
   const rows = psql(pg, `SELECT "PID","Species","Level","IsShiny","Timestamp" FROM encounters WHERE "GameFileName"='${rom}' ` +
