@@ -49,17 +49,19 @@ namespace ShinyBotHunter.BotEvents
 
         private readonly PokemonPersistenceService persistence;
         private readonly ShinyAlertService alerts;
+        private readonly LegalityService legality;
 
-        public RsBattleEvent(PokemonPersistenceService persistence, ShinyAlertService alerts)
+        public RsBattleEvent(PokemonPersistenceService persistence, ShinyAlertService alerts, LegalityService legality)
         {
             this.persistence = persistence;
             this.alerts = alerts;
+            this.legality = legality;
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
             await RunAsync(state, (RsPointerService)state.Bot.Addresses, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
-                BattleStartStale, Stale, ChecksumWindow, CursorWait, cancellationToken);
+                raw => legality.Analyze(raw, GameFlavor.RS), BattleStartStale, Stale, ChecksumWindow, CursorWait, cancellationToken);
             return state;
         }
 
@@ -67,7 +69,7 @@ namespace ShinyBotHunter.BotEvents
         // with (Waiting). The delegates are the encounter log and the alert; the times are parameters so the tests run short.
         internal static async Task<string?> RunAsync(GameState state, RsPointerService addresses,
             Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound,
-            TimeSpan battleStart, TimeSpan stale, TimeSpan checksumWindow, TimeSpan cursorWait, CancellationToken ct)
+            Func<byte[], LegalityResult> analyze, TimeSpan battleStart, TimeSpan stale, TimeSpan checksumWindow, TimeSpan cursorWait, CancellationToken ct)
         {
             IBot bot = state.Bot;
             IGameStateReader reader = bot.State;
@@ -145,7 +147,18 @@ namespace ShinyBotHunter.BotEvents
                         }
                         Console.WriteLine($"[RsBattle] {wild.Name} species {wild.Species} Lv {wild.Level} PV {wild.PID:X8} "
                             + $"shiny value {wild.ShinyValue} shiny {wild.IsShiny}");
-                        if (await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, wild, addEncounter, notifyTargetFound))
+                        // A GBA emulator can build a shiny no cartridge could (docs/decisions/global.md, "Every Gen 3 shiny is
+                        // checked with PKHeX"): a shiny that fails is neither logged nor a target, and is fled like any other.
+                        bool legal = true;
+                        if (wild.IsShiny)
+                        {
+                            LegalityResult verdict = analyze(menu[0].Bytes);
+                            legal = verdict.IsLegal;
+                            Console.WriteLine(legal
+                                ? $"[RsBattle] legality OK   {wild.Name} PV {wild.PID:X8}"
+                                : $"[RsBattle] legality FAIL {wild.Name} PV {wild.PID:X8}: not logged, running{Environment.NewLine}{verdict.Report}");
+                        }
+                        if (legal && await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, wild, addEncounter, notifyTargetFound))
                         {
                             Console.WriteLine("[RsBattle] a target: waiting at the action menu, nothing pressed");
                             return null;

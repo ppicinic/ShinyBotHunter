@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
@@ -111,11 +112,15 @@ namespace ShinyBotHunter.Tests
             public List<PersistPokemonData> Alerted { get; } = [];
             // The snapshot last served at each read of the wild Pokémon's record.
             public List<GameSnapshot> EnemyReads { get; } = [];
+            // PKHeX's verdict for every record analysed, and the records it was asked about.
+            public LegalityResult Verdict { get; set; } = new(true, "legal");
+            public List<byte[]> Analysed { get; } = [];
 
             public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null)
                 => RsBattleEvent.RunAsync(State, new RsPointerService(),
                     p => { Logged.Add(p); return Task.CompletedTask; },
                     p => { Alerted.Add(p); return Task.CompletedTask; },
+                    raw => { Analysed.Add(raw); return Verdict; },
                     battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
         }
 
@@ -483,6 +488,7 @@ namespace ShinyBotHunter.Tests
             var provider = new ServiceCollection()
                 .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
                 .AddSingleton(new ShinyAlertService(null!, Options.Create(new ApplicationSettings())))
+                .AddSingleton(new LegalityService(NullLogger<LegalityService>.Instance))
                 .BuildServiceProvider();
 
             Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
