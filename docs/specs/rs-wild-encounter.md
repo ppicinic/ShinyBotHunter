@@ -326,4 +326,4 @@ None that block the merge. Not run on the emulator: a fainted lead, a trap (twel
 - 2026-11-16: FR-18 (#414, owner): an illegal wild shiny is written to the encounter log with `IsShiny` false, kept for later and not counted as a shiny; it is still fled, not alerted.
 - 2026-11-16 (#413, owner): the catch check reads the PC boxes on Ruby and Sapphire (`gPokemonStorage`, decomp only); the six-in-the-party refusal at Run and the full-party stop are deleted.
 - 2026-11-16: the owner's review of PR #412: the catch check reads the PC boxes (#413), an illegal shiny is logged (#414), Run on the x axis and an HGSS speed run on a dry route (#415), a catch with a full party (#417). Evidence added; the box address was read on the emulator.
-- 2026-11-16: FR-18 (#421, owner): the RS starter hunt matches the wild hunt; it analyses a starter before writing its row, and an illegal shiny starter is written with `IsShiny` false and reset past.
+- 2026-11-16: FR-18 (#421, owner): the RS starter hunt matches the wild hunt; it analyses a shiny starter before writing its row, and an illegal shiny starter is written with `IsShiny` false and reset past.
