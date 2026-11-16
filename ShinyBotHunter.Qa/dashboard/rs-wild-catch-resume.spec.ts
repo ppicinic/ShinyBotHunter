@@ -3,11 +3,11 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect, test, type Page } from '@playwright/test'
 import { readMemory, runMacro, shotAll, step } from './driver'
-import { partyCount, partySlot } from './jirachi-seed'
+import { GSAVEBLOCK2, partyCount, partySlot } from './jirachi-seed'
 import {
-  armCheat, assertUnarmed, BALL_SLOT, BUTTON_WAITS, cancelBot, cancelEventAndBot, CURSOR, dashboardState, disarmCheat, ENCOUNTER,
-  FLASH, FOUND, installCheat, installPristine, IN_BATTLE, launchRs, LOCK, OUTCOME, parseEncounter, PARTY, PARTY_COUNT, PHASE,
-  pollWhileWaiting, PRISTINE, readU16, readU32, readU8, removeCheats, saveOf, SHINY_PV, SLOT_SIZE, SPIN_LINE, startWild, TARGET,
+  armCheat, assertUnarmed, BALL_SLOT, BUTTON_WAITS, cancelBot, cancelEventAndBot, CONTROLLER, CURSOR, dashboardState, disarmCheat,
+  ENCOUNTER, failOnStop, FLASH, FOUND, installCheat, installPristine, IN_BATTLE, launchRs, LOCK, MENU_FN, OUTCOME, parseEncounter,
+  PARTY, PARTY_COUNT, PHASE, pollWhileWaiting, PRISTINE, readU16, readU32, readU8, removeCheats, saveOf, SHINY_PV, SLOT_SIZE, SPIN_LINE, startWild, TARGET,
   teardown, waitForLine, WINDOW, writeBytes
 } from './rs-wild'
 import { backendLog, hex8, MINUTE, settings, shutdown, startFrame, type Frame } from './static'
@@ -28,12 +28,12 @@ const ARM_AT = process.env.QA_RS_ARM_AT ?? 'menu'
 const SHINY_AT = ARM_AT === 'menu' ? 3 : 4
 
 // The Pokédex owned flags: gSaveBlock2 + 0x28 (pokeruby's struct SaveBlock2), one bit per national number less one.
-const OWNED = 0x02024ea4 + 0x28
+const OWNED = GSAVEBLOCK2 + 0x28
 const owned = (flags: Buffer, national: number): boolean => ((flags[(national - 1) >> 3] >> ((national - 1) & 7)) & 1) === 1
 const MUDKIP = 258
 const WURMPLE = 265
 const START_MENU = /\[StartMenu\] Start menu: .*; SAVE is at position (\d+)\.\s*$/
-const FOUND_POKEMON = /Found pokemon: True\s*$/
+const FOUND_POKEMON = /Found pokemon: (True|False)\s*$/
 const CRASH = /\[BotService\] Event '.*' crashed/
 
 /** Every read the catch makes goes to steps.log, so one failed run is enough to tune the waits. */
@@ -116,7 +116,8 @@ test('RS Wild Encounter catch and Resume: the shiny caught with a Master Ball, s
     await card.getByRole('button', { name: 'Run', exact: true }).click()
     step('Resume run')
     const saves = '"the bot saves through the start menu"'
-    await withCrashText(saves, () => waitForLine(FOUND_POKEMON, 1, 2 * MINUTE, `${saves}: the catch check`))
+    const found = await withCrashText(saves, () => waitForLine(FOUND_POKEMON, 1, 2 * MINUTE, `${saves}: the catch check`))
+    expect(found.trim(), `${saves}: the catch check did not find the Wurmple in the party: "${found.trim()}"`).toMatch(/True$/)
     await withCrashText(saves, () => waitForLine(START_MENU, 1, 2 * MINUTE, `${saves}: the [StartMenu] line`))
 
     // 5. "the hunt carries on or completes by the milestone": the next seek line, or Complete.
@@ -126,7 +127,7 @@ test('RS Wild Encounter catch and Resume: the shiny caught with a Master Ball, s
       while (Date.now() < deadline) {
         if ((await dashboardState())?.eventState === 'Complete') return 'Complete'
         const log = backendLog()
-        if (log.some((l) => CRASH.test(l))) throw new Error('the event crashed')
+        failOnStop(log)
         if (log.filter((l) => SPIN_LINE.test(l)).length > seeksBefore) return 'a new seek'
         await sleep(2000)
       }
@@ -166,9 +167,12 @@ async function catchIt(newSpecies: boolean): Promise<void> {
   await runMacro('H.Right.2')
   await pollWhileWaiting(logged('action cursor', () => readU8(CURSOR)), (v) => v === 1, 2000, `${criterion}: Right to BAG (cursor 1)`)
   // The bag is not a battle screen (callback 2 is neither the battle nor the field), and no byte for it is known: fixed
-  // waits for the bag to open, the pocket to change and the ball's menu, then USE.
+  // waits for the bag to open, the pocket to change and the ball's menu, then USE. The A on BAG is also confirmed by the
+  // controller function leaving HandleInputChooseAction (research doc, "Presses").
   await runMacro('H.A.2;W.60')
-  step('A on BAG, 60 frames (no byte known for the bag)')
+  step('A on BAG, 60 frames')
+  await pollWhileWaiting(logged('controller function', () => readU32(CONTROLLER)), (v) => v !== MENU_FN, 2000,
+    `${criterion}: A on BAG (the controller leaving HandleInputChooseAction)`)
   await runMacro('H.Right.2;W.20')
   step('Right to the Poké Balls pocket, 20 frames (no byte known)')
   await runMacro('H.A.2;W.20')
