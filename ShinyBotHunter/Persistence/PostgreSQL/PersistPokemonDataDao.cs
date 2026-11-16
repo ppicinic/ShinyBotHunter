@@ -47,7 +47,8 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             Nature = pokemon.Nature;
             Level = pokemon.Level;
             ShinyValue = (short)pokemon.ShinyValue;
-            IsShiny = pokemon.IsShiny;
+            // A shiny value of 0 to 7 with IsShiny false is a shiny that failed the PKHeX legality check.
+            IsShiny = pokemonData.CountsAsShiny;
             Game = pokemonData.Game;
             Milestone = pokemonData.Phase;
             GameFileName = pokemonData.GameFileName;

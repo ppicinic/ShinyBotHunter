@@ -1,6 +1,7 @@
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Persistence.PostgreSQL;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -128,6 +129,38 @@ namespace ShinyBotHunter.Tests
             AssertCounts(cache.GameLevelCache["F9"].PokemonEncounterCache["z"], 1, 0, 0);
             AssertCounts(cache.GameLevelCache["F9"].PhaseEncounterCache["P9"].PokemonEncounterCache["#9"], 1, 0, 0);
             Assert.Equal(1, cache.GameLevelCache["F9"].PhaseEncounterCache["P9"].PhaseCount);
+        }
+
+        [Fact]
+        public void Increment_IllegalShiny_CountsAsAnEncounterNotAShiny()
+        {
+            var cache = PokemonPersistenceService.BuildGameCache(
+                new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
+                new List<ProgressRow> { new("P1", null, 10), new("P1", "F1", 10) },
+                new List<CaughtPokemon>(),
+                new List<PokemonData>());
+            // A default PokemonData has ShinyValue 0: shiny by its bytes, but it failed the legality check.
+            var encounter = new PersistPokemonData()
+            {
+                PokemonData = new PokemonData() { FormCode = "a", Species = 1 },
+                Game = GameFlavor.RS,
+                Phase = "P1",
+                GameFileName = "F1",
+                LegalityFailed = true
+            };
+
+            cache.Increment(encounter);
+
+            AssertCounts(cache.AllPokemonCounts, 11, 0, 0);
+            AssertCounts(cache.PokemonEncounterCache["a"], 11, 0, 0);
+            AssertCounts(cache.PhaseEncounterCache["P1"].AllPokemonCounts, 11, 0, 0);
+            Assert.Equal(11, cache.PhaseEncounterCache["P1"].PhaseCount);
+            AssertCounts(cache.GameLevelCache["F1"].AllPokemonCounts, 11, 0, 0);
+            AssertCounts(cache.GameLevelCache["F1"].PhaseEncounterCache["P1"].PokemonEncounterCache["a"], 11, 0, 0);
+            Assert.Equal(11, cache.GameLevelCache["F1"].PhaseEncounterCache["P1"].PhaseCount);
+            var row = new PersistPokemonDataDao(encounter);
+            Assert.False(row.IsShiny);
+            Assert.Equal(0, row.ShinyValue);
         }
 
         [Fact]

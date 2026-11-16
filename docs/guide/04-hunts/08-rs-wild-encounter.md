@@ -68,7 +68,7 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 
 1. The bot presses A at "Wild … appeared!".
 2. At the FIGHT / BAG / POKéMON / RUN menu it reads the wild Pokémon, checks it if it is shiny (step 3), writes it to the encounter log, and asks whether it is a Pokémon you are hunting for.
-3. If the wild Pokémon is shiny, the bot first checks it with PKHeX, the same legality check the starter hunt uses. A shiny that no real game could produce fails. A GBA emulator can make one, which is why every Gen 3 shiny is checked except the Wishmaker Jirachi. A shiny that fails is not written to the encounter log, sends no alert, and is run from like any other Pokémon.
+3. If the wild Pokémon is shiny, the bot first checks it with PKHeX, the same legality check the starter hunt uses. A shiny that no real game could produce fails. A GBA emulator can make one, which is why every Gen 3 shiny is checked except the Wishmaker Jirachi. A shiny that fails is written to the encounter log but not counted as a shiny, sends no alert, and is run from like any other Pokémon.
 4. If it is a Pokémon you are hunting for, the bot stops at the menu with nothing pressed, and the shiny alert goes to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
 5. Otherwise it presses Right and Down to move to RUN, then A.
 6. At "Can't escape!" it presses A, and A on RUN again when the menu comes back. The cursor stays on RUN.
@@ -117,7 +117,7 @@ While the hunt runs, the emulator's entry can show small grey lines under its na
 
 ## What does it log?
 
-Every wild Pokémon goes into the encounter log, except a shiny that fails the legality check, with the game, the milestone, the Pokémon, the time and the game file, as on HeartGold and SoulSilver. [Your data](../06-your-data.md) explains where these are kept.
+Every wild Pokémon goes into the encounter log with the game, the milestone, the Pokémon, the time and the game file, as on HeartGold and SoulSilver. A shiny that fails the legality check is stored with `IsShiny` false. [Your data](../06-your-data.md) explains where these are kept and how to find them.
 
 The backend's window also shows:
 

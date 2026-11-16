@@ -442,13 +442,14 @@ namespace ShinyBotHunter.Tests
             Assert.Same(logged, Assert.Single(battle.Alerted));
             Assert.Same(logged, battle.State.TargetPokemon);
             Assert.True(logged.PokemonData.IsShiny);
+            Assert.False(logged.LegalityFailed);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.Equal(["Advance"], battle.Presses);
             Assert.Equal(Shiny, Assert.Single(battle.Analysed));
         }
 
         [Fact]
-        public async Task IllegalShiny_IsFledWithFivePressesUnloggedAndUnalerted()
+        public async Task IllegalShiny_IsLoggedOnceMarkedAndFledUnalerted()
         {
             Battle battle = Start(Fled(), target: new ShinyTarget(), enemies: [Shiny]);
             battle.Verdict = new(false, "PID-IV mismatch");
@@ -467,13 +468,16 @@ namespace ShinyBotHunter.Tests
 
             Assert.Null(stop);
             Assert.Equal(Shiny, Assert.Single(battle.Analysed));
-            Assert.Empty(battle.Logged);
+            PersistPokemonData logged = Assert.Single(battle.Logged);
+            Assert.True(logged.LegalityFailed);
+            Assert.Equal(0x30u, logged.PokemonData.PID);
             Assert.Empty(battle.Alerted);
             Assert.Null(battle.State.TargetPokemon);
             Assert.Equal([EventState.BattleComplete], battle.State.State);
             // Five presses: BattleCursorToRun is Right and Down.
             Assert.Equal(["Advance", "ToRun", "Confirm", "Advance"], battle.Presses);
             Assert.Contains("[RsBattle] legality FAIL", log.ToString());
+            Assert.Contains("logged as not shiny", log.ToString());
             Assert.Contains("PID-IV mismatch", log.ToString());
         }
 
