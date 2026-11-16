@@ -1,6 +1,6 @@
 # Spec: wild encounter hunt in Ruby and Sapphire
 
-Status: In progress on `feature/rs-wild-encounter` (2026-11-15), from the spike of 2026-11-15 and the owner's notes of the same day.
+Status: Implemented on `feature/rs-wild-encounter` (2026-11-15, epic #380). See "As built", "What diverged" and "Evidence".
 Last updated: 2026-11-15
 Owner: Phil
 Related: [research: the spike](../research/rs-wild-encounter.md) (the source for every address, timing and rule here), the HGSS hunt's guide page [Wild and chained encounters](../guide/04-hunts/01-wild-encounter.md), [game profile spec](game-profile.md) (capabilities, the registry), [HGSS state reader spec](hgss-state-reader.md) (the snapshot and the bounded waits this reuses), [QA automation](qa-automation.md), [feature workflow](feature-workflow.md), the decision [Hunts act as a human would](../decisions/global.md), AGENTS rule 16.
@@ -71,7 +71,7 @@ This first version flees every battle. It does not train, heal, walk to a Pokém
 
 | ID | Requirement | Verified by |
 |---|---|---|
-| NFR-1 | 270 encounters an hour or better on Route 101 over thirty encounters, in Spin and in Run, on the QA save as it is (a shiny first Pokémon, no White Flute; the spike: 270 and 270). The parts, each checked: seeking at no more than 9 frames a check; a fled battle, roll to free field, no more than 700 frames (the spike: 692); no more than 30 of those frames between a state the bot waits for and its press landing (the spike: about 26). | QA `rs-wild-speed`. |
+| NFR-1 | The target is 270 encounters an hour on Route 101, in Spin and in Run, on the QA save as it is (a shiny first Pokémon, no White Flute; the spike: 270 and 270, counted in game frames at 60 to the second). Measured by wall clock over a timed run with nothing but the bot touching the emulator (owner, 2026-11-15); 266 and 269 an hour, measured at full emulator speed, are acceptable (owner, 2026-11-15), and the scenario fails below 265. The parts, each checked: seeking at no more than 9 frames a check; a fled battle, roll to free field, no more than 700 frames (the spike: 692); no more than 30 of those frames between a state the bot waits for and its press landing (the spike: about 26). | QA `rs-wild-speed`. |
 | NFR-2 | No ApiHawk change, no new package or project. New: one capability, two readers, one battle event, address members, registry macro files, the QA cheat and scenarios. Changed: the six shared places of FR-1 to FR-6. | PR description. |
 | NFR-3 | HGSS does what it did. Its Spin and Run macro strings are equal to today's (unit tests), its battle event is untouched but for FR-6's extraction, and the HGSS route scenarios pass before the feature merges. | Unit tests; `hgss-route33`, `hgss-route33-train`, `hgss-headbutt`. |
 
@@ -193,7 +193,7 @@ A milestone for the game RS (for example `Route 101`) must exist in the QA Mongo
 | `rs-wild-sapphire` | Start Wild Encounter on `SA-Wild`, ShinyTarget, Spin, from the UI; ten encounters; cancel | Headbutt, No Target and the train types greyed out with their reasons; ten `encounters` rows, species Wurmple, Zigzagoon or Poochyena, Lv 2 or 3; the turns in the order Up, Left, Down, Right; per encounter exactly five battle presses, each with its confirming value; the player still on (14, 4); the shiny-lead speed line at Run; the save's first 131,072 bytes unchanged |
 | `rs-wild-ruby` | the same on `RU-Wild`, five encounters | the same checks; proves one table for both games |
 | `rs-wild-run` | Run with y range 1 from (14, 4), ten encounters | the tile stays in rows 3 to 5 of column 14, including after a battle that ended on row 3 or 5; ten rows; steps at 8 frames a tile (B held) |
-| `rs-wild-speed` | the save as it is; Spin, thirty encounters; then Run with y range 1, thirty | NFR-1 in both modes, from the logged frame counts |
+| `rs-wild-speed` | the save as it is; Spin for twenty minutes, then Run with y range 1 for twenty; no window recorder and no memory access by the scenario while the bot hunts | the rate from the first and last encounter times against the 270 target, failing below 265; NFR-1's per-battle parts from the logged frame counts |
 | `rs-wild-failed-escape` | the scenario writes the lead's Speed to 1 in party RAM (`0x030043BE`, two bytes) before Run; Spin; cancel after the first battle in which an escape fails | at least one `[RsBattle]` line for a failed escape followed by another A on RUN with the cursor still 3; no stop. Getting away is not required (owner, 2026-11-15) |
 | `rs-wild-catch-resume` | the scenario writes a Master Ball into the first ball slot (`0x02025D34`: item 1, quantity 5); Spin; arms the shiny cheat as `rs-wild-shiny` does; when the bot is Waiting the scenario disarms the cheat and catches it itself (Right, A, Right, A, A; A at each battle message; A twice at the Pokédex page; B at the nickname), waits for the free field, and presses Resume | the bot saves through the start menu; one new `CaughtPokemon` with personality value `CD631295`; the saved SaveRAM holds it in party slot 2; the hunt carries on or completes by the milestone |
 | `rs-wild-shiny` | Spin on `SA-Wild`; after the second encounter's action menu is logged, arm the cheat; let the bot flee | the next encounter is Wurmple with personality value `CD631295`, shiny; one alert; the bot Waiting at the action menu with no press after the read; the cheat disarmed during that battle and the battle fled by the scenario before shutdown |
@@ -229,9 +229,60 @@ W1 to W4 can run side by side once the planner has given the profile and address
 - Spike: the bot reads the wild Pokémon at the action menu, not at the roll.
 - Spike: Spin and Run are `M` macros, so every direction press is confirmed inside the emulator. A timed spin is not used on Ruby and Sapphire.
 
+## As built
+
+Implemented on `feature/rs-wild-encounter`, epic #380, 2026-11-15. The requirement rows above stand except where "What diverged" says otherwise; the changelog has each change as it was made.
+
+- One `Wild Encounter` action for both games. An RS bot is offered it with Headbutt, No Target, Standard and Switch greyed out with their reasons (`BotService.DisabledByCapabilities`); Chained Encounter is not offered.
+- `GameCapabilities.HasTraining` is new; `HasWildEncounters` means the spin and run loops and a battle that can be fled. `GameProfile` has two new members, `CreateBattleEvent` and `SaveGame`.
+- `RsStateReader` and `RsOverworldReader`; the RS address members in `RsPointerService`; `IPointerService.RunWatchX` / `RunWatchY`.
+- `SpinEncounterEvent` and `RunEncounterEvent` press registry macros (`SpinUp`, `SpinLeft`, `SpinDown`, `SpinRight`, the optional `RunHold`). HGSS's strings are unchanged character for character.
+- `RsBattleEvent`: A at a battle message, the read at the action menu, the PKHeX check on a shiny, the log and the target question, Right and Down as one macro confirmed by the cursor reading 3, A on RUN, A at "Got away safely!". Macros `BattleAdvance`, `BattleCursorToRun`, `BattleConfirm`.
+- `OrchestratorEvent`: the battle event from the profile, the party-only catch check, the save through the profile, completing in place without navigation, the full-party stop, `LogEncounterAndAskTargetAsync` shared by both battle events.
+- `RsStartMenuService.SaveViaStartMenuAsync` is the save step for the starter hunt and for Resume after a catch.
+- Speed lines at Run on `EmulatorState.SpeedLines`, shown on the emulator card.
+- QA: `ShinyBotHunter.Qa/Cheats/rs-usa-rev2/`, `rs-wild.ts`, eight `rs-wild-*` scenarios.
+- No ApiHawk change, no package, no project, no interface.
+
+## What diverged
+
+1. **FR-3, the Run macro's order.** One order serves both games, HGSS's: `M.Up.<near>.33707828:H.B.1;M.Down.<far>.33707828`. The B hold is still joined to the first move's step.
+2. **FR-4 on both games.** The run-line check and the start-tile check have no flavor test, so they apply to HGSS too: Run stops where it used to hang, and Spin stops off its start tile. Spin's check runs at the start of every seek.
+3. **FR-7.** One snapshot is one multi-block request of seven small reads from one frame, not three blocks: ApiHawk caps a block at 0x1000 bytes and the values are further apart. The battle type is not on the snapshot; the battle event reads it.
+4. **FR-9, the locked field.** Spin and Run hand over only at a battle screen, so the 15 s stop for a locked field with no battle lives in `SpinEncounterEvent.SeekAsync`, for both games. On HGSS a field message during a seek now stops after 15 s where it used to hang.
+5. **FR-12.** Two refusals the spec did not have: the player not being map object 0, and a party that cannot be read.
+6. **A full party after a catch** ends the hunt as Complete with the sentence in the log (orchestrator, 2026-11-15): the catch check reads the party alone, so a later catch would go to the PC unrecorded.
+7. **FR-15.** The level line compares each wild level with the lead's level read at Run, so it can only appear after an encounter, never at Run.
+8. **FR-18 is new** (owner, 2026-11-15): a shiny is checked with PKHeX before it counts. An illegal shiny is not written to the encounter log, because the log derives "shiny" from the personality value and a row would count as one.
+9. **NFR-1, the rate.** The spike's 270 was counted in game frames at 60 to the second. By wall clock at full emulator speed the bot measured 266.4 to 269.0 an hour in Spin and 269.0 to 273.9 in Run; the owner accepted that. The per-battle parts held in every run: 685 frames from the roll to the free field, about 15 frames across a battle's presses.
+10. **The QA window recorder slows the emulator** from 59.6 to 56.95 frames a second, which read as 257 and 259 an hour. `rs-wild-speed` records no emulator video.
+11. **FR-16 and the save step.** `RsStartMenuService` still opens the start menu with one-frame taps (`T.Start`, `T.Down`), moved unchanged by FR-13. It worked in every `rs-wild-catch-resume` run; each tap is checked against the menu cursor and retried.
+
+## Evidence
+
+Emulator runs on the dev PC, QA BizHawk, English Sapphire 1.2 (`SA-Wild`) unless marked, 2026-11-15. Run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/` and are not committed. The bot code of the runs marked (a) is 576790e, the last bot commit before the legality check; those marked (b) include the legality check (6002eb5), which is the bot code of the branch tip.
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `rs-wild-refusals` | `20261116-001157` (a) | passed: six in the party, a fainted lead, Headbutt and a field message each a 400 with its sentence, no event |
+| `rs-wild-sapphire` | `20261116-000552` (a), `20261116-045819` (b) | passed: ten fled encounters by Spin, five presses each, the player on (14, 4), the greyed choices, the shiny-lead line, the save unchanged |
+| `rs-wild-ruby` | `20261116-000906` (a), Ruby 1.2 (`RU-Wild`) | passed: five fled encounters, the same checks |
+| `rs-wild-run` | `20261116-004032` (a), `20261116-050112` (b) | passed: ten fled encounters, every seek from rows 3 to 5 of column 14, eight of them from an end row |
+| `rs-wild-failed-escape` | `20261116-004325` (a) | passed: four failed escapes in one battle, A on RUN again each time, no stop |
+| `rs-wild-catch-resume` | `20261116-004449` (a), `20261116-045613` (b) | passed: the shiny caught with a Master Ball, the save through the start menu after Resume, one `CaughtPokemon`, slot 2 in the saved SaveRAM |
+| `rs-wild-shiny` | `20261116-001537` (a), `20261116-041246` (b) | passed: Wurmple `CD631295` after arming, one alert, Waiting with no press after the read; in (b) `legality OK` |
+| `rs-wild-speed` | `20261116-041428` (b), twenty minutes a mode, no recorder | Spin 266.4 an hour over 87, Run 273.9 over 90, at 59.63 frames a second; roll to free field mean 685 frames (maximum 692), press frames mean 14.8. Ran before the 265 floor was written into the scenario, so the run itself ended as failed on Spin's 266.4 |
+| `rs-wild-speed`, earlier | `20261116-035243` (a), thirty a mode, no recorder; `20261116-004654` (a), with the recorder | 266.6 and 269.0 an hour at 59.6 frames a second; 257.3 and 259.2 at 56.95 |
+| `hgss-route33` | `20261116-001725` (a) | passed |
+| `hgss-pickup` | `20261116-001946` (a) | passed (the HGSS train path and Pickup) |
+
+Not run: `hgss-route33-train` and `hgss-headbutt`. Their saves (`Pokemon HeartGold2`, `HG-Headbutt`) are not on the dev PC.
+
+What the emulator found, all in the scenarios and none in the bot: an RS bot has one action, so the card shows no button for it; Cancel when the Admin window is on another tab; A pressed once at a message that was still printing; "Resume" is a label with a Run button. The bot ran its first hunt on the emulator without a change.
+
 ## Open questions
 
-None that block the build. Not run on the emulator: the shared orchestrator against Ruby and Sapphire (the seams of FR-5 are from reading the code), a faint, traps, the bot's own Resume and save after a catch, versions 1.0 and 1.1.
+None that block the merge. Not run on the emulator: a fainted lead, a trap (twelve tries), a battle that is not wild, a locked field with no battle during a seek, the full-party stop after a catch, the object-id refusal, a shiny that PKHeX fails, the slow-transition speed line, versions 1.0 and 1.1. Each has unit tests.
 
 ## Changelog
 
@@ -243,7 +294,7 @@ None that block the build. Not run on the emulator: the shared orchestrator agai
 - 2026-11-15: FR-3 as built: one order on both games, HGSS's (Up then Down, Right then Left). The RS Run macro is `M.Up.<y - range>.33707828:H.B.1;M.Down.<y + range>.33707828`. The two addresses are `IPointerService.RunWatchX`/`RunWatchY` (HGSS `TrainerX`/`TrainerY`, RS `0x02025732`/`0x02025734`).
 - 2026-11-15: FR-4 as built, on both games: Run checks the line before every seek; Spin checks the start tile at the start of every seek, before anything is pressed, not only after a battle.
 - 2026-11-15: FR-7 as built: one multi-block request of seven direct reads on one frame (ApiHawk's `MaxBlockLength` is 0x1000). The battle type is not on the snapshot: `RsBattleEvent` reads `gBattleTypeFlags` itself. `Outcome` is on every battle screen.
-- 2026-11-15: FR-9 as built: the 15 s lock-with-no-battle stop lives in Spin and Run (`SpinEncounterEvent.SeekAsync`) on both games, with the same sentence. `RsBattleEvent` keeps a 15 s stale for the battle bit and the type check.
+- 2026-11-15: FR-9 as built: the 15 s lock-with-no-battle stop lives in Spin and Run (`SpinEncounterEvent.SeekAsync`) on both games, with the same sentence. `RsBattleEvent` keeps a 15 s stale for the battle bit; the type check after it is one read.
 - 2026-11-15: FR-12 as built: the object id (FR-8) is a refusal at Run for both encounter types: "The player is not the first object on this map, which the bot watches as it turns." An unreadable party refuses with "The party could not be read; try again once the game is in the field."
 - 2026-11-15: a full party seen before an encounter on a profile without box reads (after a recorded catch, in practice) ends the hunt as Complete and logs `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` (orchestrator, W4 plan review).
 - 2026-11-15: FR-10 as built: a record that fails its checksum for 2 s stops with "The wild Pokémon's record failed its checksum for 2 s."
@@ -251,3 +302,5 @@ None that block the build. Not run on the emulator: the shared orchestrator agai
 - 2026-11-15: FR-14 as built (W2c): `[Run] from (<x>, <y>) macro=<macro>`, and `[Spin] seek:` / `[Run] seek:` in two parts (the macro to the field leaving free, then to the battle screen).
 - 2026-11-15: FR-15 as built: the slow-transition line compares each wild level with the lead's level read at Run. The lines travel on `EmulatorState.SpeedLines` to the emulator card.
 - 2026-11-15: FR-18 (#408): the owner's rule that every Gen 3 shiny is checked with PKHeX, the Jirachi aside. GBA emulators are unreliable. In the wild hunt an illegal shiny is fled and not written to the encounter log, so it never counts as a shiny.
+- 2026-11-15: NFR-1's rate (owner): measured by wall clock over a timed run with no recorder; 266 and 269 an hour at full emulator speed are acceptable; `rs-wild-speed` reports against 270 and fails below 265.
+- 2026-11-15: closed out. Status Implemented; "As built", "What diverged" and "Evidence" added.

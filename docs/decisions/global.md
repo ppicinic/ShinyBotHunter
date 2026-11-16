@@ -300,6 +300,6 @@ GBA emulators are unreliable: the Gen 3 RNG and clock as an emulator runs them c
 Every shiny a Gen 3 hunt finds is checked with PKHeX (`LegalityService.Analyze`) before it counts as found. A shiny that fails is not a target: no alert, no stop, and the hunt carries on as for a Pokémon that is not shiny. The one exception is the Wishmaker Jirachi: it is unique and does not need the check (owner).
 
 ### Consequences
-- A new Gen 3 hunt's spec names where its shiny is analysed; a plan without it is rejected at plan review.
+- A new Gen 3 hunt's spec names where its shiny is analysed.
 - Pokémon that are not shiny are not analysed unless a hunt's config asks for it (the starter hunt's `LogLegalityForEveryEncounter`), so the check costs nothing between shinies.
-- Today: the RS starter hunt (`StarterHuntEvent`, also run by `MultiStarterHuntEvent`) and the RS wild hunt (`RsBattleEvent`) comply; `WishmakerJirachiEvent` is the exception.
+- Today: the RS starter hunt (`StarterHuntEvent`, also run by `MultiStarterHuntEvent`) and the RS wild hunt (`RsBattleEvent`) analyse every shiny; `WishmakerJirachiEvent` is the exception. The starter hunt writes its encounter row before the analysis, so an illegal starter shiny is still stored as a shiny in the encounter log; that is not changed here.
