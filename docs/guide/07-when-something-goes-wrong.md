@@ -90,7 +90,7 @@ The bot reads the game when you press Run on a Ruby or Sapphire **Wild Encounter
 |---|---|---|
 | `Close any menu or message and stand in the field.` | A menu, message or script was on screen. | Close it until your character can walk, and start again. |
 | `The player is not the first object on this map, which the bot watches as it turns.` | The bot checks that your character is the first object on the map, and on this map it is not. | |
-| `The party could not be read; try again once the game is in the field.` | The bot could not read your party. | Wait until your character is standing in the game, and start again. |
+| `The party could not be read; try again once the game is in the field.` | The bot could not read your party. | Wait until your character is in the field, and start again. |
 | `The first Pokémon in the party has fainted.` | Your first Pokémon has no HP left, or the party is empty. | Heal it, or put a Pokémon that can battle first, and start again. |
 | `Leave a free party slot so a caught Pokémon stays in the party.` | You have six Pokémon, so a caught one would go to the PC, where the bot does not look. | Put a Pokémon in the PC, and start again. |
 | `Ruby and Sapphire have no Headbutt trees.` | Encounter Type Headbutt was sent, though it is greyed out. | Pick Spin or Run. |
@@ -195,8 +195,6 @@ On the dashboard, the bot shows as waiting, with **Resume**, except for the full
 | `[RsBattle] stopped: The wild Pokémon's record failed its checksum for 2 s. <state>` | Ruby and Sapphire. The wild Pokémon's record in the game's memory kept failing its checksum, so the bot could not read it. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
 | `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` | Ruby and Sapphire. Your party is full, after a catch in practice, so the next caught Pokémon would go to the PC, where the bot does not look. The hunt ended as complete; it is not waiting. | Put a Pokémon in the PC, and start the hunt again. |
 
-If a Pokémon you are hunting is on screen, catch it first ([Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md)).
-
 ## A hunt stops with "Waited for ...; the game state stayed ..."
 
 This is a stale timeout.
@@ -208,7 +206,7 @@ The time limits are:
 
 | The bot was waiting for | Time limit |
 |---|---|
-| A battle to start | 30 s |
+| In a HeartGold or SoulSilver battle, the first battle menu once the battle has started | 30 s |
 | The end of a turn | 20 s |
 | A prompt, such as experience or a new move | 15 s |
 | The messages after a new move is learned | 30 s |
@@ -221,7 +219,7 @@ The time limits are:
 
 - **Do:** look at that emulator to see what the game shows. Then press **Resume** on the dashboard, or **Cancel**.
 
-**Resume** does not pick up where the game stopped. It goes back to the field: the next encounter, or the walk to or from the Pokémon Center it was on, worked out again from where your character stands. So first finish what the game shows yourself (end or run from the battle, close any message) until your character can walk. If a Pokémon you are hunting is on screen, catch it first ([Wild and chained encounters](04-hunts/01-wild-encounter.md)). On Ruby and Sapphire, also put your character back on the start tile (Spin) or on the line (Run).
+**Resume** does not pick up where the game stopped. It goes back to the field: the next encounter, or the walk to or from the Pokémon Center it was on, worked out again from where your character stands. So first finish what the game shows yourself (end or run from the battle, close any message) until your character can walk. If a Pokémon you are hunting is on screen, catch it first ([Wild and chained encounters](04-hunts/01-wild-encounter.md)).
 
 ## The Jirachi hunt stops in its save or result step
 

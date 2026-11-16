@@ -85,7 +85,7 @@ A trainer battle, or any battle that is not wild, stops the bot.
 
 The bot then looks for the Pokémon in your party only. If it is there, the bot saves the game through the start menu: it opens the menu, moves to SAVE and confirms. It records the Pokémon as caught and writes the save file. Then it carries on hunting, or finishes where it stands if the milestone is complete.
 
-- If the catch filled your party to six, the hunt ends as complete, and the backend's window shows `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` Put a Pokémon in the PC and start the hunt again.
+- If the catch filled your party to six, the hunt ends as complete, and the backend's window shows `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` Put a Pokémon in the PC and start the hunt again. If the catch also completes the milestone, the hunt finishes as above instead, and this line is not logged.
 - If the Pokémon is not in your party (you ran from it, or it fainted), nothing is recorded as caught, and the hunt carries on.
 - If the bot could not read your party, it stays waiting. Press **Resume** again.
 
@@ -146,7 +146,7 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 
 **You see** Run refused with "The party could not be read; try again once the game is in the field."
 **It means** the bot could not read your party when you pressed Run.
-**Do** wait until your character is standing in the game, then press **Run** again.
+**Do** wait until your character is in the field, then press **Run** again.
 
 **You see** Run refused with "The first Pokémon in the party has fainted."
 **It means** your first Pokémon has no HP left, or the party is empty.
@@ -190,7 +190,9 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[RsBattle] stopped: Waited for <what>; the game state stayed <state>`
 **It means** in the battle, nothing in the game changed for 30 s while the bot waited for the next screen.
 
-**Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. If a Pokémon you are hunting is on screen, catch it first. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again.
+**Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again.
+
+The bot records a catch only for a Pokémon it stopped on as a target: waiting at the FIGHT / BAG / POKéMON / RUN menu, with the shiny alert sent. A Pokémon you catch after any of the stops above is not recorded by the bot.
 
 For anything else, see [When something goes wrong](../07-when-something-goes-wrong.md).
 
