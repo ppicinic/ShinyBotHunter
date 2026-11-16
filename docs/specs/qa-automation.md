@@ -253,7 +253,7 @@ npx playwright test rs-wild-refusals
 npx playwright test rs-wild-sapphire
 npx playwright test rs-wild-ruby
 npx playwright test rs-wild-run
-npx playwright test rs-wild-speed
+npx playwright test rs-wild-speed   # about 45 minutes: QA_RS_SPEED_MINUTES (default 20) per mode
 npx playwright test rs-wild-failed-escape
 npx playwright test rs-wild-catch-resume
 npx playwright test rs-wild-shiny
@@ -428,7 +428,7 @@ Preconditions:
 | `rs-wild-sapphire` | dashboard, bot-engine, encounter, persistence, macros | none; greyed choices, ten rows, Spin macros per facing, `checkFlee` per encounter, (14, 4), the shiny-lead line, flash unchanged |
 | `rs-wild-ruby` | dashboard, bot-engine, encounter, persistence, macros | none; the same on `RU-Wild`, five encounters |
 | `rs-wild-run` | bot-engine, encounter, persistence, macros | none; Run with y range 1, the start tile per seek in rows 3 to 5, B held in the macro, ten rows |
-| `rs-wild-speed` | encounter, macros | none; NFR-1 per mode over 30 encounters, from Postgres timestamps and the logged ms and frames |
+| `rs-wild-speed` | encounter, macros | none; each mode hunts `QA_RS_SPEED_MINUTES` (default 20) by the wall clock with nothing touching the emulator (only `backend.log` is read, to fail early on a stop or a crash); NFR-1 per mode: the rate (rows − 1) × 3600 / window over the mode's `encounters` rows after the first, from Postgres timestamps, and the other parts from the logged ms and frames; the summary gives the rows used, the window and the emulator's frames a second. It records no emulator video on purpose: the window recorder slowed the emulator from 59.6 to 56.95 frames a second (measured 2026-11-15) |
 | `rs-wild-failed-escape` | encounter | none; lead Speed 1 in party RAM; a failed escape answered by A on RUN with the cursor still 3, no stop |
 | `rs-wild-catch-resume` | encounter, persistence, bot-engine | `rs-usa-rev2` gRngValue freeze; a Master Ball written into the bag; the scenario catches; Resume saves through the start menu, the catch is recorded, slot 2 is in the save |
 | `rs-wild-shiny` | encounter, persistence, discord | `rs-usa-rev2` gRngValue freeze, armed at encounter 2's action menu; Wurmple `CD631295`, one alert, Waiting with nothing pressed, disarmed and fled by the scenario |
