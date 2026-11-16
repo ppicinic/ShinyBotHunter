@@ -99,7 +99,7 @@ export const STOPPED = /\[(RsBattle|Spin|Run)\] (stopped: |The player moved whil
 export const MOVED = /\[Spin\] The player moved while turning/
 const CRASHED = /\[BotService\] Event '.*' crashed/
 // Every line the bot logs for a press in battle.
-const PRESS_LINE = /\[RsBattle\] (BattleAdvance|BattleCursorToRun|cursor \d* after BattleCursorToRun|BattleConfirm)/
+export const PRESS_LINE = /\[RsBattle\] (BattleAdvance|BattleCursorToRun|cursor \d* after BattleCursorToRun|BattleConfirm)/
 
 export type Encounter = { name: string; species: number; level: number; pid: string; shinyValue: number; shiny: boolean }
 export function parseEncounter(line: string): Encounter {
