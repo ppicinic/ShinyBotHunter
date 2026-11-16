@@ -1,7 +1,7 @@
 # Spec: game profile
 
 Status: Implemented (epic #118, 2026-10-22); divergences are recorded in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-game-profile-2026-10-22) and marked below
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 Owner: Phil
 Related: [plan rows 5.3 to 5.3e](../plans/2026-10-cleanup-and-hardening.md#phase-5-structural-splits-after-1-3-one-file-per-pr), [architecture, extension axes](../architecture/system-overview.md#axis-1-game-flavors), [pointer discovery](../research/pointer-discovery.md), [HGSS state reader spec](hgss-state-reader.md) (the follow-up), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md)
 
@@ -175,6 +175,8 @@ public sealed record GameCapabilities(
 HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
 
 Changed 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md), FR-1: `HasTraining` is added. HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares `HasWildEncounters`, `HasSoftResetStarterHunt` and `HasWishmakerJirachi`. The constructor checks `HasWildEncounters ⇒ CreateStateReader, CreateOverworldReader, CreateBattleEvent, SaveGame present` and `HasTraining ⇒ BattleParser present, HasOverworldNavigation`; `HasWildEncounters` no longer requires the battle parser or `HasOverworldNavigation`.
+
+Changed 2026-11-16 by the [RS wild encounter spec](rs-wild-encounter.md) (#413): RS declares `CanReadBoxes`, so both profiles do. RS's `BoxLayout` is `gPokemonStorage`'s boxes: 14 boxes of 30 80-byte slots, 2,400 bytes a box. `BoxLayout.Storage` is an offset from the base the party read uses: the dereferenced anchor on HGSS, the anchor itself on RS (`PartyAddressing.Absolute`), so RS's is `0x020300A4 - 0x03004350`.
 
 `PokemonStateReader.GetPokemonState` checks `CanReadBoxes` and throws `InvalidOperationException` otherwise, replacing today's `NotSupportedException` from the pointer service. `PokemonState`'s hard-coded 18x30 (`PokemonStateReader.cs:17-20`) reads `BoxLayout` instead.
 
@@ -363,3 +365,4 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-10-22: references moved to `main` after PR #106; NFR-1 names the two QA scenarios that exist.
 - 2026-10-22: implemented under epic #118 (PRs #126 to #132). "As built" notes mark where the code differs from the draft: get-only profile members, existing address names kept, flavor-only members on the concrete tables, the data directory in `HgssProfile`, the `EventRegistration` shape, the top-level options, and the FR-5 wording. The full list is in the plan's implementation notes.
 - 2026-11-15: Ruby and Sapphire wild encounters (epic #380): `HasTraining`, the as-built declarations and constructor checks, `CreateBattleEvent` and `SaveGame` on the profile, a second overworld reader (`RsOverworldReader`), and `Chained Encounter` requiring `HasOverworldNavigation`.
+- 2026-11-16 (#413): RS declares `CanReadBoxes` with `gPokemonStorage`'s boxes as its `BoxLayout`, whose `Storage` is an offset from the party read's base (the anchor itself on RS).

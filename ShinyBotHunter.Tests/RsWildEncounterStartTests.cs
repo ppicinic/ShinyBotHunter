@@ -43,7 +43,6 @@ namespace ShinyBotHunter.Tests
         private const string StandInTheField = "Close any menu or message and stand in the field.";
         private const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
         private const string LeadFainted = "The first Pokémon in the party has fainted.";
-        private const string LeaveAFreeSlot = "Leave a free party slot so a caught Pokémon stays in the party.";
 
         private static readonly NewEventArguments LaunchBot = new() { EventName = "Launch Bot", GameName = "fake.nds" };
 
@@ -180,11 +179,11 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task StartWithSixInTheParty_Is400()
+        public async Task StartWithSixInTheParty_ReachesTheRangeRules()
         {
             var (service, _, _, _) = await LaunchAsync([.. Enumerable.Repeat(Mon(20, 7), 6)]);
 
-            Assert.Equal(LeaveAFreeSlot, await RefusalAsync(service, Run()));
+            Assert.Equal("A x or y range must be supplied for Run Encounter Event", await RefusalAsync(service, Run()));
         }
 
         [Fact]
@@ -192,9 +191,9 @@ namespace ShinyBotHunter.Tests
         {
             var (service, bot, _, _) = await LaunchAsync(OneHealthy);
             await service.GetBotActionsAsync(0);
-            bot.PartyBlocks = [.. Enumerable.Repeat(Mon(20, 7), 6)];
+            bot.PartyBlocks = [Mon(0, 7)];
 
-            Assert.Equal(LeaveAFreeSlot, await RefusalAsync(service, Run()));
+            Assert.Equal(LeadFainted, await RefusalAsync(service, Run()));
             Assert.Equal(2, bot.PartyReads);
         }
 

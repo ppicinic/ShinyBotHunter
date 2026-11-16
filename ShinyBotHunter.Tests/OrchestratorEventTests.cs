@@ -34,15 +34,15 @@ namespace ShinyBotHunter.Tests
 
         private static byte[] Block(uint pid, ushort species) => [.. BitConverter.GetBytes(pid), .. BitConverter.GetBytes(species)];
 
-        // RS as W6 declares it: wild encounters, no navigation, no box reads. The save goes to the given list.
-        private static GameProfile PartyOnlyProfile(List<string> calls) => new(
+        // RS as it declares itself for this event: wild encounters, box reads, no navigation. The save goes to the given list.
+        private static GameProfile NoNavigationProfile(List<string> calls) => new(
             GameFlavor.RS,
             new GameCapabilities(
                 HasOverworldNavigation: false,
                 HasWildEncounters: true,
                 HasTraining: false,
                 HasEggs: false,
-                CanReadBoxes: false,
+                CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false),
@@ -139,10 +139,10 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task CatchCheck_PartyOnlyProfile_FindsTheTargetInThePartyAndSaves()
+        public async Task CatchCheck_Rs_FindsTheTargetInThePartyAndSaves()
         {
             List<string> calls = [];
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile(calls)) { PartyBlocks = [Block(1, 1), Block(TargetPid, TargetSpecies)] };
+            FakeBot bot = new(Task.CompletedTask, NoNavigationProfile(calls)) { PartyBlocks = [Block(1, 1), Block(TargetPid, TargetSpecies)] };
             GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
             state.TargetPokemon = Caught();
 
@@ -157,10 +157,10 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task CatchCheck_PartyOnlyProfile_TargetMissing_DoesNotSave()
+        public async Task CatchCheck_Rs_TargetMissing_DoesNotSave()
         {
             List<string> calls = [];
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile(calls)) { PartyBlocks = [Block(1, 1), Block(TargetPid, TargetSpecies + 1)] };
+            FakeBot bot = new(Task.CompletedTask, NoNavigationProfile(calls)) { PartyBlocks = [Block(1, 1), Block(TargetPid, TargetSpecies + 1)] };
             GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
             state.TargetPokemon = Caught();
 
@@ -197,7 +197,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task Finish_WithoutOverworldNavigation_CompletesInPlace()
         {
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
+            FakeBot bot = new(Task.CompletedTask, NoNavigationProfile([]));
             GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
             state.BattleMode = BattleMode.Battle;
 
@@ -222,8 +222,6 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(BattleMode.Flee, state.BattleMode);
         }
 
-        private static PokemonState Party(int size) => new() { PartySize = size };
-
         private const string SlowTransition = "A first Pokémon at or below the wild level gets the long battle transition.";
 
         private static Task LogWildAsync(GameState state, byte level) => OrchestratorEvent.LogEncounterAndAskTargetAsync(state,
@@ -232,7 +230,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task LevelLine_AddedOnceWhenAWildIsAtOrAboveTheLead()
         {
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
+            FakeBot bot = new(Task.CompletedTask, NoNavigationProfile([]));
             GameState state = StateFor(bot, new ShinyTarget(), EventState.PokemonDataPending);
             state.SpeedLines = [];
             state.LeadLevel = 7;
@@ -254,43 +252,6 @@ namespace ShinyBotHunter.Tests
             await LogWildAsync(state, 50);
 
             Assert.Null(state.SpeedLines);
-        }
-
-        [Fact]
-        public async Task FullPartyWithoutBoxReads_StopsComplete()
-        {
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
-            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
-
-            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(6));
-
-            Assert.True(stopped);
-            Assert.Equal([EventState.Complete], state.State);
-            Assert.Equal(BattleMode.Flee, state.BattleMode);
-        }
-
-        [Fact]
-        public async Task FivePartyWithoutBoxReads_Continues()
-        {
-            FakeBot bot = new(Task.CompletedTask, PartyOnlyProfile([]));
-            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
-
-            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(5));
-
-            Assert.False(stopped);
-            Assert.Equal([EventState.DecideOverworldAction], state.State);
-        }
-
-        [Fact]
-        public async Task FullPartyWithBoxReads_Continues()
-        {
-            FakeBot bot = new(Task.CompletedTask);
-            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
-
-            bool stopped = await OrchestratorEvent.StopForFullPartyAsync(state, Party(6));
-
-            Assert.False(stopped);
-            Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
     }
 }

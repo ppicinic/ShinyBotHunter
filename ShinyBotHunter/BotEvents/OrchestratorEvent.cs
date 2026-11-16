@@ -28,7 +28,6 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
-        internal const string LeaveAFreePartySlot = "Leave a free party slot so a caught Pokémon stays in the party.";
         internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
 
         private EncounterParams encounterParams;
@@ -165,21 +164,14 @@ namespace ShinyBotHunter.BotEvents
                 await updateMilestoneState(state);
                 return true;
             }
-            // Boxes are read where the profile can: a caught pokemon may have gone straight to the PC.
-            // A profile without box reads searches the party alone, which is why Run requires a free
-            // party slot for it (FR-12).
-            bool canReadBoxes = state.Bot.Profile.Capabilities.CanReadBoxes;
+            // The boxes are read too: a caught pokemon may have gone straight to the PC.
             PokemonState? pokemonState = await ReadStateForCatchCheckAsync(state, reader);
             if (pokemonState is null)
             {
                 // TargetPokemon is deliberately left set so a later resume can still record it.
                 return false;
             }
-            PokemonData target = state.TargetPokemon!.PokemonData;
-            // The party half of PokemonState.Search, with the same key (PID and Species).
-            bool found = canReadBoxes
-                ? pokemonState.Search(target)
-                : pokemonState.PartyPokemon.Take(pokemonState.PartySize).Any(p => p!.PID == target.PID && p.Species == target.Species);
+            bool found = pokemonState.Search(state.TargetPokemon!.PokemonData);
 
             Console.WriteLine($"Found pokemon: {found}");
             if (found)
@@ -195,7 +187,7 @@ namespace ShinyBotHunter.BotEvents
         }
 
         /// <summary>
-        /// Reads the party, and the boxes where the profile can, for the catch check, retrying when
+        /// Reads the party and the boxes for the catch check, retrying when
         /// the emulator can't produce a validated party.
         ///
         /// This read failing must never fault the event. The pokemon is already caught in game at this
@@ -209,7 +201,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 try
                 {
-                    return state.Bot.Profile.Capabilities.CanReadBoxes ? await reader.GetPokemonState(state.Bot) : await reader.GetPartyState(state.Bot);
+                    return await reader.GetPokemonState(state.Bot);
                 }
                 catch (PartyReadUnavailableException ex)
                 {
@@ -271,20 +263,6 @@ namespace ShinyBotHunter.BotEvents
             state.BattleMode = BattleMode.Flee;
             state.SwapState(EventState.Complete);
             await RefreshDashboardAsync(state);
-        }
-
-        // A profile that cannot read boxes finds a catch only in the party (FR-12), so with six it stops before the next encounter.
-        internal static async Task<bool> StopForFullPartyAsync(GameState state, PokemonState party)
-        {
-            if (state.Bot.Profile.Capabilities.CanReadBoxes || party.PartySize != 6)
-            {
-                return false;
-            }
-            Console.WriteLine($"[Orchestrator] {LeaveAFreePartySlot}");
-            state.BattleMode = BattleMode.Flee;
-            state.SwapState(EventState.Complete);
-            await RefreshDashboardAsync(state);
-            return true;
         }
 
         /// <summary>Logs the wild Pokemon and asks the target. A target is kept for the catch check, alerted, and parks the
@@ -350,11 +328,6 @@ namespace ShinyBotHunter.BotEvents
                 await FinishAsync(state);
                 return;
             }
-            if (await StopForFullPartyAsync(state, pokeState))
-            {
-                return;
-            }
-
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
             {
                 if (state.Pickup)

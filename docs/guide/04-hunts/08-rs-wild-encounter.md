@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (CheckForCatchAsync, StopForFullPartyAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -18,11 +18,10 @@ Every button press is checked against the game's memory before the next one.
 1. **An emulator started with Launch Bot + Continue**, as [the dashboard page](../03-dashboard.md) describes. Its entry appears once you are standing in the field.
 2. **Your character standing in tall grass, on the tile you want to hunt from.** The bot remembers that tile when the hunt starts. Water and caves are untested.
 3. **A first Pokémon that has not fainted.** One faster than the Pokémon living there gets away first time. A slower one may need several tries, and after 12 the bot stops.
-4. **A free party slot.** After a catch the bot looks for the Pokémon in your party only, not in the PC.
-5. **Poké Balls**, for you to catch with.
-6. **For Encounter Type Run: the Running Shoes.** The bot holds B for the whole walk, so your character runs. Without the shoes it walks, which checks for an encounter half as often.
-7. **Every menu and message closed.**
-8. **A milestone for the game RS**, made in the [Milestone Editor](../03-dashboard.md#make-a-milestone).
+4. **Poké Balls**, for you to catch with.
+5. **For Encounter Type Run: the Running Shoes.** The bot holds B for the whole walk, so your character runs. Without the shoes it walks, which checks for an encounter half as often.
+6. **Every menu and message closed.**
+7. **A milestone for the game RS**, made in the [Milestone Editor](../03-dashboard.md#make-a-milestone).
 
 ## Start a hunt
 
@@ -84,11 +83,10 @@ A trainer battle, or any battle that is not wild, stops the bot.
 3. Close every message (the Pokédex page, the nickname question) until your character stands in the field.
 4. On the dashboard, press **Resume** on the entry.
 
-The bot then looks for the Pokémon in your party only. If it is there, the bot saves the game through the start menu: it opens the menu, moves to SAVE and confirms. It records the Pokémon as caught and writes the save file. Then it carries on hunting, or finishes where it stands if the milestone is complete.
+The bot then looks for the Pokémon in your party and in your PC boxes. It reads them from the game's memory and opens nothing on screen, so a Pokémon sent to the PC because your party was full is found too. If it is there, the bot saves the game through the start menu: it opens the menu, moves to SAVE and confirms. It records the Pokémon as caught and writes the save file. Then it carries on hunting, or finishes where it stands if the milestone is complete.
 
-- If the catch filled your party to six, the hunt ends as complete, and the backend's window shows `[Orchestrator] Leave a free party slot so a caught Pokémon stays in the party.` Put a Pokémon in the PC and start the hunt again. If the catch also completes the milestone, the hunt finishes as above instead, and this line is not logged.
-- If the Pokémon is not in your party (you ran from it, or it fainted), nothing is recorded as caught, and the hunt carries on.
-- If the bot could not read your party, it stays waiting. Press **Resume** again.
+- If the Pokémon is not in your party or your PC (you ran from it, or it fainted), nothing is recorded as caught, and the hunt carries on.
+- If the bot could not read your party and boxes, it stays waiting. Press **Resume** again.
 
 ## How fast is it?
 
@@ -129,7 +127,6 @@ The backend's window also shows:
 ## How does it stop?
 
 - **It finishes where it stands.** The milestone is complete. There is no walk home.
-- **It ends as complete with a full party.** See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
 - **It waits for you.** It found a Pokémon you are hunting for, or it stopped with one of the sentences below.
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
@@ -153,10 +150,6 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 **You see** Run refused with "The first Pokémon in the party has fainted."
 **It means** your first Pokémon has no HP left, or the party is empty.
 **Do** heal it, or put a Pokémon that can battle first, then press **Run** again.
-
-**You see** Run refused with "Leave a free party slot so a caught Pokémon stays in the party."
-**It means** you have six Pokémon, so a caught one would go to the PC, where the bot does not look.
-**Do** put a Pokémon in the PC, then press **Run** again.
 
 **You see** Run refused with "Ruby and Sapphire have no Headbutt trees.", "No Target needs a train mode, which Ruby and Sapphire do not have yet." or "Training is not available on Ruby and Sapphire yet."
 **It means** a greyed-out choice was sent anyway, for example from outside the dashboard. Pickup sent as ticked gets "Training is not available on Ruby and Sapphire yet." too.

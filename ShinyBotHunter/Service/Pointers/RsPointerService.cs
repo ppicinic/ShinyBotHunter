@@ -140,10 +140,9 @@ namespace ShinyBotHunter.Service.Pointers
         // gSaveBlock1.pos; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
         public uint RunWatchY => 0x02025734;
 
-        // Box storage lives inside the save block rather than at a standalone address, and nothing in
-        // the starter hunt reads it. Left unimplemented so a caller that needs it fails saying so
-        // rather than reading an address that was guessed.
-        // no symbol; not mapped; QA: none yet: RS starter hunt
-        public BoxLayout? BoxLayout => null;
+        // gPokemonStorage = 0x020300A0 (currentBox u8, then boxes[14][30] at + 4), 30 BoxPokemon of 80 bytes a box with
+        // no padding. Storage is from the anchor itself, because the party read is Absolute.
+        // gPokemonStorage.boxes; root (absolute; same at rev 0-2); decomp only; QA: none yet: W12 full-party catch
+        public BoxLayout? BoxLayout { get; } = new(0x020300A4 - 0x03004350, 14, 30, 30 * 80);
     }
 }

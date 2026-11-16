@@ -21,7 +21,7 @@ namespace ShinyBotHunter.Games.Rs
                 HasWildEncounters: true,
                 HasTraining: false,
                 HasEggs: false,
-                CanReadBoxes: false,
+                CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: true),
