@@ -279,13 +279,29 @@ Emulator runs on the dev PC, QA BizHawk, English Sapphire 1.2 (`SA-Wild`) unless
 | `hgss-route33` | `20261116-001725` (a) | passed |
 | `hgss-pickup` | `20261116-001946` (a) | passed (the HGSS train path and Pickup) |
 
+Runs of 2026-11-16, after the owner's review of PR #412. Those marked (c) are on the branch tip's bot code (the box read of #413 and the illegal-shiny row of #414 included).
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `rs-wild-catch-box` | `20261116-184852` (c) | passed at its first run: Run started with six in the party; the shiny went to box 1 slot 1 (`0x020300A4`); Resume found it there, saved, recorded it, and the hunt carried on with a full party |
+| `rs-wild-catch-resume` | `20261116-185121` (c) | passed |
+| `rs-wild-refusals` | `20261116-185327` (c), without the six-in-party step | passed |
+| `rs-wild-sapphire` | `20261116-185459` (c) | passed |
+| `rs-wild-shiny` | `20261116-185750` (c) | passed |
+| `rs-wild-run` | `20261116-185913` (c), y axis; `20261116-163554`, x axis (x range 1 along row 4) | passed on both axes |
+| `hgss-route33` | `20261116-190208` (c) | passed |
+| `hgss-wild-speed` | `20261116-180709`, the dry Route 29 save, twenty minutes a mode, no recorder, a shiny Typhlosion lead | Run 192.2 an hour over 63, Spin 178.2 over 58, against the owner's 189 for a grass route |
+| `hgss-wild-speed`, Route 33 (always rain) | `20261116-163901` on this branch; `20261116-172047` on `main` (twelve minutes a mode) | Run 163.4 and 164.6 an hour, Spin 152.7 and 156.8: the feature did not change HGSS's speed |
+
+Not run again on (c): `rs-wild-ruby`, `rs-wild-failed-escape`, `rs-wild-speed`, `hgss-pickup`.
+
 Not run: `hgss-route33-train` and `hgss-headbutt`. Their saves (`Pokemon HeartGold2`, `HG-Headbutt`) are not on the dev PC.
 
 What the emulator found, all in the scenarios and none in the bot: an RS bot has one action, so the card shows no button for it; Cancel when the Admin window is on another tab; A pressed once at a message that was still printing; "Resume" is a label with a Run button. The bot ran its first hunt on the emulator without a change.
 
 ## Open questions
 
-None that block the merge. Not run on the emulator: a fainted lead, a trap (twelve tries), a battle that is not wild, a locked field with no battle during a seek, the object-id refusal, a shiny that PKHeX fails, the slow-transition speed line, versions 1.0 and 1.1, the PC box address (decomp only until W12 reads it). Each has unit tests.
+None that block the merge. Not run on the emulator: a fainted lead, a trap (twelve tries), a battle that is not wild, a locked field with no battle during a seek, the object-id refusal, a shiny that PKHeX fails, the slow-transition speed line, versions 1.0 and 1.1. Each has unit tests.
 
 ## Changelog
 
@@ -309,3 +325,4 @@ None that block the merge. Not run on the emulator: a fainted lead, a trap (twel
 - 2026-11-15: closed out. Status Implemented; "As built", "What diverged" and "Evidence" added.
 - 2026-11-16: FR-18 (#414, owner): an illegal wild shiny is written to the encounter log with `IsShiny` false, kept for later and not counted as a shiny; it is still fled, not alerted.
 - 2026-11-16 (#413, owner): the catch check reads the PC boxes on Ruby and Sapphire (`gPokemonStorage`, decomp only); the six-in-the-party refusal at Run and the full-party stop are deleted.
+- 2026-11-16: the owner's review of PR #412: the catch check reads the PC boxes (#413), an illegal shiny is logged (#414), Run on the x axis and an HGSS speed run on a dry route (#415), a catch with a full party (#417). Evidence added; the box address was read on the emulator.
