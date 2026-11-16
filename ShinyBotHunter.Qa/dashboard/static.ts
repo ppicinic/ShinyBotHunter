@@ -194,8 +194,11 @@ export async function startFrame(frame: Frame): Promise<Page> {
   return admin
 }
 
-/** Launch Bot + Continue on the ROM, recorded as `<recording>.mp4`; returns the card once the overworld has faded in. */
-export async function launchBot(admin: Page, rom: string, recording: string): Promise<Locator> {
+/**
+ * Launch Bot + Continue on the ROM, recorded as `<recording>.mp4` unless `record` is false (hgss-wild-speed: the window
+ * recorder slows the emulator); returns the card once the overworld has faded in.
+ */
+export async function launchBot(admin: Page, rom: string, recording: string, record = true): Promise<Locator> {
   const launch = admin.getByTestId('top-level-action-Launch Bot + Continue')
   await launch.locator('select').selectOption(rom)
   await launch.getByRole('button', { name: 'Start', exact: true }).click()
@@ -203,7 +206,8 @@ export async function launchBot(admin: Page, rom: string, recording: string): Pr
   await expect(card.getByRole('button', { name: ACTION, exact: true })).toBeVisible({ timeout: 5 * MINUTE })
   // The card appears before the Continue macro has run; the form's button reads "Starting..." until the launch request returns.
   await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * MINUTE })
-  startEmulatorRecorder(recording)
+  if (record) startEmulatorRecorder(recording)
+  else step('emulator recorder off for the speed run')
   // The position reads -1 until the overworld has faded in.
   await expect.poll(async () => toS16(await readU32(Y_ADDR)), { timeout: MINUTE, intervals: [500] }).toBeGreaterThan(0)
   step(`${rom} launched: ${JSON.stringify(await readTile())}`)
