@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (CheckForCatchAsync, StopForFullPartyAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (CheckForCatchAsync, StopForFullPartyAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -67,11 +67,12 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 ## What happens in each encounter?
 
 1. The bot presses A at "Wild … appeared!".
-2. At the FIGHT / BAG / POKéMON / RUN menu it reads the wild Pokémon, writes it to the encounter log, and asks whether it is a Pokémon you are hunting for.
-3. If it is, the bot stops at the menu with nothing pressed, and the shiny alert goes to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
-4. Otherwise it presses Right and Down to move to RUN, then A.
-5. At "Can't escape!" it presses A, and A on RUN again when the menu comes back. The cursor stays on RUN.
-6. It presses A at "Got away safely!", then turns or runs again once your character is free to walk.
+2. At the FIGHT / BAG / POKéMON / RUN menu it reads the wild Pokémon, checks it if it is shiny (step 3), writes it to the encounter log, and asks whether it is a Pokémon you are hunting for.
+3. If the wild Pokémon is shiny, the bot first checks it with PKHeX, the same legality check the starter hunt uses. A shiny that no real game could produce fails. A GBA emulator can make one, which is why every Gen 3 shiny is checked except the Wishmaker Jirachi. A shiny that fails is not written to the encounter log, sends no alert, and is run from like any other Pokémon.
+4. If it is a Pokémon you are hunting for, the bot stops at the menu with nothing pressed, and the shiny alert goes to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
+5. Otherwise it presses Right and Down to move to RUN, then A.
+6. At "Can't escape!" it presses A, and A on RUN again when the menu comes back. The cursor stays on RUN.
+7. It presses A at "Got away safely!", then turns or runs again once your character is free to walk.
 
 A trainer battle, or any battle that is not wild, stops the bot.
 
@@ -116,11 +117,12 @@ While the hunt runs, the emulator's entry can show small grey lines under its na
 
 ## What does it log?
 
-Every wild Pokémon goes into the encounter log with the game, the milestone, the Pokémon, the time and the game file, as on HeartGold and SoulSilver. [Your data](../06-your-data.md) explains where these are kept.
+Every wild Pokémon goes into the encounter log, except a shiny that fails the legality check, with the game, the milestone, the Pokémon, the time and the game file, as on HeartGold and SoulSilver. [Your data](../06-your-data.md) explains where these are kept.
 
 The backend's window also shows:
 
 - `[RsBattle]` lines for each encounter: the species, level, personality value and whether it is shiny, each press and what confirmed it, failed escapes, and how many frames the battle took.
+- `[RsBattle] legality OK` or `[RsBattle] legality FAIL` for each shiny, with PKHeX's report after a FAIL.
 - `[Spin] seek:` or `[Run] seek:`: how long it took to find the battle.
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
 
