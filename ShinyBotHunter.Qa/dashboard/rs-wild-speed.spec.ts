@@ -44,7 +44,8 @@ function measure(mode: string, chunks: string[][], rows: string[][]): string[] {
   per.forEach((e, k) => step(`${mode}: ${k + 2} | ${e.toRoll} | ${e.rollToBattle || 'not observed'} | ${e.frames} | ` +
     `${e.rollToFree === null ? 'not observed' : e.rollToFree.toFixed(0)} | ${e.pressMs} | ${e.botFrames.toFixed(1)}`))
 
-  const hours = (toMs(rows[N - 1][4]) - toMs(rows[1][4])) / 3_600_000
+  // Too few rows leave the rate NaN here; the PID check after the tables names that.
+  const hours = rows.length >= N ? (toMs(rows[N - 1][4]) - toMs(rows[1][4])) / 3_600_000 : NaN
   const rate = (N - 2) / hours
   const { perCheck, falseFailure } = seekBound(per.map((e) => e.toRoll), framesPerMs)
   const observed = per.flatMap((e) => (e.rollToFree === null ? [] : [{ rollToBattle: e.rollToBattle, rollToFree: e.rollToFree }]))
@@ -91,16 +92,19 @@ test('RS Wild Encounter speed: NFR-1 over thirty encounters by Spin, then thirty
       ['Spin', SPIN_LINE, rows.filter((r) => toMs(r[4]) < Date.parse(runStart))],
       ['Run', RUN_FROM, rows.filter((r) => toMs(r[4]) >= Date.parse(runStart))]
     ]
+    // Both modes' tables and summaries go to steps.log before any check can throw.
     const failures: string[] = []
-    const fled: [string, string[][]][] = []
+    const fled: [string, string[][], string[][]][] = []
     for (const [mode, seekLine, modeRows] of modes) {
-      // The rate rests on the rows being these encounters', in order.
       const chunks = battles(log).filter((b) => seekLine.test(b[0])).slice(0, N)
+      failures.push(...measure(mode, chunks, modeRows))
+      fled.push([mode, chunks, modeRows])
+    }
+    for (const [mode, chunks, modeRows] of fled) {
+      // The rate rests on the rows being these encounters', in order.
       const pids = chunks.map((b) => parseEncounter(b.find((l) => ENCOUNTER.test(l))!).pid)
       expect(modeRows.slice(0, N).map((r) => hex8(Number(r[0]))), `"270 encounters an hour or better over thirty" (${mode}): ` +
         `the first ${N} rows are not the encounter lines'`).toEqual(pids)
-      failures.push(...measure(mode, chunks, modeRows))
-      fled.push([mode, chunks])
     }
     for (const [mode, chunks] of fled) {
       for (let k = 1; k < N; k++) {

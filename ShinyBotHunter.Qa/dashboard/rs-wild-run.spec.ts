@@ -81,7 +81,8 @@ test('RS Wild Encounter by Run: y range 1 from (14, 4), B held, every seek start
       expect(shiny, `${rowsCriterion}: ${pid} is shiny`).toBe('f')
     }
 
-    // "steps at 8 frames a tile (B held)": G4's bound over the seeks after a battle; walking would be about 16 frames.
+    // "steps at 8 frames a tile (B held)": G4's bound over the seeks after a battle, reported only. Here it covers 9 to 24
+    // seeks, so it would fail falsely up to about 35% of the time; rs-wild-speed asserts it over thirty. Walking is about 16.
     const toRoll = all.slice(1, fled).map((b, k) => {
       const seek = seekOf(b)
       if (!seek) throw new Error(`"steps at 8 frames a tile (B held)": encounter ${k + 2} has no [Run] seek line`)
@@ -90,10 +91,8 @@ test('RS Wild Encounter by Run: y range 1 from (14, 4), B held, every seek start
     const framesPerMs = fps(log)
     const { perCheck, falseFailure } = seekBound(toRoll, framesPerMs)
     step(`Run seeks after a battle, macro to roll: ${toRoll.join(', ')} ms at ${(framesPerMs * 1000).toFixed(2)} fps; ` +
-      `shortest ${perCheck.toFixed(1)} frames a check (bound 9)`)
-    expect(perCheck, `"steps at 8 frames a tile (B held)": the shortest of ${toRoll.length} seeks after a battle is ` +
-      `${perCheck.toFixed(1)} frames a check, above 9 (walking is about 16); this fails falsely ` +
-      `${(falseFailure * 100).toFixed(0)}% of the time, when no seek rolled on its first open check`).toBeLessThanOrEqual(9)
+      `shortest ${perCheck.toFixed(1)} frames a check (bound 9, ${perCheck <= 9 ? 'within' : 'above'} it; not asserted here, ` +
+      `a false failure ${(falseFailure * 100).toFixed(0)}% of the time over ${toRoll.length} seeks)`)
   } finally {
     await teardown(frame, ROM)
   }
