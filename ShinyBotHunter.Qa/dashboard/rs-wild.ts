@@ -333,8 +333,11 @@ export function offered(card: Locator): Locator {
   return card.getByTestId('param-PhaseName')
 }
 
-/** Launch Bot + Continue on the ROM, recorded as `<recording>.mp4`; returns the card once the player is on the start tile. */
-export async function launchRs(admin: Page, rom: string, recording: string): Promise<Locator> {
+/**
+ * Launch Bot + Continue on the ROM, recorded as `<recording>.mp4` unless `record` is false (rs-wild-speed: the window
+ * recorder slows the emulator); returns the card once the player is on the start tile.
+ */
+export async function launchRs(admin: Page, rom: string, recording: string, record = true): Promise<Locator> {
   const launch = admin.getByTestId('top-level-action-Launch Bot + Continue')
   await launch.locator('select').selectOption(rom)
   await launch.getByRole('button', { name: 'Start', exact: true }).click()
@@ -343,7 +346,8 @@ export async function launchRs(admin: Page, rom: string, recording: string): Pro
   // The card appears before the Continue macro has run; the form's button reads "Starting..." until the launch, which
   // waits for the free field, returns.
   await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * MINUTE })
-  startEmulatorRecorder(recording)
+  if (record) startEmulatorRecorder(recording)
+  else step('emulator recorder off for the speed run')
   const tile = await readTile()
   step(`${rom} launched: ${JSON.stringify(tile)}`)
   expect(tile, 'not the save\'s start tile, (14, 4) on Route 101 (0, 16)').toEqual(START)
