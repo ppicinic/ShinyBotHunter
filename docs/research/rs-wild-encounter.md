@@ -48,6 +48,7 @@ All on the `System Bus` domain through ApiHawk's memory port. The addresses are 
 | Battle text window state | the battle `Window` at `0x03004210`, `+ 0x16` | `0x03004226` | u16 | 0 idle, 3 printing, 8 waiting for a button then clearing (`\p`); 5 and 9 are the other button waits (decomp only) |
 | The wild Pokémon | `gEnemyParty[0]` | `0x030045C0` | 100 bytes | valid from the encounter roll; decodes with the Gen 3 parser |
 | The party | `gPlayerPartyCount`, `gPlayerParty` | `0x03004350`, `0x03004360` | as today | |
+| PC boxes | `gPokemonStorage.boxes[14][30]` (`struct PokemonStorage`: `currentBox` u8 at + 0, boxes at + 4) | `0x020300A4` (`gPokemonStorage` `0x020300A0`) | 14 x 30 `BoxPokemon` of 80 bytes, 2,400 bytes a box; box n slot s at `0x020300A4 + (n-1)·0x960 + (s-1)·0x50` | decomp only: not read on the emulator; an empty slot is 80 zero bytes; a catch with six in the party goes to the first empty slot from `currentBox` on (`SendMonToPC`) |
 | Player's tile | `gSaveBlock1.pos` | `0x02025734` | s16 x, s16 y | (14, 4) on the save |
 | Map | `gSaveBlock1.location` | `0x02025738` | u8 group, u8 number | (0, 16) is Route 101 |
 | Player's object | `gPlayerAvatar.objectEventId` | `0x0202E858 + 5` | u8 | 0 |
@@ -235,6 +236,7 @@ After a run with no in-game save, `SA-Wild.SaveRAM` differed from its `.bak` in 
 - The bot's own Resume after a catch (the spike read the party by hand), and the save that follows it.
 - Water, caves, and any map other than Route 101 (not needed for this version).
 - Versions 1.0 and 1.1. The symbol tables say every address is the same; they were not run.
+- The PC box address (decomp only), and a catch with a full party.
 
 ## What this means for the bot
 
