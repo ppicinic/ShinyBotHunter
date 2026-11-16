@@ -114,8 +114,8 @@ namespace ShinyBotHunter.BotEvents
                     continue;
                 }
 
-                // An illegal shiny is not recorded: a catch no real game could have produced corrupts
-                // exactly the data the hunt exists to collect, so it is logged above and hunted past.
+                // An illegal shiny is not kept: a catch no real game could have produced corrupts
+                // exactly the data the hunt exists to collect, so its row is marked as failed and it is hunted past.
                 if (lastVerdict is not null && !lastVerdict.IsLegal)
                 {
                     Console.WriteLine($"[StarterHunt] {entry.RecordingName}: skipping illegal shiny and continuing.");
@@ -172,15 +172,6 @@ namespace ShinyBotHunter.BotEvents
 
             PokemonData starter = await ReadStarterAsync(cancellationToken);
 
-            await persistence.AddEncounterAsync(new PersistPokemonData
-            {
-                PokemonData = starter,
-                Game = GameFlavor.RS,
-                Phase = milestone,
-                GameFileName = entry.RecordingName,
-                DateTime = DateTime.UtcNow,
-            });
-
             // Analysed once and reused for the keep decision, so a shiny is never checked twice.
             // A shiny is always checked; everything else only while QA logging is on.
             if (config.LogLegalityForEveryEncounter || starter.IsShiny)
@@ -201,6 +192,17 @@ namespace ShinyBotHunter.BotEvents
             {
                 lastVerdict = null;
             }
+
+            // An illegal shiny is kept in the log but does not count as a shiny (docs/decisions/global.md).
+            await persistence.AddEncounterAsync(new PersistPokemonData
+            {
+                PokemonData = starter,
+                Game = GameFlavor.RS,
+                Phase = milestone,
+                GameFileName = entry.RecordingName,
+                DateTime = DateTime.UtcNow,
+                LegalityFailed = starter.IsShiny && lastVerdict is { IsLegal: false },
+            });
 
             return starter;
         }
