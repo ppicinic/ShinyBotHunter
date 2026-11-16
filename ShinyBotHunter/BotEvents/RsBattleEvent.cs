@@ -148,7 +148,7 @@ namespace ShinyBotHunter.BotEvents
                         Console.WriteLine($"[RsBattle] {wild.Name} species {wild.Species} Lv {wild.Level} PV {wild.PID:X8} "
                             + $"shiny value {wild.ShinyValue} shiny {wild.IsShiny}");
                         // A GBA emulator can build a shiny no cartridge could (docs/decisions/global.md, "Every Gen 3 shiny is
-                        // checked with PKHeX"): a shiny that fails is neither logged nor a target, and is fled like any other.
+                        // checked with PKHeX"): a shiny that fails is logged as not shiny, is not a target, and is fled like any other.
                         bool legal = true;
                         if (wild.IsShiny)
                         {
@@ -156,9 +156,9 @@ namespace ShinyBotHunter.BotEvents
                             legal = verdict.IsLegal;
                             Console.WriteLine(legal
                                 ? $"[RsBattle] legality OK   {wild.Name} PV {wild.PID:X8}"
-                                : $"[RsBattle] legality FAIL {wild.Name} PV {wild.PID:X8}: not logged, running{Environment.NewLine}{verdict.Report}");
+                                : $"[RsBattle] legality FAIL {wild.Name} PV {wild.PID:X8}: logged as not shiny, running{Environment.NewLine}{verdict.Report}");
                         }
-                        if (legal && await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, wild, addEncounter, notifyTargetFound))
+                        if (await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, wild, addEncounter, notifyTargetFound, legal))
                         {
                             Console.WriteLine("[RsBattle] a target: waiting at the action menu, nothing pressed");
                             return null;

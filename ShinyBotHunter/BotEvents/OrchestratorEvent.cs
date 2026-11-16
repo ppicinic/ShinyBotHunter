@@ -290,7 +290,7 @@ namespace ShinyBotHunter.BotEvents
         /// <summary>Logs the wild Pokemon and asks the target. A target is kept for the catch check, alerted, and parks the
         /// stack in Waiting; on false the caller moves on.</summary>
         internal static async Task<bool> LogEncounterAndAskTargetAsync(GameState state, PokemonData pokemon,
-            Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound)
+            Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound, bool legal = true)
         {
             var persistPokemon = new PersistPokemonData()
             {
@@ -299,6 +299,7 @@ namespace ShinyBotHunter.BotEvents
                 PokemonData = pokemon,
                 DateTime = DateTime.UtcNow,
                 GameFileName = state.Bot.GameFileName,
+                LegalityFailed = !legal,
             };
             await addEncounter(persistPokemon);
             // The first wild Pokémon at or above the lead's level is the first time the lead is not above every wild level seen.
@@ -308,7 +309,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] {SlowTransitionLine}");
                 await RefreshDashboardAsync(state);
             }
-            if (await state.Target.IsTargetAsync(pokemon))
+            if (legal && await state.Target.IsTargetAsync(pokemon))
             {
                 state.TargetPokemon = persistPokemon;
                 await notifyTargetFound(persistPokemon);

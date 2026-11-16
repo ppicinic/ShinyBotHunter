@@ -119,6 +119,26 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task LogEncounterAndAskTarget_IllegalIsLoggedMarkedAndNotAsked()
+        {
+            FakeBot bot = new(Task.CompletedTask);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.PokemonDataPending);
+            List<(string Call, PersistPokemonData Data)> calls = [];
+
+            // PID, TID and SID all zero: shiny.
+            bool target = await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, new PokemonData(),
+                p => { calls.Add(("add", p)); return Task.CompletedTask; },
+                p => { calls.Add(("notify", p)); return Task.CompletedTask; },
+                legal: false);
+
+            Assert.False(target);
+            Assert.Equal(["add"], calls.Select(c => c.Call));
+            Assert.True(calls[0].Data.LegalityFailed);
+            Assert.Null(state.TargetPokemon);
+            Assert.Equal([EventState.PokemonDataPending], state.State);
+        }
+
+        [Fact]
         public async Task CatchCheck_PartyOnlyProfile_FindsTheTargetInThePartyAndSaves()
         {
             List<string> calls = [];
