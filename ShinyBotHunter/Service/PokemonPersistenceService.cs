@@ -436,7 +436,7 @@ namespace ShinyBotHunter.Service
             AllPokemonCounts.Increment(encounter);
             PokemonEncounterCache[encounter.PokemonData.FormCode].Increment(encounter);
             PokemonEncounterCache[CacheLoadRequest.SpeciesKey(encounter.PokemonData.Species)].Increment(encounter);
-            if (encounter.PokemonData.IsShiny)
+            if (encounter.CountsAsShiny)
             {
                 PhaseCount = 0;
             }
@@ -476,7 +476,7 @@ namespace ShinyBotHunter.Service
         internal void Increment(PersistPokemonData encounter)
         {
             Interlocked.Increment(ref encounters);
-            if (encounter.PokemonData.IsShiny)
+            if (encounter.CountsAsShiny)
             {
                 Interlocked.Increment(ref shinyEncounters);
             }

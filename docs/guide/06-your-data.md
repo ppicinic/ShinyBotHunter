@@ -38,7 +38,7 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
 | `Nature` | The nature as a number from 0 to 24. |
 | `Level` | The Pokémon's level. |
 | `ShinyValue` | The shiny value. Below 8 means shiny. Stored as a signed number, so large values show as negative. |
-| `IsShiny` | `true` if the Pokémon is shiny. |
+| `IsShiny` | `true` if the Pokémon is shiny and counts as one. A Gen 3 shiny that failed the PKHeX legality check is stored with `false`; its `ShinyValue` still shows it was shiny. |
 | `Game` | 0 is HeartGold or SoulSilver, 1 is Ruby or Sapphire. |
 | `Milestone` | The milestone the encounter was filed under. |
 | `GameFileName` | The game file that met it, or the recording name a starter hunt entry was given. |
@@ -70,7 +70,13 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
    Every shiny the bot has met:
 
    ```
-   SELECT "Timestamp", "Name", "ShinyValue", "Milestone", "GameFileName" FROM encounters WHERE "IsShiny" ORDER BY "Timestamp" DESC;
+   SELECT "Timestamp", "Name", "ShinyValue", "Milestone", "GameFileName" FROM encounters WHERE "ShinyValue" BETWEEN 0 AND 7 ORDER BY "Timestamp" DESC;
+   ```
+
+   Shinies that failed the legality check:
+
+   ```
+   SELECT "Timestamp", "Name", "PID", "Milestone", "GameFileName" FROM encounters WHERE "ShinyValue" BETWEEN 0 AND 7 AND NOT "IsShiny";
    ```
 
 5. When a long result stops with `:` at the bottom, press `q` to get the prompt back.

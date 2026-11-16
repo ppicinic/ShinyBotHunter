@@ -9,5 +9,7 @@ namespace ShinyBotHunter.Pokemon
         public GameFlavor Game { get; set; }
         public required string Phase { get; set; }
         public required string GameFileName { get; set; }
+        public bool LegalityFailed { get; init; }
+        public bool CountsAsShiny => PokemonData.IsShiny && !LegalityFailed;
     }
 }
