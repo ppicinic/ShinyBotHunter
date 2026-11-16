@@ -51,7 +51,7 @@ test('RS Wild Encounter shiny: the cheat armed in a battle, Wurmple CD631295 shi
     await waitForLine(TARGET, 1, MINUTE, waiting)
     await expect.poll(async () => (await dashboardState())?.eventState, { message: `${waiting}: the event is not Waiting`, timeout: MINUTE, intervals: [1000] })
       .toBe('Waiting')
-    await expect(card.getByRole('button', { name: 'Resume', exact: true }), `${waiting}: no Resume on the card`).toBeVisible({ timeout: MINUTE })
+    await expect(card.getByText('Resume', { exact: true }), `${waiting}: no Resume on the card`).toBeVisible({ timeout: MINUTE })
     await shotAll('02-waiting', pages)
 
     // 3. At Waiting: still the action menu with the cursor on FIGHT, so nothing was pressed after the read.
