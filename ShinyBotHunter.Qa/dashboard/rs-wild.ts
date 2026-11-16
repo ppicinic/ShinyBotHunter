@@ -5,10 +5,10 @@
 import { spawnSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
-import { expect, type Locator, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import {
   emuHawkRunning, killTree, readMemory, readU16, readU32, repoDir, runDir, sendCheatHotkey, shotAll, startEmulatorRecorder,
-  step, stopRecorder, writeU8
+  step, stopRecorder, windowByTitle, writeU8
 } from './driver'
 import { API, backendLog, hex8, MINUTE, psql, settings, sha256, shutdown, startFrame, type Frame } from './static'
 
@@ -306,13 +306,21 @@ export async function disarmCheat(): Promise<void> {
 
 // --- the frame -----------------------------------------------------------------------------------------
 
+/**
+ * Wild Encounter offered on the card. An RS bot has this one action, and the card shows a button per action only when
+ * there are two or more, so the action's own form (its milestone field) is what shows it is offered.
+ */
+export function offered(card: Locator): Locator {
+  return card.getByTestId('param-PhaseName')
+}
+
 /** Launch Bot + Continue on the ROM, recorded as `<recording>.mp4`; returns the card once the player is on the start tile. */
 export async function launchRs(admin: Page, rom: string, recording: string): Promise<Locator> {
   const launch = admin.getByTestId('top-level-action-Launch Bot + Continue')
   await launch.locator('select').selectOption(rom)
   await launch.getByRole('button', { name: 'Start', exact: true }).click()
   const card = admin.getByTestId('emulator-card-0')
-  await expect(card.getByRole('button', { name: ACTION, exact: true })).toBeVisible({ timeout: 5 * MINUTE })
+  await expect(offered(card)).toBeVisible({ timeout: 5 * MINUTE })
   // The card appears before the Continue macro has run; the form's button reads "Starting..." until the launch, which
   // waits for the free field, returns.
   await expect(launch.getByRole('button', { name: 'Start', exact: true })).toBeVisible({ timeout: 5 * MINUTE })
@@ -326,12 +334,11 @@ export async function launchRs(admin: Page, rom: string, recording: string): Pro
 export type Mode = { mode: 'Spin' } | { mode: 'Run'; yRange: number }
 
 /**
- * Opens the Wild Encounter form, fails naming the milestone if it is not offered, sets ShinyTarget and the mode, runs
- * `beforeRun` on the open form, clicks Run and returns the ISO time of the click.
+ * On the card's Wild Encounter form: fails naming the milestone if it is not offered, sets ShinyTarget and the mode,
+ * runs `beforeRun` on the form, clicks Run and returns the ISO time of the click.
  */
 export async function startWild(card: Locator, mode: Mode, beforeRun?: () => Promise<void>): Promise<string> {
-  const picker = card.getByRole('button', { name: ACTION, exact: true })
-  await picker.click()
+  const picker = offered(card)
   const phase = card.getByTestId('param-PhaseName').locator('select')
   try {
     await expect(phase.locator(`option[value="${PHASE}"]`)).toHaveCount(1, { timeout: 30_000 })
@@ -351,6 +358,8 @@ export async function startWild(card: Locator, mode: Mode, beforeRun?: () => Pro
 }
 
 async function cancelOnce(card: Locator): Promise<void> {
+  // The operator may have switched the Admin window to another tab during the run; the card is only on Bot Control.
+  await card.page().getByRole('button', { name: 'Bot Control', exact: true }).click()
   await card.getByRole('button', { name: 'Cancel', exact: true }).click()
   await card.getByRole('button', { name: 'Yes', exact: true }).click()
 }
@@ -365,7 +374,7 @@ async function botGone(card: Locator): Promise<void> {
 /** A running event: the first Cancel ends it and leaves the bot idle, then `between` runs, and the second removes the bot. */
 export async function cancelEventAndBot(card: Locator, between?: () => Promise<void>): Promise<void> {
   await cancelOnce(card)
-  await expect(card.getByRole('button', { name: ACTION, exact: true })).toBeVisible({ timeout: MINUTE })
+  await expect(offered(card)).toBeVisible({ timeout: MINUTE })
   step('event cancelled')
   if (between) await between()
   await cancelOnce(card)
@@ -386,12 +395,35 @@ async function closeEmuHawk(): Promise<void> {
   step(`EmuHawk asked to close: ${emuHawkRunning() ? 'still running after 60 s' : 'exited'}`)
 }
 
+/** For the teardown: at most two cancels through card 0 while it shows Cancel; a missing window, card or button ends it. */
+async function cancelLeftovers(app: ElectronApplication): Promise<void> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const admin = await windowByTitle(app, 'Pokemon Dashboard — Admin', 5000)
+      const card = admin.getByTestId('emulator-card-0')
+      await admin.getByRole('button', { name: 'Bot Control', exact: true }).click({ timeout: 5000 })
+      const cancel = card.getByRole('button', { name: 'Cancel', exact: true })
+      if (!(await cancel.isVisible())) return
+      await cancel.click({ timeout: 5000 })
+      await card.getByRole('button', { name: 'Yes', exact: true }).click({ timeout: 5000 })
+      // The event's cancel leaves the bot idle with its form; the bot's removes the card.
+      await expect.poll(async () => (await card.count()) === 0 || (await offered(card).isVisible()), { timeout: MINUTE }).toBe(true)
+      step(`teardown: cancel ${attempt} sent through the card`)
+    } catch (e) {
+      step(`teardown: cancel ${attempt} not made: ${(e as Error).message.split('\n')[0]}`)
+      return
+    }
+  }
+}
+
 /**
  * The finally. EmuHawk is the backend's child and dies with its process tree, unflushed, so it is asked to close first;
  * only once it has exited is the backend killed and the save kept and restored. If it is still running after 60 s, the
- * backend, EmuHawk and the save are left as they are. The cheat files are removed either way.
+ * backend, EmuHawk and the save are left as they are. The cheat files are removed either way. On a failure path the bot
+ * may still be running, so first up to two cancels go through its card (event, then bot), while it shows Cancel.
  */
 export async function teardown(frame: Frame, rom: string): Promise<void> {
+  if (frame.app) await cancelLeftovers(frame.app)
   await stopRecorder()
   if (frame.app) await frame.app.close().catch(() => undefined)
   if (emuHawkRunning()) await closeEmuHawk()

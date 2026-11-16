@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readMemory, runMacro, shotAll, step } from './driver'
 import {
   ACTION, cancelBot, dashboardState, FAINTED_SENTENCE, FIELD_SENTENCE, flashUnchanged, FREE_SLOT_SENTENCE, HEADBUTT_SENTENCE,
-  installPristine, launchRs, LEAD_HP, LOCK, PARTY, PARTY_COUNT, PHASE, pollWhileWaiting, readU8, removeCheats, SLOT_SIZE,
+  installPristine, launchRs, LEAD_HP, LOCK, offered, PARTY, PARTY_COUNT, PHASE, pollWhileWaiting, readU8, removeCheats, SLOT_SIZE,
   teardown, writeBytes
 } from './rs-wild'
 import { API, backendLines, MINUTE, shutdown, startFrame, type Frame } from './static'
@@ -36,7 +36,7 @@ test('RS Wild Encounter refusals: six in the party, a fainted lead, Headbutt and
       const state = await dashboardState()
       step(`${name}: dashboard state ${JSON.stringify(state)}`)
       expect(state?.eventState, `${criterion}: an event started`).toBe('None')
-      await expect(c.getByRole('button', { name: ACTION, exact: true }), `${criterion}: Wild Encounter is no longer offered`).toBeVisible()
+      await expect(offered(c), `${criterion}: Wild Encounter is no longer offered`).toBeVisible()
       expect(backendLines(/\[(Spin|Run|RsBattle)\]/), `${criterion}: the hunt logged a line`).toEqual([])
       await shotAll(name, pages)
     }

@@ -65,7 +65,7 @@ test('RS Wild Encounter shiny: the cheat armed in a battle, Wurmple CD631295 shi
     // 4. The scenario flees the shiny's battle itself, pressing only while the bot is Waiting.
     const fled = '"the battle fled by the scenario before shutdown"'
     await runMacro('H.Right.2;H.Down.2')
-    expect(await readU8(CURSOR), `${fled}: the cursor is not on RUN`).toBe(3)
+    await pollWhileWaiting(() => readU8(CURSOR), (v) => v === 3, 2000, `${fled}: the cursor on RUN`)
     await runMacro('H.A.2')
     await pollWhileWaiting(() => readU16(WINDOW), (v) => BUTTON_WAITS.includes(v), 10_000, `${fled}: "Got away safely!" waiting for A`)
     await runMacro('H.A.2')
