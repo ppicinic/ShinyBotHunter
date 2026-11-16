@@ -7,9 +7,10 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import {
-  emuHawkRunning, killTree, readMemory, readU16, readU32, repoDir, runDir, sendCheatHotkey, shotAll, startEmulatorRecorder,
+  emuHawkRunning, killTree, readMemory, readU16, readU32, repoDir, runDir, runMacro, sendCheatHotkey, shotAll, startEmulatorRecorder,
   step, stopRecorder, windowByTitle, writeU8
 } from './driver'
+import { GSAVEBLOCK2 } from './jirachi-seed'
 import { API, backendLog, hex8, MINUTE, psql, settings, sha256, shutdown, startFrame, type Frame } from './static'
 
 // --- constants ---------------------------------------------------------------------------------------
@@ -600,4 +601,132 @@ export async function wildSpin(rom: string, n: number): Promise<void> {
   } finally {
     await teardown(frame, rom)
   }
+}
+
+// --- rs-wild-catch-resume and rs-wild-catch-box: the shiny caught by the scenario while the bot is Waiting, then Resume ---
+
+// When the cheat is armed, as rs-wild-shiny: at encounter 2's action menu, or (QA_RS_ARM_AT=found) at encounter 3's battle line.
+export const ARM_AT = process.env.QA_RS_ARM_AT ?? 'menu'
+const SHINY_AT = ARM_AT === 'menu' ? 3 : 4
+
+// The Pokédex owned flags: gSaveBlock2 + 0x28 (pokeruby's struct SaveBlock2), one bit per national number less one.
+const OWNED = GSAVEBLOCK2 + 0x28
+const owned = (flags: Buffer, national: number): boolean => ((flags[(national - 1) >> 3] >> ((national - 1) & 7)) & 1) === 1
+const MUDKIP = 258
+const WURMPLE = 265
+const START_MENU = /\[StartMenu\] Start menu: .*; SAVE is at position (\d+)\.\s*$/
+const FOUND_POKEMON = /Found pokemon: (True|False)\s*$/
+
+const MONGOSH = path.join(process.env.LOCALAPPDATA!, 'Programs', 'mongosh', 'mongosh.exe')
+function mongo(uri: string, script: string): any {
+  const res = spawnSync(MONGOSH, [uri, '--quiet', '--eval', script], { encoding: 'utf8' })
+  if (res.status !== 0) throw new Error(`mongosh exited with ${res.status}: ${res.stderr}`)
+  return JSON.parse(res.stdout.trim())
+}
+/** The CaughtPokemon documents with the shiny's personality value, on the ROM and the milestone. */
+export const caughtCount = (uri: string, rom: string): number =>
+  mongo(uri, `print(db.CaughtPokemon.countDocuments({ Phase: '${PHASE}', GameFileName: '${rom}', 'Pokemon.PID': NumberLong('${parseInt(SHINY_PV, 16)}') }))`) as number
+
+/** Every read the catch makes goes to steps.log, so one failed run is enough to tune the waits. */
+const logged = (name: string, read: () => Promise<number>) => async (): Promise<number> => {
+  const v = await read()
+  step(`${name} read ${v}`)
+  return v
+}
+export const battleWindow = logged('battle window state', () => readU16(WINDOW))
+export const fieldLock = logged('field lock', () => readU8(LOCK))
+export const fieldBattleBit = logged('battle bit', readBattleBit)
+
+/** Adds the backend's exception text (the lines after a crash line) to a failure after Resume. */
+export async function withCrashText<T>(criterion: string, wait: () => Promise<T>): Promise<T> {
+  try {
+    return await wait()
+  } catch (e) {
+    const log = backendLog()
+    const at = log.findIndex((l) => CRASHED.test(l))
+    const text = at === -1 ? 'no crash line in backend.log' : log.slice(at, at + 8).join('\n')
+    throw new Error(`${criterion}: ${(e as Error).message}\nthe backend's exception:\n${text}`)
+  }
+}
+
+/**
+ * With the bot idle: a Master Ball (item 1, u16) ×5 (u16) in the first ball slot (research doc, "A catch"); returns
+ * whether Wurmple is a new species.
+ */
+export async function masterBallAndDex(): Promise<boolean> {
+  await writeBytes(BALL_SLOT, Buffer.from([1, 0, 5, 0]))
+  const flags = await readMemory(OWNED, 52)
+  step(`Pokédex owned flags: ${flags.toString('hex')}`)
+  expect(owned(flags, MUDKIP), 'the owned flags are not where the scenario reads them: Mudkip (258) is not owned').toBe(true)
+  const newSpecies = !owned(flags, WURMPLE)
+  step(`Wurmple is ${newSpecies ? 'new' : 'already owned'}`)
+  return newSpecies
+}
+
+/** Arms as rs-wild-shiny does; returns once the bot is Waiting on the shiny Wurmple, Resume shows and the cheat is disarmed. */
+export async function armAndWaitOnShiny(card: Locator): Promise<void> {
+  if (ARM_AT === 'menu') await waitForLine(ENCOUNTER, 2, 4 * MINUTE, '"arm the shiny cheat as rs-wild-shiny does": encounter 2')
+  else await waitForLine(FOUND, 3, 5 * MINUTE, '"arm the shiny cheat as rs-wild-shiny does" (fallback): encounter 3\'s battle line')
+  step(`arming at ${ARM_AT === 'menu' ? 'encounter 2\'s action menu' : 'encounter 3\'s battle line (the approved fallback)'}`)
+  await armCheat()
+  const target = '"when the bot is Waiting on the target"'
+  const shiny = parseEncounter(await waitForLine(ENCOUNTER, SHINY_AT, 3 * MINUTE, target))
+  expect([shiny.species, shiny.pid, shiny.shiny], `${target}: encounter ${SHINY_AT}`).toEqual([WURMPLE, SHINY_PV, true])
+  await waitForLine(TARGET, 1, MINUTE, target)
+  await expect.poll(async () => (await dashboardState())?.eventState, { message: `${target}: the event is not Waiting`, timeout: MINUTE, intervals: [1000] })
+    .toBe('Waiting')
+  const resume = card.getByText('Resume', { exact: true })
+  await expect(resume, `${target}: no Resume on the card`).toBeVisible({ timeout: MINUTE })
+  await disarmCheat()
+}
+
+/**
+ * From the action menu: Right to BAG (the cursor byte), A; Right to the Poké Balls pocket, A on the ball, A on USE; A at each
+ * battle message; A twice at the Pokédex page for a new species. The nickname question comes next. Each failure names the step.
+ */
+export async function throwBall(newSpecies: boolean): Promise<void> {
+  const criterion = '"the scenario catches it itself"'
+  await runMacro('H.Right.2')
+  await pollWhileWaiting(logged('action cursor', () => readU8(CURSOR)), (v) => v === 1, 2000, `${criterion}: Right to BAG (cursor 1)`)
+  // The bag is not a battle screen (callback 2 is neither the battle nor the field), and no byte for it is known: fixed
+  // waits for the bag to open, the pocket to change and the ball's menu, then USE. The A on BAG is also confirmed by the
+  // controller function leaving HandleInputChooseAction (research doc, "Presses").
+  await runMacro('H.A.2;W.60')
+  step('A on BAG, 60 frames')
+  await pollWhileWaiting(logged('controller function', () => readU32(CONTROLLER)), (v) => v !== MENU_FN, 2000,
+    `${criterion}: A on BAG (the controller leaving HandleInputChooseAction)`)
+  await runMacro('H.Right.2;W.20')
+  step('Right to the Poké Balls pocket, 20 frames (no byte known)')
+  await runMacro('H.A.2;W.20')
+  step('A on the Master Ball, 20 frames (no byte known)')
+  await runMacro('H.A.2')
+  step('A on USE')
+
+  // "Gotcha! … was caught!", and for a new species "…data was added to the POKéDEX": each a button wait, left after its A.
+  const messages = newSpecies ? ['Gotcha!', 'Pokédex data'] : ['Gotcha!']
+  for (const message of messages) {
+    await pollWhileWaiting(battleWindow, (v) => BUTTON_WAITS.includes(v), 60_000, `${criterion}: the "${message}" message waiting for A`)
+    await runMacro('H.A.2')
+    await pollWhileWaiting(battleWindow, (v) => !BUTTON_WAITS.includes(v), 5000, `${criterion}: the A at "${message}" read`)
+  }
+  if (newSpecies) {
+    // The Pokédex page is another screen with no byte known: fixed waits for it to open and between its two A.
+    await runMacro('W.120;H.A.2;W.60;H.A.2;W.60')
+    step('the Pokédex page: 120 frames, A, 60 frames, A, 60 frames (no byte known)')
+  }
+}
+
+/**
+ * Resume: the action's Run beside its "Resume" label; then `Found pokemon: True` and the [StartMenu] save line. Returns
+ * the number of [Spin] seek lines before the press.
+ */
+export async function resumeAndSave(card: Locator): Promise<number> {
+  const seeksBefore = backendLog().filter((l) => SPIN_LINE.test(l)).length
+  await card.getByRole('button', { name: 'Run', exact: true }).click()
+  step('Resume run')
+  const saves = '"the bot saves through the start menu"'
+  const found = await withCrashText(saves, () => waitForLine(FOUND_POKEMON, 1, 2 * MINUTE, `${saves}: the catch check`))
+  expect(found.trim(), `${saves}: the catch check did not find the Wurmple: "${found.trim()}"`).toMatch(/True$/)
+  await withCrashText(saves, () => waitForLine(START_MENU, 1, 2 * MINUTE, `${saves}: the [StartMenu] line`))
+  return seeksBefore
 }
