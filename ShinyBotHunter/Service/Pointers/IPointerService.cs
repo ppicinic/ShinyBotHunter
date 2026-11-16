@@ -37,7 +37,7 @@ namespace ShinyBotHunter.Service.Pointers
         uint RunWatchY { get; }
     }
 
-    /// <param name="Storage">Offset from the dereferenced anchor to the start of box storage.</param>
+    /// <param name="Storage">Offset to the start of box storage from the party read's base: the dereferenced anchor, or the anchor itself when <see cref="IPointerService.PartyAddressing"/> is Absolute.</param>
     /// <param name="Count">Number of boxes.</param>
     /// <param name="Capacity">Slots in one box.</param>
     /// <param name="Stride">Bytes one box occupies, including any padding after its slots.</param>

@@ -60,7 +60,7 @@ namespace ShinyBotHunter.Tests
                 HasWildEncounters: true,
                 HasTraining: false,
                 HasEggs: false,
-                CanReadBoxes: false,
+                CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: true), profile.Capabilities);
@@ -69,7 +69,7 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(profile.CreateStateReader);
             Assert.Same(profile.Addresses(1), profile.Addresses(2));
             Assert.IsType<RsPointerService>(profile.Addresses(1));
-            Assert.Null(profile.Addresses(1).BoxLayout);
+            Assert.NotNull(profile.Addresses(1).BoxLayout);
             Assert.Null(profile.Maps);
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
@@ -92,22 +92,21 @@ namespace ShinyBotHunter.Tests
         }
 
         [Theory]
-        [InlineData(true, false, false)]
-        [InlineData(false, true, false)]
-        [InlineData(false, false, true)]
-        public void DeclaredCapabilityWithoutItsPartThrows(bool hasWildEncounters, bool canReadBoxes, bool hasOverworldNavigation)
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        public void DeclaredCapabilityWithoutItsPartThrows(bool hasWildEncounters, bool hasOverworldNavigation)
         {
             GameCapabilities capabilities = new(
                 HasOverworldNavigation: hasOverworldNavigation,
                 HasWildEncounters: hasWildEncounters,
                 HasTraining: false,
                 HasEggs: false,
-                CanReadBoxes: canReadBoxes,
+                CanReadBoxes: false,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false);
 
-            // No state reader, a table whose BoxLayout is null, and no overworld reader: each case declares one missing part.
+            // No state reader and no overworld reader: each case declares one missing part.
             Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.RS,
                 capabilities,

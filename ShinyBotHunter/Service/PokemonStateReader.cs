@@ -183,7 +183,10 @@ namespace ShinyBotHunter.Service
             {
                 state.BoxPokemon[i] = new PokemonData?[boxCapacity];
             }
-            uint anchor;
+            // Storage is an offset from the base the party read uses: the anchor itself when the party is Absolute (RS),
+            // otherwise the pointer the anchor holds (HGSS).
+            async Task<uint> BoxBaseAsync() =>
+                (uint)((addresses.PartyAddressing == PartyAddressing.Absolute ? addresses.Anchor : await bot.ReadUIntAsync(addresses.Anchor)) + boxes.Storage);
             //constantly polling is too slow. load the whole party data into memory
 
             bool[][] checkMap = new bool[boxCount][];
@@ -195,9 +198,7 @@ namespace ShinyBotHunter.Service
                     checkMap[i][j] = false;
                 }
             }
-            anchor = await bot.ReadUIntAsync(addresses.Anchor);
-            uint boxBase = (uint)(anchor + boxes.Storage);
-            byte[] fullBoxData = await bot.ReadBytesAsync(boxBase, boxCount * boxStride);
+            byte[] fullBoxData = await bot.ReadBytesAsync(await BoxBaseAsync(), boxCount * boxStride);
             for (int box = 0; box < boxCount; box++)
             {
                 for (int slot = 0; slot < boxCapacity; slot++)
@@ -230,8 +231,7 @@ namespace ShinyBotHunter.Service
                         do
                         {
                             await Task.Delay(100);
-                            anchor = await bot.ReadUIntAsync(addresses.Anchor);
-                            byte[] boxData = await bot.ReadBytesAsync((uint)(anchor + boxes.Storage) + (box * (uint)boxStride) + (slot * (uint)boxSlotSize), boxSlotSize);
+                            byte[] boxData = await bot.ReadBytesAsync(await BoxBaseAsync() + (box * (uint)boxStride) + (slot * (uint)boxSlotSize), boxSlotSize);
                             boxPokemon = parser.Parse(boxData);
                         } while (boxPokemon is null || boxPokemon.IsCorrupt);
                         state.BoxPokemon[box][slot] = boxPokemon;
