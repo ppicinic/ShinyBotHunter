@@ -79,7 +79,6 @@ export const NO_TARGET_SENTENCE = 'No Target needs a train mode, which Ruby and 
 export const TRAINING_SENTENCE = 'Training is not available on Ruby and Sapphire yet.'
 export const FIELD_SENTENCE = 'Close any menu or message and stand in the field.'
 export const FAINTED_SENTENCE = 'The first Pokémon in the party has fainted.'
-export const FREE_SLOT_SENTENCE = 'Leave a free party slot so a caught Pokémon stays in the party.'
 export const SHINY_LEAD_LINE = 'A shiny first Pokémon adds about 1.2 s to every battle.'
 
 // --- log patterns: each matches one Console.WriteLine of SpinEncounterEvent, RunEncounterEvent or RsBattleEvent ----
