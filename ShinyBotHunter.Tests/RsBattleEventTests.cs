@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
@@ -111,11 +112,15 @@ namespace ShinyBotHunter.Tests
             public List<PersistPokemonData> Alerted { get; } = [];
             // The snapshot last served at each read of the wild Pokémon's record.
             public List<GameSnapshot> EnemyReads { get; } = [];
+            // PKHeX's verdict for every record analysed, and the records it was asked about.
+            public LegalityResult Verdict { get; set; } = new(true, "legal");
+            public List<byte[]> Analysed { get; } = [];
 
             public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null)
                 => RsBattleEvent.RunAsync(State, new RsPointerService(),
                     p => { Logged.Add(p); return Task.CompletedTask; },
                     p => { Alerted.Add(p); return Task.CompletedTask; },
+                    raw => { Analysed.Add(raw); return Verdict; },
                     battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
         }
 
@@ -439,6 +444,52 @@ namespace ShinyBotHunter.Tests
             Assert.True(logged.PokemonData.IsShiny);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.Equal(["Advance"], battle.Presses);
+            Assert.Equal(Shiny, Assert.Single(battle.Analysed));
+        }
+
+        [Fact]
+        public async Task IllegalShiny_IsFledWithFivePressesUnloggedAndUnalerted()
+        {
+            Battle battle = Start(Fled(), target: new ShinyTarget(), enemies: [Shiny]);
+            battle.Verdict = new(false, "PID-IV mismatch");
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            string? stop;
+            try
+            {
+                stop = await battle.RunAsync();
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.Null(stop);
+            Assert.Equal(Shiny, Assert.Single(battle.Analysed));
+            Assert.Empty(battle.Logged);
+            Assert.Empty(battle.Alerted);
+            Assert.Null(battle.State.TargetPokemon);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            // Five presses: BattleCursorToRun is Right and Down.
+            Assert.Equal(["Advance", "ToRun", "Confirm", "Advance"], battle.Presses);
+            Assert.Contains("[RsBattle] legality FAIL", log.ToString());
+            Assert.Contains("PID-IV mismatch", log.ToString());
+        }
+
+        [Fact]
+        public async Task NotShiny_IsNeverAnalysed()
+        {
+            // In the failed escape the menu comes twice.
+            foreach (PressedReader reader in new[] { Fled(), FailedEscape() })
+            {
+                Battle battle = Start(reader, enemies: [Plain]);
+
+                await battle.RunAsync();
+
+                Assert.Empty(battle.Analysed);
+                Assert.Single(battle.Logged);
+            }
         }
 
         [Fact]
@@ -483,6 +534,7 @@ namespace ShinyBotHunter.Tests
             var provider = new ServiceCollection()
                 .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
                 .AddSingleton(new ShinyAlertService(null!, Options.Create(new ApplicationSettings())))
+                .AddSingleton(new LegalityService(NullLogger<LegalityService>.Instance))
                 .BuildServiceProvider();
 
             Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));

@@ -31,7 +31,7 @@ namespace ShinyBotHunter.Games.Rs
             battleParser: null,
             createOverworldReader: (memory, table) => new RsOverworldReader(memory, (RsPointerService)table),
             createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table),
-            createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>()),
+            createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>(), provider.GetRequiredService<LegalityService>()),
             saveGame: (provider, bot) =>
             {
                 // The starter hunt's save step and its values (FR-13); loaded per save, as the hunt loads it per start.

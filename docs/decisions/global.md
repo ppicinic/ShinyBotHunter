@@ -1,7 +1,7 @@
 # Decisions: Global
 
 Status: Living document
-Last updated: 2026-11-02
+Last updated: 2026-11-15
 
 Project-wide decisions that are not tied to one feature. Feature-specific decisions live in their own file in this folder (for example `persistence.md`, `bot-engine.md`, `dashboard.md`), created when the first decision for that area is made. A decision is never deleted; when it changes, mark the old section **Superseded** and link to the new one.
 
@@ -285,3 +285,21 @@ No code, plan, scenario or report treats the call as a blocking state or dismiss
 ### Consequences
 - The Primo and Togepi walks have no call handling and never will.
 - A subagent's root cause is verified on the emulator before the orchestrator repeats it.
+
+---
+
+## Every Gen 3 shiny is checked with PKHeX
+
+Status: Accepted
+Date: 2026-11-15 (owner)
+
+### Context
+GBA emulators are unreliable: the Gen 3 RNG and clock as an emulator runs them can produce a Pokémon no cartridge could. A shiny like that counted as a find corrupts the data the hunts exist to collect. The RS starter hunt already checked its shinies with PKHeX through `LegalityService`; the RS wild hunt (#408) did not.
+
+### Decision
+Every shiny a Gen 3 hunt finds is checked with PKHeX (`LegalityService.Analyze`) before it counts as found. A shiny that fails is not a target: no alert, no stop, and the hunt carries on as for a Pokémon that is not shiny. The one exception is the Wishmaker Jirachi: it is unique and does not need the check (owner).
+
+### Consequences
+- A new Gen 3 hunt's spec names where its shiny is analysed; a plan without it is rejected at plan review.
+- Pokémon that are not shiny are not analysed unless a hunt's config asks for it (the starter hunt's `LogLegalityForEveryEncounter`), so the check costs nothing between shinies.
+- Today: the RS starter hunt (`StarterHuntEvent`, also run by `MultiStarterHuntEvent`) and the RS wild hunt (`RsBattleEvent`) comply; `WishmakerJirachiEvent` is the exception.
