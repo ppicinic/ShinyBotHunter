@@ -2,12 +2,15 @@ import * as fs from 'fs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { emuHawkRunning, killEmuHawk, killTree, readU32, runMacro, shotAll, step, toS16 } from './driver'
 import { failOnStop, SEEK } from './rs-wild'
-import { API, backendLog, launchBot, MINUTE, psql, ROUTE33_ROM, saveOf, settings, sha256, shutdown, startFrame, type Frame } from './static'
+import { API, backendLog, launchBot, MINUTE, psql, saveOf, settings, sha256, shutdown, startFrame, type Frame } from './static'
 
-// hgss.qa-route33, as hgss-route33 uses it: two tiles down from the path into the grass, then Run with x range 3, or Spin.
-const SAVE = saveOf(ROUTE33_ROM)
+// hgss.qa-route29: Route 29 grass at (656, 403), dry (Route 33 always rains, which slows every battle); the shiny Typhlosion leads.
+const ROM = process.env.QA_HGSS_SPEED_ROM ?? 'HG-Route29'
+const SAVE = saveOf(ROM)
+const PHASE = process.env.QA_HGSS_SPEED_PHASE ?? 'Route 29'
+// Tiles to step down into the grass before Run: 0 on the Route 29 save, which stands in it; 2 on the Route 33 save.
+const STEP_DOWN = Number(process.env.QA_HGSS_SPEED_STEP_DOWN ?? '0')
 const Y_ADDR = 0x21da6fc
-const PHASE = 'Route 33'
 const ACTION = 'Wild Encounter'
 // Each mode hunts this long by the wall clock. The first encounter of a mode is left out, since it follows the launch.
 const MINUTES = Number(process.env.QA_HGSS_SPEED_MINUTES ?? 20)
@@ -35,11 +38,13 @@ async function cancelOnce(card: Locator): Promise<void> {
  * the save against its .bak once EmuHawk has closed. Returns the ISO time of the Run click.
  */
 async function hunt(admin: Page, mode: Mode, pages: Record<string, Page>): Promise<string> {
-  const card = await launchBot(admin, ROUTE33_ROM, 'emulator', false)
+  const card = await launchBot(admin, ROM, 'emulator', false)
   const y = toS16(await readU32(Y_ADDR))
-  await runMacro(`M.Down.${y + 2}.${Y_ADDR}`)
-  expect(toS16(await readU32(Y_ADDR)), 'the player did not move two tiles down into the grass').toBe(y + 2)
-  step(`player moved from y=${y} to y=${y + 2}`)
+  if (STEP_DOWN > 0) {
+    await runMacro(`M.Down.${y + STEP_DOWN}.${Y_ADDR}`)
+    expect(toS16(await readU32(Y_ADDR)), 'the player did not move down into the grass').toBe(y + STEP_DOWN)
+  }
+  step(`player at y=${y + STEP_DOWN} (stepped down ${STEP_DOWN})`)
   if (mode.mode === 'Run') {
     const party = (await (await fetch(`${API}/bot/getParty/0`)).json()) as PartySlot[]
     step(`lead ${party[0].name} Lv ${party[0].level}, shiny ${party[0].isShiny} (the owner's ${TARGET} an hour is for a shiny lead)`)
@@ -114,7 +119,7 @@ function measure(mode: string, rows: string[][], log: string[]): number {
   return rate
 }
 
-test('HGSS Wild Encounter speed: a timed hunt on Route 33 by Run with x range 3, then one by Spin, against 189 an hour', async () => {
+test('HGSS Wild Encounter speed: a timed hunt on a grass route by Run with x range 3, then one by Spin, against 189 an hour', async () => {
   test.setTimeout((2 * MINUTES + 15) * MINUTE)
   const frame: Frame = { backend: null, app: null }
   const { pg } = settings()
@@ -130,7 +135,7 @@ test('HGSS Wild Encounter speed: a timed hunt on Route 33 by Run with x range 3,
     const spinStart = await hunt(admin, { mode: 'Spin' }, pages)
     await shutdown(frame, admin)
 
-    const rows = psql(pg, `SELECT "PID","Species","Level","IsShiny","Timestamp" FROM encounters WHERE "GameFileName"='${ROUTE33_ROM}' ` +
+    const rows = psql(pg, `SELECT "PID","Species","Level","IsShiny","Timestamp" FROM encounters WHERE "GameFileName"='${ROM}' ` +
       `AND "Milestone"='${PHASE}' AND "Timestamp" >= '${runStart}' ORDER BY "Timestamp"`).map((r) => r.split('|'))
     step(`encounter rows since the Run: ${rows.length}`)
     const log = backendLog()
