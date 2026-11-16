@@ -69,6 +69,8 @@ export function spinMacroFor(facing: string): string {
 }
 // RunEncounterEvent.RunMacro for y range 1 from (14, 4), with RunHold joined to the first move.
 export const RUN_MACRO = 'M.Up.3.33707828:H.B.1;M.Down.5.33707828'
+// The same for x range 1: Right then Left, watching x (RsPointerService.RunWatchX, 0x02025732).
+export const RUN_MACRO_X = 'M.Right.15.33707826:H.B.1;M.Left.13.33707826'
 
 // BotService and OrchestratorEvent (W6a, #386).
 export const HEADBUTT_SENTENCE = 'Ruby and Sapphire have no Headbutt trees.'
@@ -354,7 +356,7 @@ export async function launchRs(admin: Page, rom: string, recording: string, reco
   return card
 }
 
-export type Mode = { mode: 'Spin' } | { mode: 'Run'; yRange: number }
+export type Mode = { mode: 'Spin' } | { mode: 'Run'; yRange: number } | { mode: 'Run'; xRange: number }
 
 /**
  * On the card's Wild Encounter form: fails naming the milestone if it is not offered, sets ShinyTarget and the mode,
@@ -371,7 +373,8 @@ export async function startWild(card: Locator, mode: Mode, beforeRun?: () => Pro
   await phase.selectOption(PHASE)
   await card.getByTestId('param-TargetType').locator('select').selectOption('ShinyTarget')
   await card.getByTestId('param-EncounterType').locator('select').selectOption(mode.mode)
-  if (mode.mode === 'Run') await card.getByTestId('param-yRange').locator('input').fill(String(mode.yRange))
+  if ('yRange' in mode) await card.getByTestId('param-yRange').locator('input').fill(String(mode.yRange))
+  if ('xRange' in mode) await card.getByTestId('param-xRange').locator('input').fill(String(mode.xRange))
   if (beforeRun) await beforeRun()
   const runStart = new Date().toISOString()
   await card.getByRole('button', { name: 'Run', exact: true }).click()
