@@ -66,8 +66,16 @@ test('RS Wild Encounter refusals: six in the party, a fainted lead, Headbutt and
     await runMacro('H.Select.2')
     await pollWhileWaiting(() => readU8(LOCK), (v) => v === 1, 5000, 'the field locked by the Select message')
     await refused(card, '05-message', 'Spin', FIELD_SENTENCE)
-    await runMacro('H.A.2')
-    await pollWhileWaiting(() => readU8(LOCK), (v) => v === 0, 5000, 'the field free again after A')
+    // The message is still printing when the refusal returns, and A while it prints only hurries it: A is pressed again
+    // until the field unlocks. No event is running, so these presses are the scenario's own tidying.
+    let lock = 1
+    for (let press = 0; press < 5 && lock === 1; press++) {
+      await new Promise((r) => setTimeout(r, 1500))
+      await runMacro('H.A.2')
+      await new Promise((r) => setTimeout(r, 1000))
+      lock = await readU8(LOCK)
+    }
+    expect(lock, 'the field free again after A at the Select message').toBe(0)
 
     await cancelBot(card)
     await shotAll('06-cancelled', pages)
