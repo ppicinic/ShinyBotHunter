@@ -774,10 +774,6 @@ namespace ShinyBotHunter.Service
             {
                 throw new InvalidOperationException(LeadFainted);
             }
-            if (!bot.Profile.Capabilities.CanReadBoxes && party.PartySize == 6)
-            {
-                throw new InvalidOperationException(OrchestratorEvent.LeaveAFreePartySlot);
-            }
             return party.PartyPokemon[0]!;
         }
 
