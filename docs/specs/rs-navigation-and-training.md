@@ -283,9 +283,16 @@ After the owner's answers of 2026-11-17 (the fainted battler, #475; the Discord 
 The Discord answers were clicked by the orchestrator in a browser signed in as the owner, on the button the scenario's `OPERATOR:` line named: 16 prompts, 32 clicks, none wrong. Side-by-side videos of the day's runs (dashboard left, emulator right; a failed run has the emulator alone) are in `qa-runs/complete-for-review/` on the dev PC, with an `index.txt`; not committed.
 
 
+HGSS, on four saves rebuilt that day with PKHeX.Core from `qa-route33.SaveRAM` (`docs/specs/qa-automation.md`, the save table):
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `hgss-navigate-heal-return` (`Pokemon HeartGold6`) | `20261117-173921` | passed: the walk to the Azalea Pokémon Center, the nurse, the walk back to the start tile |
+| `hgss-heal-variants` on `Pokemon HeartGold6`, `7`, `8` | `20261117-174054`, `20261117-174225`, `20261117-174352` | passed: lead fainted; slot 2 fainted; Pokérus |
+| `hgss-route33-train`, `hgss-route33-train-replace` (`Pokemon HeartGold2`) | `20261117-174540`, `20261117-174751` | passed: Take Down refused, and learned over Tackle; the Discord answers clicked by the orchestrator |
+
 Not run:
 
-- `hgss-route33-train`, `hgss-navigate-heal-return`, `hgss-heal-variants`: their saves (`Pokemon HeartGold2`, `6`, `7`, `8`) are not on the dev PC. `hgss-pickup` covers the HGSS train path; HGSS's navigator, now created through the profile, has not walked to a Pokémon Center on the emulator since.
 - Versions 1.0 and 1.1; a Pokémon Center other than Oldale's; the nurse with more than two Pokémon; the two warp forms of R3 other than the house door (a ladder landing on the same tile numbers; an escalator); any HM; a lost trainer battle; a caught Pokémon as the battler; a party of more than two in a switch.
 
 What the emulator found: two failures in 40-odd runs. One was in a scenario (`rs-nav-heal-return` house clicked Run during the game's locked step after a door; #470), one in the bot (the walk's last step still ending when the hunt's first turn was sent; #469). Both were fixed and run again, five times in a row for the bot's. Everything else passed at its first run.
@@ -304,7 +311,6 @@ Follow-ups proposed, none done:
 - The wording of stops for the operator: 0-based slots, the nurse's internals, macro names, "The first Pokémon fainted.".
 - The roughly 60 "QA: none yet" notes in `RsPointerService`, against today's runs.
 - `MapLookup` defined twice; `Startup.cs` building the Discord and damage services eagerly; the dashboard test fixture using two deleted sentences.
-- The four HGSS QA saves.
 - A blackout need not stop the hunt (owner, 2026-11-17, for a later epic): the game leaves the player outside a Pokémon Center with the party healed, so the bot can pathfind back to the start anchor and carry on. Today it is the "The first Pokémon fainted." stop.
 - The fainted-battler rule in a flee-only hunt: its reader cannot see "Use next POKéMON?", so a faint there with another Pokémon alive still ends in the 30 s stale stop.
 
@@ -351,3 +357,4 @@ Follow-ups proposed, none done:
 - 2026-11-15: the owner asked for every HM in the data and the search, with the capability reads left for later; FR-4a and FR-4b added, checked offline with the prototype.
 - 2026-11-15: the owner removed trainer sight tiles from the data and the search; FR-2 to FR-5, the design's script-state section and two QA scenarios follow.
 - 2026-11-17: the owner's three answers recorded; the evidence for #475 and for every Discord prompt variant added; two follow-ups added (a blackout that carries on; the fainted-battler rule in a flee-only hunt).
+- 2026-11-17: the four HGSS saves rebuilt and the HGSS regression scenarios run (Evidence).
