@@ -105,14 +105,14 @@ namespace ShinyBotHunter.Tests
             EventRegistration entry = EventRegistry.Get("HGSS Static Encounter");
 
             Assert.Equal(["PhaseName", "StaticEncounter"], entry.Options.RequiredParameters!);
-            Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), entry.Requires?.Capability);
+            Assert.Equal(nameof(GameCapabilities.HasStaticEncounter), entry.Requires?.Capability);
             Assert.False(entry.OwnsEmulators);
         }
 
         [Fact]
-        public void ChainedEncounterNeedsOverworldNavigation()
+        public void ChainedEncounterNeedsHasChainedEncounter()
         {
-            Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), EventRegistry.Get("Chained Encounter").Requires?.Capability);
+            Assert.Equal(nameof(GameCapabilities.HasChainedEncounter), EventRegistry.Get("Chained Encounter").Requires?.Capability);
             Assert.Equal(nameof(GameCapabilities.HasWildEncounters), EventRegistry.Get("Wild Encounter").Requires?.Capability);
         }
 
@@ -158,8 +158,23 @@ namespace ShinyBotHunter.Tests
 
             var content = Assert.IsType<ContentResult>(result.Result);
             Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
-            Assert.Contains("HasOverworldNavigation", content.Content);
+            Assert.Contains("HasChainedEncounter", content.Content);
             // No GameState was assigned, so no event was built.
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task RsBot_StaticEncounterIs400NamingHasStaticEncounter()
+        {
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+            var args = new NewEventArguments { EventName = "HGSS Static Encounter", PhaseName = "x", StaticEncounter = "Dialga (Sinjoh Ruins)" };
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Contains("HasStaticEncounter", content.Content);
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 

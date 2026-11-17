@@ -9,5 +9,10 @@ namespace ShinyBotHunter.Games
         bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
         bool HasSoftResetStarterHunt,  // RS wave hunt
         bool HasShinyStarterHunt,      // HGSS starter hunt
-        bool HasWishmakerJirachi);     // RS Wishmaker Jirachi hunt over the Colosseum Bonus Disc
+        bool HasWishmakerJirachi,      // RS Wishmaker Jirachi hunt over the Colosseum Bonus Disc
+        bool HasChainedEncounter = false,  // Chained Encounter
+        bool HasStaticEncounter = false,   // HGSS Static Encounter: the graph and pathfinding walk to the spot
+        bool HasHeadbuttTrees = false,     // the Headbutt encounter type
+        bool HasPickup = false,            // Pickup, which takes the items through HGSS's bag
+        bool HasWildRunChecks = false);    // the RS checks and speed lines at a Wild Encounter's Run
 }

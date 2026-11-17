@@ -37,7 +37,12 @@ namespace ShinyBotHunter.Tests
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: true,
-                HasWishmakerJirachi: false), profile.Capabilities);
+                HasWishmakerJirachi: false,
+                HasChainedEncounter: true,
+                HasStaticEncounter: true,
+                HasHeadbuttTrees: true,
+                HasPickup: true,
+                HasWildRunChecks: false), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
@@ -63,7 +68,12 @@ namespace ShinyBotHunter.Tests
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
                 HasShinyStarterHunt: false,
-                HasWishmakerJirachi: true), profile.Capabilities);
+                HasWishmakerJirachi: true,
+                HasChainedEncounter: false,
+                HasStaticEncounter: false,
+                HasHeadbuttTrees: false,
+                HasPickup: false,
+                HasWildRunChecks: true), profile.Capabilities);
             Assert.Null(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);

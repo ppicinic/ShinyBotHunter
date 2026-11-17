@@ -7,8 +7,11 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -40,6 +43,7 @@ namespace ShinyBotHunter.Tests
         private const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
         private const string NoTargetNeedsTraining = "No Target needs a train mode, which Ruby and Sapphire do not have yet.";
         private const string NoTraining = "Training is not available on Ruby and Sapphire yet.";
+        private const string NoPickup = "Pickup is not available on Ruby and Sapphire.";
         private const string StandInTheField = "Close any menu or message and stand in the field.";
         private const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
         private const string LeadFainted = "The first Pokémon in the party has fainted.";
@@ -104,6 +108,38 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(NoTraining, disabled["TrainType"]["Switch"]);
             Assert.Equal(NoTraining, disabled["Pickup"]["true"]);
             Assert.Equal(["EncounterType", "TargetType", "TrainType", "Pickup"], disabled.Keys);
+        }
+
+        [Fact]
+        public void DisabledByCapabilities_Hgss_IsEmpty()
+        {
+            GameProfile hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
+
+            Assert.Empty(BotService.DisabledByCapabilities(hgss.Capabilities));
+        }
+
+        [Fact]
+        public void DisabledByCapabilities_NavigatingTrainingProfile_HeadbuttAndPickupOnly()
+        {
+            // RS as T3b will declare it: navigation, training and the run checks, none of HGSS's own members.
+            GameCapabilities caps = new(
+                HasOverworldNavigation: true,
+                HasWildEncounters: true,
+                HasTraining: true,
+                HasEggs: false,
+                CanReadBoxes: true,
+                HasSoftResetStarterHunt: true,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: true,
+                HasWildRunChecks: true);
+
+            var disabled = BotService.DisabledByCapabilities(caps);
+
+            Assert.Equal(["EncounterType", "Pickup"], disabled.Keys);
+            Assert.Equal(["Headbutt"], disabled["EncounterType"].Keys);
+            Assert.Equal(NoHeadbuttTrees, disabled["EncounterType"]["Headbutt"]);
+            Assert.Equal(["true"], disabled["Pickup"].Keys);
+            Assert.Equal(NoPickup, disabled["Pickup"]["true"]);
         }
 
         [Fact]

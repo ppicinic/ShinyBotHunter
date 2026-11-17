@@ -61,7 +61,7 @@ namespace ShinyBotHunter.Games
                 (s, args, pos) => s.StartWildEncounter(args, pos)),
             new("Chained Encounter",
                 new EventArgumentOptions() { Name = "Chained Encounter", LegParameters = EncounterParameters("Leg") },
-                (nameof(GameCapabilities.HasOverworldNavigation), c => c.HasOverworldNavigation), OwnsEmulators: false,
+                (nameof(GameCapabilities.HasChainedEncounter), c => c.HasChainedEncounter), OwnsEmulators: false,
                 (s, args, pos) => s.StartChainedEncounter(args, pos)),
             // Everything else the egg hunt needs -- macros, corridor, touch coordinates -- lives in
             // Configs/Events/TogepiEgg.json, so the only thing to pick here is where to log it.
@@ -77,7 +77,7 @@ namespace ShinyBotHunter.Games
             // The encounter list, the macros and the timings live in Configs/Events/StaticEncounter.json.
             new("HGSS Static Encounter",
                 new EventArgumentOptions() { Name = "HGSS Static Encounter", RequiredParameters = ["PhaseName", "StaticEncounter"] },
-                (nameof(GameCapabilities.HasOverworldNavigation), c => c.HasOverworldNavigation), OwnsEmulators: false,
+                (nameof(GameCapabilities.HasStaticEncounter), c => c.HasStaticEncounter), OwnsEmulators: false,
                 (s, args, pos) => s.StartStaticEncounterAsync(args, pos)),
             new("Resume",
                 new EventArgumentOptions() { Name = "Resume" },
