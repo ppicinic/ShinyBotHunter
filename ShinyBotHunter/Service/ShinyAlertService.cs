@@ -56,6 +56,14 @@ namespace ShinyBotHunter.Service
             });
         }
 
+        // The trainer stop's message (docs/specs/rs-navigation-and-training.md FR-10): the sentence, on the shiny log channel.
+        public Task NotifyTrainerBattleAsync(string sentence) => discordBotService.SendMessageAsync(new DiscordMessage()
+        {
+            StringMessage = $"<@&{appSettings.ShinyLogMention}> {sentence}",
+            GuildId = appSettings.DiscordGuildId,
+            ChannelId = appSettings.ShinyLogChannel,
+        });
+
         private static string PadIv(byte iv) => iv < 10 ? $"0{iv}" : $"{iv}";
     }
 }
