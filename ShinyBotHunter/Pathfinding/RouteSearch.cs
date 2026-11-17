@@ -344,7 +344,8 @@ namespace ShinyBotHunter.Pathfinding
             _ => (x + 1, y),
         };
 
-        private static Route ToRoute(Node last)
+        // Null when a run cannot be given a coordinate to wait for (R3).
+        private Route? ToRoute(Node last)
         {
             List<Node> nodes = [];
             for (Node? node = last; node is not null; node = node.Parent)
@@ -353,11 +354,74 @@ namespace ShinyBotHunter.Pathfinding
             }
             nodes.Reverse();
             List<Node> steps = nodes.Skip(1).ToList();
+            // FR-4b: the presses for an HM or Dive step belong to the later field-move step, so such a route has no macros.
+            List<(string, int, int, int)>? segments = steps.All(n => n.Action == MoveAction.None || n.Action == MoveAction.Portal) ? Segments(nodes) : [];
+            if (segments is null)
+            {
+                return null;
+            }
             return new Route(
                 last.Cost,
                 steps.Select(n => (n.State.Map, n.State.X, n.State.Y, n.Direction, n.Action)).ToList(),
-                [],
+                segments,
                 steps.Where(n => n.LiveTrigger).Select(n => (n.State.Map, n.State.X, n.State.Y)).ToList());
+        }
+
+        // FR-8: one M macro per straight run, M.<dir>.<coordinate>.<RunWatchX or RunWatchY>, the first with RunHold
+        // joined to it (RunEncounterEvent.RunMacro). B then stays held until the macro is cleared, so the walker (N4)
+        // must not clear between segments and starts a re-planned route with its own first segment.
+        // R1: a run ends where the direction changes. R2: a step that changes map (a connection or a warp) starts a run,
+        // which waits for its last tile's coordinate on the destination map.
+        // R3: ApiHawk's M stops on equality, from its first frame (CommandServer.cs, data == btn.Destination), so a run
+        // that changes map and would wait for a coordinate the player already shows before the landing (the tile it
+        // starts on, and a door's tile) is cut at the landing tile, which waits on the axis whose coordinate is new;
+        // the rest is a run of its own. Null when neither axis is new.
+        private List<(string, int, int, int)>? Segments(List<Node> nodes)
+        {
+            string hold = MacroRegistry.Instance.TryGetMacro(flavor, "RunHold", out string? runHold) ? ":" + runHold : "";
+            List<(string, int, int, int)> segments = [];
+            void Add(Direction direction, Node end, bool onY) =>
+                segments.Add(($"M.{direction}.{(onY ? end.State.Y : end.State.X)}.{(onY ? addresses.RunWatchY : addresses.RunWatchX)}{(segments.Count == 0 ? hold : "")}",
+                    end.State.Map, end.State.X, end.State.Y));
+
+            int first = 1;
+            while (first < nodes.Count)
+            {
+                Direction direction = nodes[first].Direction;
+                int last = first;
+                while (last + 1 < nodes.Count && nodes[last + 1].Direction == direction && nodes[last + 1].State.Map == nodes[last].State.Map)
+                {
+                    last++;
+                }
+                bool vertical = direction == Direction.Up || direction == Direction.Down;
+                State before = nodes[first - 1].State;
+                State landing = nodes[first].State;
+                if (landing.Map != before.Map)
+                {
+                    List<(int X, int Y)> shown = [(before.X, before.Y)];
+                    Map from = maps.GetMap(before.Map, true);
+                    if (nodes[first].Action == MoveAction.Portal && !(from[before.Y, before.X] == Constant.MAP_Portal1 && WarpAt(from, before.X, before.Y).Arrow == direction))
+                    {
+                        shown.Add(Ahead(before.X, before.Y, direction)); // the door the player stepped onto
+                    }
+                    State end = nodes[last].State;
+                    if (shown.Any(p => vertical ? p.Y == end.Y : p.X == end.X))
+                    {
+                        bool newOnRunAxis = !shown.Any(p => vertical ? p.Y == landing.Y : p.X == landing.X);
+                        bool newOnOtherAxis = !shown.Any(p => vertical ? p.X == landing.X : p.Y == landing.Y);
+                        if (!newOnRunAxis && !newOnOtherAxis)
+                        {
+                            return null;
+                        }
+                        Add(direction, nodes[first], newOnRunAxis ? vertical : !vertical);
+                        first++;
+                        continue;
+                    }
+                }
+                Add(direction, nodes[last], vertical);
+                first = last + 1;
+            }
+            return segments;
         }
     }
 }

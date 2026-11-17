@@ -215,5 +215,66 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(route);
             Assert.Equal((2, 0, 2, Direction.Right), (route.Steps[^1].Map, route.Steps[^1].X, route.Steps[^1].Y, route.Steps[^1].Direction));
         }
+
+        // FR-8, the research doc's five macros ("Search and macros"), derived with the spike's rsmaps.py on pokeruby
+        // 5784633 and the plan of #426: Left to Route 101 (8, 4), Up to row 0, over the connection to Oldale row 17,
+        // Left to (6, 17) under the Center's door (6, 16), and Up through the door, which lands on the mat (7, 8), to
+        // the counter. x is RunWatchX 0x02025732 = 33707826, y RunWatchY 0x02025734 = 33707828.
+        [Fact]
+        public void Route101ToOldaleCenter_GivesTheFiveMacros()
+        {
+            Route? route = Find(Rs, Route101, 14, 4, OldaleCenter, 7, 4, new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal(45, route.Cost);
+            Assert.Empty(route.LiveTriggers);
+            Assert.All(route.Steps, s => Assert.True(s.Action == MoveAction.None || s.Action == MoveAction.Portal));
+            Assert.Equal(
+                [
+                    ("M.Left.8.33707826:H.B.1", Route101, 8, 4),
+                    ("M.Up.0.33707828", Route101, 8, 0),
+                    ("M.Up.17.33707828", OldaleTown, 8, 17),
+                    ("M.Left.6.33707826", OldaleTown, 6, 17),
+                    ("M.Up.4.33707828", OldaleCenter, 7, 4),
+                ],
+                route.Segments);
+        }
+
+        // FR-8: Down onto the Center's south mat (7, 8), then Down on the mat, which warps to Oldale (6, 17), the tile
+        // below the door (N1b's landing); that run waits for the y outside.
+        [Fact]
+        public void ArrowWarp_RunWaitsForTheCoordinateOutside()
+        {
+            Route? route = Find(Rs, OldaleCenter, 7, 4, OldaleTown, 6, 17, new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal([("M.Down.8.33707828:H.B.1", OldaleCenter, 7, 8), ("M.Down.17.33707828", OldaleTown, 6, 17)], route.Segments);
+        }
+
+        // R3 on two inline maps: the player at (1, 1) of map 1 steps Up onto the door (1, 0), so y 1 and y 0 are shown
+        // before map 2. Landing on (3, 1) and walking on to (3, 0) would wait for a y already shown, so the run is cut
+        // at the landing, which waits on x; landing on (1, 1), both axes are shown and there is no route.
+        [Theory]
+        [InlineData(3, true)]
+        [InlineData(1, false)]
+        public void MapChangingRun_EndingOnAShownCoordinate_IsCutAtTheLanding(int landingX, bool routed)
+        {
+            Map outside = new(3, 3);
+            outside[0, 1] = Constant.MAP_Portal1;
+            outside.Events.Warps.Add(new MapWarp(1, 0, 2, landingX, 1, Direction.None));
+            MapService maps = new(new Dictionary<int, Map> { [1] = outside, [2] = new Map(3, 5) });
+
+            Route? route = Find(maps, 1, 1, 1, 2, landingX, 0, new Capability());
+
+            if (routed)
+            {
+                Assert.NotNull(route);
+                Assert.Equal([("M.Up.3.33707826:H.B.1", 2, 3, 1), ("M.Up.0.33707828", 2, 3, 0)], route.Segments);
+            }
+            else
+            {
+                Assert.Null(route);
+            }
+        }
     }
 }
