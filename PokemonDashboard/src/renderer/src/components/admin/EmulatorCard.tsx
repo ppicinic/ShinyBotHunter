@@ -84,9 +84,6 @@ export function EmulatorCard({
           </button>
         )}
       </div>
-      {emState?.speedLines?.map((line) => (
-        <p key={line} className="text-xs text-slate-400">{line}</p>
-      ))}
       {availableActions.length > 0 && (
         <div className="space-y-1 pt-1 border-t border-slate-700/50">
           {availableActions.length > 1 && (

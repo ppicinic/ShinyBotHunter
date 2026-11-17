@@ -564,13 +564,12 @@ export async function wildSpin(rom: string, n: number): Promise<void> {
       await shotAll('02-greyed', pages)
     })
 
-    // The shiny-lead speed line at Run: in the log, in the dashboard state and on the card.
+    // The shiny-lead speed line at Run: in the log and in the dashboard state (the card does not show it).
     const speed = '"the shiny-lead speed line at Run"'
     await waitForLine(SPEED_SHINY, 1, MINUTE, `${speed}: not in backend.log`)
     const state = await dashboardState()
     step(`dashboard state: ${JSON.stringify(state)}`)
     expect(state?.speedLines ?? [], `${speed}: not in getDashboardState's speedLines`).toContain(SHINY_LEAD_LINE)
-    await expect(card.getByText(SHINY_LEAD_LINE, { exact: true }), `${speed}: not on the emulator card`).toBeVisible()
 
     await waitForLine(OVER, n, n * MINUTE, `"${n} encounters rows": ${n} fled battles`)
     await shotAll('03-hunting', pages)

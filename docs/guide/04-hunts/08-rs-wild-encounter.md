@@ -171,9 +171,9 @@ What does not help: turning Battle Scene off (a battle you run from shows no mov
 
 ## The speed lines
 
-While the hunt runs, the emulator's entry can show small grey lines under its name, each naming something in your save that slows the hunt. They are also written to the backend's window. The bot never refuses to start because of them.
+While the hunt runs, the bot writes a line to the backend's window for each thing in your save that slows the hunt. The dashboard does not show them. The bot never refuses to start because of them.
 
-| You see | When |
+| The backend's window shows | When |
 |---|---|
 | `A shiny first Pokémon adds about 1.2 s to every battle.` | From **Run**, when your first Pokémon is shiny. |
 | `A first Pokémon at or below the wild level gets the long battle transition.` | Added the first time a wild Pokémon's level is the same as or above your first Pokémon's level when you pressed **Run**. |
