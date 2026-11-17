@@ -364,9 +364,10 @@ namespace ShinyBotHunter.Pathfinding
                 steps.Where(n => n.LiveTrigger).Select(n => (n.State.Map, n.State.X, n.State.Y)).ToList());
         }
 
-        // FR-8: one M macro per straight run, M.<dir>.<coordinate>.<RunWatchX or RunWatchY>, the first with RunHold
-        // joined to it (RunEncounterEvent.RunMacro). B then stays held until the macro is cleared, so the walker (N4)
-        // must not clear between segments and starts a re-planned route with its own first segment.
+        // FR-8: one M macro per straight run, M.<dir>.<coordinate>.<RunWatchX or RunWatchY>, each with RunHold joined to
+        // it (RunEncounterEvent.RunMacro): the next macro replaces the last one's held B, so B is held through each macro
+        // by its own hold. The walker does not clear between segments, and B is let go when it clears at the end
+        // (research, "The navigator: the walk and the nurse, read frame by frame").
         // R1: a run ends where the direction changes. R2: a step that crosses (a connection, or a warp, also one to the
         // same map) starts a run, which waits for its last tile's coordinate on the destination map.
         // R3: ApiHawk's M stops on equality, from its first frame (CommandServer.cs, data == btn.Destination), so a
@@ -381,7 +382,7 @@ namespace ShinyBotHunter.Pathfinding
             string hold = MacroRegistry.Instance.TryGetMacro(flavor, "RunHold", out string? runHold) ? ":" + runHold : "";
             List<(string, int, int, int)> segments = [];
             void Add(Direction direction, Node end, bool onY, int coordinate) =>
-                segments.Add(($"M.{direction}.{coordinate}.{(onY ? addresses.RunWatchY : addresses.RunWatchX)}{(segments.Count == 0 ? hold : "")}",
+                segments.Add(($"M.{direction}.{coordinate}.{(onY ? addresses.RunWatchY : addresses.RunWatchX)}{hold}",
                     end.State.Map, end.State.X, end.State.Y));
             bool Crosses(int i) => nodes[i].Action == MoveAction.Portal || nodes[i].State.Map != nodes[i - 1].State.Map;
 
