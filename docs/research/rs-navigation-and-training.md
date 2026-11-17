@@ -14,7 +14,7 @@ Checked on 2026-11-16 against `main` with the wild-encounter feature merged (`d2
    - A script trigger tile on the route (Oldale, (9, 19)) is gated on a variable; the variable did not match and nothing fired, as predicted.
 5. **A wild battle in the middle of a walk is survivable**: the segment ends, the battle is fled by the wild-encounter rules, and a new route is planned from where the player stands. Four times in these walks.
 6. **Training's screens are all mapped and driven from memory**, on the first Pokémon from Lv 7 to Lv 16: fighting with a move, a level-up box (five of them), a new move with a free slot, the "Delete a move?" prompt with the forget-a-move screen, and evolution with its own move prompt.
-7. **A trainer battle runs on the same press rules** (15 presses to win one), though the bot will not fight them: the owner's rule is Waiting, a Discord ping, and Resume.
+7. **A trainer battle runs on the same press rules** (15 presses to win one), though the bot will not fight them: the owner's rule is Waiting, a Discord ping, and Resume. Its battle type (`0x0008`) is set only after the button press at the trainer's speech, from the frame after it, so the bot reads the trainer from the lock instead ("A trainer's intro speech").
 8. **The in-battle switch works** and is confirmed by the battler's party index.
 
 ## The HGSS format, as read
@@ -128,9 +128,132 @@ Segments: one `M` macro per straight run, `M.<dir>.<coordinate>.<address>:H.B.1`
 | Event flags | `gSaveBlock1 + 0x1220` = `0x02026954`, 0x120 bytes, bit `id & 7` of byte `id >> 3` | 171 set on the save; 172 after the trainer |
 | Trainer flag | flag `0x500 + trainer id` | Calvin (318): 1598, clear before the battle, set after |
 | Variables | `gSaveBlock1 + 0x1340` = `0x02026A74`, 16 bits each, index `id − 0x4000` | `VAR_OLDALE_STATE` did not hold the trigger's value |
-| Battle type | `gBattleTypeFlags` `0x020239F8` | `0x000C` in the trainer battle (wild `0x0004` plus trainer `0x0008`) |
+| Battle type | `gBattleTypeFlags` `0x020239F8` | `0x000C` in the trainer battle (wild `0x0004` plus trainer `0x0008`); `0x0008` only from the frame after the last button press at the speech, and stale before it ("A trainer's intro speech") |
 
 The one live sight tile the bot crossed could not be avoided: the trainer's three tiles span the only corridor. The owner's rules (2026-11-15): a trainer battle puts the bot into Waiting with a Discord ping, and Resume carries on once the operator has won; and lines of sight stay out of the map and the route altogether. The prototype's sight kind (0x13) and its cost are therefore not carried into the spec. A trainer matters to a route only as an NPC: one that walks a path, or a beaten one still standing on its tile.
+
+## A trainer's intro speech, read before the battle
+
+Added 2026-11-17 (N5, #428), from a second spike on the QA emulator (sound off): `SA-Wild` (Sapphire 1.2) and `RU-Wild` (Ruby 1.2), one at a time, each on the `qa-route101` save. Every row below is one cmd 0x05 request, so all its values are from one frame; frames are `gMain.vblankCounter1`. The bot pressed nothing; the A presses here were the spike's, to see what follows. Values marked observed were read on the emulator; values marked not read are from the decomp (`pret/pokeruby`) only. The owner's decision from it (2026-11-17): "Detect the speech", that is, read the trainer before any press.
+
+### What the game does (decomp, not read)
+
+- A trainer who sees the player: `TrainerWantsBattle` (`src/battle_setup.c`) calls `BattleSetup_ConfigureTrainerBattle`, which zeroes and then fills `sTrainerBattleMode`, `gTrainerBattleOpponent` and the speech pointers, starts `EventScript_StartTrainerBattle` and locks the field, all in one call. The script waits for the walk-up (`special EndTrainerApproach`, `waitstate`) and goes to `EventScript_DoTrainerBattle`.
+- A trainer the player talks to: the object's script runs `trainerbattle`, the same `BattleSetup_ConfigureTrainerBattle`, then `EventScript_TryDoNormalTrainerBattle`: the after-battle script if the trainer's flag is set, otherwise `EventScript_DoTrainerBattle`.
+- `EventScript_DoTrainerBattle` (`data/scripts/trainer_battle.inc`): `special ShowTrainerIntroSpeech`, `waitmessage`, `waitbuttonpress`, `trainerbattlebegin`. So the battle type cannot be read before someone presses a button. The rematch scripts have their own copy of the same three commands.
+- Nothing clears `gTrainerBattleOpponent` afterwards; only the next `trainerbattle` writes it. The flag `0x500 + id` is set in `CB2_EndTrainerBattle` when the player did not lose.
+
+### Addresses
+
+All RAM, the same on both games.
+
+| What | Symbol | Address | Read as | Status |
+|---|---|---|---|---|
+| The trainer being fought | `gTrainerBattleOpponent` | `0x0202FF5E` | u16 | observed on Sapphire 1.2 and Ruby 1.2: 0 on the save, 318 from the frame Calvin locked the field, 615 when Rick was talked to (`TrainerBattleOpponent`) |
+| Its neighbours | `sTrainerBattleMode` `0x0202FF5C`, `sTrainerObjectEventLocalId` `0x0202FF60`, `sTrainerIntroSpeech` `0x0202FF64` | | u16, u16, u32 | observed: mode 0, local id 0, the intro pointer a ROM text address that differs per game |
+| Script status | `sGlobalScriptContextStatus` | `0x030005B0` | u8 | observed: 0 a script is running, 1 stopped in a `waitstate`, 2 no script (`ScriptContextStatus`) |
+| Script context mode | `sGlobalScriptContext.mode` | `0x030005B9` | u8 | observed: 2 while a native function is polled, 1 bytecode, 0 no script |
+| Script native | `sGlobalScriptContext.nativePtr` | `0x030005BC` | u32 | observed; stale after the script ends: it still read `WaitForAorBPress` in the free field and through a whole battle |
+| Script pointer | `sGlobalScriptContext.scriptPtr` | `0x030005C0` | u32 | observed; 0 when no script |
+| Field message window state | `gFieldMessageBoxWindow + 0x16` | `0x0202E892` | u16 | observed: 0 idle, 1 and 3 printing, 2 and 6 for a frame between lines, 9 waiting at a `\l`; 5 and 8 not read in the field here |
+| Message box mode | `sMessageBoxMode` | `0x030005A8` | u8 | observed: 2 while the window prints or waits, 0 once the text has finished, though it is still on screen |
+| Trainer flag | flag `0x500 + id` in `0x02026954` | Calvin 1598: `0x02026A1B` bit 6; Rick 1895: `0x02026A40` bit 7 | bit | observed |
+
+The ROM values differ by game: `WaitForAorBPress` is `0x080670E5` on Sapphire 1.2 and `0x080670E1` on Ruby 1.2 (observed); `EventScript_DoTrainerBattle` is `0x0819F8A2` and `0x0819F912` (observed as the script pointer).
+
+### Readings
+
+Calvin (trainer 318, Route 102 (33, 14), faces down, sight 3). Sapphire crossed his sight on row 17 (he walks two tiles); Ruby on row 15 (he is adjacent and does not walk). Every value in this table is observed.
+
+| State | Game | Lock | In battle | Opponent | Flag 1598 | Script status / mode | Native | Script pointer | Field window | Battle type | Map, tile |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| (a) save as loaded | SA | 0 | 0 | 0 | 0 | 2 / 0 | 0 | 0 | 0 | `0x0000` | (0, 16) (14, 4) |
+| (a) | RU | 0 | 0 | 0 | 0 | 2 / 0 | 0 | 0 | 0 | `0x0000` | (0, 16) (14, 4) |
+| a sign read before any trainer, at its button wait | RU | 1 | 0 | 0 | 0 | 0 / 2 | `WaitForAorBPress` | `0x0819F811` | 0 | `0x0000` | (0, 17) (40, 10) |
+| (b) first locked frame | SA | 1 | 0 | **318** | 0 | 0 / - | `0x08064DD9` | `0x0819F7BC` | 0 | `0x0000` | (0, 17) (33, 17) |
+| (b) | RU | 1 | 0 | **318** | 0 | 0 / 2 | `0x08064DD5` | `0x0819F82C` | 0 | `0x0000` | (0, 17) (33, 15) |
+| (b) the walk-up | both | 1 | 0 | 318 | 0 | 1 / 1 | the same | `…7C3` / `…833` | 0 | `0x0000` | |
+| the speech printing | both | 1 | 0 | 318 | 0 | 0 / 2 | `IsFieldMessageBoxHidden` | `DoTrainerBattle + 4` | 1, 3, 6, 2, 3 | `0x0000` | |
+| (c) the speech waits at its `\l` | SA | 1 | 0 | 318 | 0 | 0 / - | `0x08064CA9` | `0x0819F8A6` | **9** | `0x0000` | (0, 17) (33, 17) |
+| (c) | RU | 1 | 0 | 318 | 0 | 0 / 2 | `0x08064CA5` | `0x0819F916` | **9** | `0x0000` | (0, 17) (33, 15) |
+| (c2) after one A: the last line is up, the script waits for a button | SA | 1 | 0 | 318 | 0 | 0 / - | **`0x080670E5`** | `0x0819F8A7` | **0** | `0x0000` | |
+| (c2) | RU | 1 | 0 | 318 | 0 | 0 / 2 | **`0x080670E1`** | `0x0819F917` | **0** | `0x0000` | |
+| the frame after the second A | both | 1 | 0 | 318 | 0 | 1 / 1 | stale | `+ 6` | 0 | **`0x0008`** | |
+| (d) in the battle, "… would like to battle!" waiting | both | 1 | 1 | 318 | 0 | 1 / 1 | stale | `+ 6` | 0 | `0x000C` | |
+| the return from the battle (won) | both | 1 | 0 | 318 | **1** | 1 / 1 | stale | `+ 6` | 0 | `0x000C` | |
+| (e) free field after winning | both | 0 | 0 | **318** | 1 | 2 / 0 | stale | 0 | 0 | `0x000C` | |
+| (f) talking to the beaten Calvin, at the button wait | SA | 1 | 0 | 318 | 1 | 0 / 2 | `WaitForAorBPress` | `0x0819F8EE` | 0 | `0x000C` | (0, 17) (33, 17) |
+| (f) a sign, at the button wait | SA, RU | 1 | 0 | 318 | 1 | 0 / 2 | `WaitForAorBPress` | `0x0819F7A1` / `0x0819F811` | 0 | `0x000C` | (0, 17) (40, 10) |
+| (f) a wild battle starting, in it, and the free field after fleeing | RU | 1, 1, 0 | 0, 1, 0 | 318 | 1 | 2 / 0 | stale | 0 | 0 | `0x0000`, `0x0004`, `0x0004` | (0, 17) (31, 14) |
+| Rick (615), unbeaten, talked to from outside his sight, at the button wait | RU | 1 | 0 | **615** | 1598: 1, 1895: **0** | 0 / 2 | `WaitForAorBPress` | `0x0819F917` | 0 | `0x0004` | (0, 17) (26, 15) |
+
+"-" is a value not in the snapshot on that run (the mode byte was added after the Sapphire speech). "stale" is the last native the script set, still in memory.
+
+What the table says:
+
+- The id is there from the first locked frame, in the same read as the lock, before the "!" and the walk-up.
+- The id is never cleared: it read 318 in the free field after the win, at a sign, at the beaten trainer and through a wild battle. `gBattleTypeFlags` is stale the same way (`0x000C` in the field after the trainer, until the wild battle wrote `0x0004`).
+- The trainer's flag is the only thing that tells a stale id from a live one. It is set on the return from the battle, about 35 frames before the lock clears.
+- The battle type is `0x0008` only from the frame after the last A at the speech. Unpressed, it stays at whatever the last battle left.
+- The field window's state is not enough to see a speech waiting: the last line of Calvin's speech, and the whole of Rick's one-page speech, wait with the window at 0. The wait there is the script's `waitbuttonpress` (mode 2, native `WaitForAorBPress`); a sign's message ends the same way. The native alone is not enough either, because it stays in memory after the script ends.
+- Talking to a beaten trainer runs `trainerbattle` again (the id is written again) and shows the after-battle message; the flag is what keeps that from looking like a challenge.
+
+### Timings
+
+All observed.
+
+| | Sapphire, two tiles of walk-up | Ruby, adjacent |
+|---|---|---|
+| Lock to the speech starting to print | 108 frames | 75 frames |
+| Lock to the first wait (window 9) | 180 frames (3.0 s) | 148 frames (2.5 s) |
+| A at the `\l` to the script's button wait | 34 frames | 33 frames |
+| A at the button wait to the battle bit | 157 frames | 156 frames |
+| The trainer's flag set to the field free | 35 frames | 34 frames |
+
+A walk-up tile costs about 16 frames. Talked to (Rick): 3 frames from the A to the text, 67 to the button wait. Unpressed, the speech sat for 59 s on Sapphire at the `\l` and 15 s on Ruby at the button wait; nothing moved.
+
+### The rule the bot uses
+
+In one read, on one frame: the field lock is not 0, the battle bit is clear, the script status is not 2, `gTrainerBattleOpponent` is not 0, and flag `0x500 +` that id is clear. It needs no per-game address and no window read. The bot reads it once, when a seek's field has stayed locked for 3 s (`SeekLockHandOff`): above a wild roll's lock to the battle bit (about 1.4 s, [rs-wild-encounter](rs-wild-encounter.md) "What memory shows through one cycle"; 1.6 to 2.1 s in the QA logs) and about when the speech first waits. During a wild battle's start the script status is 2, so even an early read is false.
+
+| Row of the readings | The rule |
+|---|---|
+| (a) save as loaded | false (lock 0) |
+| a sign before any trainer | false (id 0) |
+| (b) first locked frame, both games | **true** |
+| (b) the walk-up (status 1) | **true** |
+| the speech printing | **true** |
+| (c) at the line break | **true** |
+| (c2) the last button wait | **true** |
+| the frame after the last A, and the ~157 frames up to the battle bit (status 1, flag clear) | **true** |
+| (d) in battle | false (battle bit) |
+| the return from a won battle | false (flag set) |
+| (e) free field after winning | false (lock 0, flag set) |
+| (f) the beaten trainer talked to | false (flag set) |
+| (f) a sign after winning | false (flag set) |
+| (f) a wild battle starting | false (status 2) |
+| (f) in it | false (battle bit) |
+| (f) after fleeing | false (lock 0) |
+| Rick (615) talked to, flag 1895 clear | **true** |
+
+The rule stays true from the first locked frame until the battle bit sets, not only until the last A. The spike's fuller rule, which also asks for a field message waiting (window state 5, 8 or 9, or mode 2 with the native `WaitForAorBPress`), is true only at the speech's waits; it needs the per-game `WaitForAorBPress` and is not used.
+
+**Known limit (decomp only, not read on the emulator).** After a trainer battle the player **lost**, the id stays and the flag stays clear, so the rule holds for every later script until another `trainerbattle` runs: the next script the seek meets reads as that trainer. A wild roll is not affected (status 2). The script pointer would fix it: it read `EventScript_DoTrainerBattle + 4` while the speech printed and waited at a `\l`, and `+ 5` at the button wait, for both trainers (Sapphire `0x0819F8A6` / `0x0819F8A7`, Ruby `0x0819F916` / `0x0819F917`, observed). That costs two ROM constants per game, and the rematch scripts have their own (not read).
+
+### Ruby against Sapphire
+
+Nothing differs in RAM: the same addresses, the same values, the same order of states (observed). Only the ROM values differ: `WaitForAorBPress`, the script addresses, the text pointers and callback 2.
+
+### Not read
+
+- A lost trainer battle (the limit above), a rematch, a double battle, the "not enough Pokémon" speech, a no-intro battle (`trainerbattle_no_intro`: no speech, straight to the battle bit with type `0x0008`; the backstop's case), a gym leader or other `CONTINUE_SCRIPT` mode (the mode word was 0 in every read here).
+- A trainer that walks more than two tiles, or one whose speech uses `\p` (window states 5 and 8 were not seen in the field here, only 9).
+- On Sapphire: the talk-started speech, the sign before any trainer, the wild battle after the trainer (Ruby only). On Ruby: talking to the beaten trainer (Sapphire only).
+- Versions 1.0 and 1.1.
+
+### Evidence
+
+Not committed, kept in the orchestrator's session scratch folder: `t.py` (the one-frame snapshot), `walk.py`, `talk.py`, `fight.py`, `log.txt` (every change of the snapshot through both runs, 529 lines), `shots/` (the speech on both games, Rick's speech). Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash (first 131,072 bytes) of each was unchanged before the restore.
 
 ## Healing
 
