@@ -32,7 +32,9 @@ const WILD_SPEED = 0x02024ade
 const SENTENCE = 'A Pokémon fainted, and running from the battle failed after the fastest Pokémon left was sent out.'
 const RUN_FAILED = /\[RsBattle\] stopped: A Pok.{1,2}mon fainted, and running from the battle failed after the fastest Pok.{1,2}mon left was sent out\. runTries (\d+) -> (\d+)( \(did not rise\))?, (GameSnapshot \{.*\})\s*$/
 const USE_NEXT = /\[RsBattle\] Use next POK.{1,2}MON\? for slot (\d): fleeing\s*$/
-const SEND_OUT = /\[RsBattle\] the party menu after a faint: sending out the fastest alive, slot (\d) (.*) Speed (\d+)\s*$/
+// The forced menu's read, one entry per row (round six, B: the records are in row order while the menu is up).
+const ROWS = /\[RsBattle\] the party menu after a faint, by row: (.*?)\s*$/
+const ROW = /^row (\d) slot (\d) (.*) HP (\d+) Speed (\d+)$/
 const ORDER = /\[RsBattle\] party menu order ([0-9A-F]{2}) ([0-9A-F]{2}) ([0-9A-F]{2}), case byte (\d+): slot (\d) is on row (\d)\s*$/
 
 const CENTER = 'OldaleTown_PokemonCenter_1F (7, 4)'
@@ -105,7 +107,7 @@ async function writeWildSpeed(speed: number, why: string): Promise<void> {
 /**
  * The fainted variants' watch: polls backend.log every 250 ms and writes the wild Pokémon's battle Speed at each new
  * encounter line (1 for `fainted`, and for `fainted-run` once it has sent out, so the walk's battles get away; 999
- * otherwise) and, for `fainted-run`, 1 at each send-out line, until `done` holds. Fails on a stop other than
+ * otherwise) and, for `fainted-run`, 1 at each forced menu's rows line, until `done` holds. Fails on a stop other than
  * `expectedStop`, and after `ms`.
  */
 async function watchFaint(done: (log: string[]) => boolean, ms: number, criterion: string, expectedStop?: RegExp): Promise<void> {
@@ -116,7 +118,7 @@ async function watchFaint(done: (log: string[]) => boolean, ms: number, criterio
     const log = backendLog()
     failOnStops(log, expectedStop)
     if (VARIANT === 'fainted-run') {
-      for (const n = log.filter((l) => SEND_OUT.test(l)).length; sendOuts < n;) {
+      for (const n = log.filter((l) => ROWS.test(l)).length; sendOuts < n;) {
         sendOuts++
         await writeWildSpeed(1, `at send-out ${sendOuts}, before the Run`)
       }
@@ -157,6 +159,8 @@ function checkQuestion(log: string[]): number {
   expect(no, `${criterion}: no B at "Use next POKéMON?" for slot 1`).toBeGreaterThan(-1)
   step(`logged: ${log[no].trim()}`)
   expect(PRESS.exec(log[no])![3], `${criterion}: what confirmed the B`).toMatch(/^the script leaving Use next POK.{1,2}MON\?$/)
+  // Round six, A: B is sent only once the box takes keys, so it is never dropped and sent again.
+  expect(PRESS.exec(log[no])![5], `${criterion}: the B at "Use next POKéMON?" was dropped and sent again: ${log[no].trim()}`).toBeUndefined()
   const question = log.flatMap((l, i) => (i < no && USE_NEXT.test(l) ? [i] : [])).at(-1)
   expect(question, `${criterion}: no "Use next POKéMON? for slot 1" line before the B`).toBeDefined()
   expect(USE_NEXT.exec(log[question!])![1], `${criterion}: the fainted slot`).toBe('1')
@@ -185,6 +189,19 @@ const SEND_OUT_PRESSES = [
   'BattleConfirm on RUN'
 ]
 
+/**
+ * The forced menu's rows line, once between `from` and `to`: row 0 the fainted battler (slot 1, HP 0), row 1 the trainee
+ * (slot 0, alive), the one sent out.
+ */
+function checkRows(log: string[], from: number, to: number, criterion: string): void {
+  const lines = log.slice(from, to).filter((l) => ROWS.test(l))
+  expect(lines.length, `${criterion}: the forced menu's rows line`).toBe(1)
+  step(`logged: ${lines[0].trim()}`)
+  const rows = ROWS.exec(lines[0])![1].split('; ').map((r) => ROW.exec(r)!)
+  expect(rows.map((r) => [r[1], r[2], r[4] === '0']), `${criterion}: row, slot and fainted in the rows line`)
+    .toEqual([['0', '1', true], ['1', '0', false]])
+}
+
 /** fainted and fainted-run: the faint battle ends fled with the presses of the variant; returns its `battle over` index. */
 function checkFled(log: string[]): number {
   const criterion = VARIANT === 'fainted' ? '"the battle is fled"' : '"the fastest alive sent out, then the Run gets away"'
@@ -193,16 +210,12 @@ function checkFled(log: string[]): number {
   expect(over, `${criterion}: no "battle over" after the B`).toBeGreaterThan(no)
   const events = faintEvents(log.slice(no + 1, over))
   step(`after the B: ${JSON.stringify(events)}`)
-  const sent = log.slice(no, over).filter((l) => SEND_OUT.test(l))
   if (VARIANT === 'fainted') {
-    expect(sent, `${criterion}: a send-out with the wild Pokémon's Speed at 1`).toEqual([])
+    expect(log.slice(no, over).filter((l) => ROWS.test(l)), `${criterion}: a send-out with the wild Pokémon's Speed at 1`).toEqual([])
     expect(events, `${criterion}: the one press after the B is the A at "Got away safely!"`).toEqual(['BattleAdvance at window 8'])
     return over
   }
-  expect(sent.length, `${criterion}: the send-out line`).toBe(1)
-  const [, slot, , speed] = SEND_OUT.exec(sent[0])!
-  step(`sent out: slot ${slot}, Speed ${speed}`)
-  expect(slot, `${criterion}: the fastest alive is the lead`).toBe('0')
+  checkRows(log, no, over, criterion)
   expect(events, `${criterion}: the presses after the B`).toEqual([...SEND_OUT_PRESSES, 'BattleAdvance at window 8'])
   return over
 }
@@ -219,6 +232,7 @@ async function checkRunFailed(runStart: string): Promise<void> {
   step(`logged: ${log[stop].trim()}`)
   const [, before, after, notRisen] = RUN_FAILED.exec(log[stop])!
   expect([Number(after) - Number(before), notRisen], `${criterion}: runTries in the stop line`).toEqual([1, undefined])
+  checkRows(log, no, stop, criterion)
   expect(faintEvents(log.slice(no + 1, stop)), `${criterion}: the presses after the B`).toEqual(SEND_OUT_PRESSES)
   await expect.poll(async () => (await dashboardState())?.eventState, { message: `${criterion}: the event is not Waiting`, timeout: MINUTE, intervals: [1000] })
     .toBe('Waiting')
@@ -241,7 +255,7 @@ async function waitFaint(): Promise<void> {
       const no = log.findIndex((l) => USE_NEXT.test(l))
       const over = no === -1 ? -1 : indexOf(log, OVER, no)
       if (over !== -1) {
-        throw new Error(`${criterion}: ${log.slice(no, over).some((l) => SEND_OUT.test(l))
+        throw new Error(`${criterion}: ${log.slice(no, over).some((l) => ROWS.test(l))
           ? 'the Run got away (about 1 in 8 at the second try): run again'
           : 'the flee at the question got away with the wild Pokémon\'s Speed at 999: run again'}`)
       }
