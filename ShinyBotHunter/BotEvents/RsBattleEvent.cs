@@ -2,7 +2,9 @@ using System.Diagnostics;
 using ShinyBotHunter.Bot;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
@@ -56,35 +58,54 @@ namespace ShinyBotHunter.BotEvents
         private readonly PokemonPersistenceService persistence;
         private readonly ShinyAlertService alerts;
         private readonly LegalityService legality;
+        private readonly PokemonMetadataService metadata;
+        private readonly Func<PokemonBattleState, int> pickMove;
+        private readonly Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> decideMove;
 
-        public RsBattleEvent(PokemonPersistenceService persistence, ShinyAlertService alerts, LegalityService legality)
+        // pickMove and decideMove reach the damage calculator and Discord only when called, so a flee-only hunt builds
+        // neither.
+        public RsBattleEvent(PokemonPersistenceService persistence, ShinyAlertService alerts, LegalityService legality,
+            PokemonMetadataService metadata, Func<PokemonBattleState, int> pickMove,
+            Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> decideMove)
         {
             this.persistence = persistence;
             this.alerts = alerts;
             this.legality = legality;
+            this.metadata = metadata;
+            this.pickMove = pickMove;
+            this.decideMove = decideMove;
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
             // The seek hands over a lock that has lasted SeekLockHandOff, so a lock that is not a trainer waits for the battle
-            // bit only for what is left of 15 s from the lock (FR-9).
-            await RunAsync(state, (RsPointerService)state.Bot.Addresses, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
+            // bit only for what is left of 15 s from the lock (FR-9). A battle that trains reads through its own reader with
+            // the training reads, built per battle.
+            RsPointerService addresses = (RsPointerService)state.Bot.Addresses;
+            IGameStateReader? trainingReader = state.BattleMode == BattleMode.Battle ? new RsStateReader(state.Bot, addresses, trainingReads: true) : null;
+            await RunAsync(state, addresses, trainingReader, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
                 s => alerts.NotifyTrainerBattleAsync(s),
-                raw => legality.Analyze(raw, GameFlavor.RS), BattleStartStale, BattleStartStale - state.Bot.Profile.SeekLockHandOff!.Value,
+                raw => legality.Analyze(raw, GameFlavor.RS), pickMove, metadata.GetPokemonMoveMetadata, decideMove,
+                BattleStartStale, BattleStartStale - state.Bot.Profile.SeekLockHandOff!.Value,
                 Stale, ChecksumWindow, CursorWait, cancellationToken);
             return state;
         }
 
         // The battle. Null when it is over (BattleComplete) or parked on a target (Waiting), otherwise the sentence it stopped
-        // with (Waiting). The delegates are the encounter log and the two alerts. The times are parameters so the tests run
-        // short: afterHandOff is the battle bit's wait once a lock the seek handed over is not a trainer.
-        internal static async Task<string?> RunAsync(GameState state, RsPointerService addresses,
+        // with (Waiting). trainingReader is null in Flee mode. The delegates are the encounter log, the two alerts, PKHeX, the
+        // damage picker, the move collection and the new-move question. The times are parameters so the tests run short:
+        // afterHandOff is the battle bit's wait once a lock the seek handed over is not a trainer.
+        internal static async Task<string?> RunAsync(GameState state, RsPointerService addresses, IGameStateReader? trainingReader,
             Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound,
             Func<string, Task> notifyTrainer,
-            Func<byte[], LegalityResult> analyze, TimeSpan battleStart, TimeSpan afterHandOff, TimeSpan stale, TimeSpan checksumWindow,
+            Func<byte[], LegalityResult> analyze, Func<PokemonBattleState, int> pickMove, Func<int, PokemonMoveMetadata> moveMetadata,
+            Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> decideMove,
+            TimeSpan battleStart, TimeSpan afterHandOff, TimeSpan stale, TimeSpan checksumWindow,
             TimeSpan cursorWait, CancellationToken ct)
         {
             IBot bot = state.Bot;
+            // The entry, the trainer read, the hand-off and the battle type read go through the flee reader: its field
+            // snapshot does not change while text prints, so it cannot restart their stale clocks (N5 review).
             IGameStateReader reader = bot.State;
             GameSnapshot s;
             try
@@ -122,6 +143,8 @@ namespace ShinyBotHunter.BotEvents
             {
                 return Stop(state, NotWild, $"battle type 0x{flags:X4}, {s}");
             }
+            // A wild battle: one that trains reads the rest of it through the training reader.
+            reader = trainingReader ?? reader;
 
             bool seenMenu = false;
             int runPresses = 0;

@@ -7,6 +7,7 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
@@ -132,21 +133,31 @@ namespace ShinyBotHunter.Tests
             // The trainer messages sent, and every chain request made, in order.
             public List<string> TrainerMessages { get; } = [];
             public List<IReadOnlyList<ChainBlockRequest>> Requests { get; } = [];
+            // The training reader, null in Flee mode; the damage picker, the move collection and the new-move question, which
+            // throw unless a test sets them.
+            public IGameStateReader? TrainingReader { get; set; }
+            public Func<PokemonBattleState, int> PickMove { get; set; } = _ => throw new InvalidOperationException("pickMove called");
+            public Func<int, PokemonMoveMetadata> MoveMetadata { get; set; } = _ => throw new InvalidOperationException("moveMetadata called");
+            public Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> DecideMove { get; set; } = (_, _) => throw new InvalidOperationException("decideMove called");
 
             // afterHandOff defaults to battleStart.
-            public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null)
-                => RsBattleEvent.RunAsync(State, new RsPointerService(),
+            public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null,
+                CancellationToken ct = default)
+                => RsBattleEvent.RunAsync(State, new RsPointerService(), TrainingReader,
                     p => { Logged.Add(p); return Task.CompletedTask; },
                     p => { Alerted.Add(p); return Task.CompletedTask; },
                     s => { TrainerMessages.Add(s); return Task.CompletedTask; },
                     raw => { Analysed.Add(raw); return Verdict; },
-                    battleStart ?? Long, battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
+                    PickMove, MoveMetadata, DecideMove,
+                    battleStart ?? Long, battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, ct);
         }
 
         // The records come from the queue, the last repeating; the lead's HP by the reader's stage; the counter from its queue;
-        // the trainer read from trainer, by default a locked field with no script.
+        // the trainer read from trainer, by default a locked field with no script. In Battle mode reader is the training reader
+        // and fleeReader the bot's own, by default one past the entry at once.
         private static Battle Start(PressedReader reader, ITarget? target = null, ushort flags = Wild, byte[][]? enemies = null,
-            Func<int, ushort>? leadHp = null, uint[]? counter = null, TrainerBytes? trainer = null)
+            Func<int, ushort>? leadHp = null, uint[]? counter = null, TrainerBytes? trainer = null,
+            BattleMode mode = BattleMode.Flee, IGameStateReader? fleeReader = null)
         {
             Queue<byte[]> records = new(enemies ?? [Plain]);
             Queue<uint> frames = new(counter ?? [1000]);
@@ -206,19 +217,19 @@ namespace ShinyBotHunter.Tests
                 },
                 Pressed = macro =>
                 {
-                    // A at the action menu only ever with the cursor at 3, in every test.
+                    // A at the action menu only ever with the cursor on RUN, or in Battle mode on FIGHT, in every test.
                     if (macro == Confirm && reader.Last.Screen == GameScreen.BattleMenu)
                     {
-                        Assert.Equal(3, reader.Last.Prompt);
+                        Assert.Contains(reader.Last.Prompt, mode == BattleMode.Battle ? new int?[] { 0, 3 } : [3]);
                     }
                     battle!.Presses.Add(Name(macro, reader.Last));
                     reader.Advance();
                 },
-                State = reader,
+                State = mode == BattleMode.Battle ? fleeReader ?? new PressedReader([Turn]) : reader,
             };
-            GameState state = new() { Bot = bot, Profile = bot.Profile, Target = target ?? new NoTarget(), Milestone = "Route 101" };
+            GameState state = new() { Bot = bot, Profile = bot.Profile, Target = target ?? new NoTarget(), Milestone = "Route 101", BattleMode = mode };
             state.State.Push(EventState.BattleStart);
-            battle = new Battle { Bot = bot, State = state, Reader = reader };
+            battle = new Battle { Bot = bot, State = state, Reader = reader, TrainingReader = mode == BattleMode.Battle ? reader : null };
             return battle;
         }
 
@@ -692,6 +703,88 @@ namespace ShinyBotHunter.Tests
                 .BuildServiceProvider();
 
             Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
+        }
+
+        [Fact]
+        public void RsBattleEvent_FleeHuntBuildsNeitherCalculatorNorDiscord()
+        {
+            int built = 0;
+            var provider = new ServiceCollection()
+                .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
+                .AddSingleton(new ShinyAlertService(null!, Options.Create(new ApplicationSettings())))
+                .AddSingleton(new LegalityService(NullLogger<LegalityService>.Instance))
+                .AddSingleton<SmogonDamageService>(_ => { built++; throw new InvalidOperationException("the calculator was built"); })
+                .AddSingleton<DiscordBotService>(_ => { built++; throw new InvalidOperationException("Discord was built"); })
+                .BuildServiceProvider();
+
+            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
+            // A flee battle never calls the two delegates (FleeMode_ReadsAndPressesAreTodays), so neither is built.
+            Assert.Equal(0, built);
+        }
+
+        // The flee path's reads, exactly: the trainer read at the locked field the scripts start on, the entry and type read,
+        // one menu read per action menu, the counter at the end.
+        [Fact]
+        public async Task FleeMode_ReadsAndPressesAreTodays()
+        {
+            (uint, int)[] trainer = [(FieldControlsLock, 1), (InBattle, 1), (ScriptContextStatus, 1), (TrainerBattleOpponent, 2), (EventFlags, 0x120), (PlayerLocation, 2)];
+            (uint, int)[] entry = [(BattleTypeFlags, 2), (VBlankCounter, 4)];
+            (uint, int)[] menu = [(EnemyParty, 100), (LeadHp, 2)];
+            (uint, int)[] end = [(VBlankCounter, 4)];
+            foreach ((PressedReader reader, string[] presses, int menus) in new[]
+            {
+                (Fled(), new[] { "Advance", "ToRun", "Confirm", "Advance" }, 1),
+                (FailedEscape(), new[] { "Advance", "ToRun", "Confirm", "Advance", "Confirm", "Advance" }, 2),
+            })
+            {
+                Battle battle = Start(reader);
+
+                string? stop = await battle.RunAsync();
+
+                Assert.Null(stop);
+                Assert.Null(battle.TrainingReader);
+                Assert.Equal(presses, battle.Presses);
+                Assert.Equal([trainer, entry, .. Enumerable.Repeat(menu, menus), end],
+                    battle.Requests.Select(r => r.Select(b => (b.Anchor, b.Length)).ToArray()));
+            }
+        }
+
+        // Battle mode: the entry, the trainer read, the hand-off and the type read go through the flee reader, whose field
+        // snapshot changes here as the training reader's would not; the training reader is read only after the type read.
+        [Fact]
+        public async Task BattleMode_EntryHandOffAndTypeReadUseTheFleeReader()
+        {
+            // Each read notes whether the battle type had been read by then.
+            Battle? battle = null;
+            bool TypeRead() => battle!.Requests.Any(r => r.Any(b => b.Anchor == BattleTypeFlags));
+            List<bool> fleeReads = [];
+            List<bool> trainingReads = [];
+            PressedReader flee = new([Locked, Locked with { TextPrinter = 2 }, Locked with { TextPrinter = 5 }, Turn]);
+            PressedReader training = new(
+                [Message(), Turn, Menu(0)],
+                [Menu(0), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Free]);
+            battle = Start(training, mode: BattleMode.Battle, fleeReader: new LoggedReader(flee, () => fleeReads.Add(TypeRead())));
+            battle.TrainingReader = new LoggedReader(training, () => trainingReads.Add(TypeRead()));
+
+            string? stop = await battle.RunAsync();
+
+            Assert.Null(stop);
+            // The entry, the trainer read and the hand-off wait over the changing field.
+            Assert.True(fleeReads.Count >= 4);
+            Assert.All(fleeReads, Assert.False);
+            Assert.NotEmpty(trainingReads);
+            Assert.All(trainingReads, Assert.True);
+        }
+
+        private sealed class LoggedReader(IGameStateReader inner, Action log) : IGameStateReader
+        {
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                log();
+                return inner.ReadAsync(ct);
+            }
         }
     }
 }
