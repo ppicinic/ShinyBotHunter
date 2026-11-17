@@ -13,7 +13,7 @@ namespace ShinyBotHunter.Games.Hgss
     {
         private static readonly HgssPointerService Table = new();
 
-        private static IPointerService Addresses(int revision) => revision == 0
+        private static IPointerService Addresses(string? gameCode, int revision) => revision == 0
             ? Table
             : throw new NotSupportedException($"HGSS revision {revision}: no address table. Hunts run on revision 0.");
 

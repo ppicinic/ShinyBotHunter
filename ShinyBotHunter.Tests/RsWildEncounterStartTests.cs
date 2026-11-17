@@ -54,7 +54,7 @@ namespace ShinyBotHunter.Tests
         private static async Task<(BotService Service, FakeBot Bot, ScreenReader Screen, FakeMemoryClient Memory)> LaunchAsync(byte[][] party)
         {
             var rs = RsProfile.Create(new PokemonMetadataService(null!));
-            var profile = new GameProfile(rs.Flavor, rs.Capabilities, [0], _ => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
+            var profile = new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
                 rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);

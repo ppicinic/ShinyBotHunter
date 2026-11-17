@@ -132,7 +132,7 @@ namespace ShinyBotHunter.Tests
                     HasShinyStarterHunt: false,
                     HasWishmakerJirachi: false),
                 [1],
-                _ => new RsPointerService(),
+                (_, _) => new RsPointerService(),
                 new Gen3PokemonParser(new PokemonMetadataService(null!)),
                 battleParser: null,
                 createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),

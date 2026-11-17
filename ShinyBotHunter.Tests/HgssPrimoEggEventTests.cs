@@ -251,7 +251,7 @@ namespace ShinyBotHunter.Tests
         }
 
         private static readonly GameProfile EggProfile = new(
-            GameFlavor.HGSS, new GameCapabilities(false, false, false, true, false, false, false, false), [0], _ => Table, new StubParser(), battleParser: null);
+            GameFlavor.HGSS, new GameCapabilities(false, false, false, true, false, false, false, false), [0], (_, _) => Table, new StubParser(), battleParser: null);
 
         // A launched bot at position 0 with the given party, and the service whose Run checks see it.
         private static async Task<(BotService Service, FakeBot Bot)> LaunchWithParty(int partySize)

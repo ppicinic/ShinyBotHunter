@@ -41,7 +41,7 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
-            Assert.Equal(new BoxLayout(-0x148D8, 18, 30, 4096), profile.Addresses(0).BoxLayout);
+            Assert.Equal(new BoxLayout(-0x148D8, 18, 30, 4096), profile.Addresses(null, 0).BoxLayout);
             Assert.Same(maps, profile.Maps);
             Assert.Same(graph, profile.Graph);
             Assert.NotNull(profile.Pathfinding);
@@ -67,9 +67,10 @@ namespace ShinyBotHunter.Tests
             Assert.Null(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
-            Assert.Same(profile.Addresses(1), profile.Addresses(2));
-            Assert.IsType<RsPointerService>(profile.Addresses(1));
-            Assert.NotNull(profile.Addresses(1).BoxLayout);
+            Assert.IsType<RsPointerService>(profile.Addresses("AXPE", 1));
+            Assert.IsType<RsPointerService>(profile.Addresses("AXVE", 2));
+            Assert.NotNull(profile.Addresses("AXPE", 1).BoxLayout);
+            Assert.NotNull(profile.Addresses("AXVE", 2).BoxLayout);
             Assert.Null(profile.Maps);
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
@@ -83,12 +84,12 @@ namespace ShinyBotHunter.Tests
             GameProfile hgss = HgssProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()), new GraphService());
             GameProfile rs = RsProfile.Create(Metadata());
 
-            var hgssError = Assert.Throws<NotSupportedException>(() => hgss.Addresses(1));
-            var rsError = Assert.Throws<NotSupportedException>(() => rs.Addresses(0));
+            var hgssError = Assert.Throws<NotSupportedException>(() => hgss.Addresses(null, 1));
+            var rsError = Assert.Throws<NotSupportedException>(() => rs.Addresses(null, 0));
 
             Assert.Contains("HGSS revision 1", hgssError.Message);
             Assert.Contains("RS revision 0", rsError.Message);
-            Assert.IsType<HgssPointerService>(hgss.Addresses(0));
+            Assert.IsType<HgssPointerService>(hgss.Addresses(null, 0));
         }
 
         [Theory]
@@ -111,7 +112,7 @@ namespace ShinyBotHunter.Tests
                 GameFlavor.RS,
                 capabilities,
                 [1],
-                _ => new RsPointerService(),
+                (_, _) => new RsPointerService(),
                 new Gen3PokemonParser(Metadata()),
                 battleParser: null));
         }
@@ -135,7 +136,7 @@ namespace ShinyBotHunter.Tests
                     HasShinyStarterHunt: false,
                     HasWishmakerJirachi: false),
                 [0],
-                _ => table,
+                (_, _) => table,
                 new HgssPokemonParser(Metadata()),
                 new HgssBattlePokemonParser(),
                 createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
@@ -161,7 +162,7 @@ namespace ShinyBotHunter.Tests
                     HasShinyStarterHunt: false,
                     HasWishmakerJirachi: false),
                 [0],
-                _ => new HgssPointerService(),
+                (_, _) => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),
                 new HgssBattlePokemonParser()));
 
@@ -187,7 +188,7 @@ namespace ShinyBotHunter.Tests
                     HasShinyStarterHunt: false,
                     HasWishmakerJirachi: false),
                 [0],
-                _ => table,
+                (_, _) => table,
                 new HgssPokemonParser(Metadata()),
                 battleParser: null,
                 createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
@@ -211,7 +212,7 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false),
             [1],
-            _ => new RsPointerService(),
+            (_, _) => new RsPointerService(),
             new Gen3PokemonParser(Metadata()),
             battleParser: null,
             createOverworldReader: overworldReader ? (memory, t) => new RsOverworldReader(memory, (RsPointerService)t) : null,

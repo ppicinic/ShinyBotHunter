@@ -54,7 +54,7 @@ namespace ShinyBotHunter.Tests
         {
             FakeMemoryClient memory = PlaceParty(PartyAddress);
 
-            var state = await BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2));
+            var state = await BuildReader().GetPartyState(memory, Profile, Profile.Addresses("AXPE", 2));
 
             Assert.Equal(2, state.PartySize);
             Assert.Equal(252, state.PartyPokemon[0]!.Species); // Treecko
@@ -76,7 +76,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = PlaceParty(PartyAddress + 4);
 
             await Assert.ThrowsAsync<InvalidOperationException>(
-                () => BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2)));
+                () => BuildReader().GetPartyState(memory, Profile, Profile.Addresses("AXPE", 2)));
         }
 
         [Fact]
@@ -86,7 +86,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = PlaceParty(PartyAddress);
             memory.Place(BoxesAddress + 2 * 2400 + 6 * 80, Encode(0x60, 280, 0)[..80]); // box 3, slot 7
 
-            var state = await BuildReader().GetPokemonState(memory, Profile, Profile.Addresses(2));
+            var state = await BuildReader().GetPokemonState(memory, Profile, Profile.Addresses("AXPE", 2));
 
             // 14 boxes of 30 80-byte slots in one read, and the party count is never read as a pointer.
             Assert.Equal((BoxesAddress, 14 * 2400), Assert.Single(memory.ByteReads));
@@ -107,6 +107,65 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x02025734u, table.RunWatchY);
             Assert.Equal(0x0802C099u, table.HandleInputChooseAction);
             Assert.Equal(0x0802C68Du, table.HandleInputChooseMove);
+        }
+
+        // pret symbols, commit 78b1990, line 4437: WaitForAorBPress, + 1 for the Thumb bit.
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void SapphireHasItsWaitForButton(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXPE", revision);
+
+            Assert.Equal(0x080670E5u, table.WaitForAorBPress);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void RubyHasItsWaitForButton(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXVE", revision);
+
+            Assert.Equal(0x080670E1u, table.WaitForAorBPress);
+        }
+
+        [Theory]
+        [InlineData("AXVD")]
+        [InlineData(null)]
+        public void OtherCodesHaveNoPerGamePart(string? gameCode)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, 2);
+
+            Assert.Null(table.WaitForAorBPress);
+        }
+
+        [Theory]
+        [InlineData("AXPE")]
+        [InlineData("AXVE")]
+        public void RevisionZeroIsStillRefused(string gameCode)
+        {
+            Assert.Throws<NotSupportedException>(() => Profile.Addresses(gameCode, 0));
+        }
+
+        [Fact]
+        public void EveryGameAndRevisionSharesTheRamTable()
+        {
+            RsPointerService[] tables =
+            [
+                (RsPointerService)Profile.Addresses("AXPE", 2),
+                (RsPointerService)Profile.Addresses("AXPE", 1),
+                (RsPointerService)Profile.Addresses("AXVE", 2),
+                (RsPointerService)Profile.Addresses("AXVE", 1),
+                (RsPointerService)Profile.Addresses("AXVD", 2),
+                (RsPointerService)Profile.Addresses(null, 2),
+            ];
+
+            foreach (RsPointerService table in tables)
+            {
+                Assert.Equal(0x03004350u, table.Anchor);
+                Assert.Equal(new BoxLayout(0x020300A4 - 0x03004350, 14, 30, 30 * 80), table.BoxLayout);
+            }
         }
 
         [Fact]

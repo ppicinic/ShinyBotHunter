@@ -24,7 +24,7 @@ namespace ShinyBotHunter.Bot
         public virtual IBot CreateBot(GameContext context)
         {
             GameProfile profile = profiles.Get(context.GameFlavor);
-            IPointerService addresses = profile.Addresses(context.Revision);
+            IPointerService addresses = profile.Addresses(context.Rom?.GameCode, context.Revision);
             var apiHawkLauncher = new BizHawkApiHawkLauncher(context, serviceProvider);
             ICommandClient commandClient = new BizHawkCommandClient(port: apiHawkLauncher.CommandPort, console: context.ConsoleType);
             IMemoryClient memoryClient = new BizHawkMemoryClient(port: apiHawkLauncher.MemoryPort);

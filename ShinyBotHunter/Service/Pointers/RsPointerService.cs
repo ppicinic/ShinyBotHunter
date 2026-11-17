@@ -5,9 +5,11 @@ namespace ShinyBotHunter.Service.Pointers
     /// <summary>
     /// Ruby/Sapphire memory map.
     ///
-    /// One table covers both games at every revision. Measured from the pret symbol tables: all 403
+    /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. Only ROM-space symbols move between revisions, and the bot reads no ROM.
+    /// rev0/rev1/rev2. A function the bot compares against a RAM pointer is a ROM address, and one of
+    /// those, <see cref="WaitForAorBPress"/>, differs between the games: that is the per-game part,
+    /// chosen by <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
     /// relocate its save block, so the party is simply at a fixed address. That is why
@@ -16,6 +18,27 @@ namespace ShinyBotHunter.Service.Pointers
     /// </summary>
     public class RsPointerService : IPointerService
     {
+        private static readonly RsPointerService Shared = new();
+        private static readonly RsPointerService Sapphire = new() { WaitForAorBPress = 0x080670E5 };
+        private static readonly RsPointerService Ruby = new() { WaitForAorBPress = 0x080670E1 };
+
+        /// <summary>
+        /// The table for a game code: "AXPE" Sapphire, "AXVE" Ruby, rev 1 and rev 2 alike (pret symbols, commit 78b1990).
+        /// Any other code, or null, gives the shared table with the per-game part null.
+        /// </summary>
+        public static RsPointerService For(string? gameCode) => gameCode switch
+        {
+            "AXPE" => Sapphire,
+            "AXVE" => Ruby,
+            _ => Shared,
+        };
+
+        // WaitForAorBPress, the field script native that waits for A or B; ROM code, stored with the Thumb bit as RAM
+        // holds it (pret symbols 78b1990 line 4437: Sapphire 080670e4, Ruby 080670e0, rev 1 equal to rev 2);
+        // constant, per game; observed on Sapphire 1.2 (research R119), Ruby and both 1.1 values decomp only;
+        // QA: none yet: rs-nav-heal-return (Ruby: none yet)
+        public uint? WaitForAorBPress { get; private init; }
+
         // gPlayerPartyCount = 0x03004350, gPlayerParty = 0x03004360, both in IWRAM. Anchor is the
         // count, so the party sits a fixed 0x10 beyond it and the existing offset fields still apply.
         // gPlayerPartyCount; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
