@@ -6,7 +6,8 @@ namespace ShinyBotHunter.Games.Rs
     /// <summary>
     /// Classifies the RS screen from seven direct reads made on one frame (docs/specs/rs-wild-encounter.md FR-7,
     /// docs/research/rs-wild-encounter.md "What memory shows through one cycle"). Built with trainingReads it reads
-    /// fifteen blocks on one frame, plus one sprite on the party screen, and also classifies the training and field
+    /// fifteen blocks on one frame, plus one sprite on the party screen and the palette fade on the forget-a-move
+    /// screen, and also classifies the training and field
     /// script screens (docs/specs/rs-navigation-and-training.md); the flee path's reader is built without it.
     /// </summary>
     public class RsStateReader : IGameStateReader
