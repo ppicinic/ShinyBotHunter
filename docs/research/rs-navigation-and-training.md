@@ -33,29 +33,31 @@ Everything needed is in the checkout, no ROM unpacking:
 
 ## The generated data
 
-`rsmaps.py` (prototype, Python) builds per map a kind plane and an elevation plane.
+`rsmaps.py` (prototype, Python) builds per map a kind plane and an elevation plane. The prototype's count is what it wrote; the `Data/RS` count is the committed generator data as of #440 (a count over `maps.bin`, and the generator's printout for objects and triggers).
 
-| Kind | Byte | From | Count |
-|---|---|---|---|
-| Free | 0x00 | no collision, plain behaviour | 59,013 |
-| Portal | 0x01 | a warp event's tile | 1,108 |
-| Grass | 0x03 | tall, long and ash grass, indoor encounter floor | 5,972 |
-| Surf | 0x04 | every water behaviour, currents included | 55,450 |
-| Ledges right, left, down | 0x05, 0x06, 0x07 | `MB_JUMP_EAST`, `_WEST`, `_SOUTH` | 132, 171, 647 |
-| Waterfall | 0x0D | `MB_WATERFALL` | 196 |
-| Ice and other sliding or special floor | 0x0E | ice, slides, cracked floor, rails, slopes | 946 |
-| Cut tree, smash rock | 0x0F, 0x10 | objects by their graphic | 36, 40 |
-| NPC range | 0x11 | the box a wandering or walking NPC moves in | 2,136 |
-| Flagged NPC | 0x12 | an object with an event flag | 512 tiles, 545 objects, every flag resolved to its number |
-| Trainer sight | 0x13 | the tiles in front of a trainer, as far as its sight, in each direction its movement type faces | 1,040 tiles; 901 of 1,045 entries resolved to a trainer flag |
-| Script trigger | 0x14 | a `coord_event` | 192 tiles; 162 of 194 resolved to a variable id |
-| Blocked | 0x80 | collision, standing NPCs without a flag | 122,121 |
+| Kind | Byte | From | Prototype count | `Data/RS` count (#440) |
+|---|---|---|---|---|
+| Free | 0x00 | no collision, plain behaviour | 59,013 | 64,176 |
+| Portal | 0x01 | a warp event's tile | 1,108 | 988 |
+| Grass | 0x03 | tall, long and ash grass, indoor encounter floor | 5,972 | 6,066 |
+| Surf | 0x04 | every water behaviour, currents included | 55,450 | 52,464 |
+| Ledges right, left, down | 0x05, 0x06, 0x07 | `MB_JUMP_EAST`, `_WEST`, `_SOUTH` | 132, 171, 647 | 132, 171, 647 |
+| Waterfall | 0x0D | `MB_WATERFALL` | 196 | 196 |
+| Ice and other sliding or special floor | 0x0E | ice, slides, cracked floor, rails, slopes | 946 | 947 |
+| Cut tree, smash rock | 0x0F, 0x10 | objects by their graphic | 36, 40 | 36, 40 |
+| NPC range | 0x11 | the box a wandering or walking NPC moves in | 2,136 | 2,366 |
+| Flagged NPC | 0x12 | an object with an event flag | 512 tiles, 545 objects, every flag resolved to its number | 811 tiles, 845 objects, every flag resolved |
+| Trainer sight | 0x13 | the tiles in front of a trainer, as far as its sight, in each direction its movement type faces | 1,040 tiles; 901 of 1,045 entries resolved to a trainer flag | none: not in the data (owner, 2026-11-15) |
+| Script trigger | 0x14 | a `coord_event` | 192 tiles; 162 of 194 resolved to a variable id | 192 tiles; 162 of 194 resolved |
+| Blocked | 0x80 | collision, standing NPCs without a flag | 122,121 | 123,614 |
 
-Kinds 0x00 to 0x11 and 0x80 mean what they mean on HGSS; 0x12 is the HGSS spec's flag-gated NPC; 0x13 and 0x14 are new. Beside the planes, per map: the flagged objects with their flag ids, the sight tiles with their trainer flags, the triggers with variable id and value, the warps with destination and whether they are arrow warps, and the connections.
+Kinds 0x00 to 0x11 and 0x80 mean what they mean on HGSS; 0x12 is the HGSS spec's flag-gated NPC; 0x13 (the prototype's only) and 0x14 are new. Beside the planes, per map: the flagged objects with their flag ids, the sight tiles with their trainer flags (the prototype's only), the triggers with variable id and value, the warps with destination and whether they are arrow warps, and the connections.
 
 Corrected 2026-11-17 (#425): Surf is not every water behaviour but the game's surfable bit (`sTileBitAttributes` in `src/metatile_behavior.c`); `MB_PUDDLE` and `MB_SHALLOW_WATER` are walked on, and the generator writes them free (0x00).
 
-2026-11-17 (#440): a warp is written only where the game fires one by the tile's behaviour (118 warp events on other tiles are not), and its landing is the tile after the game's arrival step (one tile Down off a door or stairs, 471 warps; Up off 0x6E, 2; East off an escalator or the Lavaridge B1F warp, 36).
+2026-11-17 (#440): a warp is written only where the tile's behaviour in the layout fires one (118 warp events on other tiles are not), and its landing is the tile after the game's arrival step (one tile Down off a door or stairs, 471 warps; Up off 0x6E, 2; East off an escalator or the Lavaridge B1F warp, 36).
+
+The gap this leaves: 42 of those 118 the game does fire, after a script rewrites the tile (`setmetatile`), which the generator does not model. They are PetalburgCity_Gym's 24 room entrances (Down mats once `VAR_PETALBURG_GYM_STATE` is 6 or more), the Trick House puzzle exits (Route110_TrickHousePuzzle1 to 8 (13, 1), stairs once the puzzle opens), the Elite Four and Champion room doors (EverGrandeCity_SidneysRoom, PhoebesRoom, GlaciasRoom, DrakesRoom, ChampionsRoom (6, 2), once the member is beaten), AbandonedShip_HiddenFloorCorridors' four (two doors and two Down mats, once unlocked), and LilycoveCity (71, 5) (a water door once opened). Before this change all 42 were written, 16 of them (the doors and stairs) as the warp they become once open. None is on a route to a Pokémon Center. For a route, such a warp is not taken, and its tile is plain ground in the data.
 
 Route 101 as the prototype built it, the planes the generator's tests pin (`RsMapProcessorTests`), one hex byte per tile for the kinds and one hex digit per tile for the elevation, row 0 at the top:
 
