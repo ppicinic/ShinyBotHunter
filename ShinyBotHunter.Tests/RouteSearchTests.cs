@@ -15,7 +15,7 @@ namespace ShinyBotHunter.Tests
         private static readonly MapService Rs = new(Path.Combine(RepoPaths.AppProject, "Data", "RS"), withElevationAndEvents: true);
 
         private const int OldaleTown = 10, Route101 = 16, Route103 = 18, Route114 = 29, Route124 = 39, Underwater1 = 50;
-        private const int OldaleCenter = 514, RusturfTunnel = 6148, PetalburgWoods = 6155;
+        private const int OldaleCenter = 514, RusturfTunnel = 6148, GraniteCaveB1F = 6152, GraniteCaveB2F = 6153, PetalburgWoods = 6155, AquaHideoutB1F = 6168;
 
         public RouteSearchTests()
         {
@@ -253,11 +253,12 @@ namespace ShinyBotHunter.Tests
 
         // R3 on two inline maps: the player at (1, 1) of map 1 steps Up onto the door (1, 0), so y 1 and y 0 are shown
         // before map 2. Landing on (3, 1) and walking on to (3, 0) would wait for a y already shown, so the run is cut
-        // at the landing, which waits on x; landing on (1, 1), both axes are shown and there is no route.
+        // at the landing, which waits on x. Landing on (1, 1), both axes are shown, so the cut run waits for the door's
+        // own y 0 and still ends on the landing.
         [Theory]
-        [InlineData(3, true)]
-        [InlineData(1, false)]
-        public void MapChangingRun_EndingOnAShownCoordinate_IsCutAtTheLanding(int landingX, bool routed)
+        [InlineData(3, "M.Up.3.33707826:H.B.1")]
+        [InlineData(1, "M.Up.0.33707828:H.B.1")]
+        public void MapChangingRun_EndingOnAShownCoordinate_IsCutAtTheLanding(int landingX, string cut)
         {
             Map outside = new(3, 3);
             outside[0, 1] = Constant.MAP_Portal1;
@@ -266,15 +267,65 @@ namespace ShinyBotHunter.Tests
 
             Route? route = Find(maps, 1, 1, 1, 2, landingX, 0, new Capability());
 
-            if (routed)
-            {
-                Assert.NotNull(route);
-                Assert.Equal([("M.Up.3.33707826:H.B.1", 2, 3, 1), ("M.Up.0.33707828", 2, 3, 0)], route.Segments);
-            }
-            else
-            {
-                Assert.Null(route);
-            }
+            Assert.NotNull(route);
+            Assert.Equal([(cut, 2, landingX, 1), ("M.Up.0.33707828", 2, landingX, 0)], route.Segments);
+        }
+
+        // R3 on the committed data: Granite Cave B2F's ladder (29, 13), pressed Up from (29, 14), lands on B1F (29, 13),
+        // whose coordinates were both shown, so the run waits for the ladder's y 13 and ends on the landing.
+        [Fact]
+        public void LadderLandingOnShownCoordinates_WaitsForTheLaddersOwnCoordinate()
+        {
+            Route? route = Find(Rs, GraniteCaveB2F, 29, 14, GraniteCaveB1F, 28, 13, new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal([("M.Up.13.33707828:H.B.1", GraniteCaveB1F, 29, 13), ("M.Left.28.33707826", GraniteCaveB1F, 28, 13)], route.Segments);
+        }
+
+        // The reviewer's fixture of B1: on map 1 the cheapest way to map 2 is the ladder (2, 2), which lands on (2, 2)
+        // of map 2 (both coordinates shown); the dearer one is the door (4, 0) to map 2 (4, 4). The cheapest crossing
+        // gets its macros, so it no longer hides the route (it used to make Find return null).
+        [Fact]
+        public void CrossingWithNoNewAxis_DoesNotHideTheRoute()
+        {
+            Map outside = new(5, 5);
+            outside[2, 2] = Constant.MAP_Portal1;
+            outside[0, 4] = Constant.MAP_Portal1;
+            outside.Events.Warps.Add(new MapWarp(2, 2, 2, 2, 2, Direction.None));
+            outside.Events.Warps.Add(new MapWarp(4, 0, 2, 4, 4, Direction.None));
+            MapService maps = new(new Dictionary<int, Map> { [1] = outside, [2] = new Map(5, 5) });
+
+            Route? route = Find(maps, 1, 2, 3, 2, 0, 2, new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal([("M.Up.2.33707828:H.B.1", 2, 2, 2), ("M.Left.0.33707826", 2, 0, 2)], route.Segments);
+        }
+
+        // R2 and R3 for a warp to the same map: Aqua Hideout B1F's pad (31, 4), stepped onto Right from (30, 4), lands
+        // on (27, 12) of the same map; going on Right to (30, 12) would wait for an x already shown, so the run is cut.
+        // The flagged object at (29, 12) (flag 1071) is hidden so the row is open.
+        [Fact]
+        public void WarpToTheSameMap_StartsARunAndGetsR3()
+        {
+            byte[] flags = NoFlags();
+            flags[1071 >> 3] |= 1 << (1071 & 7);
+
+            Route? route = Find(Rs, AquaHideoutB1F, 30, 4, AquaHideoutB1F, 30, 12, new Capability(), flags);
+
+            Assert.NotNull(route);
+            Assert.Equal([("M.Right.27.33707826:H.B.1", AquaHideoutB1F, 27, 12), ("M.Right.30.33707826", AquaHideoutB1F, 30, 12)], route.Segments);
+        }
+
+        // S1: a Pokémon Center's stairs (1, 6) are at elevation 4 between tiles at 3, so they are entered from (2, 6)
+        // at 0, never pressed Up into from (1, 7).
+        [Fact]
+        public void CenterStairs_AreEnteredUnderTheElevationRule()
+        {
+            Route? route = Find(Rs, OldaleCenter, 1, 7, OldaleCenter + 1, 2, 5, new Capability());
+
+            Assert.NotNull(route);
+            int warp = route.Steps.ToList().FindIndex(s => s.Action == MoveAction.Portal);
+            Assert.Equal((OldaleCenter, 2, 6, Direction.Left), (route.Steps[warp - 1].Map, route.Steps[warp - 1].X, route.Steps[warp - 1].Y, route.Steps[warp].Direction));
         }
     }
 }

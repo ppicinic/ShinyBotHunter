@@ -7,8 +7,9 @@ using System.Buffers.Binary;
 namespace ShinyBotHunter.Pathfinding
 {
     // A route RouteSearch found. Steps: each tile the player ends a step on, the direction pressed and the field action
-    // the step needs. Segments: each M macro with the map and tile it ends on. LiveTriggers: the live triggers the route
-    // crosses (FR-19).
+    // the step needs. Segments: each M macro with the map and tile the player is on once the field is free after it;
+    // for a segment that waits for a door tile's coordinate (R3, in Segments) that is the warp's landing, not the
+    // tile waited for. LiveTriggers: the live triggers the route crosses (FR-19).
     public sealed record Route(
         int Cost,
         IReadOnlyList<(int Map, int X, int Y, Direction Direction, MoveAction Action)> Steps,
@@ -178,6 +179,11 @@ namespace ShinyBotHunter.Pathfinding
             }
 
             byte kind = map[y, x];
+            // FR-6: a tile at an elevation other than 0 or 15 takes a player at 0 or at the same elevation (the game's
+            // IsZCoordMismatchAt); water is entered and left at any elevation (research, "HMs in the data and the search").
+            byte elevation = map.ElevationAt(y, x);
+            bool water = IsWater(kind) || IsWater(maps.GetMap(state.Map, true)[state.Y, state.X]);
+            bool mismatch = !jumped && !water && elevation != 0 && elevation != 15 && state.Elevation != 0 && state.Elevation != elevation;
             int cost;
             MoveAction action = MoveAction.None;
             bool surfing = false;
@@ -188,12 +194,13 @@ namespace ShinyBotHunter.Pathfinding
                     cost = 1;
                     break;
                 case Constant.MAP_Portal1:
-                    // FR-7: a step-on warp (door, stairs, ladder) fires when it is stepped onto, at any elevation (plan of
-                    // #426, decision 2); an arrow warp's mat is walked over like ground.
+                    // FR-7: a step-on warp (door, stairs, ladder) fires when it is stepped onto. The tile is entered under
+                    // FR-6 like any other (a Pokémon Center's stairs are at 4 between tiles at 3); the warp event fires at
+                    // any elevation (plan of #426, decision 2). An arrow warp's mat is walked over like ground.
                     MapWarp warp = WarpAt(map, x, y);
                     if (warp.Arrow == Direction.None)
                     {
-                        return Land(node, direction, MoveAction.Portal, warp.Map, warp.ToX, warp.ToY, flags, capability);
+                        return mismatch ? null : Land(node, direction, MoveAction.Portal, warp.Map, warp.ToX, warp.ToY, flags, capability);
                     }
                     cost = 1;
                     break;
@@ -274,11 +281,7 @@ namespace ShinyBotHunter.Pathfinding
                     return null;
             }
 
-            // FR-6: a tile at an elevation other than 0 or 15 takes a player at 0 or at the same elevation; water is
-            // entered and left at any elevation (research, "HMs in the data and the search").
-            byte elevation = map.ElevationAt(y, x);
-            bool water = IsWater(kind) || IsWater(maps.GetMap(state.Map, true)[state.Y, state.X]);
-            if (!jumped && !water && elevation != 0 && elevation != 15 && state.Elevation != 0 && state.Elevation != elevation)
+            if (mismatch)
             {
                 return null;
             }
@@ -344,8 +347,7 @@ namespace ShinyBotHunter.Pathfinding
             _ => (x + 1, y),
         };
 
-        // Null when a run cannot be given a coordinate to wait for (R3).
-        private Route? ToRoute(Node last)
+        private Route ToRoute(Node last)
         {
             List<Node> nodes = [];
             for (Node? node = last; node is not null; node = node.Parent)
@@ -355,48 +357,48 @@ namespace ShinyBotHunter.Pathfinding
             nodes.Reverse();
             List<Node> steps = nodes.Skip(1).ToList();
             // FR-4b: the presses for an HM or Dive step belong to the later field-move step, so such a route has no macros.
-            List<(string, int, int, int)>? segments = steps.All(n => n.Action == MoveAction.None || n.Action == MoveAction.Portal) ? Segments(nodes) : [];
-            if (segments is null)
-            {
-                return null;
-            }
             return new Route(
                 last.Cost,
                 steps.Select(n => (n.State.Map, n.State.X, n.State.Y, n.Direction, n.Action)).ToList(),
-                segments,
+                steps.All(n => n.Action == MoveAction.None || n.Action == MoveAction.Portal) ? Segments(nodes) : [],
                 steps.Where(n => n.LiveTrigger).Select(n => (n.State.Map, n.State.X, n.State.Y)).ToList());
         }
 
         // FR-8: one M macro per straight run, M.<dir>.<coordinate>.<RunWatchX or RunWatchY>, the first with RunHold
         // joined to it (RunEncounterEvent.RunMacro). B then stays held until the macro is cleared, so the walker (N4)
         // must not clear between segments and starts a re-planned route with its own first segment.
-        // R1: a run ends where the direction changes. R2: a step that changes map (a connection or a warp) starts a run,
-        // which waits for its last tile's coordinate on the destination map.
-        // R3: ApiHawk's M stops on equality, from its first frame (CommandServer.cs, data == btn.Destination), so a run
-        // that changes map and would wait for a coordinate the player already shows before the landing (the tile it
-        // starts on, and a door's tile) is cut at the landing tile, which waits on the axis whose coordinate is new;
-        // the rest is a run of its own. Null when neither axis is new.
-        private List<(string, int, int, int)>? Segments(List<Node> nodes)
+        // R1: a run ends where the direction changes. R2: a step that crosses (a connection, or a warp, also one to the
+        // same map) starts a run, which waits for its last tile's coordinate on the destination map.
+        // R3: ApiHawk's M stops on equality, from its first frame (CommandServer.cs, data == btn.Destination), so a
+        // crossing run that would wait for a coordinate the player already shows before the landing (the tile it starts
+        // on, and a door's tile) is cut at the landing tile, which waits on the axis whose coordinate is new; the rest is
+        // a run of its own. When neither axis is new, the cut run waits for the door tile's own coordinate on the run
+        // axis: the step onto a step-on warp always finishes, the warp fires at its end whatever is pressed, and any
+        // arrival step is the game's own (pokeruby TryStartStepBasedScript, sub_8080AE4). Only a step-on warp gets
+        // there: an arrow warp never lands on its mat's coordinates, and a connection always changes the run axis.
+        private List<(string, int, int, int)> Segments(List<Node> nodes)
         {
             string hold = MacroRegistry.Instance.TryGetMacro(flavor, "RunHold", out string? runHold) ? ":" + runHold : "";
             List<(string, int, int, int)> segments = [];
-            void Add(Direction direction, Node end, bool onY) =>
-                segments.Add(($"M.{direction}.{(onY ? end.State.Y : end.State.X)}.{(onY ? addresses.RunWatchY : addresses.RunWatchX)}{(segments.Count == 0 ? hold : "")}",
+            void Add(Direction direction, Node end, bool onY, int coordinate) =>
+                segments.Add(($"M.{direction}.{coordinate}.{(onY ? addresses.RunWatchY : addresses.RunWatchX)}{(segments.Count == 0 ? hold : "")}",
                     end.State.Map, end.State.X, end.State.Y));
+            bool Crosses(int i) => nodes[i].Action == MoveAction.Portal || nodes[i].State.Map != nodes[i - 1].State.Map;
 
             int first = 1;
             while (first < nodes.Count)
             {
                 Direction direction = nodes[first].Direction;
                 int last = first;
-                while (last + 1 < nodes.Count && nodes[last + 1].Direction == direction && nodes[last + 1].State.Map == nodes[last].State.Map)
+                while (last + 1 < nodes.Count && nodes[last + 1].Direction == direction && !Crosses(last + 1))
                 {
                     last++;
                 }
                 bool vertical = direction == Direction.Up || direction == Direction.Down;
                 State before = nodes[first - 1].State;
                 State landing = nodes[first].State;
-                if (landing.Map != before.Map)
+                State end = nodes[last].State;
+                if (Crosses(first))
                 {
                     List<(int X, int Y)> shown = [(before.X, before.Y)];
                     Map from = maps.GetMap(before.Map, true);
@@ -404,21 +406,24 @@ namespace ShinyBotHunter.Pathfinding
                     {
                         shown.Add(Ahead(before.X, before.Y, direction)); // the door the player stepped onto
                     }
-                    State end = nodes[last].State;
                     if (shown.Any(p => vertical ? p.Y == end.Y : p.X == end.X))
                     {
                         bool newOnRunAxis = !shown.Any(p => vertical ? p.Y == landing.Y : p.X == landing.X);
                         bool newOnOtherAxis = !shown.Any(p => vertical ? p.X == landing.X : p.Y == landing.Y);
-                        if (!newOnRunAxis && !newOnOtherAxis)
+                        if (newOnRunAxis || newOnOtherAxis)
                         {
-                            return null;
+                            bool onY = newOnRunAxis ? vertical : !vertical;
+                            Add(direction, nodes[first], onY, onY ? landing.Y : landing.X);
                         }
-                        Add(direction, nodes[first], newOnRunAxis ? vertical : !vertical);
+                        else
+                        {
+                            Add(direction, nodes[first], vertical, vertical ? shown[1].Y : shown[1].X);
+                        }
                         first++;
                         continue;
                     }
                 }
-                Add(direction, nodes[last], vertical);
+                Add(direction, nodes[last], vertical, vertical ? end.Y : end.X);
                 first = last + 1;
             }
             return segments;
