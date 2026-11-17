@@ -39,9 +39,12 @@ namespace ShinyBotHunter.Games.Rs
                 return provider.GetRequiredService<RsStartMenuService>().SaveViaStartMenuAsync(bot, Table,
                     config.SaveMenuActionId, config.SaveConfirmMacro, config.BattleWaitTimeoutMs, config.BattlePollIntervalMs, CancellationToken.None);
             },
-            // Above a wild roll's lock to the battle bit, about 1.4 s (docs/research/rs-wild-encounter.md, "What memory
-            // shows through one cycle") and 1.6 to 2.1 s in the QA logs, and about when a trainer's speech first waits,
-            // 148 to 180 frames (docs/research/rs-navigation-and-training.md, "A trainer's intro speech").
-            seekLockHandOff: TimeSpan.FromSeconds(3));
+            // Above both wild transitions from the lock to the battle bit: the short one, about 1.4 s
+            // (docs/research/rs-wild-encounter.md, "What memory shows through one cycle"; 1.6 to 2.1 s in the QA logs), and
+            // the long one a lead at or below the wild level gets, 152 frames, about 2.7 to 3.2 s with polling ("Reaching 304
+            // an hour"). A trainer's speech waits unpressed from 148 to 180 frames on (docs/research/rs-navigation-and-training.md,
+            // "A trainer's intro speech"), so the later read costs nothing. A transition that ever crossed the hand-off costs
+            // one one-frame read, false because the script status is 2, and the battle then goes on as normal.
+            seekLockHandOff: TimeSpan.FromSeconds(4));
     }
 }

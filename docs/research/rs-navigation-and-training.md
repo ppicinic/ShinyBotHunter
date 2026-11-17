@@ -214,7 +214,7 @@ A walk-up tile costs about 16 frames. Talked to (Rick): 3 frames from the A to t
 
 ### The rule the bot uses
 
-In one read, on one frame: the field lock is not 0, the battle bit is clear, the script status is not 2, `gTrainerBattleOpponent` is not 0, and flag `0x500 +` that id is clear. It needs no per-game address and no window read. The bot reads it once, when a seek's field has stayed locked for 3 s (`SeekLockHandOff`): above a wild roll's lock to the battle bit (about 1.4 s, [rs-wild-encounter](rs-wild-encounter.md) "What memory shows through one cycle"; 1.6 to 2.1 s in the QA logs) and about when the speech first waits. During a wild battle's start the script status is 2, so even an early read is false.
+In one read, on one frame: the field lock is not 0, the battle bit is clear, the script status is not 2, `gTrainerBattleOpponent` is not 0, and flag `0x500 +` that id is clear. It needs no per-game address and no window read. The bot reads it once, when a seek's field has stayed locked for 4 s (`SeekLockHandOff`). That is above both wild transitions from the lock to the battle bit: the short one, about 1.4 s ([rs-wild-encounter](rs-wild-encounter.md) "What memory shows through one cycle"; 1.6 to 2.1 s in the QA logs), and the long one a lead at or below the wild level gets, 152 frames, about 2.7 to 3.2 s with polling (the same doc, "Reaching 304 an hour"). The speech waits unpressed from 148 to 180 frames on, so the later read costs nothing. If a transition ever crossed the hand-off, it would cost one one-frame read, false because the script status is 2 during a wild battle's start, and the battle would then go on as normal.
 
 | Row of the readings | The rule |
 |---|---|

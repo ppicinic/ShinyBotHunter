@@ -285,10 +285,12 @@ namespace ShinyBotHunter.BotEvents
             ], ct: ct);
             ushort trainer = BitConverter.ToUInt16(read[3].Bytes, 0);
             int flag = TrainerFlagBase + trainer;
+            // An id whose flag lies past the flags read (1024 and up) is not a trainer the game has a flag for.
             bool challenge = read[0].Bytes[0] != 0
                 && (read[1].Bytes[0] & InBattleBit) == 0
                 && read[2].Bytes[0] != NoScript
                 && trainer != 0
+                && (flag >> 3) < read[4].Bytes.Length
                 && (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) == 0;
             return challenge ? (read[5].Bytes[0], read[5].Bytes[1], trainer) : null;
         }

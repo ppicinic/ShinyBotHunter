@@ -169,7 +169,7 @@ namespace ShinyBotHunter.Tests
             bot.State = new ScriptedReader(Free, Free, At(GameScreen.FieldTask), Battle);
             GameState state = Encountering(14, 4);
 
-            bool found = await new SpinEncounterEvent(bot) { LockedHandOff = TimeSpan.FromSeconds(3) }.ExecuteWithResultAsync(state, CancellationToken.None);
+            bool found = await new SpinEncounterEvent(bot) { LockedHandOff = TimeSpan.FromSeconds(4) }.ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.True(found);
             Assert.Equal(EventState.BattleStart, state.State.Peek());
@@ -216,16 +216,16 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0, chainReads);
         }
 
-        // The hand-off is the profile's: 3 s on RS, none on HGSS, whose seek is today's.
+        // The hand-off is the profile's: 4 s on RS, none on HGSS, whose seek is today's.
         [Fact]
         public void BuildEncounter_HandOffIsTheProfiles()
         {
-            Assert.Equal(TimeSpan.FromSeconds(3), RsProfile.Create(new PokemonMetadataService(null!)).SeekLockHandOff);
+            Assert.Equal(TimeSpan.FromSeconds(4), RsProfile.Create(new PokemonMetadataService(null!)).SeekLockHandOff);
             SpinEncounterEvent rsSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(RsBot(14, 4, 0x22), new EncounterParams(EncounterType.Spin));
             SpinEncounterEvent hgssSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Spin));
             RunEncounterEvent hgssRun = (RunEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Run, yRange: 2));
 
-            Assert.Equal(TimeSpan.FromSeconds(3), rsSpin.LockedHandOff);
+            Assert.Equal(TimeSpan.FromSeconds(4), rsSpin.LockedHandOff);
             Assert.Null(hgssSpin.LockedHandOff);
             Assert.Null(hgssRun.LockedHandOff);
         }

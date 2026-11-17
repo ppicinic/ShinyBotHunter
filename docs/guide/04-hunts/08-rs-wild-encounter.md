@@ -61,7 +61,7 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 - **Run** runs between the two ends of the line with B held. Before every run, the bot checks you are on the line and inside its two ends.
 - Both check for an encounter every 8 frames (7.5 times a second), so neither is faster than the other.
 - While your character is free to walk, there is no time limit.
-- If the field stops being free (a message, a script, a trainer), the bot stops turning or running after 3 s and looks at what locked it. A trainer stops the bot at once (see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume)). Anything else that does not become a battle stops the bot about 15 s after the field locked.
+- If the field stops being free (a message, a script, a trainer), the bot stops turning or running after 4 s and looks at what locked it. A trainer stops the bot at once (see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume)). Anything else that does not become a battle stops the bot about 15 s after the field locked.
 
 ## What happens in each encounter?
 

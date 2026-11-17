@@ -476,6 +476,7 @@ namespace ShinyBotHunter.Tests
             new TrainerBytes(1, 0, 1, 318, 1598),     // the return from the won battle
             new TrainerBytes(1, 0, 2, 318),           // a wild battle starting with an unbeaten stale id: no script
             new TrainerBytes(1, 0x02, 1, 318),        // in the battle
+            new TrainerBytes(1, 0, 0, 1024),          // an id whose flag is past the 0x120 bytes read
         };
 
         [Theory]
