@@ -1,0 +1,368 @@
+using Newtonsoft.Json.Linq;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Util;
+using System.Buffers.Binary;
+using System.Text.RegularExpressions;
+
+namespace ShinyBotHunter.Scripts.Maps
+{
+    // Writes Data/RS from a pret/pokeruby checkout: per map a kind plane and an elevation plane (maps.bin), the side
+    // data (events.json.gz), the boulders and the id lookup. Map id = group index * 256 + position in the group.
+    public class RsMapProcessor
+    {
+        // Behaviours, from include/constants/metatile_behaviors.h at 5784633.
+        private const byte MB_TALL_GRASS = 0x02;
+        private const byte MB_LONG_GRASS = 0x03;
+        private const byte MB_LONG_GRASS_SOUTH_EDGE = 0x09;
+        private const byte MB_INDOOR_ENCOUNTER = 0x0B;
+        private const byte MB_WATERFALL = 0x13;
+        private const byte MB_ICE = 0x20;
+        private const byte MB_ASHGRASS = 0x24;
+        private const byte MB_THIN_ICE = 0x26;
+        private const byte MB_CRACKED_ICE = 0x27;
+        private const byte MB_JUMP_EAST = 0x38;
+        private const byte MB_JUMP_WEST = 0x39;
+        private const byte MB_JUMP_SOUTH = 0x3B;
+        private const byte MB_SLIDE_EAST = 0x44;
+        private const byte MB_SLIDE_SOUTH = 0x47;
+        private const byte MB_UNUSED_EAST_ARROW_WARP = 0x62;
+        private const byte MB_WEST_ARROW_WARP = 0x63;
+        private const byte MB_NORTH_ARROW_WARP = 0x64;
+        private const byte MB_SOUTH_ARROW_WARP = 0x65;
+        private const byte MB_WATER_SOUTH_ARROW_WARP = 0x6D;
+        // MB_MUDDY_SLOPE to MB_HORIZONTAL_RAIL: slopes, cracked floor and rails.
+        private const byte MB_MUDDY_SLOPE = 0xD0;
+        private const byte MB_HORIZONTAL_RAIL = 0xD6;
+
+        private static readonly HashSet<byte> Grass = [MB_TALL_GRASS, MB_LONG_GRASS, MB_LONG_GRASS_SOUTH_EDGE, MB_INDOOR_ENCOUNTER, MB_ASHGRASS];
+        // The behaviours with the surfable bit in sTileBitAttributes (src/metatile_behavior.c).
+        private static readonly HashSet<byte> Surfable = [0x10, 0x11, 0x12, 0x14, 0x15, 0x19, 0x22, 0x2A, 0x50, 0x51, 0x52, 0x53, 0x6C, 0x6D, 0x6F];
+        // MetatileBehavior_IsDiveable and MetatileBehavior_IsNotSurfacable.
+        private static readonly HashSet<byte> Diveable = [0x11, 0x12, 0x14];
+        private static readonly HashSet<byte> NotSurfacable = [0x19, 0x2A];
+
+        private readonly string checkoutDir;
+        private readonly string outputDir;
+        // Every map.json, by map id, and each map's MAP_* constant to its id.
+        private readonly SortedDictionary<int, JObject> mapsById = new();
+        private readonly Dictionary<string, int> idByConstant = new();
+        private readonly Dictionary<string, JObject> layouts;
+        // gTileset_X to the path of its metatile_attributes.bin, and the files read so far.
+        private readonly Dictionary<string, string> attributeFileByTileset;
+        private readonly Dictionary<string, byte[]> attributes = new();
+        private readonly Dictionary<string, string> flagDefines;
+        private readonly Dictionary<string, string> varDefines;
+
+        public RsMapProcessor(string checkoutDir, string outputDir)
+        {
+            this.checkoutDir = checkoutDir;
+            this.outputDir = outputDir;
+            var groups = JObject.Parse(File.ReadAllText(Path.Combine(checkoutDir, "data", "maps", "map_groups.json")));
+            int groupIndex = 0;
+            foreach (var group in groups["group_order"]!)
+            {
+                int position = 0;
+                foreach (var name in groups[(string)group!]!)
+                {
+                    int id = groupIndex * 256 + position;
+                    var map = ReadMap((string)name!);
+                    mapsById.Add(id, map);
+                    idByConstant.Add((string)map["id"]!, id);
+                    position++;
+                }
+                groupIndex++;
+            }
+            layouts = JObject.Parse(File.ReadAllText(Path.Combine(checkoutDir, "data", "layouts", "layouts.json")))["layouts"]!
+                .Cast<JObject>().ToDictionary(layout => (string)layout["id"]!);
+            var tilesetAttributes = LabelValues(Path.Combine(checkoutDir, "data", "tilesets", "headers.inc"), new Regex(@"(gMetatileAttributes_\w+)"));
+            var attributeFiles = LabelValues(Path.Combine(checkoutDir, "data", "tilesets", "metatiles.inc"), new Regex(@"\.incbin ""([^""]+)"""));
+            attributeFileByTileset = tilesetAttributes.ToDictionary(pair => pair.Key, pair => attributeFiles[pair.Value]);
+            flagDefines = Defines(Path.Combine(checkoutDir, "include", "constants", "flags.h"));
+            varDefines = Defines(Path.Combine(checkoutDir, "include", "constants", "vars.h"));
+        }
+
+        internal JObject ReadMap(string name)
+            => JObject.Parse(File.ReadAllText(Path.Combine(checkoutDir, "data", "maps", name, "map.json")));
+
+        internal static byte KindOf(byte behaviour, int collision)
+        {
+            if (behaviour == MB_JUMP_EAST) return Constant.MAP_RightLedge;
+            if (behaviour == MB_JUMP_WEST) return Constant.MAP_LeftLedge;
+            if (behaviour == MB_JUMP_SOUTH) return Constant.MAP_DownLedge;
+            if (collision != 0) return Constant.MAP_Blocked;
+            if (Grass.Contains(behaviour)) return Constant.MAP_Grass;
+            if (behaviour == MB_WATERFALL) return Constant.MAP_Waterfall;
+            if (Surfable.Contains(behaviour)) return Constant.MAP_Surf;
+            if (behaviour is MB_ICE or MB_THIN_ICE or MB_CRACKED_ICE or (>= MB_SLIDE_EAST and <= MB_SLIDE_SOUTH) or (>= MB_MUDDY_SLOPE and <= MB_HORIZONTAL_RAIL))
+            {
+                return Constant.MAP_Ice;
+            }
+            return Constant.MAP_Free;
+        }
+
+        // The first tile in reading order that is diveable on the surface and can be surfaced from underwater.
+        internal static (int X, int Y) PickDiveTile(string surfaceName, (byte Behaviour, int Collision, byte Elevation)[,] surface,
+            string underwaterName, (byte Behaviour, int Collision, byte Elevation)[,] underwater)
+        {
+            for (int y = 0; y < surface.GetLength(0); y++)
+            {
+                for (int x = 0; x < surface.GetLength(1); x++)
+                {
+                    if (Diveable.Contains(surface[y, x].Behaviour) && surface[y, x].Collision == 0
+                        && underwater[y, x].Collision == 0 && !NotSurfacable.Contains(underwater[y, x].Behaviour))
+                    {
+                        return (x, y);
+                    }
+                }
+            }
+            throw new InvalidOperationException($"No Dive access tile between {surfaceName} and {underwaterName}.");
+        }
+
+        internal Map BuildMap(JObject json)
+        {
+            var cells = DecodeCells(json);
+            int height = cells.GetLength(0);
+            int width = cells.GetLength(1);
+            var map = new Map(height, width) { Elevation = new byte[height][] };
+            for (int y = 0; y < height; y++)
+            {
+                map.Elevation[y] = new byte[width];
+                for (int x = 0; x < width; x++)
+                {
+                    map[y, x] = KindOf(cells[y, x].Behaviour, cells[y, x].Collision);
+                    map.Elevation[y][x] = cells[y, x].Elevation;
+                }
+            }
+
+            var boulders = new List<BoulderData>();
+            foreach (var o in Entries(json, "object_events"))
+            {
+                int x = (int)o["x"]!;
+                int y = (int)o["y"]!;
+                if (x < 0 || x >= width || y < 0 || y >= height)
+                {
+                    continue;
+                }
+                switch ((string)o["graphics_id"]!)
+                {
+                    case "OBJ_EVENT_GFX_CUTTABLE_TREE":
+                        map[y, x] = Constant.MAP_Cut;
+                        continue;
+                    case "OBJ_EVENT_GFX_BREAKABLE_ROCK":
+                        map[y, x] = Constant.MAP_RockSmash;
+                        continue;
+                    case "OBJ_EVENT_GFX_PUSHABLE_BOULDER":
+                        boulders.Add(new BoulderData { X = x, Y = y });
+                        continue;
+                }
+                string flag = (string)o["flag"]!;
+                if (flag != "0")
+                {
+                    map[y, x] = Constant.MAP_FlaggedNpc;
+                    map.Events.Objects.Add(new MapObject(x, y, Resolve(flagDefines, flag)));
+                }
+                else
+                {
+                    map[y, x] = Constant.MAP_Blocked;
+                }
+                string movement = (string)o["movement_type"]!;
+                int rangeX = (int)o["movement_range_x"]!;
+                int rangeY = (int)o["movement_range_y"]!;
+                if ((movement.StartsWith("MOVEMENT_TYPE_WANDER") || movement.StartsWith("MOVEMENT_TYPE_WALK")) && (rangeX != 0 || rangeY != 0))
+                {
+                    for (int yy = Math.Max(0, y - rangeY); yy <= Math.Min(height - 1, y + rangeY); yy++)
+                    {
+                        for (int xx = Math.Max(0, x - rangeX); xx <= Math.Min(width - 1, x + rangeX); xx++)
+                        {
+                            if (map[yy, xx] is Constant.MAP_Free or Constant.MAP_Grass)
+                            {
+                                map[yy, xx] = Constant.MAP_WalkingTrainer;
+                            }
+                        }
+                    }
+                }
+            }
+            map.Boulders = boulders.ToArray();
+
+            foreach (var c in Entries(json, "coord_events"))
+            {
+                int x = (int)c["x"]!;
+                int y = (int)c["y"]!;
+                if ((string)c["type"]! != "trigger" || map[y, x] is not (Constant.MAP_Free or Constant.MAP_Grass or Constant.MAP_WalkingTrainer))
+                {
+                    continue;
+                }
+                string variable = (string)c["var"]!;
+                map[y, x] = Constant.MAP_ScriptTrigger;
+                map.Events.Triggers.Add(new MapTrigger(x, y, variable == "0" ? null : Resolve(varDefines, variable), ParseNumber((string)c["var_value"]!)));
+            }
+
+            foreach (var w in Entries(json, "warp_events"))
+            {
+                int x = (int)w["x"]!;
+                int y = (int)w["y"]!;
+                // Warps to MAP_DYNAMIC (secret bases, the truck, the elevator) and the few placed off their map are dropped.
+                if (!idByConstant.TryGetValue((string)w["dest_map"]!, out int destination) || x >= width || y >= height)
+                {
+                    continue;
+                }
+                var to = mapsById[destination]["warp_events"]![ParseNumber((string)w["dest_warp_id"]!)]!;
+                Direction arrow = cells[y, x].Behaviour switch
+                {
+                    MB_UNUSED_EAST_ARROW_WARP => Direction.Right,
+                    MB_WEST_ARROW_WARP => Direction.Left,
+                    MB_NORTH_ARROW_WARP => Direction.Up,
+                    MB_SOUTH_ARROW_WARP or MB_WATER_SOUTH_ARROW_WARP => Direction.Down,
+                    _ => Direction.None,
+                };
+                map[y, x] = Constant.MAP_Portal1;
+                map.Events.Warps.Add(new MapWarp(x, y, destination, (int)to["x"]!, (int)to["y"]!, arrow));
+            }
+
+            foreach (var c in Entries(json, "connections"))
+            {
+                Direction? direction = (string)c["direction"]! switch
+                {
+                    "up" => Direction.Up,
+                    "down" => Direction.Down,
+                    "left" => Direction.Left,
+                    "right" => Direction.Right,
+                    _ => null, // dive and emerge become the Dive pair in Build
+                };
+                if (direction is not null && idByConstant.TryGetValue((string)c["map"]!, out int neighbour))
+                {
+                    map.Events.Connections.Add(new MapConnection(direction.Value, (int)c["offset"]!, neighbour));
+                }
+            }
+            return map;
+        }
+
+        internal Dictionary<int, Map> Build()
+        {
+            var maps = mapsById.ToDictionary(pair => pair.Key, pair => BuildMap(pair.Value));
+            foreach (var (id, json) in mapsById)
+            {
+                foreach (var c in Entries(json, "connections"))
+                {
+                    if ((string)c["direction"]! != "dive" || !idByConstant.TryGetValue((string)c["map"]!, out int underwater))
+                    {
+                        continue;
+                    }
+                    var (x, y) = PickDiveTile((string)json["name"]!, DecodeCells(json), (string)mapsById[underwater]["name"]!, DecodeCells(mapsById[underwater]));
+                    maps[id].Events.Dive.Add(new MapDive(x, y, underwater));
+                    maps[underwater].Events.Dive.Add(new MapDive(x, y, id));
+                }
+            }
+            return maps;
+        }
+
+        // Per tile of the map's layout: the behaviour from the tileset attributes, and the collision and elevation bits.
+        private (byte Behaviour, int Collision, byte Elevation)[,] DecodeCells(JObject json)
+        {
+            var layout = layouts[(string)json["layout"]!];
+            int width = (int)layout["width"]!;
+            int height = (int)layout["height"]!;
+            byte[] blocks = File.ReadAllBytes(Path.Combine(checkoutDir, (string)layout["blockdata_filepath"]!));
+            byte[] primary = Attributes((string)layout["primary_tileset"]!);
+            byte[] secondary = Attributes((string)layout["secondary_tileset"]!);
+            var cells = new (byte, int, byte)[height, width];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    ushort cell = BinaryPrimitives.ReadUInt16LittleEndian(blocks.AsSpan((y * width + x) * 2));
+                    int metatile = cell & 0x3FF;
+                    byte behaviour;
+                    if (metatile < 0x200)
+                    {
+                        if (metatile * 2 >= primary.Length)
+                        {
+                            throw new InvalidOperationException($"{json["name"]}: metatile {metatile} at ({x}, {y}) is past the primary attribute table.");
+                        }
+                        behaviour = primary[metatile * 2];
+                    }
+                    else
+                    {
+                        // Past the end of the secondary table reads 0, as the spike did.
+                        int index = (metatile - 0x200) * 2;
+                        behaviour = index < secondary.Length ? secondary[index] : (byte)0;
+                    }
+                    cells[y, x] = (behaviour, (cell >> 10) & 3, (byte)(cell >> 12));
+                }
+            }
+            return cells;
+        }
+
+        private byte[] Attributes(string tileset)
+        {
+            if (!attributes.TryGetValue(tileset, out var table))
+            {
+                table = File.ReadAllBytes(Path.Combine(checkoutDir, attributeFileByTileset[tileset]));
+                attributes.Add(tileset, table);
+            }
+            return table;
+        }
+
+        private static IEnumerable<JToken> Entries(JObject json, string key) => (IEnumerable<JToken>?)(json[key] as JArray) ?? [];
+
+        // For each "Label::" in an assembler file, the first capture of the pattern in the lines that follow it.
+        private static Dictionary<string, string> LabelValues(string path, Regex pattern)
+        {
+            var values = new Dictionary<string, string>();
+            string? label = null;
+            foreach (string line in File.ReadLines(path))
+            {
+                var labelMatch = Regex.Match(line, @"^(\w+)::");
+                if (labelMatch.Success)
+                {
+                    label = labelMatch.Groups[1].Value;
+                    continue;
+                }
+                var match = pattern.Match(line);
+                if (label is not null && match.Success && !values.ContainsKey(label))
+                {
+                    values.Add(label, match.Groups[1].Value);
+                }
+            }
+            return values;
+        }
+
+        // "#define NAME value" lines, comments stripped.
+        private static Dictionary<string, string> Defines(string path)
+        {
+            var defines = new Dictionary<string, string>();
+            foreach (string line in File.ReadLines(path))
+            {
+                var match = Regex.Match(line, @"^#define\s+(\w+)\s+(.+?)\s*(//.*)?$");
+                if (match.Success)
+                {
+                    defines[match.Groups[1].Value] = match.Groups[2].Value;
+                }
+            }
+            return defines;
+        }
+
+        // A number, another name, or (NAME + number), followed recursively; anything else does not resolve.
+        private static int? Resolve(Dictionary<string, string> defines, string name)
+        {
+            if (!defines.TryGetValue(name, out string? value))
+            {
+                return null;
+            }
+            if (Regex.IsMatch(value, @"^(0x[0-9A-Fa-f]+|\d+)$"))
+            {
+                return ParseNumber(value);
+            }
+            if (Regex.IsMatch(value, @"^\w+$"))
+            {
+                return Resolve(defines, value);
+            }
+            var sum = Regex.Match(value, @"^\(\s*(\w+)\s*\+\s*(0x[0-9A-Fa-f]+|\d+)\s*\)$");
+            return sum.Success ? Resolve(defines, sum.Groups[1].Value) + ParseNumber(sum.Groups[2].Value) : null;
+        }
+
+        private static int ParseNumber(string value)
+            => value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(value, 16) : int.Parse(value);
+    }
+}

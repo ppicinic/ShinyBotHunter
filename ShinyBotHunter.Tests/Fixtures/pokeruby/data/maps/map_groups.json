@@ -1,0 +1,14 @@
+{
+  "group_order": [
+    "gMapGroup_TownsAndRoutes",
+    "gMapGroup_IndoorOldale"
+  ],
+  "gMapGroup_TownsAndRoutes": [
+    "OldaleTown",
+    "Route101",
+    "Route102"
+  ],
+  "gMapGroup_IndoorOldale": [
+    "OldaleTown_PokemonCenter_1F"
+  ]
+}
