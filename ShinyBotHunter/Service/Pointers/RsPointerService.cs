@@ -263,8 +263,8 @@ namespace ShinyBotHunter.Service.Pointers
         public uint ForgetMoveCursor => 0x02018079;
 
         // Task_EvolutionScene, the evolution scene's task function, the same in both games; constant (ROM, pret symbols
-        // line 11039, 0811242c + 1); observed on Sapphire 1.2, the others decomp only; QA: none yet: rs-train-evolve
-        // (Ruby: none yet)
+        // line 11039, 0811242c + 1); observed on Sapphire 1.2 and Ruby 1.2 (research R5), both 1.1 values decomp only;
+        // QA: none yet: rs-train-evolve (Ruby: none yet)
         public uint TaskEvolutionScene => 0x0811242D;
 
         // gBattlerPartyIndexes[0] (u16), the player battler's party slot; root (absolute; pret symbols line 31); observed;

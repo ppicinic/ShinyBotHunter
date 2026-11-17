@@ -458,9 +458,9 @@ Not committed, kept in the orchestrator's session: the request and its drivers (
 - The 24 Secret Base layouts.
 - 144 trainer sight entries and 32 triggers whose flag or variable the prototype did not resolve (scripts that reach the battle through a `call`, special variables).
 - NPCs that walk a fixed path (only wander and walk ranges are marked), and objects a script moves.
-- The lead fainting in training, running out of PP, the "No" answer to the in-battle move prompt, a Pokémon that evolves while it is not the lead, EXP for a switched-out lead.
+- The lead fainting in training, running out of PP, EXP for a switched-out lead (the two-getter reading used an Exp. Share holder, never sent out). The "No" answer to the in-battle move prompt and a Pokémon that evolves while it is not the lead were read since ("Training: the readings behind the move prompt, the forget screen and the evolution scene", R1, R6 and R7), and that section lists what it did not read.
 - The Yes/No menu gated on its task, and the party submenu gated at all.
-- Ruby. Everything here ran on Sapphire 1.2; the battle-side addresses are shared, the field-side functions are not.
+- Ruby, for the first spike: the maps, the walks, healing, the switch and the first training run ran on Sapphire 1.2 only; the battle-side addresses are shared, the field-side functions are not. The trainer speech and the training readings were read on Ruby 1.2 as well (their sections say what was not).
 
 ## What this means for the bot
 
