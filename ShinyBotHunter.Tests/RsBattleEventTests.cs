@@ -134,12 +134,11 @@ namespace ShinyBotHunter.Tests
             public List<IReadOnlyList<ChainBlockRequest>> Requests { get; } = [];
 
             // afterHandOff defaults to battleStart.
-            public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null,
-                bool trainerNotified = false)
+            public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null)
                 => RsBattleEvent.RunAsync(State, new RsPointerService(),
                     p => { Logged.Add(p); return Task.CompletedTask; },
                     p => { Alerted.Add(p); return Task.CompletedTask; },
-                    s => { TrainerMessages.Add(s); return Task.CompletedTask; }, trainerNotified,
+                    s => { TrainerMessages.Add(s); return Task.CompletedTask; },
                     raw => { Analysed.Add(raw); return Verdict; },
                     battleStart ?? Long, battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
         }
@@ -457,6 +456,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(Route102, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.True(battle.State.StoppedForTrainer);
             Assert.Empty(battle.Presses);
             Assert.Equal([Route102], battle.TrainerMessages);
             Assert.Empty(battle.Alerted);
@@ -488,6 +488,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(RsBattleEvent.NotWild, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.False(battle.State.StoppedForTrainer);
             Assert.Empty(battle.TrainerMessages);
             Assert.Empty(battle.Presses);
         }
@@ -505,20 +506,18 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(battle.TrainerMessages);
         }
 
-        // The battle type is the backstop: an operator's press at the speech before the hand-off, or a Resume while the
-        // battle is on. After a trainer stop's message it sends none.
-        [Theory]
-        [InlineData(false, 1)]
-        [InlineData(true, 0)]
-        public async Task TrainerBattleType_Backstop_SameSentence(bool trainerNotified, int messages)
+        // The battle type is the backstop: an operator's press at the speech before the hand-off.
+        [Fact]
+        public async Task TrainerBattleType_Backstop_SameSentenceOneMessage()
         {
             Battle battle = Start(new PressedReader([Turn]), flags: 0x000C);
 
-            string? stop = await battle.RunAsync(trainerNotified: trainerNotified);
+            string? stop = await battle.RunAsync();
 
             Assert.Equal(Route102, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
-            Assert.Equal(messages, battle.TrainerMessages.Count);
+            Assert.True(battle.State.StoppedForTrainer);
+            Assert.Equal([Route102], battle.TrainerMessages);
             Assert.Empty(battle.Presses);
             Assert.Empty(battle.EnemyReads);
         }

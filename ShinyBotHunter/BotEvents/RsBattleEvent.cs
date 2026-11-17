@@ -57,10 +57,6 @@ namespace ShinyBotHunter.BotEvents
         private readonly ShinyAlertService alerts;
         private readonly LegalityService legality;
 
-        // A trainer stop has sent its message and no battle has ended since, so a stop at the same battle's type sends none
-        // (FR-10). Set and read by the orchestrator's one bot loop, which runs this event in sequence; no lock.
-        private bool trainerNotified;
-
         public RsBattleEvent(PokemonPersistenceService persistence, ShinyAlertService alerts, LegalityService legality)
         {
             this.persistence = persistence;
@@ -72,28 +68,19 @@ namespace ShinyBotHunter.BotEvents
         {
             // The seek hands over a lock that has lasted SeekLockHandOff, so a lock that is not a trainer waits for the battle
             // bit only for what is left of 15 s from the lock (FR-9).
-            string? stop = await RunAsync(state, (RsPointerService)state.Bot.Addresses, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
-                s =>
-                {
-                    trainerNotified = true;
-                    return alerts.NotifyTrainerBattleAsync(s);
-                }, trainerNotified,
+            await RunAsync(state, (RsPointerService)state.Bot.Addresses, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
+                s => alerts.NotifyTrainerBattleAsync(s),
                 raw => legality.Analyze(raw, GameFlavor.RS), BattleStartStale, BattleStartStale - state.Bot.Profile.SeekLockHandOff!.Value,
                 Stale, ChecksumWindow, CursorWait, cancellationToken);
-            if (stop is null)
-            {
-                trainerNotified = false;
-            }
             return state;
         }
 
         // The battle. Null when it is over (BattleComplete) or parked on a target (Waiting), otherwise the sentence it stopped
-        // with (Waiting). The delegates are the encounter log and the two alerts; trainerNotified says a trainer stop's message
-        // went for the battle that may be on. The times are parameters so the tests run short: afterHandOff is the battle
-        // bit's wait once a lock the seek handed over is not a trainer.
+        // with (Waiting). The delegates are the encounter log and the two alerts. The times are parameters so the tests run
+        // short: afterHandOff is the battle bit's wait once a lock the seek handed over is not a trainer.
         internal static async Task<string?> RunAsync(GameState state, RsPointerService addresses,
             Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound,
-            Func<string, Task> notifyTrainer, bool trainerNotified,
+            Func<string, Task> notifyTrainer,
             Func<byte[], LegalityResult> analyze, TimeSpan battleStart, TimeSpan afterHandOff, TimeSpan stale, TimeSpan checksumWindow,
             TimeSpan cursorWait, CancellationToken ct)
         {
@@ -126,11 +113,10 @@ namespace ShinyBotHunter.BotEvents
             uint startFrame = BitConverter.ToUInt32(entry[1].Bytes, 0);
             if ((flags & TrainerBattle) != 0)
             {
-                // A press at the speech, the operator's, came before the hand-off; or this is the battle of a trainer stop
-                // that already sent its message.
+                // A press at the speech, the operator's, came before the hand-off. A trainer stop's own battle never gets
+                // here: Resume after it waits for the free field.
                 ChainBlockResult[] at = await bot.ReadChainBlocksAsync([new(addresses.PlayerLocation, [], 2)], ct: ct);
-                return await TrainerStopAsync(state, at[0].Bytes[0], at[0].Bytes[1], $"battle type 0x{flags:X4}, {s}",
-                    trainerNotified ? null : notifyTrainer);
+                return await TrainerStopAsync(state, at[0].Bytes[0], at[0].Bytes[1], $"battle type 0x{flags:X4}, {s}", notifyTrainer);
             }
             if ((flags & WildBattle) == 0 || (flags & SafariBattle) != 0)
             {
@@ -310,14 +296,12 @@ namespace ShinyBotHunter.BotEvents
         // The trainer stop's sentence; the map is group.number until the navigator has names.
         internal static string TrainerSentence(byte group, byte number) => $"A trainer battle started on map {group}.{number}.";
 
-        // Parks the bot with the trainer's sentence, then sends it; a null notifyTrainer sends nothing.
-        private static async Task<string> TrainerStopAsync(GameState state, byte group, byte number, string seen, Func<string, Task>? notifyTrainer)
+        // Parks the bot with the trainer's sentence, marks the stop as a trainer's for Resume, then sends the sentence.
+        private static async Task<string> TrainerStopAsync(GameState state, byte group, byte number, string seen, Func<string, Task> notifyTrainer)
         {
             string sentence = Stop(state, TrainerSentence(group, number), seen);
-            if (notifyTrainer is not null)
-            {
-                await notifyTrainer(sentence);
-            }
+            state.StoppedForTrainer = true;
+            await notifyTrainer(sentence);
             return sentence;
         }
 

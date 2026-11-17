@@ -224,7 +224,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok√
 **Do** put your character back on the start tile, and press **Resume**.
 
 **You see** the bot waiting, and the backend's window shows `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
-**It means** something stopped your character walking, such as a message or a script, and no battle started within 15 s.
+**It means** something stopped your character walking, such as a message or a script, and no battle started within 15 s. On Ruby and Sapphire a locked field (a message, a script, a trainer) is handed to the battle after 3 s instead, and a lock that is not a trainer stops with `[RsBattle] stopped: Something other than a wild battle started.` about 15 s after it began; see [Ruby and Sapphire wild encounters](08-rs-wild-encounter.md#the-bot-stops-and-waits).
 **Do** look at that emulator, finish what the game shows yourself (end or run from the battle, close the message) until your character can walk, put your character back on the start tile or the line, and press **Resume**.
 
 For anything else, including the bot waiting because the game stopped changing, see [When something goes wrong](../07-when-something-goes-wrong.md).

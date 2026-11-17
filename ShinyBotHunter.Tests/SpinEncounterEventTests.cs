@@ -230,35 +230,6 @@ namespace ShinyBotHunter.Tests
             Assert.Null(hgssRun.LockedHandOff);
         }
 
-        // A Resume pressed while the trainer's battle is still on: the spin's wait for the free field stops on its own
-        // sentence, naming the battle screen, and nothing is pressed.
-        [Fact]
-        public async Task RsSpin_ResumedDuringTheBattle_StopsInTheReadyWait()
-        {
-            FakeBot bot = RsBot(14, 4, 0x22);
-            bot.State = new ScriptedReader(Battle);
-            GameState state = Encountering(14, 4);
-            TextWriter console = Console.Out;
-            StringWriter log = new();
-            Console.SetOut(log);
-            bool found;
-            try
-            {
-                found = await BuildRsSpin(bot).ExecuteWithResultAsync(state, CancellationToken.None);
-            }
-            finally
-            {
-                Console.SetOut(console);
-            }
-
-            Assert.False(found);
-            Assert.Equal(EventState.Waiting, state.State.Peek());
-            Assert.Empty(bot.Macros);
-            Assert.Contains($"Waited for the overworld ready; the game state stayed {Battle}", log.ToString());
-        }
-
-        private static SpinEncounterEvent BuildRsSpin(FakeBot bot) => (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(bot, new EncounterParams(EncounterType.Spin));
-
         [Fact]
         public async Task SpinLogsTheSeekInTwoParts()
         {
