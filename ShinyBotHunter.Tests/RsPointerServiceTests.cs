@@ -20,7 +20,7 @@ namespace ShinyBotHunter.Tests
 
         // The DAO is only read by InitAsync; Parse uses the static gender table and an empty
         // metadata lookup, so a null DAO is never touched.
-        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!));
+        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>()));
 
         private static PokemonStateReader BuildReader() => new();
 

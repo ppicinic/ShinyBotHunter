@@ -298,7 +298,7 @@ namespace ShinyBotHunter.Tests
                 }
                 return new ChainBlockResult(ChainBlockStatus.Ok, 0, bytes);
             }
-            FakeBot bot = new(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)))
+            FakeBot bot = new(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>())))
             {
                 ChainBlocks = blocks =>
                 {
@@ -792,7 +792,7 @@ namespace ShinyBotHunter.Tests
                 .AddSingleton(new LegalityService(NullLogger<LegalityService>.Instance))
                 .BuildServiceProvider();
 
-            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
+            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>())).CreateBattleEvent!(provider));
         }
 
         [Fact]
@@ -807,7 +807,7 @@ namespace ShinyBotHunter.Tests
                 .AddSingleton<DiscordBotService>(_ => { built++; throw new InvalidOperationException("Discord was built"); })
                 .BuildServiceProvider();
 
-            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!)).CreateBattleEvent!(provider));
+            Assert.IsType<RsBattleEvent>(RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>())).CreateBattleEvent!(provider));
             // A flee battle never calls the two delegates (FleeMode_ReadsAndPressesAreTodays), so neither is built.
             Assert.Equal(0, built);
         }

@@ -3,6 +3,8 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -58,7 +60,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = new();
             memory.Place(RsPosition, [.. BitConverter.GetBytes(x), .. BitConverter.GetBytes(y)]);
             memory.Place(RsFacing, [facing]);
-            return new FakeBot(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)))
+            return new FakeBot(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())))
             {
                 ChainBlocks = _ =>
                 {
@@ -220,7 +222,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public void BuildEncounter_HandOffIsTheProfiles()
         {
-            Assert.Equal(TimeSpan.FromSeconds(4), RsProfile.Create(new PokemonMetadataService(null!)).SeekLockHandOff);
+            Assert.Equal(TimeSpan.FromSeconds(4), RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())).SeekLockHandOff);
             SpinEncounterEvent rsSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(RsBot(14, 4, 0x22), new EncounterParams(EncounterType.Spin));
             SpinEncounterEvent hgssSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Spin));
             RunEncounterEvent hgssRun = (RunEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Run, yRange: 2));
