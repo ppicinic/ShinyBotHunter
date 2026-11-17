@@ -1,6 +1,6 @@
 # Research: map data, pathfinding and training in Ruby and Sapphire (1.2)
 
-Date: 2026-11-15. Spike in two halves. The map half is offline, from a checkout of `pret/pokeruby` (commit `5784633`). The emulator half ran on a second EmuHawk from the QA install (`C:\BizHawk-2.11`, sound off) on its own ports (20500/20501) with its own ROM copy and save (`SA-Path`, Sapphire 1.2, the `qa-route101` save), so the QA emulator the orchestrator uses was not touched; the copy and its save were deleted afterwards. Spec: [rs-navigation-and-training](../specs/rs-navigation-and-training.md). Builds on [rs-wild-encounter](rs-wild-encounter.md).
+Date: 2026-11-15. Spike in two halves. The map half is offline, from a checkout of `pret/pokeruby` (commit `5784633`). The emulator half ran on a second EmuHawk from the QA install (sound off) on its own ports (20500/20501) with its own ROM copy and save (`SA-Path`, Sapphire 1.2, the `qa-route101` save), so the QA emulator the orchestrator uses was not touched; the copy and its save were deleted afterwards. Spec: [rs-navigation-and-training](../specs/rs-navigation-and-training.md). Builds on [rs-wild-encounter](rs-wild-encounter.md).
 
 Checked on 2026-11-16 against `main` with the wild-encounter feature merged (`d29053c`): the addresses and macros here agree with `RsPointerService` and `Macro/Configs/RS` as built. The field-side function addresses in this doc are for 1.2 only; the profile also serves 1.1, where they were not read (spec FR-12).
 
@@ -56,6 +56,8 @@ Kinds 0x00 to 0x11 and 0x80 mean what they mean on HGSS; 0x12 is the HGSS spec's
 Corrected 2026-11-17 (#425): Surf is not every water behaviour but the game's surfable bit (`sTileBitAttributes` in `src/metatile_behavior.c`); `MB_PUDDLE` and `MB_SHALLOW_WATER` are walked on, and the generator writes them free (0x00).
 
 2026-11-17 (#440): a warp is written only where the tile's behaviour in the layout fires one (118 warp events on other tiles are not), and its landing is the tile after the game's arrival step (one tile Down off a door or stairs, 471 warps; Up off 0x6E, 2; East off an escalator or the Lavaridge B1F warp, 36).
+
+2026-11-17 (#434, from the N1 and N1b PRs and their reviews, #437 and #441; the map count, the 24 Secret Base maps, the 15 Pokémon Centers and the warp's landing tile checked on the committed files): `Data/RS` holds all 394 maps, the 24 Secret Base interiors included, though nothing routes into them (the prototype's 370 above left them out). The side file is `events.json.gz`. A warp carries the tile it lands on (`ToX`, `ToY`), not the destination's warp index. 50 warp events are dropped: 41 lead to an unknown map, 7 sit off their own map, 2 land off their destination. Two arrival steps, at Route 121's Safari Zone entrance, land on a blocked tile, so the search does not take them. The nurse is not in the side file (she has no flag): she stands at (7, 2) in all 15 Pokémon Centers, and the bot uses the counter tile (7, 4) as a constant. Rusturf Tunnel's two rocks use permanent hide flags, so they stay 0x10 in the data after the story removes them: the route through them is simply not taken. An event's elevation is not in the side file: 1 trigger and 14 warps sit at an elevation other than their tile's, all at 0 or 1.
 
 The gap this leaves: 42 of those 118 the game does fire, after a script rewrites the tile (`setmetatile`), which the generator does not model. They are PetalburgCity_Gym's 24 room entrances (Down mats once `VAR_PETALBURG_GYM_STATE` is 6 or more), the Trick House puzzle exits (Route110_TrickHousePuzzle1 to 8 (13, 1), stairs once the puzzle opens), the Elite Four and Champion room doors (EverGrandeCity_SidneysRoom, PhoebesRoom, GlaciasRoom, DrakesRoom, ChampionsRoom (6, 2), once the member is beaten), AbandonedShip_HiddenFloorCorridors' four (two doors and two Down mats, once unlocked), and LilycoveCity (71, 5) (a water door once opened). Before this change all 42 were written, 16 of them (the doors and stairs) as the warp they become once open. None is on a route to a Pokémon Center. For a route, such a warp is not taken, and its tile is plain ground in the data.
 
@@ -135,6 +137,8 @@ The five macros of the walk from Route 101 (14, 4) to the Oldale Pokémon Center
 | Back to Route 101 (14, 4) | 6, then 1 | a wild battle on the last run; fled; re-planned; arrived |
 | Route 101 to Petalburg Pokémon Center | 15 | stopped on Route 102 (33, 16) by the trainer the route said it crossed |
 | Route 102 (33, 16) to Petalburg Pokémon Center, the trainer beaten | 9, re-planned three times | arrived in 59 s through three wild battles, no trainer |
+
+2026-11-17 (Q1e, PR #463): the return row is the spike's prototype. On the committed `Data/RS`, `RouteSearch` from the counter (7, 4) to Route 101 (14, 4) gives five segments: `M.Down.8` to (7, 8) on the mat, `M.Down.19` to Oldale Town (6, 19), the arrow warp and the run on south past the landing (6, 17) in one macro, then `M.Right.10` to (10, 19), `M.Down.4` to Route 101 (10, 4) and `M.Right.14` to (14, 4). W2 and R3a below walked the exit as `M.Down.17`, as the search gave it then; `M.Down.19` is not read in this doc.
 
 ## Flags, variables and trainers in memory
 
@@ -350,6 +354,7 @@ What else the nurse showed (observed):
 - The Pokérus message at the nurse.
 - W1, W2 and R3a on Ruby beyond the walk in (the door, 67 frames); the Mart and house doors on Ruby.
 - Versions 1.0 and 1.1.
+- Added 2026-11-17 (#434, from the N4c review, PR #469), a known limit: one frame of the log (Ruby, the walk-off step after arriving by stairs) reads the field free with the running state and the tile transition both 0 while that scripted step is still running. The arrival gate is not fooled on the routes walked: input is ignored during the scripted step, and no start tile or counter tile is such a walk-off tile. A route that ends on a stair landing's walk-off tile could declare its arrival one step early.
 
 ### Evidence
 
@@ -585,6 +590,8 @@ Sapphire, frames from the A at "Delete a move?" (sent after the read at f 15105;
 | 19 ("… learned …!") | 3, **8** | yes |
 | 20 | 1, 2, 3, 10, **8** | yes |
 
+Corrected 2026-11-17 (#434, from the Q1b review, PR #461, by pokeruby's `src/evolution_scene.c`, not read): the labels of 19 and 20 above are wrong. Case 19 prints "… learned …!" and moves on in the same frame, so that text waits at **20** (hence the fanfare's state 10 there). The only text that waits at 19 is "And…", which case 21 with `data[8]` 8 prints before it sets 19, on the Yes path only. A move learned into a free slot at the scene goes from 14 to 19 with no text, and its "learned" waits at 20.
+
 As expected, with one difference: **`data[0]` 2 never waits**. The wait value is 8 every time (5 and 9 not seen), never during `data[0]` 3 to 13. On the No path the A presses landed at 14, 21/1 and 21/2, then B and A at the yes/nos, then one A at 14 ("did not learn"): four text presses. On the Yes path: 14, 21/1, 21/2, A at the yes/no, the forget screen, then 21/7, 21/8, 19 and 20.
 
 ### R6: which Pokémon evolves
@@ -610,8 +617,8 @@ After one Tackle, at the next action menu, in the party record (decrypted) and i
 
 ### Not read
 
-- R1 (d) to (g) on Ruby: (a), (b), (c) and the forget screen were read; the next battle's intro after them was not.
-- R3 with a real switch: the second Pokémon here is a copy of the lead holding an Exp. Share, never sent out.
+- R1 (d) to (g) on Ruby: (a), (b), (c) and the forget screen were read; the next battle's intro after them was not. Corrected 2026-11-17 (#434, from the T1r review, PR #445): on Ruby only (d) and (g), the next battle's intro, were not read; (c) and (f) were ((f): the pointer `0x081D8F61`, Ask + 0x30, with the tracker 3, back in battle after the forget screen).
+- R3 with a real switch: the second Pokémon here is a copy of the lead holding an Exp. Share, never sent out. (Read since with a real switch: "The in-battle switch, read frame by frame", S8.)
 - Window states 5 and 9 in the scene; a cancelled evolution; an HM chosen on the forget screen; the scene's prompt for a Pokémon with a free slot (`data[0]` 19 directly).
 - `data[8]` 9 and 10 in the scene (each shorter than a poll).
 - "Use next Pokémon?".
@@ -668,4 +675,6 @@ So the "one value per game" in the Healing and Training sections holds only for 
 
 ## Evidence
 
-On the dev PC, in `ShinyBotHunter.Qa/dashboard/qa-runs/20261115-rs-nav-training-spike/` of the spike worktree (not committed): `survey.py` and `rsmaps.py` (the generator and search) with the generated `maps.bin`, `walk.py` (routes on the emulator), `heal.py`, `heal2.py`, `fieldtalk.py` (the nurse), `battle2.py` (fighting and the level-up, move and field rules), `setexp.py`, `evo2.py`, `catch1.py`, and `shots/` (the nurse's prompts, the level-up box, the move prompt, the forget-a-move screen, the evolution, the party screen). The pokeruby checkout used is at `D:\Code\_spike_pokeruby\pokeruby`.
+On the dev PC, in `ShinyBotHunter.Qa/dashboard/qa-runs/20261115-rs-nav-training-spike/` of the spike worktree (not committed): `survey.py` and `rsmaps.py` (the generator and search) with the generated `maps.bin`, `walk.py` (routes on the emulator), `heal.py`, `heal2.py`, `fieldtalk.py` (the nurse), `battle2.py` (fighting and the level-up, move and field rules), `setexp.py`, `evo2.py`, `catch1.py`, and `shots/` (the nurse's prompts, the level-up box, the move prompt, the forget-a-move screen, the evolution, the party screen). The pokeruby checkout used is a local one at commit `5784633`.
+
+2026-11-17 (#434): the machine paths of the QA install and the checkout are removed from this doc's first paragraph and this section; AGENTS.md keeps machine paths out of the repo.
