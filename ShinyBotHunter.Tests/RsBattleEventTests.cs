@@ -1873,7 +1873,7 @@ namespace ShinyBotHunter.Tests
         }
 
         // Round six, "Not read": once on the emulator the forced menu's read found nobody alive. Nothing is pressed and the
-        // stop names every row read.
+        // stop names every row read, sends its one message and marks the stop for Resume as the run-failed stop does.
         [Fact]
         public async Task Faint_ForcedMenuReadsNobodyAlive_StopsNamingTheRows()
         {
@@ -1887,7 +1887,8 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(RsBattleEvent.NoneAlive, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.Equal(["Advance", "Fight", "Move0", "Advance", "FleeNo", "Advance"], battle.Presses);
-            Assert.Empty(battle.StopMessages);
+            Assert.Equal([RsBattleEvent.NoneAlive], battle.StopMessages);
+            Assert.True(battle.State.StoppedForTrainer);
             Assert.Contains($"[RsBattle] stopped: {RsBattleEvent.NoneAlive} row 0 slot 0  HP 0 Speed 12; row 1 slot 1  HP 0 Speed 2", log);
         }
 

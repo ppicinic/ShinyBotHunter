@@ -56,8 +56,8 @@ namespace ShinyBotHunter.Service
             });
         }
 
-        // The RS battle's stop messages (docs/specs/rs-navigation-and-training.md): the trainer stop (FR-10) and the run-failed
-        // stop after a faint (FR-18); the sentence, on the shiny log channel.
+        // The RS battle's stop messages (docs/specs/rs-navigation-and-training.md): the trainer stop (FR-10) and the two stops
+        // after a faint, run failed and none able to battle (FR-18); the sentence, on the shiny log channel.
         public Task NotifyStopAsync(string sentence) => discordBotService.SendMessageAsync(new DiscordMessage()
         {
             StringMessage = $"<@&{appSettings.ShinyLogMention}> {sentence}",

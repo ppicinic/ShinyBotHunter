@@ -245,7 +245,11 @@ namespace ShinyBotHunter.BotEvents
                         presses += sent;
                         if (noneAlive is not null)
                         {
-                            return Stop(state, NoneAlive, noneAlive);
+                            // Waiting and one Discord message, as the run-failed stop; Resume waits for the free field.
+                            string sentence = Stop(state, NoneAlive, noneAlive);
+                            state.StoppedForTrainer = true;
+                            await notifyStop(sentence);
+                            return sentence;
                         }
                         sentOut = true;
                         continue;
