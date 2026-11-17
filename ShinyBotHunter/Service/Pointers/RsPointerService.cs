@@ -167,5 +167,95 @@ namespace ShinyBotHunter.Service.Pointers
         // no padding. Storage is from the anchor itself, because the party read is Absolute.
         // gPokemonStorage.boxes; root (absolute; same at rev 0-2); decomp only; QA: none yet: W12 full-party catch
         public BoxLayout? BoxLayout { get; } = new(0x020300A4 - 0x03004350, 14, 30, 30 * 80);
+
+        // Navigation and training, docs/research/rs-navigation-and-training.md. "pret symbols" is pret/pokeruby's symbols
+        // branch, commit 78b1990; every value below is the same in the Ruby and Sapphire rev 1 and rev 2 tables. A ROM
+        // function is stored with the Thumb bit (table address + 1), as RAM holds the pointer.
+
+        // gSaveBlock1 (0x02025734) + 0x1220, the event flags: flag n is bit n & 7 of byte n >> 3; root (absolute; pret
+        // symbols line 106); observed; QA: none yet: rs-nav-heal-return
+        public uint EventFlags => 0x02026954;
+
+        // the length of EventFlags in bytes; QA: none yet: rs-nav-heal-return
+        public int EventFlagBytes => 0x120;
+
+        // The byte that holds event flag `flag`; the flag is bit flag & 7 of it (research "Event flags").
+        public uint EventFlagByte(int flag) => EventFlags + (uint)(flag >> 3);
+
+        // gSaveBlock1 + 0x1340, the script variables, u16 each from 0x4000; root (absolute; pret symbols line 106);
+        // observed; QA: none yet: rs-nav-heal-return
+        public uint Vars => 0x02026A74;
+
+        // the length of Vars in bytes; QA: none yet: rs-nav-heal-return
+        public int VarBytes => 0x200;
+
+        // gTrainerBattleOpponent (u16); root (absolute; pret symbols line 210); decomp only; QA: none yet: rs-nav-trainer
+        public uint TrainerBattleOpponent => 0x0202FF5E;
+
+        // gFieldMessageBoxWindow (0x0202E87C) + 0x16 (u16), as BattleWindowState: 8 waiting for a button (5 and 9 decomp
+        // only); root (absolute; pret symbols line 131); observed; QA: none yet: rs-nav-heal-return
+        public uint FieldMessageWindowState => 0x0202E892;
+
+        // sGlobalScriptContext (0x030005B8) + 4, nativePtr (u32) after three u8s and padding (include/script.h); root
+        // (absolute; pret symbols line 468); observed; QA: none yet: rs-nav-heal-return
+        public uint ScriptNative => 0x030005BC;
+
+        // Task_HandleYesNoInput, the field Yes/No task's function; constant (ROM, pret symbols line 7581, 080b5504 + 1);
+        // decomp only; QA: none yet: rs-nav-heal-return
+        public uint TaskHandleYesNoInput => 0x080B5505;
+
+        // gTasks, 16 tasks of 0x28 bytes (0x280); root (absolute; pret symbols line 642); decomp only;
+        // QA: none yet: rs-nav-heal-return
+        public uint Tasks => 0x03004B20;
+
+        // gMain (0x03001770) + 4, callback2 (u32, include/main.h:13); root (absolute; pret symbols line 526); decomp only;
+        // QA: none yet: rs-train-learn-slot1
+        public uint Callback2 => 0x03001774;
+
+        // BattleMainCB2, callback2 during a battle; constant (ROM below 0x0803FBDC, pret symbols line 1378, 0800f808 + 1);
+        // observed; QA: none yet: rs-train-learn-slot1
+        public uint BattleMainCallback2 => 0x0800F809;
+
+        // gMoveSelectionCursor[0] (u8), the move list cursor; root (absolute; pret symbols line 95); decomp only;
+        // QA: none yet: rs-train
+        public uint MoveSelectionCursor => 0x02024E64;
+
+        // gBattleStruct->expGetterMonId (u8): gSharedMem (0x02000000) + 0x16018 (include/battle.h:338, include/ewram.h:25);
+        // root (absolute; pret symbols line 1); decomp only; QA: none yet: rs-train-two-levelup
+        public uint ExpGetterMonId => 0x02016018;
+
+        // gBattleStruct->atk5A_StateTracker (u8): gSharedMem + 0x1601A; 1 at "Delete a move?", 3 on the forget-a-move
+        // screen; root (absolute; pret symbols line 1); observed; QA: none yet: rs-train-learn-slot1
+        public uint MoveLearnPromptState => 0x0201601A;
+
+        // gBattleStruct->atk6C_statetracker (u8): gSharedMem + 0x1609C; 1 and 2 for the level-up box's pages; root
+        // (absolute; pret symbols line 1); observed; QA: none yet: rs-train
+        public uint LevelUpBoxState => 0x0201609C;
+
+        // pssData.selectedMoveIndex (u8): gSharedMem + 0x18000 + 0x79 (include/ewram.h:130,
+        // include/pokemon_summary_screen.h:51), the forget-a-move cursor; root (absolute; pret symbols line 1); observed;
+        // QA: none yet: rs-train-learn-slot1
+        public uint ForgetMoveCursor => 0x02018079;
+
+        // Task_EvolutionScene, the evolution scene's task function, the same in both games; constant (ROM, pret symbols
+        // line 11039, 0811242c + 1); observed on Sapphire 1.2, the others decomp only; QA: none yet: rs-train-evolve
+        // (Ruby: none yet)
+        public uint TaskEvolutionScene => 0x0811242D;
+
+        // gBattlerPartyIndexes[0] (u16), the player battler's party slot; root (absolute; pret symbols line 31); observed;
+        // QA: none yet: rs-train-switch
+        public uint ActiveBattlerPartyIndex => 0x02024A6A;
+
+        // HandleBattlePartyMenu, the battle party list's task function; constant (ROM, pret symbols line 6372,
+        // 08095138 + 1); decomp only; QA: none yet: rs-train-switch
+        public uint BattlePartyMenuTask => 0x08095139;
+
+        // Task_HandlePopupMenuInput (battle_party_menu.c), the task's function once SHIFT / SUMMARY / CANCEL is up;
+        // constant (ROM, pret symbols line 6379, 08095428 + 1); decomp only; QA: none yet: rs-train-switch
+        public uint BattlePartyPopupTask => 0x08095429;
+
+        // gSprites, 65 sprites of 0x44 bytes, data[0] at + 0x2E (include/sprite.h:207); root (absolute; pret symbols
+        // line 5); base decomp only, sprite 4's data[0] at 0x02020142 observed; QA: none yet: rs-train-switch
+        public uint Sprites => 0x02020004;
     }
 }
