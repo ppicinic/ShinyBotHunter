@@ -194,6 +194,27 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["save", "caught", "milestone"], calls);
         }
 
+        // After a trainer stop there is no target: Resume reads nothing and goes on to the state underneath, where the next
+        // seek waits for the free field.
+        [Theory]
+        [InlineData(new EventState[0], EventState.DecideOverworldAction)]
+        [InlineData(new[] { EventState.GoToPokemonCenter }, EventState.GoToPokemonCenter)]
+        public async Task Resume_RsAfterATrainerStop_SkipsTheCatchAndCarriesOn(EventState[] under, EventState next)
+        {
+            List<string> calls = [];
+            FakeBot bot = new(Task.CompletedTask, NoNavigationProfile(calls));
+            GameState state = StateFor(bot, new ShinyTarget(), [.. under, EventState.Resume]);
+
+            await OrchestratorEvent.ResumeAsync(state, () => OrchestratorEvent.CheckForCatchAsync(state, new PokemonStateReader(),
+                new ServiceCollection().BuildServiceProvider(),
+                _ => { calls.Add("caught"); return Task.CompletedTask; },
+                _ => { calls.Add("milestone"); return Task.CompletedTask; }));
+
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Equal(["milestone"], calls);
+            Assert.Equal([next], state.State);
+        }
+
         [Fact]
         public async Task Finish_WithoutOverworldNavigation_CompletesInPlace()
         {

@@ -61,20 +61,7 @@ namespace ShinyBotHunter.BotEvents
             // back to it lets that leg carry on instead of spinning on a state nothing handles.
             if(state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                if (await CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState))
-                {
-                    state.State.Pop();
-                    if (state.State.Count == 0)
-                    {
-                        state.State.Push(EventState.DecideOverworldAction);
-                    }
-                }
-                else
-                {
-                    // Back to Waiting rather than onwards: the event stays alive on the dashboard and
-                    // another Resume can record the catch.
-                    state.SwapState(EventState.Waiting);
-                }
+                await ResumeAsync(state, () => CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState));
             }
             if(state.State.Count > 0 && state.State.Peek() == EventState.Init)
             {
@@ -121,6 +108,25 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
+        }
+
+        // Resume: the catch check, then on to the state underneath; a separate method so a test can drive it.
+        internal static async Task ResumeAsync(GameState state, Func<Task<bool>> checkForCatch)
+        {
+            if (await checkForCatch())
+            {
+                state.State.Pop();
+                if (state.State.Count == 0)
+                {
+                    state.State.Push(EventState.DecideOverworldAction);
+                }
+            }
+            else
+            {
+                // Back to Waiting rather than onwards: the event stays alive on the dashboard and
+                // another Resume can record the catch.
+                state.SwapState(EventState.Waiting);
+            }
         }
 
         // Dispatch on the configured type. The events report different result types, so they only
