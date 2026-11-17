@@ -223,7 +223,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public void EventFlagByteIsTheFlagsByteForTheFlag()
         {
-            // Calvin's trainer flag, 0x500 + 318 (research R101).
+            // Calvin's trainer flag, 0x500 + 318 (research "Flags, variables and trainers in memory").
             Assert.Equal(0x02026954u + 199, new RsPointerService().EventFlagByte(0x500 + 318));
         }
 

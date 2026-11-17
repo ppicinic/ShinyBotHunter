@@ -44,7 +44,7 @@ namespace ShinyBotHunter.Service.Pointers
 
         // WaitForAorBPress, the field script native that waits for A or B; ROM code, stored with the Thumb bit as RAM
         // holds it (pret symbols 78b1990 line 4437: Sapphire 080670e4, Ruby 080670e0, rev 1 equal to rev 2);
-        // constant, per game; observed on Sapphire 1.2 (research R119), Ruby and both 1.1 values decomp only;
+        // constant, per game; observed on Sapphire 1.2 (research "Healing"), Ruby and both 1.1 values decomp only;
         // QA: none yet: rs-nav-heal-return (Ruby: none yet)
         public uint? WaitForAorBPress { get; private init; }
 
