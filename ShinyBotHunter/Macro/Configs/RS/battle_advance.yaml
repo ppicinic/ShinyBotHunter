@@ -1,6 +1,7 @@
 # A at a battle message that waits for a button ("Wild ... appeared!", "Got away safely!", "Can't escape!"). Sent only
 # when the battle window's state (0x03004226) reads 8, 5 or 9, and confirmed by that state leaving the value it had. A
 # 2-frame hold: the battle reads the buttons every frame. docs/research/rs-wild-encounter.md, "Tuned for speed".
+# Training also sends it at the evolution scene's text waits, which print in the same window (FR-16).
 name: BattleAdvance
 flavor: RS
 steps:

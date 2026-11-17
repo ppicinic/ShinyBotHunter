@@ -83,6 +83,12 @@ namespace ShinyBotHunter.Tests
             // On the forget-a-move screen only with its input task running and the fade off.
             ("H.Down.2", GameScreen.OtherApp) when at.TaskFunction == InputTask && at.AppState == 0 => "ForgetDown",
             ("H.A.2", GameScreen.OtherApp) when at.TaskFunction == InputTask && at.AppState == 0 => $"Forget{at.Prompt}",
+            // In the evolution scene: A at a text wait (named by data[0]), and the scene's own yes/no. B anywhere else in
+            // the scene falls through to the default name, which no expected press list holds.
+            ("H.A.2", GameScreen.Evolution) when at.Question is null && at.TextPrinter == 8 => $"SceneText{at.Prompt}",
+            ("H.A.2", GameScreen.Evolution) when at.Question == 5 => "SceneYes",
+            ("H.B.2", GameScreen.Evolution) when at.Question == 5 => "SceneNo",
+            ("H.A.2", GameScreen.Evolution) when at.Question == 10 => "SceneStopYes",
             _ => $"{macro} at {at}",
         };
 
@@ -98,6 +104,13 @@ namespace ShinyBotHunter.Tests
         // The forget-a-move screen: its cursor, the summary task running, the palette fade.
         private static GameSnapshot Forget(int cursor, uint? task = InputTask, int fade = 0)
             => new(GameScreen.OtherApp, null, null, cursor, task, AppState: fade);
+
+        // The evolution scene of the slot (data[12]): the task's data[0], the battle window, and data[9] at the yes/no.
+        private static GameSnapshot Scene(int state, int window, int slot = 0, int? question = null)
+            => new(GameScreen.Evolution, null, null, state, null, Question: question, TextPrinter: window, PartyMonIndex: slot);
+
+        // The scene's yes/no (data[0] 21, data[8] 4, the window 0): 5 "Delete a move?", 10 "Stop learning?".
+        private static GameSnapshot SceneAsk(int question, int slot = 0) => Scene(21, 0, slot, question);
 
         private static GameSnapshot Message(BattleOutcome? outcome = null) => new(GameScreen.BattleMessage, outcome, null, null, null, TextPrinter: 8);
 
@@ -1301,6 +1314,115 @@ namespace ShinyBotHunter.Tests
             Assert.Same(logged, battle.State.TargetPokemon);
             Assert.Equal(["Advance"], battle.Presses);
             Assert.Equal([EventState.Waiting], battle.State.State);
+        }
+
+        // The evolution scene after the won battle's last message, from the research's R5 table: data[0] 1, then 2 ("What? …
+        // is evolving!", which prints and goes on by itself), the animation, the window's fanfare hold at 10, then
+        // "Congratulations!" waiting at 8. Then the stages given, the first opening with that wait.
+        private static GameSnapshot[][] Evolves(int slot, params GameSnapshot[][] after) => Won(
+        [
+            [Message(), Turn, Scene(1, 0, slot), Scene(2, 1, slot), Scene(2, 2, slot), Scene(2, 3, slot), Scene(2, 6, slot), Scene(3, 0, slot),
+                Scene(13, 0, slot), Scene(14, 10, slot), Scene(14, 8, slot)],
+            .. after,
+        ]);
+
+        // "… is trying to learn …" and "… can't learn more than four moves" waiting at 21, then "Delete a move?" printing
+        // (the window at 4) and the yes/no.
+        private static GameSnapshot[][] SceneAsks(int slot) =>
+        [
+            [Scene(14, 8, slot), Scene(14, 0, slot), Scene(21, 1, slot), Scene(21, 8, slot)],
+            [Scene(21, 8, slot), Scene(21, 2, slot), Scene(21, 3, slot), Scene(21, 8, slot)],
+            [Scene(21, 8, slot), Scene(21, 3, slot), Scene(21, 4, slot), SceneAsk(5, slot)],
+        ];
+
+        private static readonly string[] WonPresses = ["Advance", "Fight", "Move0", "Advance"];
+
+        // The lead (0) and the Exp. Share holder (1) evolving: the prompt reads the evolving slot's record, and No is B at
+        // "Delete a move?", A at "Stop learning?", then "… did not learn …" at data[0] 14.
+        [Theory]
+        [InlineData(0, 0x03004360u, 0x60u)]
+        [InlineData(1, 0x030043C4u, 0x78u)]
+        public async Task Evolution_Prompt_NoThenStopLearning_ForTheEvolvingSlot(int slot, uint record, uint pid)
+        {
+            Battle battle = Train(Evolves(slot,
+                [.. SceneAsks(slot),
+                [SceneAsk(5, slot), Scene(21, 3, slot), Scene(21, 4, slot), SceneAsk(10, slot)],
+                [SceneAsk(10, slot), Scene(14, 1, slot), Scene(14, 8, slot)],
+                [Scene(14, 8, slot), Scene(14, 0, slot), Free]]),
+                party: [Fighter(), Fighter(pid: 0x78)]);
+            List<uint> asked = [];
+            battle.DecideMove = (p, _) => { asked.Add(p.PID); return Task.FromResult(-1); };
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal([.. WonPresses, "SceneText14", "SceneText21", "SceneText21", "SceneNo", "SceneStopYes", "SceneText14"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            IReadOnlyList<ChainBlockRequest> prompt = Assert.Single(battle.Requests, r => r.Any(b => b.Anchor == MoveToLearn));
+            Assert.Equal([(MoveToLearn, 2), (record, 100)], prompt.Select(b => (b.Anchor, b.Length)));
+            Assert.Equal([pid], asked);
+            Assert.Contains($"[RsBattle] BattleAdvance in the evolution scene of slot {slot} at data[0] 14 at window 8", log);
+            Assert.Contains($"[RsBattle] asking Discord: slot {slot}  learning move117 (117)", log);
+            Assert.Contains("[RsBattle] B at Delete a move?", log);
+        }
+
+        // Yes over slot 2: A at the yes/no, nothing while the scene fades out (21 with data[8] 5) and the forget screen opens,
+        // Down twice and A on the screen, then "1, 2 and… Poof!" (the window held at 4), "… forgot …", "… learned …!" and
+        // the last text at 20. The party read after the scene shows the evolved species.
+        [Fact]
+        public async Task Evolution_Prompt_Yes_ForgetScreenThenTheTexts_ThenTheEvolvedSpecies()
+        {
+            // Marshtomp: internal 284, national 259.
+            byte[] marshtomp = Encode(0x60, 0, 284, 16, moves: MudkipMoves, pp: [35, 40, 10, 15], hp: 40, maxHp: 40);
+            Battle battle = Train(Evolves(0,
+                [.. SceneAsks(0),
+                [SceneAsk(5), Scene(21, 0), Forget(0, null, 1), Forget(0, InputTask, 1), Forget(0)],
+                [Forget(0), Forget(1)],
+                [Forget(1), Forget(2)],
+                [Forget(2), Forget(2, DestroyTask), Forget(2, null), Scene(21, 4), Scene(21, 8)],
+                [Scene(21, 8), Scene(21, 1), Scene(21, 8)],
+                [Scene(21, 8), Scene(19, 3), Scene(19, 8)],
+                [Scene(19, 8), Scene(20, 10), Scene(20, 8)],
+                [Scene(20, 8), Scene(20, 0), Free]]),
+                party: [marshtomp]);
+            battle.DecideMove = Answer(2);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal([.. WonPresses, "SceneText14", "SceneText21", "SceneText21", "SceneYes", "ForgetDown", "ForgetDown", "Forget2",
+                "SceneText21", "SceneText21", "SceneText19", "SceneText20"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Contains("[RsBattle] BattleConfirm (Yes) at Delete a move?", log);
+            Assert.Contains("[RsBattle] forget-a-move screen closed", log);
+            Assert.Contains("[RsBattle] party after the battle: slot 0  (259) Lv 16", log);
+        }
+
+        // A free move slot: the move is learned with text presses only, "… learned …!" at 19 and the text at 20.
+        [Fact]
+        public async Task Evolution_FreeSlot_TextOnly()
+        {
+            Battle battle = Train(Evolves(0,
+                [Scene(14, 8), Scene(15, 0), Scene(19, 3), Scene(19, 8)],
+                [Scene(19, 8), Scene(20, 10), Scene(20, 8)],
+                [Scene(20, 8), Free]));
+
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal([.. WonPresses, "SceneText14", "SceneText19", "SceneText20"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+        }
+
+        // Nothing is pressed while the scene animates, at its first text (data[0] 2) or while the window holds at 4 or 10:
+        // the wait ends in the stale stop that names the scene.
+        [Fact]
+        public async Task Evolution_NoPressAtTheFirstTextTheAnimationOrTheHolds()
+        {
+            Battle battle = Train(Won([Message(), Turn, Scene(1, 0), Scene(2, 1), Scene(2, 2), Scene(2, 3), Scene(2, 6), Scene(5, 0),
+                Scene(21, 4), Scene(21, 10)]));
+
+            string? stop = await battle.RunAsync(stale: TimeSpan.FromMilliseconds(200));
+
+            Assert.Contains(Scene(21, 10).ToString(), stop);
+            Assert.Equal(WonPresses, battle.Presses);
         }
 
         private sealed class LoggedReader(IGameStateReader inner, Action log) : IGameStateReader
