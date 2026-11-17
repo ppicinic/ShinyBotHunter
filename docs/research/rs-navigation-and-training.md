@@ -750,6 +750,80 @@ The same question with the same bytes in both: lead faints with no switch earlie
 
 Not committed. In the session scratch folder `rsnav/`: `t5.py` (the request and the drivers; it builds on `t4.py`), `log5.txt` (2,549 lines), `shots5/` (the prompt, the cursor on No, the forced menu, the SEND OUT popup, the whiteout's end). Both SaveRAM files and their `.bak` were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
 
+### Round six: the dropped B and the wrong "fastest alive"
+
+Added 2026-11-17 (#475, the fix cycle of PR #476): the causes of the two failures the first QA runs of the rule showed, read on the emulator. The QA install's path is left out, as above.
+
+Date: 2026-11-17. Emulator: the QA install (sound off), `SA-Wild` (Sapphire 1.2, 17 battles) then `RU-Wild` (Ruby 1.2, one battle), each on the `qa-route101` save, ports 20000/20001. The set-up is the QA scenario's (`rs-train-switch-battler-spent`): a party of two, slot 1 a copy of the lead written to Lv 20, max HP 1, HP 1, Attack 1; the wild Pokémon's battle Speed written to 999 at the first action menu; a voluntary switch to slot 1 on turn one; the wild Pokémon's hit faints it. Every reading is one request of 16 blocks on one frame, logged on every poll from the faint on. Everything below is observed unless it says otherwise.
+
+#### What the QA runs' logs show
+
+- `steps.log` of all four runs: the helper writes slot 1 (the copy at `0x030043C4`) to level 20, experience 5,460, **max HP 1, HP 1**, Attack 1, Sp. Atk 1; the party count 2; the wild Pokémon's battle Speed 999. It never writes the trainee's HP and never leaves the battler's party HP above 0 after the faint. **The scenario's writes are not the fault.**
+- The bot (`RsBattleEvent.cs` on `origin/task/475-fainted-battler`) reads the count byte and 600 bytes at `0x03004360` when it first sees the party task, and takes the highest Speed among records with HP above 0 by their index in that read.
+
+#### A. The B at "Use next POKéMON?"
+
+`atk67_yesnobox` (pokeruby `src/battle_script_commands.c`) has two states in `gBattleCommunication[0]` (`0x02024D1E`): 0 draws the box, sets the byte 1 and the cursor 0, and reads no key; 1 reads the keys. On the emulator, frames from the one the pointer first reads the prompt value (f):
+
+| Frame | Pointer `0x02024C10` | `0x02024D1E` | `0x02024D1F` | Battle window | Controller | B new on this frame |
+|---|---|---|---|---|---|---|
+| f − 19 to f − 1 | `0x081D8C50` (the question prints) | 4 (stale) | 4 (stale) | 3, then 0 for the last 2 or 3 frames | `PlayerBufferRunCommand` | dropped (every pulse, 12 battles) |
+| f | **`0x081D8C56`** | **0** | 4 (stale) | 0 | the same | dropped (2 of 2: P7, P9) |
+| f + 1 | `0x081D8C56` | **1** (first frame) | 0 | 0 | the same | **dropped** (3 of 3 with f read: P1, P5, P10; and P11, P12 where f itself was not read) |
+| f + 2 and later | `0x081D8C56` | 1 | 0 | 0 | the same | **taken**: the pointer `0x081D8C57` and the cursor 1 on that frame (14 of 14: Q2 to Q5, P1, P2, P4 to P9, P11, P12; RQ1 on Ruby) |
+
+- The window state and the controller do not change at all across f − 1 to f + 2; the only bytes that move are `0x02024D1E` (4 → 0 → 1) and `0x02024D1F` (4 → 0).
+- **The byte that means "the box takes B" is `0x02024D1E` reading 1 with the pointer on the prompt value.** It first reads 1 one frame after the pointer arrives, and on that first frame a B is still dropped (the game is running state 0 on it; the read shows the value state 0 left). A B that is new on any frame **after a read that showed 1** is taken: a B sent on such a read was taken 5 of 5 times (Q2 to Q5 on Sapphire, RQ1 on Ruby), on the next frame or the one after.
+- That is the bot's 4 of 6: it presses on the read at f (the pointer there, the byte 0); a press that lands on f + 1 is dropped and one that lands on f + 2 is taken. An early B from here (sent on the read at f) was taken once (Q1: it landed on f + 2 or f + 3).
+- How the drops were shown: `H.B.2;W.1` repeated (B new every third frame) from the moment the question starts to print until the pointer left, 12 battles; which frame each pulse was new on is in `newKeys` in the log.
+- Ruby: the prompt value is `0x081D8CC6`; the same two bytes, the same order (one battle).
+
+#### B. gPlayerParty while the party menu is up
+
+**The game swaps the records in `gPlayerParty` to the menu's row order for as long as the party menu is up.** With the order byte at 0x10 (after the voluntary switch to slot 1), from the first frame the party task exists until the menu closes, `gPlayerParty[0]` is the battler and `gPlayerParty[1]` is the trainee. Before and after, they are in party order.
+
+Records identified by level (7 the trainee, 20 the battler), max HP and Attack; both have the same personality value, being copies, so that does not tell them apart.
+
+| Moment | `gPlayerParty[0]` | `gPlayerParty[1]` | `0x02024A6A` | Order `0x02038470` | Seen |
+|---|---|---|---|---|---|
+| First action menu | trainee, Lv 7, HP 25/25, Speed 12, status 0 | battler, Lv 20, HP 1/1, Speed 12, status 0 | 0 | 0x01 | 18 |
+| Voluntary list, taking keys (order still 0x01) | trainee 25/25 | battler 1/1 | 0 | 0x01 | 18 |
+| After SHIFT, while the task is `Task_809527C` / `Task_80952B4` (about 22 frames) | **battler 1/1** | **trainee 25/25** | 0 | 0x10 | 18 |
+| Back in battle; the battler faints | trainee 25/25 | battler **0/1** | 1 | 0x10 | 18 |
+| The question ("Use next POKéMON?") | trainee 25/25 | battler 0/1 | 1 | 0x10 | 18 |
+| "Can't escape!" waiting | trainee 25/25 | battler 0/1 | 1 | 0x10 | 18 |
+| The frames after its A, the party menu opening (controller `OpenPartyMenuToChooseMon`, callback 2 still the battle's, about 22 frames) | trainee 25/25 | battler 0/1 | 1 | 0x10 | 5 tight |
+| **The forced menu's first frame** (task `0x08095139` there, callback 2 `CB2_InitPartyMenu`) | **battler 0/1** | **trainee 25/25** | 1 | 0x10 | 18 |
+| The list takes keys (callback 2 `CB2_PartyMenuMain`, fade off) | battler 0/1 | trainee 25/25 | 1 | 0x10 | 18 |
+| After SEND OUT, back in battle and in the field | trainee 25/25 | battler 0/1 | 0 | 0x01 | 18 |
+
+- The swap lands on the frame the task first exists: the last read in party order and the first read swapped are consecutive frames in one run (Q2: f 8054, f 8055) and two frames apart in the other four tight runs (the frame between was not read). Nothing else in the two records changes during `CB2_InitPartyMenu`: HP, max HP, Speed, level and the status word of each record are the same before and after, only their places.
+- HP in the record is true at every one of these moments: 0 for the fainted one, above 0 for the other. What is not constant is which index holds which.
+- So the three wrong-slot runs are explained: the bot read at the forced menu's first snapshot, found index 0 at HP 0 and index 1 alive with Speed 12 (the trainee), called it "slot 1", and then looked slot 1 up in the order (row 0), which is the fainted battler's row.
+- **The crash run is not explained by anything read here.** In 18 forced openings, 5 of them read with one small request per frame (about 4 frames in 5 covered), no read showed both records at HP 0, a count other than 2, or a half-copied record. With the records swapped the read still has one alive. The crash run's log does not print the party it read.
+
+**Which read gives a true "alive" per party slot:**
+
+- Outside the party menu (the question, "Can't escape!", any battle frame with no party task): `gPlayerParty[i]` is party slot i. This is the read to take; "Can't escape!" waiting is the last such moment before the forced menu, and nothing changes HP between it and the menu.
+- While a party task is up (`HandleBattlePartyMenu`, the popup, `Task_809527C`, `Task_80952B4`): `gPlayerParty[r]` is the Pokémon on **row r**, which is party slot `order[r]` (the nibbles from `0x02038470`). A read there is still true if it is taken as rows, not slots.
+- `0x02024A6A` is always a party slot, never a row: it read 1 (the fainted battler's slot) through the question, the failed flee and the whole forced menu, while the battler's record sat at index 0. Row 0 is always the Pokémon `0x02024A6A` names.
+- With the identity order (no switch or send-out earlier in the battle) rows and slots are the same and the swap changes nothing, which is why round five's first battles did not show it. Round five's B5 log does show it (`php` 25, 25, 0, 0 at the question and 0, 25, 25, 0 at the forced menu's first read); it was not called out then.
+
+#### Ruby
+
+One battle, the same set-up: the same swap on the frame the task appears, the same values at each moment; the gate B taken one frame after a read with `0x02024D1E` 1.
+
+#### Not read
+
+- The read that made the crash run find nobody alive.
+- The swap with three or more members and an order that is not a single exchange (round five's B4 and B5 logs have four members; the HP tuples there follow the order nibbles, but the records were not identified one by one).
+- The frame between "last in party order" and "first swapped" in four of the five tight runs.
+- Versions 1.0 and 1.1.
+
+#### Evidence
+
+Not committed. In the session scratch folder `rsnav/`: `t6.py` (the scenario driver; it builds on `t5.py` and `t4.py`), `log6.txt` (8,458 lines). Both SaveRAM files and their `.bak` were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
+
 ## Not proved
 
 - Any HM on the emulator, and the field script each one runs: the save has no HMs or badges. Waterfall, Strength and Dive routes even offline. Ledges, ice and the other special floors on the emulator. Currents are written as plain surf.
