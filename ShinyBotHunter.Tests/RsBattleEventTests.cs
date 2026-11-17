@@ -22,6 +22,7 @@ namespace ShinyBotHunter.Tests
         private const uint BattleTypeFlags = 0x020239F8;
         private const uint VBlankCounter = 0x03001790;
         private const uint EnemyParty = 0x030045C0;
+        private const uint PartyCount = 0x03004350;
         private const uint PlayerParty = 0x03004360;
         private const uint LeadHp = PlayerParty + 0x56;
         private const uint FieldControlsLock = 0x030006A4;
@@ -261,6 +262,16 @@ namespace ShinyBotHunter.Tests
                         break;
                     case LeadHp:
                         bytes = BitConverter.GetBytes((leadHp ?? (_ => 20))(reader.Stage));
+                        break;
+                    case PartyCount:
+                        bytes = [(byte)partyRecords.Length];
+                        break;
+                    case PlayerParty when block.Length == 6 * Gen3PokemonParser.PartyBlockSize:
+                        bytes = new byte[block.Length];
+                        for (int slot = 0; slot < partyRecords.Length; slot++)
+                        {
+                            partyRecords[slot].CopyTo(bytes, slot * Gen3PokemonParser.PartyBlockSize);
+                        }
                         break;
                     case MoveToLearn:
                         // Bide.
@@ -1111,6 +1122,27 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(["Advance", "Fight", "Move0", "Advance"], battle.Presses);
             Assert.Contains("[RsBattle] asking Discord: slot 0  learning move117 (117); nothing is pressed until the answer", log);
+        }
+
+        [Fact]
+        public async Task Train_PartyReadAfterTheBattle_OnceAndOnlyInBattleMode()
+        {
+            Battle train = Train(FightStages(0), party: [Fighter(), Fighter(pid: 0x78)]);
+            Battle flee = Start(Fled());
+
+            string log = await CaptureAsync(async () =>
+            {
+                Assert.Null(await train.RunAsync());
+                Assert.Null(await flee.RunAsync());
+            });
+
+            IReadOnlyList<ChainBlockRequest> read = Assert.Single(train.Requests, r => r.Any(b => b.Anchor == PartyCount));
+            Assert.Equal([(PartyCount, 1), (PlayerParty, 600)], read.Select(b => (b.Anchor, b.Length)));
+            Assert.Same(read, train.Requests[^1]);
+            Assert.DoesNotContain(flee.Requests, r => r.Any(b => b.Anchor == PartyCount));
+            // Mudkip is national 258; the names are empty with no metadata seeded.
+            Assert.Contains("[RsBattle] party after the battle: slot 0  (258) Lv 10 moves 33,45,189,341", log);
+            Assert.Contains("[RsBattle] party after the battle: slot 1  (258) Lv 10 moves 33,45,189,341", log);
         }
 
         [Fact]

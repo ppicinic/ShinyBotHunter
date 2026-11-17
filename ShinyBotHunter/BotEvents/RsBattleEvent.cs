@@ -187,6 +187,18 @@ namespace ShinyBotHunter.BotEvents
                         uint frames = BitConverter.ToUInt32(end[0].Bytes, 0) - startFrame;
                         Console.WriteLine($"[RsBattle] battle over: {frames} frames from the battle bit, {battleTime.ElapsedMilliseconds} ms, "
                             + $"{presses} presses, {runPresses} on RUN");
+                        if (training)
+                        {
+                            // The party as the battle left it: what was learned, and later what evolved (FR-16).
+                            ChainBlockResult[] party = await bot.ReadChainBlocksAsync(
+                                [new(addresses.Anchor, [], 1), new(addresses.BattlePartyPokemon, [], 6 * Gen3PokemonParser.PartyBlockSize)], ct: ct);
+                            for (int slot = 0; slot < party[0].Bytes[0]; slot++)
+                            {
+                                PokemonData p = bot.Profile.Parser.Parse(party[1].Bytes[(slot * Gen3PokemonParser.PartyBlockSize)..((slot + 1) * Gen3PokemonParser.PartyBlockSize)])!;
+                                Console.WriteLine($"[RsBattle] party after the battle: slot {slot} {p.Name} ({p.Species}) Lv {p.Level} moves "
+                                    + string.Join(",", p.Moves.Select(m => m.Id)));
+                            }
+                        }
                         state.SwapState(EventState.BattleComplete);
                         return null;
                     }
