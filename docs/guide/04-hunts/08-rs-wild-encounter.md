@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (training, the switch, the level-up box, the new move, evolution, TrainerSentence), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (the walk, the nurse, every stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (DecideOverworldAction, CanFightNextEncounter, HealTripLine), ShinyBotHunter/BotEvents/BattleReadiness.cs, ShinyBotHunter/Pathfinding/RouteSearch.cs, ShinyBotHunter/Service/DiscordBotService.cs (SendNewMoveDecisionAndWaitAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (capabilities, seekLockHandOff, trainingRefusal), ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md, docs/specs/rs-navigation-and-training.md -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -7,7 +7,7 @@ Part of the [ShinyBotHunter guide](../README.md)
 
 The bot turns on the spot, or runs back and forth along a short line in the grass, until a wild battle starts. It presses A at "Wild … appeared!" and reads the wild Pokémon at the FIGHT / BAG / POKéMON / RUN menu, once it has slid in and, if it is shiny, sparkled. It writes the Pokémon to the encounter log and runs away. It stops when it finds a Pokémon you are hunting for, or when the milestone is complete.
 
-With Train Type None it runs from every battle; that is the hunt this page describes. With Train Type Standard or Switch it trains a Pokémon instead: it fights, and when the Pokémon is too hurt or out of PP it walks to the nearest Pokémon Center, heals and walks back. Ruby and Sapphire have no Pickup or chained hunts.
+With Train Type None it runs from every battle. With Train Type Standard or Switch it trains a Pokémon instead: it fights, and when the Pokémon is too hurt or out of PP it walks to the nearest Pokémon Center, heals and walks back. [Training](#training) explains it. Ruby and Sapphire have no Pickup, Headbutt or chained hunts.
 
 It is tested on version 1.2 of Ruby and Sapphire. Version 1.1 runs, untested. Version 1.0 cannot be used: launching it fails, and the backend's window shows `RS revision 0: no address table. Hunts run on revisions 1 and 2.`
 
@@ -22,6 +22,7 @@ Every button press is checked against the game's memory before the next one.
 5. **For Encounter Type Run: the Running Shoes.** The bot holds B for the whole walk, so your character runs. Without the shoes it walks, which checks for an encounter half as often.
 6. **Every menu and message closed.**
 7. **A milestone for the game RS**, made in the [Milestone Editor](../03-dashboard.md#make-a-milestone).
+8. **To train (Train Type Standard or Switch):** a US Ruby or Sapphire ROM, and a Pokémon Center your character can walk to from the start tile without any HM. The bot uses no Cut, Surf, Strength, Rock Smash, Waterfall or Dive. Every trainer on the way must already be beaten: the bot stops at any trainer who has not been. The fighting Pokémon needs more than a quarter of its HP and at least 3 PP across its damaging moves; otherwise the bot heals first.
 
 ## Start a hunt
 
@@ -43,7 +44,9 @@ Every button press is checked against the game's memory before the next one.
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. Either way the hunt also ends once the milestone is complete. **NoTarget**: nothing is a target; it needs a train mode, and the hunt ends when the Pokémon reaches the target level. | Target Type |
 | How to meet wild Pokémon. **Spin**: turn on the spot. **Run**: run back and forth in a straight line. Headbutt is greyed out. | Encounter Type |
 | How many tiles to run each way from the start tile, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
-| **None** for this hunt. **Standard** and **Switch** train a Pokémon up to Target Level; Switch sends out the Battler after the first Pokémon. They need a US Ruby or Sapphire ROM. Pickup shows with them, greyed out. | Train Type |
+| Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting; the first Pokémon still earns experience. Standard and Switch need a US Ruby or Sapphire ROM. Pickup shows with them, greyed out. | Train Type |
+| The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it. | Target Level (101 = no end) |
+| The party slot of the Pokémon that fights in Switch training, from 2 to 6. Shown only for Switch. It starts at 2. | Battler |
 
 ### Greyed-out choices
 
@@ -72,7 +75,53 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 6. At "Can't escape!" it presses A, and A on RUN again when the menu comes back. The cursor stays on RUN.
 7. It presses A at "Got away safely!", then turns or runs again once your character is free to walk.
 
+With Train Type Standard or Switch, step 5 is a fight instead; see [Training](#training).
+
 A trainer stops the bot before its battle (see below). A Safari Zone battle, or any other battle that is not wild, stops the bot too.
+
+## Training
+
+### Standard and Switch
+
+- **Standard**: the Pokémon in your first party slot fights every wild Pokémon, with the move the bot's damage calculator picks.
+- **Switch**: your first Pokémon is sent out, and at the battle's first FIGHT / BAG / POKéMON / RUN menu the bot switches to the Battler: it picks POKéMON, moves to the Battler's slot, picks it and picks SHIFT. The Battler then fights. Your first Pokémon still earns experience for the battle. If the Battler has fainted, or the switch has not worked three times in the battle, the bot runs from that battle.
+- **Target Level**: training is done when the Pokémon in your first slot reaches it. Then, with Target Type NoTarget, or once the milestone is complete, the bot walks back to the start tile and the hunt finishes. With PhaseTarget or ShinyTarget and the milestone not complete, it carries on hunting and runs from every battle.
+
+In a battle, the bot runs instead of fighting when the Pokémon fighting is down to a quarter of its HP or less, has no PP left on damaging moves, or the calculator finds no move.
+
+Every press is checked against the game's memory. If the game still shows exactly what it showed before the press a second later, the bot sends that one press once more, never a third time. So a line in the backend's window can end in `dropped, sent again`.
+
+### Level-ups, new moves and evolution
+
+- **A level-up** shows its box in two pages (the gains, then the totals); the bot presses A at each. A battle that gains several levels shows one box per level, and when two Pokémon level up from one battle (in Switch, your first Pokémon and the Battler), each gets its own boxes.
+- **A new move with a free move slot** is learned with the game's own text, and the bot presses A through it.
+- **A new move when the Pokémon already knows four** is a question on [Discord](../05-discord.md#how-do-i-answer-a-new-move-question): which move to forget, or Do Not Learn. The game waits at "Delete a move?" and the bot presses nothing until you answer. There is no time limit; **Cancel** on the dashboard also ends the wait. Then the bot answers the game for you: Yes, and the move you chose on the forget-a-move screen; or No, and Yes at "Stop learning?". Without Discord, the bot answers Do Not Learn on its own.
+- **Evolution** is allowed to happen. While the Pokémon evolves the bot presses nothing; it never presses B there, which would stop the evolution. It presses A at the evolution's texts. A new move at the evolution is the same question as above.
+
+### When it heals
+
+Before each encounter the bot checks the Pokémon that fights: your first Pokémon in Standard, the Battler in Switch. If it has a quarter of its HP or less, or fewer than 3 PP across its damaging moves, the bot goes to heal. In Switch it also goes when your first Pokémon has fainted or the Battler's slot is empty. The backend's window shows `[Orchestrator] heal trip: <name> HP <hp>/<max>, damaging PP <pp>`, or `[Orchestrator] heal trip: switch slot <n> is empty`.
+
+1. **The walk there.** The bot plans a route to the nearest Pokémon Center from where your character stands, over Hoenn's maps, through doors and across the edges between maps, and runs it with B held. It reads your save's story progress, so it does not plan through a person who still blocks a path, and it keeps off tiles that would start a story event when a way round is not much longer. It runs from any wild battle on the way and plans again from where your character stands. Those Pokémon are still written to the encounter log, and a Pokémon you are hunting for still stops the bot.
+2. **The nurse.** On the tile in front of the counter the bot turns to face her if it has to, and talks to her. It presses A at each of her lines, Yes at her question, and A at her last line. Then it checks that every Pokémon in the party has full HP.
+3. **The walk back** to the tile the hunt started on, planned the same way. Then the hunt carries on.
+
+### When a trainer is on the way
+
+A trainer who has not been beaten stops the bot on the walk, as in the hunt: see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume). Once you have won and pressed **Resume**, the bot plans the walk again from where your character stands.
+
+### When a Pokémon faints
+
+- If the Pokémon fighting faints and no other Pokémon in your party can battle, the battle is lost. The bot stops with `[RsBattle] stopped: The first Pokémon fainted. <state>`, and the game sends your character to a Pokémon Center, as it does after any lost battle.
+- If another Pokémon can battle, the game asks "Use next POKéMON?". The bot does not answer it: about 30 s later it stops with `[RsBattle] stopped: Waited for a battle message, the action menu, an evolution text wait or yes/no, or the free field; the game state stayed <state>`.
+
+Either way: finish the battle yourself, heal, walk your character back to the start tile, and press **Resume**. In Switch, a Battler that has already fainted when the battle starts is not a stop: the bot runs from that battle and then goes to heal.
+
+### What is still off
+
+- Pickup, Chained Encounter and Headbutt are not offered for Ruby and Sapphire.
+- No HM is used, so a Pokémon Center that needs one is out of reach: the bot stops with `No route to a Pokémon Center on foot from <place>.`
+- Training on a ROM that is not the US Ruby or Sapphire is refused at **Run** with `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).`
 
 ## When a trainer stops you: win the battle and press Resume
 
@@ -135,10 +184,13 @@ The backend's window also shows:
 - `[RsBattle] legality OK` or `[RsBattle] legality FAIL` for each shiny, with PKHeX's report after a FAIL.
 - `[Spin] seek:` or `[Run] seek:`: how long it took to find the battle.
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
+- When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves.
+- `[Orchestrator] heal trip: …` when the bot goes to heal.
+- `[Navigator]` lines for each walk: `plan to <place> from <place>` with its cost and number of segments, one line per segment, `arrived on <place>`, and at the Pokémon Center the nurse's presses and `nurse: party HP … (full)`.
 
 ## How does it stop?
 
-- **It finishes on its start tile.** The milestone is complete. Before it finishes, the bot walks back to the tile the hunt started on: after Spin it is already there, after Run it walks back along the line.
+- **It finishes on its start tile.** The milestone is complete, or training reached Target Level with Target Type NoTarget. Before it finishes, the bot walks back to the tile the hunt started on, with or without a train type: after Spin it is already there, after Run it walks there the way it walks to a Pokémon Center. That walk can stop with the `[Navigator]` sentences below.
 - **It waits for you.** It found a Pokémon you are hunting for, or it stopped with one of the sentences below.
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
@@ -171,7 +223,7 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 **It means** Train Type Standard or Switch was chosen on a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads.
 **Do** leave Train Type at None, or train on a US ROM.
 
-The X Range and Y Range refusals are the same as on HeartGold and SoulSilver; see [If it stops early](01-wild-encounter.md#if-it-stops-early) on that page.
+The X Range, Y Range, Target Level and Battler refusals are the same as on HeartGold and SoulSilver; see [If it stops early](01-wild-encounter.md#if-it-stops-early) on that page.
 
 ### The bot stops and waits
 
@@ -204,7 +256,13 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[RsBattle] stopped: Waited for <what>; the game state stayed <state>`
 **It means** in the battle, nothing in the game changed for 30 s while the bot waited for the next screen.
 
-**Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again.
+**You see** `[RsBattle] stopped: Waited for <what>; the game state stayed <state>` while training, where `<what>` names the press or the screen, for example `the move list after BattleConfirm on FIGHT`.
+**It means** a press while fighting, switching or answering a new move was not followed by what it should change, and nothing in the game changed for 30 s. "Use next POKéMON?" ends this way (see [When a Pokémon faints](#when-a-pokémon-faints)). [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) lists every `<what>`.
+
+**You see** `[Navigator] stopped:` followed by `No route to a Pokémon Center on foot from <place>.`, `No route back to the start tile <place> from <place>.`, `Stuck walking to <place>.`, `The last step to <place> did not end (…).`, a `Waited for …` at the nurse, or `The party's HP was not full after the nurse: …`.
+**It means** the walk to the Pokémon Center or back, or the nurse, did not go as planned. A place is the game's name for the map and the tile, for example `Route101 (14, 4)`. [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) explains each.
+
+**Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again. After a lost battle, or a stop at the nurse or on a walk, your character is somewhere else, so walk it back to the start tile first; otherwise Resume stops again with `The player moved while turning` or `The player is off the run line`. If a Pokémon still needs healing, the bot then walks to the Pokémon Center again by itself.
 
 The bot records a catch only for a Pokémon it stopped on as a target: waiting at the FIGHT / BAG / POKéMON / RUN menu, with the shiny alert sent. A Pokémon you catch after any of the stops above is not recorded by the bot.
 
@@ -212,6 +270,6 @@ For anything else, see [When something goes wrong](../07-when-something-goes-wro
 
 ## Why does it work this way?
 
-What the hunt was built to do is in the [Ruby and Sapphire wild encounter spec](../../specs/rs-wild-encounter.md). How the bot reads the game, and where the speed numbers come from, is in the [research notes](../../research/rs-wild-encounter.md).
+What the hunt was built to do is in the [Ruby and Sapphire wild encounter spec](../../specs/rs-wild-encounter.md), and training and the walks in the [navigation and training spec](../../specs/rs-navigation-and-training.md). How the bot reads the game, and where the speed numbers come from, is in the research notes for [the wild hunt](../../research/rs-wild-encounter.md) and for [navigation and training](../../research/rs-navigation-and-training.md).
 
 Next: [Discord](../05-discord.md)

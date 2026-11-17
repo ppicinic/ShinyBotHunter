@@ -87,7 +87,7 @@ If the Pokémon that knows Headbutt is the one following you, it does the headbu
 
 ## How does it heal?
 
-Only when training. Before each encounter, the bot checks the Pokémon that will fight. If it is down to a quarter of its HP or less, or has fewer than 3 PP left across its damaging moves, the bot walks to the nearest Pokémon Center, heals, and walks back home.
+Only when training. Before each encounter, the bot checks the Pokémon that will fight. If it is down to a quarter of its HP or less, or has fewer than 3 PP left across its damaging moves, the bot walks to the nearest Pokémon Center, heals, and walks back home. The backend's window shows why, as `[Orchestrator] heal trip: <name> HP <hp>/<max>, damaging PP <pp>`, or `[Orchestrator] heal trip: switch slot <n> is empty`.
 
 It runs from any wild battle on the way there and back. Those Pokémon are still written to the encounter log, and a Pokémon you are hunting for still stops the bot.
 
