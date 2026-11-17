@@ -181,7 +181,7 @@ namespace ShinyBotHunter.Tests
             // HGSS with the stub parser and a recording save. FakeBot reads zeros, so every box slot is empty.
             GameProfile profile = new(hgss.Flavor, hgss.Capabilities, [0], hgss.Addresses, new PidSpeciesParser(), hgss.BattleParser,
                 hgss.CreateOverworldReader, hgss.Maps, hgss.Graph, hgss.Pathfinding, hgss.CreateStateReader, hgss.CreateBattleEvent,
-                (_, _) => { calls.Add("save"); return Task.CompletedTask; });
+                (_, _) => { calls.Add("save"); return Task.CompletedTask; }, createNavigatorEvent: hgss.CreateNavigatorEvent);
             FakeBot bot = new(Task.CompletedTask, profile) { PartyBlocks = [Block(TargetPid, TargetSpecies)] };
             GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
             state.TargetPokemon = Caught();

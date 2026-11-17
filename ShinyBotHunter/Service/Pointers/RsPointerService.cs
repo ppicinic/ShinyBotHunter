@@ -7,9 +7,10 @@ namespace ShinyBotHunter.Service.Pointers
     ///
     /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and three
-    /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/> and <see cref="StopLearningYesNo"/>,
-    /// differ between the games: that is the per-game part, chosen by <see cref="For"/> from the game code.
+    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and four
+    /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/>, <see cref="StopLearningYesNo"/> and
+    /// <see cref="PartyMenuMainCallback2"/>, differ between the games: that is the per-game part, chosen by
+    /// <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
     /// relocate its save block, so the party is simply at a fixed address. That is why
@@ -22,10 +23,12 @@ namespace ShinyBotHunter.Service.Pointers
         private static readonly RsPointerService Sapphire = new()
         {
             WaitForAorBPress = 0x080670E5, DeleteMoveYesNo = 0x081D8ED2, StopLearningYesNo = 0x081D8EE1,
+            PartyMenuMainCallback2 = 0x0806AF01,
         };
         private static readonly RsPointerService Ruby = new()
         {
             WaitForAorBPress = 0x080670E1, DeleteMoveYesNo = 0x081D8F42, StopLearningYesNo = 0x081D8F51,
+            PartyMenuMainCallback2 = 0x0806AEFD,
         };
 
         /// <summary>
@@ -57,6 +60,13 @@ namespace ShinyBotHunter.Service.Pointers
         // game; observed on Sapphire 1.2 and Ruby 1.2 (research R1), both 1.1 values decomp only; QA: none yet:
         // rs-train-learn-refuse (Ruby: none yet)
         public uint? StopLearningYesNo { get; private init; }
+
+        // CB2_PartyMenuMain, callback 2 while the party menu runs: the battle party list takes keys only with it set and the
+        // palette fade off; ROM code, stored with the Thumb bit as RAM holds it (pret symbols line 4647: Sapphire 0806af00,
+        // Ruby 0806aefc, rev 1 equal to rev 2); constant, per game; observed on Sapphire 1.2 and Ruby 1.2 (research "The
+        // in-battle switch, read frame by frame" S1, S10), both 1.1 values decomp only; QA: none yet: rs-train-switch
+        // (Ruby: none yet: rs-train-switch-ruby)
+        public uint? PartyMenuMainCallback2 { get; private init; }
 
         // gPlayerPartyCount = 0x03004350, gPlayerParty = 0x03004360, both in IWRAM. Anchor is the
         // count, so the party sits a fixed 0x10 beyond it and the existing offset fields still apply.

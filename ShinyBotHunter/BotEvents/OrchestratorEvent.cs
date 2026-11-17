@@ -37,7 +37,8 @@ namespace ShinyBotHunter.BotEvents
         private IServiceProvider provider;
         // Made at the first BattleStart from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
         private IBotEvent<GameState>? battleEvent;
-        private NavigatorEvent navigatorEvent;
+        // Made at the first navigation state from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
+        private IBotEvent<GameState>? navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
         private PokemonPersistenceService persistenceService;
@@ -48,7 +49,6 @@ namespace ShinyBotHunter.BotEvents
         {
             this.encounterParams = encounterParams;
             this.provider = provider;
-            navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
@@ -108,7 +108,7 @@ namespace ShinyBotHunter.BotEvents
                      || topState == EventState.HealAtPokemonCenter
                      || topState == EventState.ReturnToStart)
                 {
-                    await navigatorEvent.ExecuteWithResultAsync(state, cancellationToken);
+                    await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();

@@ -392,6 +392,80 @@ The battle-side trackers and cursors are in `gSharedMem` and the same in every R
 
 From the action menu: Down to POKéMON (cursor 2), A; the party screen opens (callback 2 `CB2_PartyMenuMain`). Down moves the party cursor, which is `data[0]` of the sprite named by the party task's `data[3] >> 8` (here `0x02020142`, sprite 4). A on the slot opens SHIFT / SUMMARY / CANCEL, A on SHIFT returns to the battle in under a second; 8.7 s later the action menu is back with `gBattlerPartyIndexes[0]` (`0x02024A6A`) reading 1 and the battler's species the Zigzagoon's. The submenu's readiness was not gated in the spike (a fixed wait); the party task's function changes when it opens.
 
+Amended 2026-11-17 (T2, #431) from the readings in the next section (observed): the party list takes keys only once callback 2 is `CB2_PartyMenuMain` and the palette fade is off, 50 to 53 frames after the read before the A on POKéMON; SHIFT takes A on the first read that shows the popup with the fade off; nothing waits for a button between SHIFT and the next action menu; and that menu came 13.3 s after the popup read (792 to 801 frames), not 8.7 s.
+
+## The in-battle switch, read frame by frame
+
+Added 2026-11-17 (T2, #431), from a fourth spike on the QA emulator (sound off): `SA-Wild` (Sapphire 1.2) then `RU-Wild` (Ruby 1.2), one at a time, each on the `qa-route101` save in the Route 101 grass. These are the readings S0 to S11 of the switch plan (#431). Every reading is one request of 16 blocks, so all its values are from one frame, plus the party cursor read (a second request, a frame later) while a party task is up. The snapshot was logged on every change, and on every poll from the A on POKéMON to the return to the battle; reads came on about four frames in five. Values marked observed were read on the emulator; values marked not read are from the decomp (`pret/pokeruby`) or from pret's symbol tables only.
+
+**The second party member** was built in party RAM, not caught: the lead's 100 bytes copied to slot 2 and the party count written 2 in the free field, then that record raised to Lv 20 (experience 5,460, the level byte, HP 60 of 60 and the five stats 40 written). It was sent out, took hits, used Tackle and Growl, knocked out wild Pokémon, gained experience, levelled up and (unplanned, at Lv 21) evolved into Marshtomp. Both records have the same personality value.
+
+### What the readings change
+
+1. **The party task is up with the palette fade off before the fade-in starts** (observed). In all four openings (three on Sapphire, one on Ruby) the task `HandleBattlePartyMenu` first reads with callback 2 `CB2_InitPartyMenu` and the fade **off**; callback 2 stays `CB2_InitPartyMenu` for at least two reads; then callback 2 is `CB2_PartyMenuMain` with the fade **on**; the fade goes off about 22 frames later. A Down sent on the first read with the task and the fade off was dropped all three times it was tried. Every read with callback 2 `CB2_PartyMenuMain` before the list took keys had the fade on, so "the task, callback 2 `CB2_PartyMenuMain`, the fade off" was true only once the list took keys. Not every frame was sampled, so that gate is a rule from four openings, not a proof (see "Not read").
+2. **The party records are swapped in memory for about 22 frames after SHIFT** (observed). While the task is `Task_809527C` and `Task_80952B4`, slot 0 of `gPlayerParty` holds the battler and slot 1 the trainee (HP read 60, 25 where it was 25, 60); they are back when the task is gone. A record read by slot in that window is the other Pokémon's.
+3. **`CB2_ReshowBattleScreenAfterMenu` is per game** (observed): `0x0807ADCD` on Sapphire, `0x0807ADC9` on Ruby. The bot does not read it.
+4. **`0x0202E8F4` is written only when the party menu closes** (observed: 1 after SHIFT, 0 after B) and is stale in between: it read 1 through the whole next battle's party screen, including at the refusal. The bot does not read it.
+
+### Addresses
+
+From pret/pokeruby's `symbols` branch, commit 78b1990, as in "Addresses from pret's symbol tables" below. `CB2_PartyMenuMain` (line 4647): Sapphire `0806af00`, Ruby `0806aefc`, revision 1 equal to revision 2. `RsPointerService.PartyMenuMainCallback2` stores them + 1 (`0x0806AF01`, `0x0806AEFD`), as RAM holds them: observed on Sapphire 1.2 and Ruby 1.2, the 1.1 values not read. `CB2_InitPartyMenu` (line 4655): Sapphire `0806b484`, Ruby `0806b480`, observed + 1 on 1.2; not a member. Revision 0 has other values for both (`0806aee0` / `0806aedc` and `0806b464` / `0806b460`; not read; the profile refuses revision 0).
+
+### Readings
+
+Sapphire unless noted. Every value in this table is observed unless the row says not read.
+
+| Reading | What was seen | Against the plan |
+|---|---|---|
+| S0, Down on the very first read of the action menu | taken: the cursor 0 to 2 on the next read (Sapphire f 1889, Ruby f 1761) | taken, both games; the dropped Right, Down of the training round did not repeat |
+| S1, the controller after A on POKéMON | `PlayerBufferRunCommand` one read after A, `OpenPartyMenuToChooseMon` with the fade on from the next, for about 21 frames with callback 2 still the battle's; then `WaitForMonSelection` with the task | as expected |
+| S1 (a), the task against the fade | see point 1: the task first read 24 to 26 frames after the read before A, the fade on 4 or 5 frames after that, the fade off 50 to 53 frames after the read before A | **different** |
+| S1 (b), the cursor and the sprite index | the cursor reads 0 from the first read with the task. `data[3]` reads **0 on the first read** and 0x0400 from the next (sprite 4), so the sprite index is not stable from the first read | different in that detail |
+| S1 (c), the gap | every read between A and the task: callback 2 the battle's, the battle window 0, the controller as above. With the stale tracker 3 (after a move learned over a slot): tracker 3 and the script pointer the stale `0x081D8D78` on every read; callback 2 is never anything but the battle's and the party menu's, and the pointer is never `DeleteMoveYesNo` | as expected: nothing there reads as the forget screen |
+| S1 (d), Down with the task and the fade on | dropped (three times, both games): the cursor still 0 when the fade ended | as expected |
+| S1 (e), Down with the fade off after the fade-in | taken: the cursor 1 two or three frames after the read it was sent on (three times, both games) | as expected |
+| S2, the cursor round the list (two Pokémon) | 1, 7, 0, 1, each 3 frames after the read before the press, about 5 frames apart; the task stays `HandleBattlePartyMenu`, the fade off. On a second opening (the next battle) the cursor starts at 0 | as expected |
+| S3, A on the slot | the task function is `Task_HandlePopupMenuInput` 5 to 13 frames after the read before A (8, 13, 5 on Sapphire; 8 on Ruby); `data[3]` unchanged (0x0400), `gMenu.cursorPos` 0, the fade off, the party cursor still 1. A sent on the first read that shows the popup was **taken** (four times, both games) | as expected, except that the function does not change on A's own frame as far as the reads show |
+| S4, A on SHIFT | `Task_809527C` on the read 2 frames later, `Task_80952B4` with the fade on 2 frames after that; `0x0202E8F4` 1 and `0x0202E8F5` 1 from the first of them; `gBattlePartyCurrentOrder` 0x01 to 0x10. The task gone 23 frames later; callback 2 `CB2_SetUpReshowBattleScreenAfterMenu` (one read, seen once), `ReshowBattleScreenAfterMenu`, `CB2_ReshowBattleScreenAfterMenu`, then `BattleMainCB2` 61 to 63 frames after the popup read | as expected |
+| S4, the battle window while the party menu owns it | **0 on every read** from the A on POKéMON until callback 2 is the battle's again, in five passes through the party screen (three switches, one refusal and cancel, Ruby) | as expected: never 5, 8 or 9 |
+| S5, `0x02024A6A` through the switch | 0 to 1 at 166 or 167 frames after the popup read (Sapphire twice, Ruby once), with the script pointer `0x081D8E33` (Sapphire, `BattleScript_DoSwitchOut + 0x11`; Ruby `0x081D8EA3`), the fade on (the ball), before "Go!"; it holds to the menu. The next action menu 792 to 801 frames (13.3 s) after the popup read, the action cursor 0 | as expected; the spike's 8.7 s is 13.3 s here |
+| S5, the messages on the way | "… come back!", "Go! …" and the wild Pokémon's move all print and clear by themselves: the window reads 3, 6, 2, 3, 0 and **never 8**. No press between SHIFT and the menu | none is a button wait |
+| S6, the party order | by decrypted record (species, experience) at the menu before, on the list, after callback 2 is the battle's again, at the next menu and after the battle: slot 0 the trainee, slot 1 the battler, every time. `gBattlePartyCurrentOrder` 0x01, 0x23, 0x45 before; 0x10, 0x23, 0x45 from SHIFT, through the battle and in the field after; 0x01 again at the next battle's intro | as expected, **except** the swap of point 2 |
+| S7, a refused SHIFT (slot 0, already in battle) | the popup, then on A the task function `Task_80954C0` (`0x080954E1`) 3 frames later, `0x0202E8F6` 1, the battle window 0, callback 2 `CB2_PartyMenuMain`, the fade off; it sat so for 3 s. One A: back to `HandleBattlePartyMenu` with `0x0202E8F6` 0 about 28 frames later, the cursor 0. One B: `Task_809527C`, `Task_80952B4`, `0x0202E8F4` 0, callback 2 back to the battle's, and the action menu with the cursor on POKéMON (2) and `0x02024A6A` 0, about 100 frames after the B | as expected |
+| S8, experience with a real switch | the trainee one short of Lv 8, the battler one short of Lv 21, the trainee switched out on turn one, the battler's Tackle knocked the wild Pokémon out. Texts (each a wait at 8): "fainted", the trainee's experience, "grew to Lv. 8"; box 1, 2, 3 with **getter 0**; the battler's experience, "grew to Lv. 21"; box 1, 2, 3 with **getter 1**. Levels after: 8 and 21 | as expected: 0 then 1, one 1, 2, 3 each |
+| S8, the trainee alone one short | not read | time; the two-box case covers the order |
+| S9, the next battle | at the intro and the first menu `0x02024A6A` reads 0 and the order 0x01 again; in the free field between they are stale (1 and 0x10) | as expected |
+| S10, Ruby | S0, S1, S3, S4, S5 as on Sapphire: the same task functions and RAM values, the same frame counts within 2; only callback 2 differs (`CB2_InitPartyMenu` `0x0806B481`, `CB2_PartyMenuMain` `0x0806AEFD`, `ReshowBattleScreenAfterMenu` `0x0807AD79`, `CB2_ReshowBattleScreenAfterMenu` `0x0807ADC9`) and the script pointer | as expected, with point 3 |
+| S11, "Use next POKéMON?" | the battler (battle HP written to 1) fainted on the wild Pokémon's second turn. "… fainted!" waits at 8 (one A). Then the prompt, unchanged for as long as it was left: callback 2 the battle's, the controller `PlayerBufferRunCommand`, the battle window **0**, the script pointer `0x081D8C56` (14 bytes before `BattleScript_FaintedMonTryChooseAnother`), `0x02024A6A` still 1, the party record's HP 0 for slot 1, no task. B (No): "Got away safely!" at 8, one A, the field free, outcome 4 | for the owner: the window is 0 there, so the text rule presses nothing |
+
+### The rule the bot uses
+
+- The party screen's cursor (the sprite `data[0]`) and the fade are read only while callback 2 is `CB2_PartyMenuMain`; before that the snapshot carries the task function alone. A Down is sent only with the list's task, that callback and the fade off, and is confirmed by the cursor leaving its value.
+- A on the slot is confirmed by `Task_HandlePopupMenuInput` with the fade off; A on SHIFT is sent on that snapshot and confirmed by the function leaving the popup.
+- From SHIFT to the next screen the battle event acts on, nothing is pressed and no party record is read (point 2). `0x02024A6A` at that action menu confirms the switch.
+- Neither `0x0202E8F4` nor `CB2_ReshowBattleScreenAfterMenu` is read.
+- A refused SHIFT (S7) reads as the battle's own turn, unchanged, and ends in the stale stop that names the switch.
+
+### Other things seen
+
+- The battler evolved after the S8 battle (Lv 21 Mudkip): the evolution scene ran for slot 1 and waited at "Congratulations" (window 8, one A). A battler that can evolve will, after a switch battle, as the trainee would (observed).
+- The first read with the party task has `data[3]` 0, so a cursor read on that read is of sprite 0, not the cursor sprite. It happened to read 0 (observed).
+- After a refused or cancelled party menu the action cursor is still on POKéMON (2) (observed).
+- After the faint and the flee, the benched slot keeps HP 0 in the record, and `0x02024A6A` and the order stay stale (1, 0x10) in the field until the next battle starts (observed).
+
+### Not read
+
+- A real caught Pokémon as the battler (the battler is a copy of the lead; it fought and gained experience as any other).
+- A party of more than two (the cursor's path past slot 1, the sprite index with more sprites).
+- S8 with only the trainee one short; Yes at "Use next POKéMON?"; the refusal for a fainted Pokémon ("no energy left").
+- S2, S6 to S9 and S11 on Ruby.
+- Whether any single frame shows callback 2 `CB2_PartyMenuMain` with the fade off before the fade-in: none of the reads did, but reads landed on about four frames in five.
+- Versions 1.0 and 1.1.
+
+### Evidence
+
+Not committed, kept in the orchestrator's session scratch folder: `t4.py` (the request, the cursor read, the party builder), `swA.py` (a switch battle), `swB.py` (the refusal), `log4.txt` (2,123 lines), `shots4/` (the prompt, the refusal). Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
+
 ## Training: the readings behind the move prompt, the forget screen and the evolution scene
 
 Added 2026-11-17 (T1r, #442), from a third spike on the QA emulator (sound off): `SA-Wild` (Sapphire 1.2), then `RU-Wild` (Ruby 1.2), one at a time, each on the `qa-route101` save in the Route 101 grass. These are the readings R1 to R8 that the T1 plan (#430) asked for. Every reading is one cmd 0x05 request of 16 blocks, so all its values are from one frame; frames are `gMain.vblankCounter1`. Values marked observed were read on the emulator; values marked not read are from the decomp (`pret/pokeruby`) only. Every value in this section is observed unless it says otherwise.
@@ -554,8 +628,7 @@ Not committed, kept in the orchestrator's session: the request and its drivers (
 - The 24 Secret Base layouts.
 - 144 trainer sight entries and 32 triggers whose flag or variable the prototype did not resolve (scripts that reach the battle through a `call`, special variables).
 - NPCs that walk a fixed path (only wander and walk ranges are marked), and objects a script moves.
-- The lead fainting in training, running out of PP, EXP for a switched-out lead (the two-getter reading used an Exp. Share holder, never sent out). The "No" answer to the in-battle move prompt and a Pokémon that evolves while it is not the lead were read since ("Training: the readings behind the move prompt, the forget screen and the evolution scene", R1, R6 and R7), and that section lists what it did not read.
-- The party submenu gated at all.
+- The lead fainting in training, running out of PP. EXP for a switched-out lead has since been read with a real switch ("The in-battle switch, read frame by frame", S8). The "No" answer to the in-battle move prompt and a Pokémon that evolves while it is not the lead were read since ("Training: the readings behind the move prompt, the forget screen and the evolution scene", R1, R6 and R7), and that section lists what it did not read.
 - Ruby, for the first spike: the maps, the walks, healing, the switch and the first training run ran on Sapphire 1.2 only; the battle-side addresses are shared, the field-side functions are not. The trainer speech and the training readings were read on Ruby 1.2 as well (their sections say what was not).
 
 ## What this means for the bot
@@ -573,7 +646,7 @@ Added 2026-11-17 (N3a, #427), from pret/pokeruby's `symbols` branch at commit 78
 | Symbol | Line | Sapphire 1.2 / 1.1 | Ruby 1.2 / 1.1 | Member |
 |---|---|---|---|---|
 | `WaitForAorBPress` | 4437 | `080670e4` | `080670e0` | `WaitForAorBPress` (per game) |
-| `CB2_PartyMenuMain` | 4647 | `0806af00` | `0806aefc` | none |
+| `CB2_PartyMenuMain` | 4647 | `0806af00` | `0806aefc` | `PartyMenuMainCallback2` (per game; observed on Sapphire 1.2 and Ruby 1.2, 2026-11-17) |
 | `gSaveBlock1` | 106 | `02025734` | same | `EventFlags` (+ 0x1220), `Vars` (+ 0x1340) |
 | `gTrainerBattleOpponent` | 210 | `0202ff5e` | same | `TrainerBattleOpponent` (observed on Sapphire 1.2 and Ruby 1.2, 2026-11-17; QA: rs-nav-trainer) |
 | `gFieldMessageBoxWindow` | 131 | `0202e87c` | same | `FieldMessageWindowState` (+ 0x16) |

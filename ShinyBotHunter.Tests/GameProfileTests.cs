@@ -37,7 +37,12 @@ namespace ShinyBotHunter.Tests
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: true,
-                HasWishmakerJirachi: false), profile.Capabilities);
+                HasWishmakerJirachi: false,
+                HasChainedEncounter: true,
+                HasStaticEncounter: true,
+                HasHeadbuttTrees: true,
+                HasPickup: true,
+                HasWildRunChecks: false), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
@@ -47,12 +52,17 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(profile.Pathfinding);
             Assert.NotNull(profile.CreateBattleEvent);
             Assert.NotNull(profile.SaveGame);
+            NavigatorEvent navigator = new(new PokemonStateReader());
+            Assert.Same(navigator, profile.CreateNavigatorEvent!(new ServiceCollection().AddSingleton(navigator).BuildServiceProvider()));
+            Assert.Null(profile.TrainingRefusal);
         }
 
         [Fact]
         public void RsProfileIsConsistent()
         {
-            GameProfile profile = RsProfile.Create(Metadata());
+            MapService maps = new(new Dictionary<int, Map>());
+
+            GameProfile profile = RsProfile.Create(Metadata(), maps);
 
             Assert.Equal(GameFlavor.RS, profile.Flavor);
             Assert.Equal(new GameCapabilities(
@@ -63,7 +73,12 @@ namespace ShinyBotHunter.Tests
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
                 HasShinyStarterHunt: false,
-                HasWishmakerJirachi: true), profile.Capabilities);
+                HasWishmakerJirachi: true,
+                HasChainedEncounter: false,
+                HasStaticEncounter: false,
+                HasHeadbuttTrees: false,
+                HasPickup: false,
+                HasWildRunChecks: true), profile.Capabilities);
             Assert.Null(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
@@ -71,18 +86,37 @@ namespace ShinyBotHunter.Tests
             Assert.IsType<RsPointerService>(profile.Addresses("AXVE", 2));
             Assert.NotNull(profile.Addresses("AXPE", 1).BoxLayout);
             Assert.NotNull(profile.Addresses("AXVE", 2).BoxLayout);
-            Assert.Null(profile.Maps);
+            Assert.Same(maps, profile.Maps);
             Assert.Null(profile.Graph);
             Assert.Null(profile.Pathfinding);
             Assert.NotNull(profile.CreateBattleEvent);
             Assert.NotNull(profile.SaveGame);
+            var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
+            Assert.IsType<RsNavigatorEvent>(profile.CreateNavigatorEvent!(provider));
+            Assert.Null(profile.TrainingRefusal!(RsPointerService.For("AXPE")));
+            Assert.Null(profile.TrainingRefusal!(RsPointerService.For("AXVE")));
+            Assert.Equal(RsProfile.NoTrainingAddresses, profile.TrainingRefusal!(RsPointerService.For(null)));
+            Assert.Equal(RsProfile.NoTrainingAddresses, profile.TrainingRefusal!(RsPointerService.For("AXPJ")));
+        }
+
+        [Theory]
+        [InlineData("AXPE")]
+        [InlineData("AXVE")]
+        public void Revision1_HasThePerGamePart(string gameCode)
+        {
+            GameProfile profile = RsProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()));
+
+            IPointerService table = profile.Addresses(gameCode, 1);
+
+            Assert.NotNull(((RsPointerService)table).DeleteMoveYesNo);
+            Assert.Null(profile.TrainingRefusal!(table));
         }
 
         [Fact]
         public void UnknownRevisionThrows()
         {
             GameProfile hgss = HgssProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()), new GraphService());
-            GameProfile rs = RsProfile.Create(Metadata());
+            GameProfile rs = RsProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()));
 
             var hgssError = Assert.Throws<NotSupportedException>(() => hgss.Addresses(null, 1));
             var rsError = Assert.Throws<NotSupportedException>(() => rs.Addresses(null, 0));
@@ -142,7 +176,8 @@ namespace ShinyBotHunter.Tests
                 createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
                 maps,
                 graph,
-                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset)));
+                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset),
+                createNavigatorEvent: _ => throw new NotImplementedException()));
 
             Assert.Contains("no state reader", error.Message);
         }
@@ -169,34 +204,78 @@ namespace ShinyBotHunter.Tests
             Assert.Contains("declares HasTraining but not HasOverworldNavigation", error.Message);
         }
 
-        [Fact]
-        public void TrainingWithoutBattleParserThrows()
-        {
-            HgssPointerService table = new();
-            MapService maps = new(new Dictionary<int, Map>());
-            GraphService graph = new();
+        // Navigation and training as RS will declare them (FR-18b): maps, an overworld reader and a navigator part, and no
+        // graph, pathfinding or battle parser.
+        private static GameProfile RsShapedNavigatingProfile(bool navigator = true) => new(
+            GameFlavor.RS,
+            new GameCapabilities(
+                HasOverworldNavigation: true,
+                HasWildEncounters: false,
+                HasTraining: true,
+                HasEggs: false,
+                CanReadBoxes: false,
+                HasSoftResetStarterHunt: false,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: false),
+            [1],
+            (_, _) => new RsPointerService(),
+            new Gen3PokemonParser(Metadata()),
+            battleParser: null,
+            createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),
+            maps: new MapService(new Dictionary<int, Map>()),
+            createNavigatorEvent: navigator ? _ => throw new NotImplementedException() : null);
 
+        [Fact]
+        public void NavigationWithoutANavigatorEventThrows()
+        {
+            var error = Assert.Throws<ArgumentException>(() => RsShapedNavigatingProfile(navigator: false));
+
+            Assert.Contains("declares HasOverworldNavigation but has no navigator event", error.Message);
+        }
+
+        [Fact]
+        public void NavigationWithMapsAndANavigatorButNoGraphIsAccepted()
+        {
+            GameProfile profile = RsShapedNavigatingProfile();
+
+            Assert.True(profile.Capabilities.HasOverworldNavigation);
+            Assert.Null(profile.Graph);
+            Assert.Null(profile.Pathfinding);
+        }
+
+        [Fact]
+        public void TrainingWithoutBattleParserIsAccepted()
+        {
+            GameProfile profile = RsShapedNavigatingProfile();
+
+            Assert.True(profile.Capabilities.HasTraining);
+            Assert.Null(profile.BattleParser);
+        }
+
+        [Theory]
+        [InlineData(false, "no graph")]
+        [InlineData(true, "no pathfinding")]
+        public void StaticEncounterWithoutPathfindingThrows(bool withGraph, string missing)
+        {
             var error = Assert.Throws<ArgumentException>(() => new GameProfile(
                 GameFlavor.HGSS,
                 new GameCapabilities(
-                    HasOverworldNavigation: true,
+                    HasOverworldNavigation: false,
                     HasWildEncounters: false,
-                    HasTraining: true,
+                    HasTraining: false,
                     HasEggs: false,
                     CanReadBoxes: false,
                     HasSoftResetStarterHunt: false,
                     HasShinyStarterHunt: false,
-                    HasWishmakerJirachi: false),
+                    HasWishmakerJirachi: false,
+                    HasStaticEncounter: true),
                 [0],
-                (_, _) => table,
+                (_, _) => new HgssPointerService(),
                 new HgssPokemonParser(Metadata()),
-                battleParser: null,
-                createOverworldReader: (memory, t) => new HgssOverworldReader(memory, (HgssPointerService)t),
-                maps,
-                graph,
-                new PathfindingService(maps, graph, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset)));
+                new HgssBattlePokemonParser(),
+                graph: withGraph ? new GraphService() : null));
 
-            Assert.Contains("declares HasTraining but has no battle parser", error.Message);
+            Assert.Contains($"declares HasStaticEncounter but has {missing}", error.Message);
         }
 
         // Wild encounters with every part they need, and no navigation or battle parser.

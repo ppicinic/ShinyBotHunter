@@ -7,8 +7,11 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -40,6 +43,7 @@ namespace ShinyBotHunter.Tests
         private const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
         private const string NoTargetNeedsTraining = "No Target needs a train mode, which Ruby and Sapphire do not have yet.";
         private const string NoTraining = "Training is not available on Ruby and Sapphire yet.";
+        private const string NoPickup = "Pickup is not available on Ruby and Sapphire.";
         private const string StandInTheField = "Close any menu or message and stand in the field.";
         private const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
         private const string LeadFainted = "The first Pokémon in the party has fainted.";
@@ -51,11 +55,13 @@ namespace ShinyBotHunter.Tests
 
         private static readonly byte[][] OneHealthy = [Mon(20, 7)];
 
-        private static async Task<(BotService Service, FakeBot Bot, ScreenReader Screen, FakeMemoryClient Memory)> LaunchAsync(byte[][] party)
+        private static async Task<(BotService Service, FakeBot Bot, ScreenReader Screen, FakeMemoryClient Memory)> LaunchAsync(byte[][] party,
+            GameCapabilities? capabilities = null)
         {
-            var rs = RsProfile.Create(new PokemonMetadataService(null!));
-            var profile = new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
-                rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame);
+            var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+            var profile = new GameProfile(rs.Flavor, capabilities ?? rs.Capabilities, [0], (_, _) => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
+                rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
+                createNavigatorEvent: rs.CreateNavigatorEvent);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
@@ -104,6 +110,38 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(NoTraining, disabled["TrainType"]["Switch"]);
             Assert.Equal(NoTraining, disabled["Pickup"]["true"]);
             Assert.Equal(["EncounterType", "TargetType", "TrainType", "Pickup"], disabled.Keys);
+        }
+
+        [Fact]
+        public void DisabledByCapabilities_Hgss_IsEmpty()
+        {
+            GameProfile hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
+
+            Assert.Empty(BotService.DisabledByCapabilities(hgss.Capabilities));
+        }
+
+        [Fact]
+        public void DisabledByCapabilities_NavigatingTrainingProfile_HeadbuttAndPickupOnly()
+        {
+            // RS as T3b will declare it: navigation, training and the run checks, none of HGSS's own members.
+            GameCapabilities caps = new(
+                HasOverworldNavigation: true,
+                HasWildEncounters: true,
+                HasTraining: true,
+                HasEggs: false,
+                CanReadBoxes: true,
+                HasSoftResetStarterHunt: true,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: true,
+                HasWildRunChecks: true);
+
+            var disabled = BotService.DisabledByCapabilities(caps);
+
+            Assert.Equal(["EncounterType", "Pickup"], disabled.Keys);
+            Assert.Equal(["Headbutt"], disabled["EncounterType"].Keys);
+            Assert.Equal(NoHeadbuttTrees, disabled["EncounterType"]["Headbutt"]);
+            Assert.Equal(["true"], disabled["Pickup"].Keys);
+            Assert.Equal(NoPickup, disabled["Pickup"]["true"]);
         }
 
         [Fact]
@@ -203,6 +241,28 @@ namespace ShinyBotHunter.Tests
             var (service, _, _, _) = await LaunchAsync(OneHealthy);
 
             Assert.Equal("A x or y range must be supplied for Run Encounter Event", await RefusalAsync(service, Run()));
+        }
+
+        [Theory]
+        [InlineData(true, StandInTheField)]
+        [InlineData(false, "A x or y range must be supplied for Run Encounter Event")]
+        public async Task RunChecks_FollowHasWildRunChecks(bool hasWildRunChecks, string refusal)
+        {
+            // A training profile, so Standard is not greyed; the field is not free, which only the run checks read.
+            GameCapabilities caps = new(
+                HasOverworldNavigation: true,
+                HasWildEncounters: true,
+                HasTraining: true,
+                HasEggs: false,
+                CanReadBoxes: true,
+                HasSoftResetStarterHunt: false,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: false,
+                HasWildRunChecks: hasWildRunChecks);
+            var (service, _, screen, _) = await LaunchAsync(OneHealthy, caps);
+            screen.Screen = GameScreen.FieldTask;
+
+            Assert.Equal(refusal, await RefusalAsync(service, Run(a => a.TrainType = TrainType.Standard)));
         }
 
         [Fact]

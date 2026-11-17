@@ -20,7 +20,7 @@ namespace ShinyBotHunter.Tests
 
         // The DAO is only read by InitAsync; Parse uses the static gender table and an empty
         // metadata lookup, so a null DAO is never touched.
-        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!));
+        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>()));
 
         private static PokemonStateReader BuildReader() => new();
 
@@ -169,6 +169,20 @@ namespace ShinyBotHunter.Tests
             Assert.Null(table.WaitForAorBPress);
             Assert.Null(table.DeleteMoveYesNo);
             Assert.Null(table.StopLearningYesNo);
+            Assert.Null(table.PartyMenuMainCallback2);
+        }
+
+        // pret symbols, commit 78b1990, line 4647: CB2_PartyMenuMain, + 1 for the Thumb bit.
+        [Theory]
+        [InlineData("AXPE", 2, 0x0806AF01u)]
+        [InlineData("AXPE", 1, 0x0806AF01u)]
+        [InlineData("AXVE", 2, 0x0806AEFDu)]
+        [InlineData("AXVE", 1, 0x0806AEFDu)]
+        public void EachGameHasItsPartyMenuMain(string gameCode, int revision, uint callback2)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, revision);
+
+            Assert.Equal(callback2, table.PartyMenuMainCallback2);
         }
 
         [Theory]
