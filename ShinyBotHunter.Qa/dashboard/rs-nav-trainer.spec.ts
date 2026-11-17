@@ -68,6 +68,8 @@ const DO_TRAINER_BATTLE: Record<string, number> = { 'SA-Wild': 0x0819f8a2, 'RU-W
 const WAIT_FOR_A_OR_B: Record<string, number> = { 'SA-Wild': 0x080670e5, 'RU-Wild': 0x080670e1 }
 // RsPointerService: HandleInputChooseMove, the move cursor and the level-up box counter.
 const MOVE_FN = 0x0802c68d
+// GameStateWait.BattleMenuWait, then A: the battle menus take keys only about 5 frames after they are built.
+const MENU_PRESS = 'W.10;H.A.2'
 const MOVE_CURSOR = 0x02024e64
 const BOX_COUNTER = 0x0201609c
 
@@ -166,17 +168,19 @@ async function resumeDuringSpeech(card: Locator, rom: string, runStart: string, 
  * The operator's part, played by the scenario while the bot is Waiting: A at the speech's line break, A at its last button
  * wait, then the fight to the free field (A at a battle window wait 5, 8 or 9 or the level-up box 1 or 2, FIGHT at action
  * cursor 0, the first move at move cursor 0), each press `H.A.2` sent once on its gate and confirmed by the byte it
- * changes, bounded at 3 minutes. Then his flag set and gBattleOutcome 1 (won).
+ * changes, bounded at 3 minutes; FIGHT and the move as `W.10;H.A.2`, the bot's BattleMenuWait. Then his flag set and gBattleOutcome 1 (won).
  */
 async function winTheBattle(rom: string): Promise<void> {
   const criterion = '"the scenario presses through the speech and wins the battle"'
   let presses = 0
-  const press = async (what: string, gate: unknown, read: () => Promise<number>, left: (v: number) => boolean, ms = 5000): Promise<void> => {
-    step(`scenario press ${++presses}: A ${what}, gate ${JSON.stringify(gate)}`)
-    await runMacro('H.A.2')
+  const press = async (what: string, gate: unknown, read: () => Promise<number>, left: (v: number) => boolean, ms = 5000, macro = 'H.A.2'): Promise<void> => {
+    step(`scenario press ${++presses}: ${macro} ${what}, gate ${JSON.stringify(gate)}`)
+    await runMacro(macro)
     await pollWhileWaiting(read, left, ms, `${criterion}: A ${what}, confirmed`)
   }
-  await press('at the speech\'s line break', { window: 9 }, () => readU16(FIELD_WINDOW), (v) => v !== 9)
+  const lineBreak = { window: await readU16(FIELD_WINDOW), script: hex8(await readU32(SCRIPT_PTR)) }
+  expect(lineBreak, `${criterion}: the speech's line break`).toEqual({ window: 9, script: hex8(DO_TRAINER_BATTLE[rom] + 4) })
+  await press('at the speech\'s line break', lineBreak, () => readU16(FIELD_WINDOW), (v) => v !== 9)
   // The last line: the script's waitbuttonpress (research, row c2), then A, which starts the battle.
   await pollWhileWaiting(() => readU32(SCRIPT_PTR), (v) => v === DO_TRAINER_BATTLE[rom] + 5, 5000, `${criterion}: the script at DoTrainerBattle + 5`)
   const wait = { status: await readU8(SCRIPT_STATUS), mode: await readU8(SCRIPT_MODE), native: hex8(await readU32(SCRIPT_NATIVE)) }
@@ -193,10 +197,10 @@ async function winTheBattle(rom: string): Promise<void> {
     if (Date.now() > deadline) throw new Error(`${criterion}: not in the free field within 3 minutes; last read ${JSON.stringify(r)}`)
     if (r.battleBit === 1 && r.controller === MENU_FN) {
       expect(r.action, `${criterion}: the action cursor at the menu`).toBe(0)
-      await press('on FIGHT', r, () => readU32(CONTROLLER), (v) => v !== MENU_FN)
+      await press('on FIGHT', r, () => readU32(CONTROLLER), (v) => v !== MENU_FN, 5000, MENU_PRESS)
     } else if (r.battleBit === 1 && r.controller === MOVE_FN) {
       expect(r.move, `${criterion}: the move cursor at the move list`).toBe(0)
-      await press('on the first move', r, () => readU32(CONTROLLER), (v) => v !== MOVE_FN)
+      await press('on the first move', r, () => readU32(CONTROLLER), (v) => v !== MOVE_FN, 5000, MENU_PRESS)
     } else if (r.battleBit === 1 && (r.box === 1 || r.box === 2)) {
       await press(`at the level-up box page ${r.box}`, r, () => readU8(BOX_COUNTER), (v) => v !== r.box)
     } else if (r.battleBit === 1 && BUTTON_WAITS.includes(r.window)) {
@@ -272,12 +276,14 @@ async function walkVariant(rom: string): Promise<void> {
   step(`the trip out: ${first[0].trim()}`)
   expect([tileOf(first, 1), tileOf(first, 4)], '"the walk toward the Center": the first plan').toEqual([CENTER, START_TILE])
 
-  // The hand-off: a lock of 240 frames or more on his sight tile, from a segment that started on another tile (its held B
+  // The hand-off: a lock of 200 frames or more on his sight tile (the 4 s wall-clock hand-off lands at about 239 to 242
+  // frames; the longest lock that is not a trainer's is 93), from a segment that started on another tile (its held B
   // is from its first frame, before the lock); then nothing pressed up to the stop.
   const handOffAt = indexOf(log, NAV_HANDOFF)
   const handOff = NAV_HANDOFF.exec(log[handOffAt])!
   expect(handOffAt, '"the hand-off before the stop"').toBeLessThan(at)
-  expect(Number(handOff[3]), `"the 4 s hand-off": ${handOff[0]}`).toBeGreaterThanOrEqual(240)
+  step(`the hand-off after ${handOff[3]} frames locked`)
+  expect(Number(handOff[3]), `"the 4 s hand-off": ${handOff[0]}`).toBeGreaterThanOrEqual(200)
   expect(tileOf(handOff, 4), `"the hand-off on the stop's tile": ${handOff[0]}`).toBe(named(tile))
   const segmentAt = log.slice(0, handOffAt).map((l) => SEGMENT.exec(l)).filter((m) => m !== null).pop()!
   const startedOn = handOff[1] === '1' ? tileOf(first, 4) : tileOf(SEGMENT_ON.exec(log.slice(0, handOffAt).filter((l) => SEGMENT_ON.test(l)).pop()!)!, 3)
@@ -372,7 +378,9 @@ async function runVariant(rom: string): Promise<void> {
 
     log = backendLog()
     failOnStops(log, TRAINER_STOP)
-    checkPresses(log)
+    // Each part's battles on their own, so part 2's first battle is not counted from part 1's last.
+    checkPresses(part1)
+    checkPresses(log.slice(part1.length))
     expect(log.filter((l) => TRAINER_STOP.test(l)), '"no second stop": the trainer stop lines').toHaveLength(1)
     expect(log.filter((l) => OFF_LINE.test(l)), '"back on the run line": an off-the-run-line stop').toEqual([])
     const t = idleTile as Tile | null
