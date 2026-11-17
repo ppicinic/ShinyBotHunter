@@ -7,9 +7,9 @@ namespace ShinyBotHunter.Service.Pointers
     ///
     /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. A function the bot compares against a RAM pointer is a ROM address, and one of
-    /// those, <see cref="WaitForAorBPress"/>, differs between the games: that is the per-game part,
-    /// chosen by <see cref="For"/> from the game code.
+    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and three
+    /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/> and <see cref="StopLearningYesNo"/>,
+    /// differ between the games: that is the per-game part, chosen by <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
     /// relocate its save block, so the party is simply at a fixed address. That is why
@@ -19,8 +19,14 @@ namespace ShinyBotHunter.Service.Pointers
     public class RsPointerService : IPointerService
     {
         private static readonly RsPointerService Shared = new();
-        private static readonly RsPointerService Sapphire = new() { WaitForAorBPress = 0x080670E5 };
-        private static readonly RsPointerService Ruby = new() { WaitForAorBPress = 0x080670E1 };
+        private static readonly RsPointerService Sapphire = new()
+        {
+            WaitForAorBPress = 0x080670E5, DeleteMoveYesNo = 0x081D8ED2, StopLearningYesNo = 0x081D8EE1,
+        };
+        private static readonly RsPointerService Ruby = new()
+        {
+            WaitForAorBPress = 0x080670E1, DeleteMoveYesNo = 0x081D8F42, StopLearningYesNo = 0x081D8F51,
+        };
 
         /// <summary>
         /// The table for a game code: "AXPE" Sapphire, "AXVE" Ruby, rev 1 and rev 2 alike (pret symbols, commit 78b1990).
@@ -38,6 +44,19 @@ namespace ShinyBotHunter.Service.Pointers
         // constant, per game; observed on Sapphire 1.2 (research R119), Ruby and both 1.1 values decomp only;
         // QA: none yet: rs-nav-heal-return (Ruby: none yet)
         public uint? WaitForAorBPress { get; private init; }
+
+        // BattleScript_AskToLearnMove + 0x11, the battle script's yesnoboxlearnmove at "Delete a move?"; ROM data, the
+        // script address as gBattlescriptCurrInstr holds it, no Thumb bit (pret symbols line 24455: Sapphire 081d8ec1,
+        // Ruby 081d8f31, rev 1 equal to rev 2); constant, per game; observed on Sapphire 1.2 and Ruby 1.2 (research
+        // "Training: the readings behind …" R1), both 1.1 values decomp only; QA: none yet: rs-train-learn-slot1 (Ruby:
+        // none yet)
+        public uint? DeleteMoveYesNo { get; private init; }
+
+        // BattleScript_AskToLearnMove + 0x20, the battle script's yesnoboxstoplearningmove at "Stop learning?"; ROM data,
+        // the script address as gBattlescriptCurrInstr holds it, no Thumb bit (pret symbols line 24455); constant, per
+        // game; observed on Sapphire 1.2 and Ruby 1.2 (research R1), both 1.1 values decomp only; QA: none yet:
+        // rs-train-learn-refuse (Ruby: none yet)
+        public uint? StopLearningYesNo { get; private init; }
 
         // gPlayerPartyCount = 0x03004350, gPlayerParty = 0x03004360, both in IWRAM. Anchor is the
         // count, so the party sits a fixed 0x10 beyond it and the existing offset fields still apply.
@@ -263,5 +282,29 @@ namespace ShinyBotHunter.Service.Pointers
         // gSprites, 65 sprites of 0x44 bytes, data[0] at + 0x2E (include/sprite.h:207); root (absolute; pret symbols
         // line 5); base decomp only, sprite 4's data[0] at 0x02020142 observed; QA: none yet: rs-train-switch
         public uint Sprites => 0x02020004;
+
+        // Training, docs/research/rs-navigation-and-training.md "Training: the readings behind the move prompt, the forget
+        // screen and the evolution scene" (R1 to R7).
+
+        // gBattlescriptCurrInstr (u32), the battle script pointer: it stays on a yes/no instruction while that prompt
+        // waits; root (absolute; pret symbols line 57); observed (R1); QA: none yet: rs-train-learn-refuse
+        public uint BattlescriptCurrInstr => 0x02024C10;
+
+        // gMoveToLearn (u16), the move offered; meaningful only while the prompt is up; root (absolute; pret symbols
+        // line 101); observed (R2); QA: none yet: rs-train-learn-slot1
+        public uint MoveToLearn => 0x02024E82;
+
+        // sub_809E260, the summary screen's input task on the forget-a-move screen; constant (ROM code, pret symbols
+        // line 6648, 0809e280 + 1); observed (R4, R7); QA: none yet: rs-train-learn-slot1
+        public uint SummaryMoveInputTask => 0x0809E281;
+
+        // SummaryScreen_DestroyTask, the task function from the frame A is taken on the forget-a-move screen; constant
+        // (ROM code, pret symbols line 6646, 0809e15c + 1); observed (R4); QA: none yet: rs-train-learn-slot1
+        public uint SummaryDestroyTask => 0x0809E15D;
+
+        // gPaletteFade (0x0202F388) + 7, active in bit 7 (struct PaletteFadeControl, include/palette.h:37); the forget
+        // screen ignores keys while it is set; root (absolute; pret symbols line 177); observed (R4); QA: none yet:
+        // rs-train-learn-slot1
+        public uint PaletteFadeActive => 0x0202F38F;
     }
 }
