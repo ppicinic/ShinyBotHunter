@@ -114,6 +114,31 @@ function checkWalks(log: string[]): void {
   })
 }
 
+/**
+ * "Back on the start tile", after the nurse: the last arrival on the start tile, then `arrived back at start`; or, when a
+ * wild battle starts on the last step onto the start tile, that battle bit on it, a plan from it with 0 segments, and
+ * `already at start` (no arrival line).
+ */
+function checkHome(log: string[], healed: number, start: string): void {
+  const criterion = '"back on the start tile"'
+  const cleared = indexOf(log, CLEARING, healed)
+  expect(cleared, `${criterion}: no "Clearing navigation path" after the nurse`).toBeGreaterThan(healed)
+  const reason = CLEARING.exec(log[cleared])![1]
+  const before = log.slice(healed, cleared)
+  step(`back on the start tile: ${reason}`)
+  if (reason === 'arrived back at start') {
+    const home = before.filter((l) => ARRIVED.test(l)).pop()
+    expect(home, `${criterion}: no arrival line before the clear`).toBeDefined()
+    expect(tileOf(ARRIVED.exec(home!)!, 1), `${criterion}: ${home}`).toBe(start)
+    return
+  }
+  const bit = before.map((l) => NAV_BATTLE.exec(l)).filter((m) => m !== null).pop()
+  expect(bit && tileOf(bit, 3), `${criterion}: "already at start" with no battle bit on the start tile before it`).toBe(start)
+  const zero = before.slice(before.indexOf(bit!.input)).map((l) => PLAN.exec(l)).find((m) => m !== null)
+  expect(zero && [tileOf(zero, 1), tileOf(zero, 4), zero[10]], `${criterion}: no plan from the start tile with 0 segments after ${bit!.input.trim()}`)
+    .toEqual([start, start, '0'])
+}
+
 /** FR-11: from the arrival at the counter, six presses, each sent on its gate and confirmed by the value it changes. */
 function checkNurse(log: string[], from: number, rom: string): void {
   const criterion = '"the nurse\'s six presses, each on its gate"'
@@ -204,10 +229,7 @@ test(`RS heal trip (${VARIANT}): lead HP ${HP}, Train Standard to 101, the walk 
   const back = PLAN.exec(log[indexOf(log, PLAN, healed)])!
   step(`the return plan: ${back[0].trim()}`)
   expect([tileOf(back, 1), tileOf(back, 4)], `${criterion('back on the start tile')}: the return plan`).toEqual([START_TILE, CENTER])
-  const home = ARRIVED.exec(log[arrivals[arrivals.length - 1]])!
-  expect(tileOf(home, 1), `${criterion('back on the start tile')}: the last arrival`).toBe(START_TILE)
-  expect(CLEARING.exec(log[indexOf(log, CLEARING)])![1], criterion('back on the start tile')).toBe('arrived back at start')
-  expect(indexOf(log, CLEARING), `${criterion('back on the start tile')}: the clear before the last arrival`).toBeGreaterThan(arrivals[arrivals.length - 1])
+  checkHome(log, healed, START_TILE)
   const walkBack = log.slice(healed).filter((l) => SEGMENT.test(l)).map((l) => SEGMENT.exec(l)!)
   // The exit mat's arrow warp: Down to the mat (7, 8), then Down on it, the run waiting for a y outside.
   expect([walkBack[0][3], tileOf(walkBack[0], 4)], `${criterion('back on the start tile')}: the return's first segment`).toEqual(['M.Down.8.33707828:H.B.1', 'OldaleTown_PokemonCenter_1F (7, 8)'])
@@ -217,12 +239,26 @@ test(`RS heal trip (${VARIANT}): lead HP ${HP}, Train Standard to 101, the walk 
   if (VARIANT === 'route101') {
     // The plan with its segments: cost 45, the five macros, each on its tile; a wild battle on the way leaves some unwalked.
     expect([out[8], out[10]], `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: cost and segments`).toEqual(['45', '5'])
+    // The segments walked under the first plan are the table's, in order; a wild battle on the way (FR-9) ends that plan
+    // early, is fled (checkWalks), and a new plan takes the walk on to the counter.
     const walkIn = log.slice(plans[0], arrivals[0])
-    const interrupted = walkIn.find((l) => NAV_BATTLE.test(l))
-    if (interrupted) throw new Error(`a wild battle cut the walk in (${interrupted.trim()}), so not all five macros were walked; rerun`)
-    const walked = walkIn.filter((l) => SEGMENT.test(l)).map((l) => SEGMENT.exec(l)!).map((m) => [m[3], tileOf(m, 4)])
-    expect(walked, `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: the research table's five macros`).toEqual(FIVE)
-    expect(atCounter[4], `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: ${atCounter[0]}`).toBe('5')
+    const battleAt = walkIn.findIndex((l) => NAV_BATTLE.test(l))
+    const walked = walkIn.slice(0, battleAt === -1 ? walkIn.length : battleAt).filter((l) => SEGMENT.test(l)).map((l) => SEGMENT.exec(l)!)
+      .map((m) => [m[3], tileOf(m, 4)])
+    if (battleAt === -1) {
+      step('the walk in: the five macros, no battle')
+      expect(walked, `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: the research table's five macros`).toEqual(FIVE)
+      expect(atCounter[4], `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: ${atCounter[0]}`).toBe('5')
+    } else {
+      step(`the walk in: ${walked.length} of the five macros, then a wild battle: ${walkIn[battleAt].trim()}`)
+      expect(walked.length, `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: no segment before the battle`).toBeGreaterThan(0)
+      expect(walked, `${criterion('the plan to Oldale\'s Pokémon Center with its segments')}: the first plan's segments, a prefix of the table's`).toEqual(FIVE.slice(0, walked.length))
+      const again = indexOf(walkIn, PLAN, battleAt)
+      expect(again, `"a re-plan after a battle": no plan line between ${walkIn[battleAt].trim()} and the arrival`).toBeGreaterThan(battleAt)
+      const replan = PLAN.exec(walkIn[again])!
+      step(`the walk in planned again: ${replan[0].trim()}`)
+      expect(tileOf(replan, 1), '"a re-plan after a battle": its goal').toBe(CENTER)
+    }
 
     // The first battle after the return: FIGHT, and it ends with nothing on RUN. Its first move choice reads the lead's HP
     // from the party record at the first turn, before any damage: full.

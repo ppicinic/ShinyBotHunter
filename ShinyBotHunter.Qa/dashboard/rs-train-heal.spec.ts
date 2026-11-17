@@ -4,7 +4,7 @@
 // nurse's per-game last wait (WaitForAorBPress). The walk itself is rs-nav-heal-return's to check in detail.
 import { expect, test } from '@playwright/test'
 import { step } from './driver'
-import { ARRIVED, CHOSEN, CLEARING, FLEEING, HEAL_TRIP, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, rsRom, trainingRun, waitLine, writeSlot } from './rs-training'
+import { ARRIVED, CHOSEN, CLEARING, FLEEING, HEAL_TRIP, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, rsRom, trainingRun, waitLine, writeSlot } from './rs-training'
 import { ENCOUNTER, OVER } from './rs-wild'
 import { backendLog, MINUTE } from './static'
 
@@ -22,7 +22,7 @@ test('RS heal trip for PP: the lead\'s PP 0, Train Standard to 101, the Pokémon
   test.setTimeout(25 * MINUTE)
   const rom = rsRom()
   step(`on ${rom}`)
-  const { log, idle } = await trainingRun(async () => {
+  const { log, idle, lead } = await trainingRun(async () => {
     // The save's lead has three moves; the fourth slot is empty with PP 0.
     await writeSlot(1, { pp: [0, 0, 0, 0] })
   }, { trainType: 'Standard', targetLevel: 101 }, async () => {
@@ -44,7 +44,7 @@ test('RS heal trip for PP: the lead\'s PP 0, Train Standard to 101, the Pokémon
   // T3b (#451), not merged: the plan's L7 line, as the plan words it. The orchestrator checks it once T3b merges.
   const trip = log.map((l) => HEAL_TRIP.exec(l)).find((m) => m !== null)
   expect(trip, '"the Pokémon Center trip": no "[Orchestrator] heal trip:" line (T3b)').toBeTruthy()
-  expect([trip![2] === trip![3], trip![4]], `"the Pokémon Center trip" for PP, with HP full: ${trip![0]}`).toEqual([true, '0'])
+  expect([Number(trip![2]), trip![4]], `"the Pokémon Center trip" for PP, with the lead's HP as launched (${lead.hp}): ${trip![0]}`).toEqual([lead.hp, '0'])
 
   // The plan, the arrival, the nurse's six presses with the game's last wait, and the party's HP full.
   const plan = PLAN.exec(log[indexOf(log, PLAN)])!
@@ -63,9 +63,22 @@ test('RS heal trip for PP: the lead\'s PP 0, Train Standard to 101, the Pokémon
   // The return to the start tile.
   const back = PLAN.exec(log[indexOf(log, PLAN, healed)])!
   expect([tileOf(back, 1), tileOf(back, 4)], `"the Pokémon Center trip": the return plan: ${back[0]}`).toEqual([START_TILE, CENTER])
-  const cleared = indexOf(log, CLEARING)
-  const home = ARRIVED.exec(log.slice(0, cleared).filter((l) => ARRIVED.test(l)).pop()!)!
-  expect([tileOf(home, 1), CLEARING.exec(log[cleared])![1]], '"the Pokémon Center trip": back on the start tile').toEqual([START_TILE, 'arrived back at start'])
+  // The last arrival on the start tile, or, with a wild battle on the last step onto it, that battle bit on it, a plan
+  // from it with 0 segments and `already at start`.
+  const cleared = indexOf(log, CLEARING, healed)
+  const reason = CLEARING.exec(log[cleared])![1]
+  const before = log.slice(healed, cleared)
+  step(`back on the start tile: ${reason}`)
+  if (reason === 'arrived back at start') {
+    const home = ARRIVED.exec(before.filter((l) => ARRIVED.test(l)).pop()!)!
+    expect(tileOf(home, 1), `"the Pokémon Center trip": back on the start tile: ${home[0]}`).toBe(START_TILE)
+  } else {
+    const bit = before.map((l) => NAV_BATTLE.exec(l)).filter((m) => m !== null).pop()
+    expect(bit && tileOf(bit, 3), '"the Pokémon Center trip": "already at start" with no battle bit on the start tile before it').toBe(START_TILE)
+    const zero = before.slice(before.indexOf(bit!.input)).map((l) => PLAN.exec(l)).find((m) => m !== null)
+    expect(zero && [tileOf(zero, 1), tileOf(zero, 4), zero[10]], '"the Pokémon Center trip": a plan from the start tile with 0 segments after the battle')
+      .toEqual([START_TILE, START_TILE, '0'])
+  }
 
   // Training resumes: the first battle after the return chooses a move with PP, and nothing fled for want of PP.
   const chosen = CHOSEN.exec(log[indexOf(log, CHOSEN, cleared)])!
