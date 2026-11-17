@@ -48,5 +48,16 @@ namespace ShinyBotHunter.Games.Rs
             byte[] id = await memory.ReadBytesAsync(addresses.PlayerObjectId, 1, cancellationToken);
             return id[0];
         }
+
+        // The event flags and the script variables, raw, from one request on one frame. Not on IOverworldReader: HGSS
+        // has no such read.
+        public async Task<(byte[] Flags, byte[] Vars)> ReadScriptStateAsync(CancellationToken cancellationToken)
+        {
+            int[] direct = [];
+            ChainBlockResult[] read = await memory.ReadChainBlocksAsync(
+                [new(addresses.EventFlags, direct, addresses.EventFlagBytes), new(addresses.Vars, direct, addresses.VarBytes)],
+                ct: cancellationToken);
+            return (read[0].Bytes, read[1].Bytes);
+        }
     }
 }
