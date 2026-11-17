@@ -16,8 +16,9 @@ namespace ShinyBotHunter.BotEvents
     // The Ruby and Sapphire battle of a wild encounter, from BattleStart to BattleComplete or Waiting (docs/specs/rs-wild-encounter.md
     // FR-9 to FR-11, FR-14; docs/research/rs-wild-encounter.md "Presses", "Tuned for speed", "A failed escape"): A at each
     // message, the read at the first action menu, then RUN. In Battle mode it fights instead, and answers the level-up box
-    // and the new-move prompt (docs/specs/rs-navigation-and-training.md FR-13 to FR-15, FR-18c). Every press is sent from
-    // the snapshot its rule needs and confirmed by the byte it changes; anything else stops the bot in Waiting for the operator.
+    // and the new-move prompt, then the evolution scene's texts and prompt (docs/specs/rs-navigation-and-training.md FR-13
+    // to FR-16, FR-18c). Every press is sent from the snapshot its rule needs and confirmed by the byte it changes; anything
+    // else stops the bot in Waiting for the operator.
     public class RsBattleEvent : AbstractBotEvent<GameState>
     {
         internal const string NotWild = SpinEncounterEvent.NotAWildBattle;
@@ -170,11 +171,15 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // Before this battle's first menu the outcome can still be the last battle's: it stays until the next
                     // battle starts.
-                    // The level-up box and the move prompt come only from the training reader. A forget-a-move screen met here,
-                    // outside a Yes, is not waited for: it ends in the stale stop that names it.
-                    s = await GameStateWait.UntilAsync(reader, "a battle message, the action menu or the free field",
+                    // The level-up box, the move prompt and the evolution scene come only from the training reader. A
+                    // forget-a-move screen met here, outside a Yes, is not waited for: it ends in the stale stop that names it.
+                    // In the scene only its text waits (the battle window at RsStateReader's ButtonWaits: 8 read, 5 and 9
+                    // decomp only) and its yes/no are taken (FR-16): its animation, its first text
+                    // (data[0] 2, which goes on by itself) and the window's long holds (4 and 10) get nothing.
+                    s = await GameStateWait.UntilAsync(reader, "a battle message, the action menu, an evolution text wait or yes/no, or the free field",
                         x => x.Screen is GameScreen.BattleMessage or GameScreen.BattleMenu or GameScreen.FieldFree or GameScreen.BattleExpPrompt
                                 or GameScreen.BattleMoveLearnPrompt
+                            || (x.Screen == GameScreen.Evolution && (x.TextPrinter is 5 or 8 or 9 || x.Question is not null))
                             || (seenMenu && x.Outcome == BattleOutcome.Lost), stale, ct);
                     Stopwatch since = Stopwatch.StartNew();
                     if (seenMenu && s.Outcome == BattleOutcome.Lost)
@@ -202,13 +207,15 @@ namespace ShinyBotHunter.BotEvents
                         state.SwapState(EventState.BattleComplete);
                         return null;
                     }
-                    if (s.Screen == GameScreen.BattleMessage)
+                    // The scene prints in the battle window, so its text waits are passed as a battle message's (FR-16).
+                    if (s.Screen == GameScreen.BattleMessage || (s.Screen == GameScreen.Evolution && s.Question is null))
                     {
                         int? window = s.TextPrinter;
+                        string scene = s.Screen == GameScreen.Evolution ? $" in the evolution scene of slot {s.PartyMonIndex} at data[0] {s.Prompt}" : "";
                         presses += await PressAsync(bot, Macro("BattleAdvance"), ct);
                         GameSnapshot advanced = await GameStateWait.UntilAsync(reader, $"the battle window to leave {window}",
                             x => x.TextPrinter != window, stale, ct);
-                        Console.WriteLine($"[RsBattle] BattleAdvance at window {window}, {since.ElapsedMilliseconds} ms: {advanced}");
+                        Console.WriteLine($"[RsBattle] BattleAdvance{scene} at window {window}, {since.ElapsedMilliseconds} ms: {advanced}");
                         continue;
                     }
                     if (s.Screen == GameScreen.BattleExpPrompt)
@@ -223,9 +230,11 @@ namespace ShinyBotHunter.BotEvents
                         presses += sent;
                         continue;
                     }
-                    if (s.Screen == GameScreen.BattleMoveLearnPrompt)
+                    if (s.Screen is GameScreen.BattleMoveLearnPrompt or GameScreen.Evolution)
                     {
-                        // A new move with four known (FR-15). "Stop learning?" reached any way gets its Yes.
+                        // A new move with four known (FR-15), in battle or at the evolution scene's own yes/no, where the
+                        // learner is the evolving slot (data[12]) and B is sent only as the No (FR-16). "Stop learning?"
+                        // reached any way gets its Yes.
                         presses += s.Question == StopLearningQuestion
                             ? await StopLearningAsync(bot, reader, s, cursorWait, stale, ct)
                             : await AnswerMovePromptAsync(bot, reader, addresses, s,
