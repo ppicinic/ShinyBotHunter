@@ -14,7 +14,8 @@ namespace ShinyBotHunter.Tests
     {
         private static readonly MapService Rs = new(Path.Combine(RepoPaths.AppProject, "Data", "RS"), withElevationAndEvents: true);
 
-        private const int Route103 = 18, Route114 = 29, RusturfTunnel = 6148, PetalburgWoods = 6155;
+        private const int OldaleTown = 10, Route101 = 16, Route103 = 18, Route114 = 29, Route124 = 39, Underwater1 = 50;
+        private const int OldaleCenter = 514, RusturfTunnel = 6148, PetalburgWoods = 6155;
 
         public RouteSearchTests()
         {
@@ -144,6 +145,75 @@ namespace ShinyBotHunter.Tests
             // At 0 on the crossing tile, both.
             Assert.NotNull(Search(2, 2, 0, 0, 2));
             Assert.NotNull(Search(2, 2, 0, 2, 4));
+        }
+
+        // rs-nav-flags: Oldale's trigger at (8, 19) (var 0x40C7) on the way from Route 101 to the Pokémon Center
+        // counter. The other way in, by (11, 19), is closed by the flagged NPC of flag 979 until that flag is set.
+        [Fact]
+        public void LiveTrigger_IsDetouredAndOrdinaryWhenItsVariableDiffers()
+        {
+            byte[] flagSet = NoFlags();
+            flagSet[979 >> 3] |= 1 << (979 & 7);
+            byte[] varOne = NoVars();
+            varOne[(0x40C7 - 0x4000) * 2] = 1;
+
+            Route? detour = Find(Rs, Route101, 14, 4, OldaleCenter, 7, 4, new Capability(), flagSet, varOne);
+            Assert.NotNull(detour);
+            Assert.True(Crosses(detour, OldaleTown, 11, 19));
+            Assert.Empty(detour.LiveTriggers);
+
+            Route? straight = Find(Rs, Route101, 14, 4, OldaleCenter, 7, 4, new Capability(), flagSet, NoVars());
+            Assert.NotNull(straight);
+            Assert.True(Crosses(straight, OldaleTown, 8, 19));
+            Assert.Empty(straight.LiveTriggers);
+
+            Route? through = Find(Rs, Route101, 14, 4, OldaleCenter, 7, 4, new Capability(), NoFlags(), varOne);
+            Assert.NotNull(through);
+            Assert.Equal([(OldaleTown, 8, 19)], through.LiveTriggers);
+            Assert.Equal(244, through.Cost);
+        }
+
+        // FR-11's search half: the nearest Pokémon Center by route cost is the same Find with a goal predicate (the
+        // counter tile (7, 4) of the shared layout is N4's predicate).
+        [Fact]
+        public void NearestPokemonCenter_FromRoute101_IsOldale()
+        {
+            Route? route = new RouteSearch(Rs, new RsPointerService(), GameFlavor.RS).Find(
+                Route101, 14, 4, Rs.GetMap(Route101, true).ElevationAt(4, 14),
+                (m, x, y) => Rs.GetMapLookup(m).InternalName.EndsWith("_PokemonCenter_1F") && x == 7 && y == 4,
+                NoFlags(), NoVars(), new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal((OldaleCenter, 7, 4), (route.Steps[^1].Map, route.Steps[^1].X, route.Steps[^1].Y));
+        }
+
+        // FR-4a: Dive is an edge between Route 124 and Underwater1 through the one access tile (10, 3) on each side.
+        [Fact]
+        public void Dive_JoinsTheSurfaceAndUnderwaterMapsAtTheAccessTile()
+        {
+            Assert.Null(Find(Rs, Route124, 12, 5, Underwater1, 11, 3, With(CapabilityType.Surf)));
+
+            Route? route = Find(Rs, Route124, 12, 5, Underwater1, 11, 3, With(CapabilityType.Surf, CapabilityType.Dive));
+
+            Assert.NotNull(route);
+            int dive = route.Steps.ToList().FindIndex(s => s.Action == MoveAction.Dive);
+            Assert.True(dive > 0);
+            Assert.Equal((Route124, 10, 3), (route.Steps[dive - 1].Map, route.Steps[dive - 1].X, route.Steps[dive - 1].Y));
+            Assert.Equal((Underwater1, 10, 3, Direction.None), (route.Steps[dive].Map, route.Steps[dive].X, route.Steps[dive].Y, route.Steps[dive].Direction));
+        }
+
+        // FR-7: map 1 (3 x 5) has a Right connection to map 2 at offset 2, so stepping Right off (2, 4) lands on (0, 2).
+        [Fact]
+        public void Connection_ShiftsTheLandingByItsOffset()
+        {
+            Map west = new(5, 3);
+            west.Events.Connections.Add(new MapConnection(Direction.Right, 2, 2));
+            MapService maps = new(new Dictionary<int, Map> { [1] = west, [2] = new Map(5, 3) });
+
+            Route? route = new RouteSearch(maps, new RsPointerService(), GameFlavor.RS).Find(1, 2, 4, 0, (m, _, _) => m == 2, NoFlags(), NoVars(), new Capability());
+
+            Assert.NotNull(route);
+            Assert.Equal((2, 0, 2, Direction.Right), (route.Steps[^1].Map, route.Steps[^1].X, route.Steps[^1].Y, route.Steps[^1].Direction));
         }
     }
 }

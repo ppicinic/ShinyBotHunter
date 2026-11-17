@@ -81,22 +81,87 @@ namespace ShinyBotHunter.Pathfinding
         {
             State state = node.State;
             Map map = maps.GetMap(state.Map, true);
+            MapWarp? standingOn = map[state.Y, state.X] == Constant.MAP_Portal1 ? WarpAt(map, state.X, state.Y) : null;
             foreach (Direction direction in Directions)
             {
-                (int X, int Y) ahead = Ahead(state.X, state.Y, direction);
-                if (ahead.X < 0 || ahead.X >= map.Width || ahead.Y < 0 || ahead.Y >= map.Height)
+                Node? next;
+                if (standingOn is not null && standingOn.Arrow == direction)
                 {
-                    continue;
+                    // FR-7: an arrow warp fires when the player stands on it and presses its direction.
+                    next = Land(node, direction, MoveAction.Portal, standingOn.Map, standingOn.ToX, standingOn.ToY, flags, capability);
                 }
-                // HGSS: a step that turns costs double.
-                int factor = node.Direction != Direction.None && node.Direction != direction ? 2 : 1;
-                Node? next = Enter(node, direction, factor, state.Map, ahead.X, ahead.Y, false, flags, vars, capability);
+                else
+                {
+                    (int Map, int X, int Y)? ahead = Neighbour(state.Map, map, state.X, state.Y, direction);
+                    // HGSS: a step that turns costs double.
+                    int factor = node.Direction != Direction.None && node.Direction != direction ? 2 : 1;
+                    next = ahead is null ? null : Enter(node, direction, factor, ahead.Value.Map, ahead.Value.X, ahead.Value.Y, false, flags, vars, capability);
+                }
+                if (next is not null)
+                {
+                    yield return next;
+                }
+            }
+            // FR-4a: Dive joins the one access tile on the surface map and the same tile on the underwater map, both ways.
+            // The surface tile is water, so a player on it is surfing.
+            foreach (MapDive dive in map.Events.Dive)
+            {
+                Node? next = capability.CanDive && dive.X == state.X && dive.Y == state.Y
+                    ? Land(node, Direction.None, MoveAction.Dive, dive.Map, dive.X, dive.Y, flags, capability)
+                    : null;
                 if (next is not null)
                 {
                     yield return next;
                 }
             }
         }
+
+        // The tile one step from (x, y), across the map's connection when the step leaves the map: Up lands on the
+        // neighbour's bottom row, Down on its top row, Left on its right column, Right on its left column, shifted by the
+        // connection's offset (pokeruby SetPositionFromConnection). Null off an edge with no connection there.
+        private (int Map, int X, int Y)? Neighbour(int mapId, Map map, int x, int y, Direction direction)
+        {
+            (int X, int Y) ahead = Ahead(x, y, direction);
+            if (ahead.X >= 0 && ahead.X < map.Width && ahead.Y >= 0 && ahead.Y < map.Height)
+            {
+                return (mapId, ahead.X, ahead.Y);
+            }
+            foreach (MapConnection connection in map.Events.Connections.Where(c => c.Direction == direction))
+            {
+                Map next = maps.GetMap(connection.Map, true);
+                (int X, int Y) landing = direction switch
+                {
+                    Direction.Up => (ahead.X - connection.Offset, next.Height - 1),
+                    Direction.Down => (ahead.X - connection.Offset, 0),
+                    Direction.Left => (next.Width - 1, ahead.Y - connection.Offset),
+                    _ => (0, ahead.Y - connection.Offset),
+                };
+                if (landing.X >= 0 && landing.X < next.Width && landing.Y >= 0 && landing.Y < next.Height)
+                {
+                    return (connection.Map, landing.X, landing.Y);
+                }
+            }
+            return null;
+        }
+
+        // A warp or the Dive edge: the player ends on (x, y) of mapId for 20 (research, "Search and macros"), at that
+        // tile's elevation with 15 read as 0 (the game spawns the player at 0, then takes the tile's elevation unless it
+        // is 15). A landing is not always passable (N1b: two Safari Zone mats land on the gate guard's 0x80 tile); such
+        // an edge is not taken.
+        private Node? Land(Node node, Direction direction, MoveAction action, int mapId, int x, int y, byte[] flags, Capability capability)
+        {
+            Map map = maps.GetMap(mapId, true);
+            byte kind = map[y, x];
+            if (kind == Constant.MAP_Blocked || kind == Constant.MAP_FlaggedNpc && !Hidden(map, x, y, flags) || kind == Constant.MAP_Surf && !capability.CanSurf)
+            {
+                return null;
+            }
+            byte elevation = map.ElevationAt(y, x);
+            return new Node(new State(mapId, x, y, elevation == 15 ? 0 : elevation, kind == Constant.MAP_Surf, ""), node.Cost + 20, direction, action, false, node);
+        }
+
+        // Every 0x01 tile is a warp's (N1b writes the kind only where a warp fires).
+        private static MapWarp WarpAt(Map map, int x, int y) => map.Events.Warps.First(w => w.X == x && w.Y == y);
 
         // The step from node onto (x, y) of mapId in direction. jumped: the player is carried there by a ledge or a
         // waterfall, which the game does without the elevation check (ShouldJumpLedge before the collision in
@@ -120,7 +185,16 @@ namespace ShinyBotHunter.Pathfinding
             switch (kind)
             {
                 case Constant.MAP_Free:
-                case Constant.MAP_Portal1: // an arrow warp's mat, walked over in another direction
+                    cost = 1;
+                    break;
+                case Constant.MAP_Portal1:
+                    // FR-7: a step-on warp (door, stairs, ladder) fires when it is stepped onto, at any elevation (plan of
+                    // #426, decision 2); an arrow warp's mat is walked over like ground.
+                    MapWarp warp = WarpAt(map, x, y);
+                    if (warp.Arrow == Direction.None)
+                    {
+                        return Land(node, direction, MoveAction.Portal, warp.Map, warp.ToX, warp.ToY, flags, capability);
+                    }
                     cost = 1;
                     break;
                 case Constant.MAP_Grass:
@@ -215,12 +289,8 @@ namespace ShinyBotHunter.Pathfinding
         // The tile beyond a ledge or a waterfall, entered by the same rules (HGSS's recursion in GetNeighboringMapPoint).
         private Node? Beyond(Node node, Direction direction, int factor, int mapId, Map map, int x, int y, byte[] flags, byte[] vars, Capability capability)
         {
-            (int X, int Y) ahead = Ahead(x, y, direction);
-            if (ahead.X < 0 || ahead.X >= map.Width || ahead.Y < 0 || ahead.Y >= map.Height)
-            {
-                return null;
-            }
-            return Enter(node, direction, factor, mapId, ahead.X, ahead.Y, true, flags, vars, capability);
+            (int Map, int X, int Y)? ahead = Neighbour(mapId, map, x, y, direction);
+            return ahead is null ? null : Enter(node, direction, factor, ahead.Value.Map, ahead.Value.X, ahead.Value.Y, true, flags, vars, capability);
         }
 
         // HGSS's Strength push: the player stays, the boulder moves one tile onto free ground; 10, and 40 for every push
