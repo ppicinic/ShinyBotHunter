@@ -445,12 +445,7 @@ namespace ShinyBotHunter.BotEvents
 
         // One switch try from the action menu at, to the battler's 0-based slot (FR-17; research "The in-battle switch, read
         // frame by frame"). Every press is gated on its snapshot and confirmed by the byte it changes: the action cursor to
-        // POKéMON, A (the screen leaving the action menu); on the party list, only once it takes keys (the task, callback 2
-        // CB2_PartyMenuMain and the fade off), Down until the cursor is on the slot (each confirmed by the cursor leaving its
-        // value; Down alone reaches any slot, last -> 7 -> 0), A (the popup's task function), then A on SHIFT with the popup
-        // up and the fade off (the function leaving the popup). Then nothing is pressed and no party record is read until
-        // the next screen the main loop acts on: "Come back", "Go!" and the wild Pokémon's move go by themselves, and for
-        // about 22 frames after SHIFT the party records are swapped. A refused SHIFT ends in this wait's stale stop.
+        // POKéMON, A (the screen leaving the action menu), then the party list's walk to the slot and SHIFT (PartySendAsync).
         private static async Task<int> SwitchAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, GameSnapshot at,
             int slot, int attempt, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
         {
@@ -467,14 +462,33 @@ namespace ShinyBotHunter.BotEvents
             Stopwatch since = Stopwatch.StartNew();
             (_, int pokemon) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on POKéMON (switch try {attempt} of {MaxSwitchTries})",
                 "the screen leaving the action menu", menu, x => x.Screen != GameScreen.BattleMenu, cursorWait, stale, ct);
-            presses += pokemon;
+            return presses + pokemon + await PartySendAsync(bot, reader, addresses, slot, "the switch", $"switch try {attempt} of {MaxSwitchTries}", "POKéMON",
+                "SHIFT", since, cursorWait, stale, ct);
+        }
 
+        // The battle party list's walk to a party slot and its popup's first item: SHIFT in a switch, SEND OUT in the menu a
+        // faint forces (research "A battler faints: the readings", F4, F5). On the list, only once it takes keys (the task,
+        // callback 2 CB2_PartyMenuMain and the fade off): the slot's row from gBattlePartyCurrentOrder, read once, since the
+        // rows are not the party's order after a switch (F7); Down until the cursor is on the row (each confirmed by the
+        // cursor leaving its value; Down alone reaches any row, last -> 7 -> 0), A (the popup's task function), then A on the
+        // item with the popup up and the fade off (the function leaving the popup). Then nothing is pressed and no party
+        // record is read until the next screen the main loop acts on: "Come back", "Go!" and the wild Pokémon's move go by
+        // themselves, and for about 22 frames after SHIFT the party records are swapped. A refused item ends in this wait's
+        // stale stop. what, heading and after name the walk in its waits and its first line.
+        private static async Task<int> PartySendAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, int slot, string what,
+            string heading, string after, string item, Stopwatch since, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
+        {
             bool TakesKeys(GameSnapshot x) => x.Screen == GameScreen.OtherApp && x.AppState == 0;
-            GameSnapshot list = await GameStateWait.UntilAsync(reader, $"the party list to take keys (the switch to slot {slot})",
+            GameSnapshot list = await GameStateWait.UntilAsync(reader, $"the party list to take keys ({what} to slot {slot})",
                 x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyMenuTask, stale, ct);
-            Console.WriteLine($"[RsBattle] switch try {attempt} of {MaxSwitchTries} to slot {slot}: the party list takes keys, "
-                + $"{since.ElapsedMilliseconds} ms after POKéMON: {list}");
-            while (list.PartyMonIndex != slot)
+            Console.WriteLine($"[RsBattle] {heading} to slot {slot}: the party list takes keys, "
+                + $"{since.ElapsedMilliseconds} ms after {after}: {list}");
+            // Row p shows the party slot in nibble p: byte p / 2, the high nibble for even p; the case byte follows.
+            byte[] order = (await bot.ReadChainBlocksAsync([new(addresses.BattlePartyCurrentOrder, [], 4)], ct: ct))[0].Bytes;
+            int row = Enumerable.Range(0, 6).First(p => ((order[p / 2] >> (p % 2 == 0 ? 4 : 0)) & 0xF) == slot);
+            Console.WriteLine($"[RsBattle] party menu order {order[0]:X2} {order[1]:X2} {order[2]:X2}, case byte {order[3]}: slot {slot} is on row {row}");
+            int presses = 0;
+            while (list.PartyMonIndex != row)
             {
                 int from = list.PartyMonIndex!.Value;
                 (list, int down) = await PressConfirmedAsync(bot, reader, Down, $"Down on the party list from {from}", $"the party cursor leaving {from}",
@@ -482,15 +496,15 @@ namespace ShinyBotHunter.BotEvents
                 presses += down;
             }
             (GameSnapshot popup, int slotA) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on party slot {slot}",
-                "the SHIFT submenu", list, x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyPopupTask, cursorWait, stale, ct);
-            (_, int shift) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on SHIFT at {popup}", "the submenu closing",
+                $"the {item} submenu", list, x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyPopupTask, cursorWait, stale, ct);
+            (_, int chosen) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on {item} at {popup}", "the submenu closing",
                 popup, x => !(x.Screen == GameScreen.OtherApp && x.TaskFunction == addresses.BattlePartyPopupTask), cursorWait, stale, ct);
 
-            Stopwatch afterShift = Stopwatch.StartNew();
-            GameSnapshot back = await GameStateWait.UntilAsync(reader, $"the next action menu after SHIFT (the switch to slot {slot})",
+            Stopwatch afterItem = Stopwatch.StartNew();
+            GameSnapshot back = await GameStateWait.UntilAsync(reader, $"the next action menu after {item} ({what} to slot {slot})",
                 x => x.Screen != GameScreen.BattleTurn, stale, ct);
-            Console.WriteLine($"[RsBattle] after SHIFT, {afterShift.ElapsedMilliseconds} ms: {back}");
-            return presses + slotA + shift;
+            Console.WriteLine($"[RsBattle] after {item}, {afterItem.ElapsedMilliseconds} ms: {back}");
+            return presses + slotA + chosen;
         }
 
         // The move offered and the learner's record, read only while the prompt is up (gMoveToLearn goes stale after it),

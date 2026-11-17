@@ -31,6 +31,7 @@ namespace ShinyBotHunter.Tests
         private const uint TrainerBattleOpponent = 0x0202FF5E;
         private const uint EventFlags = 0x02026954;
         private const uint PlayerLocation = 0x02025738;
+        private const uint PartyOrder = 0x02038470;
 
         private const ushort Wild = 0x0004;
 
@@ -227,6 +228,8 @@ namespace ShinyBotHunter.Tests
             public List<IReadOnlyList<ChainBlockRequest>> Requests { get; } = [];
             // The snapshot last served at each request that reads a party record.
             public List<GameSnapshot> RecordReadsAt { get; } = [];
+            // gBattlePartyCurrentOrder and the party menu's case byte, by default the identity in the voluntary menu.
+            public byte[] Order { get; set; } = [0x01, 0x23, 0x45, 0x00];
             // The training reader, null in Flee mode; the damage picker, the move collection and the new-move question, which
             // throw unless a test sets them.
             public IGameStateReader? TrainingReader { get; set; }
@@ -308,6 +311,9 @@ namespace ShinyBotHunter.Tests
                         {
                             partyRecords[slot].CopyTo(bytes, slot * Gen3PokemonParser.PartyBlockSize);
                         }
+                        break;
+                    case PartyOrder:
+                        bytes = battle!.Order;
                         break;
                     case MoveToLearn:
                         // Bide.
@@ -1553,6 +1559,7 @@ namespace ShinyBotHunter.Tests
             Assert.Contains("[RsBattle] BattleConfirm on POKéMON (switch try 1 of 3)", log);
             Assert.Contains("confirmed by the screen leaving the action menu", log);
             Assert.Contains("[RsBattle] switch try 1 of 3 to slot 1: the party list takes keys", log);
+            Assert.Contains("[RsBattle] party menu order 01 23 45, case byte 0: slot 1 is on row 1", log);
             Assert.Contains("[RsBattle] Down on the party list from 0", log);
             Assert.Contains("confirmed by the party cursor leaving 0", log);
             Assert.Contains("[RsBattle] BattleConfirm on party slot 1", log);
