@@ -129,7 +129,7 @@ flowchart TD
   BS --> ER["EventRegistry<br/>EventRegistration: name / options / Requires / OwnsEmulators / Create"]
   BS --> BF[BotFactory]
   BF --> GC["GameContext<br/>ConsoleType / GameFlavor / RomInfo / ports / window slot"]
-  BF --> GP["GameProfiles.Get(flavor)<br/>GameProfile.Addresses(revision)"]
+  BF --> GP["GameProfiles.Get(flavor)<br/>GameProfile.Addresses(gameCode, revision)"]
   BF --> Bot
   Bot --> L["ILauncher<br/>BizHawkApiHawkLauncher"]
   Bot --> CC["ICommandClient<br/>BizHawkCommandClient"]
@@ -150,7 +150,7 @@ flowchart TD
 ```
 
 ### Bot
-`IBot` is `ILauncher + ICommandClient + IMemoryClient` plus the bot's game: `Profile` (its `GameProfile`), `Addresses` (the launched revision's `IPointerService`), `State` (`IGameStateReader`, which says where the game is) and `Overworld` (`IOverworldReader`: map id, position, facing). `Bot` is pure delegation. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry; `CreateBot` resolves the profile from `GameProfiles` and the address table from the ROM revision (a revision with no table refuses the launch, FR-3 of the profile spec), then builds the ApiHawk launcher, the clients and the two readers from the profile's factory delegates. A flavor without a reader has none; `State` and `Overworld` throw `InvalidOperationException` naming the flavor, and the capability flags keep such a bot off the events that would ask.
+`IBot` is `ILauncher + ICommandClient + IMemoryClient` plus the bot's game: `Profile` (its `GameProfile`), `Addresses` (the launched ROM's `IPointerService`), `State` (`IGameStateReader`, which says where the game is) and `Overworld` (`IOverworldReader`: map id, position, facing). `Bot` is pure delegation. `BotFactory.BuildGameContext` identifies the ROM from its header (`RomInfoService`), derives the ApiHawk ports (`20000/20001 + 2 × position`) and window geometry; `CreateBot` resolves the profile from `GameProfiles` and the address table from the ROM's game code and revision (a revision with no table refuses the launch, FR-3 of the profile spec), then builds the ApiHawk launcher, the clients and the two readers from the profile's factory delegates. A flavor without a reader has none; `State` and `Overworld` throw `InvalidOperationException` naming the flavor, and the capability flags keep such a bot off the events that would ask.
 
 `BizHawkApiHawkLauncher.LaunchAsync` (through `Bot.LaunchAsync`): start EmuHawk under a reader slot of `BizHawkReaderWriterLock`, wait for its window, fixed 5 s delay, connect both clients, verify the running game code. `DisposeAsync` takes the writer lock so a shutdown never overlaps a launch.
 
@@ -241,7 +241,7 @@ The project grows in two known directions. Each gets one seam; nothing else is g
 
 | Part | Varies by | Type | Where |
 |---|---|---|---|
-| Memory addresses and struct offsets | game and ROM revision | `IPointerService` (shared party, box and battle-mirror members, `BoxLayout?`), with the flavor-only members on `HgssPointerService` / `RsPointerService` | `profile.Addresses(revision)`: HGSS has revision 0, RS revisions 1 and 2; any other revision refuses the launch. Every member carries its decomp symbol, root-or-offset kind and QA scenario |
+| Memory addresses and struct offsets | game and ROM revision | `IPointerService` (shared party, box and battle-mirror members, `BoxLayout?`), with the flavor-only members on `HgssPointerService` / `RsPointerService` | `profile.Addresses(gameCode, revision)`: HGSS has revision 0, RS revisions 1 and 2; any other revision refuses the launch. RS adds a per-game part by game code (`RsPointerService.For`: `WaitForAorBPress`, Sapphire and Ruby differ). Every member carries its decomp symbol, root-or-offset kind and QA scenario |
 | Party/box/foe parsing and shiny check | generation | `IPokemonParser`, `IBattlePokemonParser` | `profile.Parser`, `profile.BattleParser` (null for RS) |
 | Where the game is (field free, field task, the battle screens, evolution) | game | `IGameStateReader`; `HgssFieldSystemStateReader` walks the `sFieldSysPtr` chain in one opcode `0x05` request ([state reader spec](../specs/hgss-state-reader.md)); `RsStateReader` makes seven direct reads in one request ([RS wild encounter spec](../specs/rs-wild-encounter.md), FR-7) | `profile.CreateStateReader`, exposed as `bot.State` |
 | Map id, position, facing | game | `IOverworldReader`; `HgssOverworldReader`, `RsOverworldReader` (which also reads the player's object id, off the interface) | `profile.CreateOverworldReader`, exposed as `bot.Overworld` |

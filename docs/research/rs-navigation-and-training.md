@@ -161,6 +161,32 @@ From the action menu: Down to POKéMON (cursor 2), A; the party screen opens (ca
 - The heal trip is the walk, the nurse rule, and the walk back; a battle on the way ends a segment and the route is planned again.
 - A second address table dimension is needed: field-side function addresses per game (Ruby, Sapphire), where everything so far has been one table.
 
+## Addresses from pret's symbol tables
+
+Added 2026-11-17 (N3a, #427), from pret/pokeruby's `symbols` branch at commit 78b1990: `pokesapphire_rev2.sym`, `pokeruby_rev2.sym`, `pokesapphire_rev1.sym` and `pokeruby_rev1.sym`. Every symbol below is on the same line in all four tables, so one line is given. Functions are listed as the table has them; `RsPointerService` stores them + 1, the Thumb bit, as RAM holds them. Values the spike did not read are decomp only.
+
+| Symbol | Line | Sapphire 1.2 / 1.1 | Ruby 1.2 / 1.1 | Member |
+|---|---|---|---|---|
+| `WaitForAorBPress` | 4437 | `080670e4` | `080670e0` | `WaitForAorBPress` (per game) |
+| `CB2_PartyMenuMain` | 4647 | `0806af00` | `0806aefc` | none |
+| `gSaveBlock1` | 106 | `02025734` | same | `EventFlags` (+ 0x1220), `Vars` (+ 0x1340) |
+| `gTrainerBattleOpponent` | 210 | `0202ff5e` | same | `TrainerBattleOpponent` |
+| `gFieldMessageBoxWindow` | 131 | `0202e87c` | same | `FieldMessageWindowState` (+ 0x16) |
+| `sGlobalScriptContext` | 468 | `030005b8` | same | `ScriptNative` (+ 4) |
+| `Task_HandleYesNoInput` | 7581 | `080b5504` | same | `TaskHandleYesNoInput` |
+| `gTasks` | 642 | `03004b20` | same | `Tasks` |
+| `gMain` | 526 | `03001770` | same | `Callback2` (+ 4) |
+| `BattleMainCB2` | 1378 | `0800f808` | same | `BattleMainCallback2` |
+| `gMoveSelectionCursor` | 95 | `02024e64` | same | `MoveSelectionCursor` |
+| `gSharedMem` | 1 | `02000000` | same | `ExpGetterMonId` (+ 0x16018), `MoveLearnPromptState` (+ 0x1601A), `LevelUpBoxState` (+ 0x1609C), `ForgetMoveCursor` (+ 0x18079) |
+| `Task_EvolutionScene` | 11039 | `0811242c` | same | `TaskEvolutionScene` |
+| `gBattlerPartyIndexes` | 31 | `02024a6a` | same | `ActiveBattlerPartyIndex` |
+| `HandleBattlePartyMenu` | 6372 | `08095138` | same | `BattlePartyMenuTask` |
+| `Task_HandlePopupMenuInput` | 6379 | `08095428` | same | `BattlePartyPopupTask` |
+| `gSprites` | 5 | `02020004` | same | `Sprites` |
+
+So the "one value per game" in the Healing and Training sections holds only for `WaitForAorBPress` and `CB2_PartyMenuMain`: `Task_EvolutionScene`, the Yes/No task and the battle party menu's tasks are the same in both games, and revision 1 equals revision 2 for every value.
+
 ## Evidence
 
 On the dev PC, in `ShinyBotHunter.Qa/dashboard/qa-runs/20261115-rs-nav-training-spike/` of the spike worktree (not committed): `survey.py` and `rsmaps.py` (the generator and search) with the generated `maps.bin`, `walk.py` (routes on the emulator), `heal.py`, `heal2.py`, `fieldtalk.py` (the nurse), `battle2.py` (fighting and the level-up, move and field rules), `setexp.py`, `evo2.py`, `catch1.py`, and `shots/` (the nurse's prompts, the level-up box, the move prompt, the forget-a-move screen, the evolution, the party screen). The pokeruby checkout used is at `D:\Code\_spike_pokeruby\pokeruby`.

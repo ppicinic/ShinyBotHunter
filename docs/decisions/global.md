@@ -160,6 +160,23 @@ The game profile (plan 5.3) keys address tables by `(flavor, revision)` where a 
 
 ---
 
+## Memory addresses are keyed by game code as well as revision
+
+Status: Accepted
+Date: 2026-11-17 (orchestrator, #427)
+
+### Context
+Extends "Memory addresses are keyed by ROM revision". RS navigation and training compare the field script's native against `WaitForAorBPress`, a ROM function whose address differs between Ruby and Sapphire (pret/pokeruby symbols branch, commit 78b1990). Everything else the bot reads is the same in both games, and the same at revisions 1 and 2.
+
+### Decision
+`GameProfile.Addresses` takes the ROM's game code and its revision. The revision still decides whether there is a table at all; RS picks its per-game part by the full four-character code (`RsPointerService.For`: `AXPE` Sapphire, `AXVE` Ruby). Any other code, or none, gets the shared table with the per-game part null.
+
+### Consequences
+- A non-English RS ROM gets no per-game part; whatever needs it decides what to do there.
+- The box check at profile construction passes a null code: the RAM-only table.
+
+---
+
 ## Default branch is `main`; first tag is `v0.1.0`
 
 Status: Accepted
