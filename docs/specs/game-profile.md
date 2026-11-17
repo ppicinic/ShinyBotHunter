@@ -17,7 +17,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 
 ## Goals
 
-- G1: every game-specific address, offset, magic value and struct size is defined once, in a type whose only job is to hold it, and is looked up by `(flavor, ROM revision)`.
+- G1: every game-specific address, offset, magic value and struct size is defined once, in a type whose only job is to hold it, and is looked up by `(flavor, game code, ROM revision)`.
 - G2: pointers, parsing, state reading, capabilities and map data are separate types with one responsibility each; the profile only composes them. No type in this spec has more than one reason to change.
 - G3: a flavor says what it supports with declared flags. `BotService` refuses an unsupported action with a 400 before any event starts; the dashboard never offers it.
 - G4: each event type is one registry entry (name, parameters, required capabilities, factory). Adding an event type adds an entry, not a branch.
@@ -40,7 +40,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 |---|---|---|---|
 | FR-1 | A `GameProfile` exists per flavor and is the only way code reaches a flavor's addresses, parsers, capabilities, map data or state reader. `GameServices` and the keyed `IPointerService` / `IPokemonParser` / `IBattlePokemonParser` registrations are deleted. | Must | `grep -rn "FromKeyedServices\|GetKeyedService" ShinyBotHunter/` is empty; `GameServices.cs` is gone. |
 | FR-2 | No literal memory address or battle magic value exists outside the address tables and the state readers. | Must | `grep -rnE "0x0?2[0-9A-F]{6}\b" ShinyBotHunter --include=*.cs` matches only `Service/Pointers/`, `Games/Hgss/`, `RomInfoService.cs` (console header addresses) and `Gen3SaveFile.cs` (save format). |
-| FR-3 | Addresses are looked up by `(flavor, revision)`. Launching a ROM whose revision has no table fails at launch with a message naming the flavor and revision. | Must | Unit test: `HgssProfile.Addresses(1)` throws `NotSupportedException` with "HGSS revision 1"; `Addresses(0)` returns the table. |
+| FR-3 | Addresses are looked up by `(flavor, game code, revision)`. Launching a ROM whose revision has no table fails at launch with a message naming the flavor and revision. | Must | Unit test: `HgssProfile.Addresses(null, 1)` throws `NotSupportedException` with "HGSS revision 1"; `Addresses(null, 0)` returns the table. |
 | FR-4 | `GameCapabilities` is a record of booleans declared by each profile. `GetAvailableActions` returns only actions whose required capabilities the bot's profile has; `ExecuteEvent` returns 400 for any other. | Must | Unit test: an RS bot's action list is empty of `Wild Encounter`, `Chained Encounter`, `HGSS Togepi Egg`; starting one returns 400 with the missing capability named. |
 | FR-5 | `RsDataReader` and `HgssDataReader` are deleted. `IDataReader` is replaced by `IOverworldReader` (map, position, facing) and `IGameStateReader` (where the game is). A profile without overworld support has no overworld reader and declares `HasOverworldNavigation = false`. | Must | No reader stub throws `NotSupportedException` in `Bot/` or `Games/`; the FR-3 revision throw is the one that remains. |
 | FR-6 | Map and graph data are instances owned by the HGSS profile, loaded from `Data/HGSS`. `MapService.Instance` and `GraphService.Instance` are deleted. `PathfindingService` is built per profile. | Must | A test constructs an `HgssProfile` with the internal test constructor and no files on disk. |
@@ -57,7 +57,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 flowchart LR
   subgraph Profile["GameProfile (data only)"]
     CAP[GameCapabilities]
-    ADDR["Addresses(revision) : IPointerService"]
+    ADDR["Addresses(gameCode, revision) : IPointerService"]
     PARSE[IPokemonParser]
     BPARSE[IBattlePokemonParser]
     MAPS["MapService + GraphService (nullable)"]
@@ -110,7 +110,7 @@ public sealed record GameProfile
     public required GameCapabilities Capabilities { get; init; }
 
     /// Address table for a ROM revision. Throws NotSupportedException for a revision without one.
-    public required Func<int, IPointerService> Addresses { get; init; }
+    public required Func<string?, int, IPointerService> Addresses { get; init; }
 
     public required IPokemonParser Parser { get; init; }
     public IBattlePokemonParser? BattleParser { get; init; }          // null when the flavor has no battle reads
@@ -148,7 +148,7 @@ IOverworldReader Overworld { get; }          // same
   - **offsets from a dereferenced root**, which depend on the struct layout and not the revision: `MapIdOffset` (`-0x22DA4`), `FacingOffset` (`0x1DC4`), `BattleMenuStateOffset` (`0x230EC`, legacy), `BattleStateOffset` (`0x692C`, legacy), `EnemySetupOffset` (`0x6930`, legacy; the real pointer is `app.setup`, see the follow-up), `EnemyCountOffset` (`0xC14`), `EnemyOffset` (`0xC18`), `StarterPreviewOffset` (`0x1BC00`), and the party, box and battle-mirror offsets already there.
   The members marked legacy are the ones the [state reader spec](hgss-state-reader.md) deletes; keeping them in the table now is what makes that deletion a table edit. Deleted on 2026-10-23 by that spec's S2a-0 (#145) and S2a (#138): `EnemyAnchor` from all three tables, `BattleMenuState` from `IPointerService` and RS, and `BattleIndicator`, `BattleStateOffset` and `BattleMenuState` from `HgssPointerService`; the foe reads now walk `app.setup` (`AppSlotsOffset`, `SubAppOffset`, `AppSetupOffset`) through opcode `0x05`.
 - `HgssDataReader.cs:9-24` (nine duplicates, one with the wrong sign) are deleted with the file.
-- The HGSS table is selected by `HgssProfile.Addresses(revision)`: revision 0 returns the instance; any other throws `NotSupportedException("HGSS revision {n}: no address table. Hunts run on revision 0.")`. `RomInfo.Revision` is already read from the header at launch.
+- The HGSS table is selected by `HgssProfile.Addresses(gameCode, revision)`, with the code ignored: revision 0 returns the instance; any other throws `NotSupportedException("HGSS revision {n}: no address table. Hunts run on revision 0.")`. `RomInfo.Revision` is already read from the header at launch.
 - The RS table is selected the same way for revisions 1 and 2 (today's hunts) and returns the one existing instance for both; 0 throws. This matches today's `TestedRevisions` (`RomInfoService.cs:80-84`), which stays as the "known to work" list for the ROM scan.
 - `RsDataReader.cs:22`, `StarterHuntEvent.cs:48-49` and `RsStartMenuService.cs:21-23` move into `RsPointerService` unchanged, with the same root/offset comment.
 
@@ -172,7 +172,7 @@ public sealed record GameCapabilities(
     bool HasWishmakerJirachi);     // RS Wishmaker Jirachi hunt
 ```
 
-HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
+HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(null, r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
 
 Changed 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md), FR-1: `HasTraining` is added. HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares `HasWildEncounters`, `HasSoftResetStarterHunt` and `HasWishmakerJirachi`. The constructor checks `HasWildEncounters ⇒ CreateStateReader, CreateOverworldReader, CreateBattleEvent, SaveGame present` and `HasTraining ⇒ BattleParser present, HasOverworldNavigation`; `HasWildEncounters` no longer requires the battle parser or `HasOverworldNavigation`.
 

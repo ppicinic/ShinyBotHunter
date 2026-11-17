@@ -176,7 +176,8 @@ namespace ShinyBotHunter.Service.Pointers
         // symbols line 106); observed; QA: none yet: rs-nav-heal-return
         public uint EventFlags => 0x02026954;
 
-        // the length of EventFlags in bytes; QA: none yet: rs-nav-heal-return
+        // the length of EventFlags in bytes: FLAGS_COUNT 288 bits (include/constants/global.h:46); QA: none yet:
+        // rs-nav-heal-return
         public int EventFlagBytes => 0x120;
 
         // The byte that holds event flag `flag`; the flag is bit flag & 7 of it (research "Event flags").
@@ -186,10 +187,11 @@ namespace ShinyBotHunter.Service.Pointers
         // observed; QA: none yet: rs-nav-heal-return
         public uint Vars => 0x02026A74;
 
-        // the length of Vars in bytes; QA: none yet: rs-nav-heal-return
+        // the length of Vars in bytes: VARS_COUNT 256 u16s (include/constants/global.h:47); QA: none yet: rs-nav-heal-return
         public int VarBytes => 0x200;
 
-        // gTrainerBattleOpponent (u16); root (absolute; pret symbols line 210); decomp only; QA: none yet: rs-nav-trainer
+        // gTrainerBattleOpponent (u16), the trainer id from the first locked frame of a trainer's approach; root
+        // (absolute; pret symbols line 210); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet: rs-nav-trainer
         public uint TrainerBattleOpponent => 0x0202FF5E;
 
         // gFieldMessageBoxWindow (0x0202E87C) + 0x16 (u16), as BattleWindowState: 8 waiting for a button (5 and 9 decomp

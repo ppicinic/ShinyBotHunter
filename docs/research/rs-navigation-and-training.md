@@ -170,7 +170,7 @@ Added 2026-11-17 (N3a, #427), from pret/pokeruby's `symbols` branch at commit 78
 | `WaitForAorBPress` | 4437 | `080670e4` | `080670e0` | `WaitForAorBPress` (per game) |
 | `CB2_PartyMenuMain` | 4647 | `0806af00` | `0806aefc` | none |
 | `gSaveBlock1` | 106 | `02025734` | same | `EventFlags` (+ 0x1220), `Vars` (+ 0x1340) |
-| `gTrainerBattleOpponent` | 210 | `0202ff5e` | same | `TrainerBattleOpponent` |
+| `gTrainerBattleOpponent` | 210 | `0202ff5e` | same | `TrainerBattleOpponent` (observed on Sapphire 1.2 and Ruby 1.2, 2026-11-17; QA: rs-nav-trainer) |
 | `gFieldMessageBoxWindow` | 131 | `0202e87c` | same | `FieldMessageWindowState` (+ 0x16) |
 | `sGlobalScriptContext` | 468 | `030005b8` | same | `ScriptNative` (+ 4) |
 | `Task_HandleYesNoInput` | 7581 | `080b5504` | same | `TaskHandleYesNoInput` |
