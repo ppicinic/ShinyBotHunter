@@ -1,6 +1,5 @@
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -34,7 +33,7 @@ namespace ShinyBotHunter.Tests
 
         private static readonly GameProfile Profile = new(
             GameFlavor.HGSS,
-            new GameCapabilities(false, false, false, true, false, false, false),
+            new GameCapabilities(false, false, false, false, true, false, false, false),
             [0],
             _ => Addresses,
             new StubParser(),
@@ -111,15 +110,22 @@ namespace ShinyBotHunter.Tests
             Assert.Contains(memory.ByteReads, r => r.Length == 18 * 4096);
             // The box base is the dereferenced anchor less 0x148D8; the fake anchor reads as 0.
             Assert.Contains(memory.ByteReads, r => r.Address == unchecked((uint)(0 - 0x148D8)));
+            Assert.Contains(0x21D4158u, memory.UIntReads);
         }
 
         [Fact]
-        public async Task BoxRead_OnRsProfile_ThrowsNamingCanReadBoxes()
+        public async Task BoxRead_WithoutCanReadBoxes_ThrowsNamingIt()
         {
-            GameProfile rs = RsProfile.Create(new PokemonMetadataService(null!));
+            GameProfile noBoxes = new(
+                GameFlavor.HGSS,
+                new GameCapabilities(false, false, false, false, false, false, false, false),
+                [0],
+                _ => Addresses,
+                new StubParser(),
+                battleParser: new StubBattleParser());
             FakeMemoryClient memory = new(partySize: 0);
 
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => BuildReader().GetPokemonState(memory, rs, rs.Addresses(1)));
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => BuildReader().GetPokemonState(memory, noBoxes, Addresses));
 
             Assert.Contains("CanReadBoxes", ex.Message);
             Assert.Null(memory.LastPartyRead);

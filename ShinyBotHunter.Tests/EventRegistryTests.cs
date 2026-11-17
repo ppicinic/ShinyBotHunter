@@ -10,7 +10,9 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
@@ -61,19 +63,14 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task RsBotSeesNoHgssActions()
+        public async Task RsBotSeesWildEncounterOnly()
         {
             var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
 
-            Assert.DoesNotContain("Wild Encounter", names);
-            Assert.DoesNotContain("Chained Encounter", names);
-            Assert.DoesNotContain("HGSS Togepi Egg", names);
-            Assert.DoesNotContain("HGSS Primo Egg", names);
-            Assert.DoesNotContain("HGSS Static Encounter", names);
-            Assert.Empty(names);
+            Assert.Equal(["Wild Encounter"], names);
         }
 
         [Fact]
@@ -113,17 +110,55 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void ChainedEncounterNeedsOverworldNavigation()
+        {
+            Assert.Equal(nameof(GameCapabilities.HasOverworldNavigation), EventRegistry.Get("Chained Encounter").Requires?.Capability);
+            Assert.Equal(nameof(GameCapabilities.HasWildEncounters), EventRegistry.Get("Wild Encounter").Requires?.Capability);
+        }
+
+        [Fact]
+        public async Task WildEncountersWithoutNavigationListsWildButNotChained()
+        {
+            // RS as W6 declares it: wild encounters, no navigation.
+            GameProfile profile = new(
+                GameFlavor.RS,
+                new GameCapabilities(
+                    HasOverworldNavigation: false,
+                    HasWildEncounters: true,
+                    HasTraining: false,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false),
+                [1],
+                _ => new RsPointerService(),
+                new Gen3PokemonParser(new PokemonMetadataService(null!)),
+                battleParser: null,
+                createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),
+                createStateReader: (memory, t) => new RsStateReader(memory, (RsPointerService)t),
+                createBattleEvent: _ => throw new NotImplementedException(),
+                saveGame: (_, _) => Task.CompletedTask);
+            var service = Build(profile);
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
+
+            Assert.Equal(["Wild Encounter"], names);
+        }
+
+        [Fact]
         public async Task UnsupportedActionIs400()
         {
             var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
-            var args = new NewEventArguments { EventName = "Wild Encounter", PhaseName = "x", TargetType = "ShinyTarget", EncounterType = EncounterType.Run, xRange = 1 };
+            var args = new NewEventArguments { EventName = "Chained Encounter", PhaseName = "x" };
 
             var result = await new BotController(service).StartAction(0, args);
 
             var content = Assert.IsType<ContentResult>(result.Result);
             Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
-            Assert.Contains("HasWildEncounters", content.Content);
+            Assert.Contains("HasOverworldNavigation", content.Content);
             // No GameState was assigned, so no event was built.
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }

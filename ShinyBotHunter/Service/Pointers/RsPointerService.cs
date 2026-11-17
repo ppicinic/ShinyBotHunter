@@ -73,10 +73,76 @@ namespace ShinyBotHunter.Service.Pointers
         // sCurrentStartMenuActions; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
         public uint StartMenuActions => 0x0202E8FE;
 
-        // Box storage lives inside the save block rather than at a standalone address, and nothing in
-        // the starter hunt reads it. Left unimplemented so a caller that needs it fails saying so
-        // rather than reading an address that was guessed.
-        // no symbol; not mapped; QA: none yet: RS starter hunt
-        public BoxLayout? BoxLayout => null;
+        // The wild encounter, docs/research/rs-wild-encounter.md "Memory read by the spike".
+
+        // sLockFieldControls (u8), 0 in the free field; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint FieldControlsLock => 0x030006A4;
+
+        // gMain.callback1 (u32), 0 on the title screen and the Continue menu; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint Callback1 => 0x03001770;
+
+        // gMain.inBattle, bit 1 of the byte at gMain + 0x43D; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint InBattle => 0x03001BAD;
+
+        // gBattlerControllerFuncs[0] (u32), the player's controller function; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint PlayerControllerFunction => 0x03004330;
+
+        // HandleInputChooseAction, the controller function at the action menu; ROM code below 0x0803FBDC, identical in all
+        // six English ROMs; constant; observed; QA: none yet: rs-wild-sapphire
+        public uint HandleInputChooseAction => 0x0802C099;
+
+        // HandleInputChooseMove, the controller function at the move list; ROM code below 0x0803FBDC, identical in all
+        // six English ROMs; constant; observed; QA: none yet: rs-wild-sapphire
+        public uint HandleInputChooseMove => 0x0802C68D;
+
+        // the battle Window at 0x03004210 + 0x16 (u16): 0 idle, 3 printing, 8 waiting for a button (5 and 9 decomp only);
+        // root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint BattleWindowState => 0x03004226;
+
+        // gBattleOutcome (u8): 1 won, 4 ran (observed); 2 lost, 3 drew, 6 mon fled, 7 caught (decomp only); root
+        // (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint BattleOutcome => 0x02024D26;
+
+        // gBattleTypeFlags (u16), 0x0004 in a wild battle; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint BattleTypeFlags => 0x020239F8;
+
+        // gEnemyParty[0], 100 bytes, the wild Pokémon from the encounter roll; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint EnemyParty => 0x030045C0;
+
+        // gMain.vblankCounter1 (u32), frames since boot; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-speed
+        public uint VBlankCounter => 0x03001790;
+
+        // gSaveBlock1.pos, s16 x then s16 y; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint PlayerPosition => 0x02025734;
+
+        // gSaveBlock1.location, u8 group then u8 number; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint PlayerLocation => 0x02025738;
+
+        // gPlayerAvatar.objectEventId (u8), 0x0202E858 + 5; root (absolute; same at rev 0-2); observed;
+        // QA: none yet: rs-wild-sapphire
+        public uint PlayerObjectId => 0x0202E85D;
+
+        // gObjectEvents[0] + 0x18, facing in the low nibble: 1 down, 2 up, 3 left, 4 right; root (absolute; same at
+        // rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint PlayerFacing => 0x030048B8;
+
+        // The M action takes the upper half of four bytes, and gSaveBlock1.pos is two plain s16s: y's watch is x's own
+        // address (PlayerPosition), x's is two bytes earlier (research doc "Walking instead of turning").
+        // gSaveBlock1.pos - 2; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint RunWatchX => 0x02025732;
+
+        // gSaveBlock1.pos; root (absolute; same at rev 0-2); observed; QA: none yet: rs-wild-sapphire
+        public uint RunWatchY => 0x02025734;
+
+        // gPokemonStorage = 0x020300A0 (currentBox u8, then boxes[14][30] at + 4), 30 BoxPokemon of 80 bytes a box with
+        // no padding. Storage is from the anchor itself, because the party read is Absolute.
+        // gPokemonStorage.boxes; root (absolute; same at rev 0-2); decomp only; QA: none yet: W12 full-party catch
+        public BoxLayout? BoxLayout { get; } = new(0x020300A4 - 0x03004350, 14, 30, 30 * 80);
     }
 }

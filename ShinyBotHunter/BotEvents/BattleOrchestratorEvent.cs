@@ -451,23 +451,7 @@ namespace ShinyBotHunter.BotEvents
                 else
                 {
                     Console.WriteLine($"{pokemon.Name}, isShiny: {pokemon.IsShiny}");
-                    var persistPokemon = new PersistPokemonData()
-                    {
-                        Game = state.GameFlavor,
-                        Phase = state.Milestone,
-                        PokemonData = pokemon,
-                        DateTime = DateTime.UtcNow,
-                        GameFileName = bot.GameFileName,
-                    };
-                    await persistenceService.AddEncounterAsync(persistPokemon);
-                    if (await state.Target.IsTargetAsync(pokemon))
-                    {
-                        state.TargetPokemon = persistPokemon;
-                        await shinyAlertService.NotifyTargetFoundAsync(persistPokemon);
-                        state.State.Pop();
-                        state.State.Push(EventState.Waiting);
-                    }
-                    else
+                    if (!await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, pokemon, persistenceService.AddEncounterAsync, p => shinyAlertService.NotifyTargetFoundAsync(p)))
                     {
                         state.State.Pop();
                         state.State.Push(EventState.DecideAction);

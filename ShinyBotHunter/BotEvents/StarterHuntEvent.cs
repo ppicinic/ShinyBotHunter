@@ -114,8 +114,8 @@ namespace ShinyBotHunter.BotEvents
                     continue;
                 }
 
-                // An illegal shiny is not recorded: a catch no real game could have produced corrupts
-                // exactly the data the hunt exists to collect, so it is logged above and hunted past.
+                // An illegal shiny is not kept: a catch no real game could have produced corrupts
+                // exactly the data the hunt exists to collect, so its row is marked as failed and it is hunted past.
                 if (lastVerdict is not null && !lastVerdict.IsLegal)
                 {
                     Console.WriteLine($"[StarterHunt] {entry.RecordingName}: skipping illegal shiny and continuing.");
@@ -172,15 +172,6 @@ namespace ShinyBotHunter.BotEvents
 
             PokemonData starter = await ReadStarterAsync(cancellationToken);
 
-            await persistence.AddEncounterAsync(new PersistPokemonData
-            {
-                PokemonData = starter,
-                Game = GameFlavor.RS,
-                Phase = milestone,
-                GameFileName = entry.RecordingName,
-                DateTime = DateTime.UtcNow,
-            });
-
             // Analysed once and reused for the keep decision, so a shiny is never checked twice.
             // A shiny is always checked; everything else only while QA logging is on.
             if (config.LogLegalityForEveryEncounter || starter.IsShiny)
@@ -201,6 +192,17 @@ namespace ShinyBotHunter.BotEvents
             {
                 lastVerdict = null;
             }
+
+            // An illegal shiny is kept in the log but does not count as a shiny (docs/decisions/global.md).
+            await persistence.AddEncounterAsync(new PersistPokemonData
+            {
+                PokemonData = starter,
+                Game = GameFlavor.RS,
+                Phase = milestone,
+                GameFileName = entry.RecordingName,
+                DateTime = DateTime.UtcNow,
+                LegalityFailed = starter.IsShiny && lastVerdict is { IsLegal: false },
+            });
 
             return starter;
         }
@@ -406,7 +408,14 @@ namespace ShinyBotHunter.BotEvents
         /// </summary>
         private async Task FinishShinyAsync(GameState state, CancellationToken cancellationToken)
         {
-            await SaveViaStartMenuAsync(cancellationToken);
+            await startMenu.SaveViaStartMenuAsync(
+                bot,
+                pointers,
+                saveMenuActionId: config.SaveMenuActionId,
+                saveConfirmMacro: config.SaveConfirmMacro,
+                menuWaitTimeoutMs: config.BattleWaitTimeoutMs,
+                pollIntervalMs: config.BattlePollIntervalMs,
+                cancellationToken: cancellationToken);
             await Task.Delay(config.SaveSettleMs, cancellationToken);
             await bot.FlushSave();
 
@@ -427,83 +436,6 @@ namespace ShinyBotHunter.BotEvents
 
             state.SwapState(EventState.Complete);
             Console.WriteLine($"[StarterHunt] {entry.RecordingName}: saved and recorded.");
-        }
-
-        /// <summary>
-        /// Opens the start menu, reads where SAVE actually is, and moves exactly that far. See
-        /// <see cref="RsStartMenuService"/> for why this cannot be a fixed key sequence.
-        /// </summary>
-        private async Task SaveViaStartMenuAsync(CancellationToken cancellationToken)
-        {
-            bot.RunMacroString("T.Start");
-            await bot.WaitForMacroAsync(cancellationToken);
-
-            RsStartMenuService.MenuState menu = await WaitForStartMenuAsync(cancellationToken);
-            int target = menu.IndexOf(config.SaveMenuActionId);
-            // StepsTo carries the validation and its diagnostic message; the movement itself is done
-            // one verified step at a time below.
-            RsStartMenuService.StepsTo(menu, config.SaveMenuActionId);
-            Console.WriteLine($"[StarterHunt] Start menu: {menu.Describe()}; SAVE is at position {target}.");
-
-            await MoveCursorToAsync(target, cancellationToken);
-
-            RunMacro(config.SaveConfirmMacro);
-            await bot.WaitForMacroAsync(cancellationToken);
-        }
-
-        /// <summary>
-        /// Walks the start-menu cursor to a position one verified press at a time.
-        ///
-        /// Firing the whole run of presses blind is how a save landed on the trainer card: the maths
-        /// said three downs, one press was swallowed by the menu, and A went to whatever was two rows
-        /// down. The cursor is readable, so each press is checked before the next -- a swallowed
-        /// input costs a retry instead of selecting the wrong entry.
-        /// </summary>
-        private async Task MoveCursorToAsync(int target, CancellationToken cancellationToken)
-        {
-            const int MaxPresses = 24;
-            for (int presses = 0; presses < MaxPresses; presses++)
-            {
-                RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot, pointers);
-                if (menu.CursorPos == target)
-                {
-                    return;
-                }
-
-                bot.RunMacroString(menu.CursorPos < target ? "T.Down;W.15" : "T.Up;W.15");
-                await bot.WaitForMacroAsync(cancellationToken);
-                await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
-            }
-
-            RsStartMenuService.MenuState final = await startMenu.ReadAsync(bot, pointers);
-            throw new InvalidOperationException(
-                $"Start-menu cursor would not settle on position {target} after {MaxPresses} presses " +
-                $"({final.Describe()}). Refusing to press A on whatever is highlighted.");
-        }
-
-        /// <summary>
-        /// Polls until the start menu reports a sane state, rather than waiting a fixed time for it to
-        /// open. How long that takes is not worth guessing at: too short and the menu is read before it
-        /// is populated, which looks identical to a menu that does not contain SAVE.
-        /// </summary>
-        private async Task<RsStartMenuService.MenuState> WaitForStartMenuAsync(CancellationToken cancellationToken)
-        {
-            DateTime deadline = DateTime.UtcNow.AddMilliseconds(config.BattleWaitTimeoutMs);
-            RsStartMenuService.MenuState menu = await startMenu.ReadAsync(bot, pointers);
-
-            while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
-            {
-                if (menu.Count > 0 && menu.Count <= 10 && menu.CursorPos < menu.Count)
-                {
-                    return menu;
-                }
-                await Task.Delay(config.BattlePollIntervalMs, cancellationToken);
-                menu = await startMenu.ReadAsync(bot, pointers);
-            }
-
-            // Returned rather than thrown so StepsTo produces the failure, with the menu contents in
-            // its message.
-            return menu;
         }
 
         private async Task SoftResetAsync(CancellationToken cancellationToken)

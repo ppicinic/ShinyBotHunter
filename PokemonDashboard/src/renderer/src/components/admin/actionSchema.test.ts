@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildLegBody,
+  choiceOptions,
   encounterTypeChoices,
   gamesFor,
   getParamLabel,
@@ -268,6 +269,44 @@ describe('encounterTypeChoices', () => {
     expect(encounterTypeChoices(disabled, 'Headbutt').selected).toBe('')
     expect(encounterTypeChoices(disabled, 'Run').selected).toBe('Run')
     expect(encounterTypeChoices(disabled, undefined).selected).toBe('')
+  })
+})
+
+describe('choiceOptions', () => {
+  const noTarget = 'No Target needs a train mode, which Ruby and Sapphire do not have yet.'
+  const training = 'Training is not available on Ruby and Sapphire yet.'
+  const rs: EventArgumentOptions = {
+    name: 'Wild Encounter',
+    disabledChoices: {
+      TargetType: { NoTarget: noTarget },
+      TrainType: { Standard: training, Switch: training }
+    }
+  }
+
+  it('greys TargetType NoTarget with its reason', () => {
+    expect(choiceOptions(rs, 'TargetType', ['PhaseTarget', 'ShinyTarget', 'NoTarget'])).toEqual([
+      { value: 'PhaseTarget', label: 'PhaseTarget', disabled: false },
+      { value: 'ShinyTarget', label: 'ShinyTarget', disabled: false },
+      { value: 'NoTarget', label: `NoTarget (${noTarget})`, disabled: true }
+    ])
+  })
+
+  it('greys TrainType Standard and Switch with their reason', () => {
+    expect(choiceOptions(rs, 'TrainType', ['None', 'Standard', 'Switch'])).toEqual([
+      { value: 'None', label: 'None', disabled: false },
+      { value: 'Standard', label: `Standard (${training})`, disabled: true },
+      { value: 'Switch', label: `Switch (${training})`, disabled: true }
+    ])
+  })
+
+  it('enables everything without disabledChoices', () => {
+    for (const schema of [{ name: 'Wild Encounter' }, { name: 'Wild Encounter', disabledChoices: null }]) {
+      for (const param of ['TargetType', 'TrainType']) {
+        const options = choiceOptions(schema, param, ['None', 'Standard', 'NoTarget'])
+
+        expect(options.every((o) => !o.disabled && o.label === o.value)).toBe(true)
+      }
+    }
   })
 })
 

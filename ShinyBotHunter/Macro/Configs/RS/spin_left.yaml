@@ -1,0 +1,8 @@
+# One quarter of the Spin turn: holds Left until the player faces left and lets go on that frame.
+# 50350262 is 0x030048B6, two bytes before object 0's facing byte, so the upper half of the four bytes
+# read there is the facing (17 down, 34 up, 51 left, 68 right). docs/research/rs-wild-encounter.md,
+# "Tuned for speed".
+name: SpinLeft
+flavor: RS
+steps:
+  - M.Left.51.50350262

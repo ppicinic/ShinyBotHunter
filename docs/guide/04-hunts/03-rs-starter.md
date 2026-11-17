@@ -54,7 +54,7 @@ Always pick your own ROM. Do not pick a copy (your ROM's name with a number the 
 4. It reads the starter and records it as an encounter.
 5. Not shiny: it soft-resets and goes back to step 3.
 6. Shiny, but **RequireFemale** is ticked and it is not female: it resets past it. The encounter is already recorded.
-7. Shiny, but it fails the legality check (a Pokémon no real game could produce): it resets past it.
+7. Shiny, but it fails the legality check (a Pokémon no real game could produce): it resets past it. The encounter is recorded, but not counted as a shiny.
 8. Otherwise it parks: the emulator stays paused in the battle, waiting for you.
 
 ## What happens when a shiny is found?
@@ -77,6 +77,7 @@ The shiny now lives in that copy's save: the file named after the copy, ending i
 ## What does it record?
 
 - Every starter it reads is an encounter, filed under the milestone and the recording name.
+- A shiny that fails the legality check is stored with `IsShiny` false, so it is not counted as a shiny.
 - A shiny you saved with Resume is also a caught Pokémon.
 - The starter is marked as done for that milestone. If you start the hunt again with the same milestone, the bot skips that starter.
 

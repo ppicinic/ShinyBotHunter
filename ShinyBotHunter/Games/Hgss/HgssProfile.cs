@@ -1,3 +1,4 @@
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
@@ -26,6 +27,7 @@ namespace ShinyBotHunter.Games.Hgss
             new GameCapabilities(
                 HasOverworldNavigation: true,
                 HasWildEncounters: true,
+                HasTraining: true,
                 HasEggs: true,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
@@ -39,6 +41,12 @@ namespace ShinyBotHunter.Games.Hgss
             maps,
             graph,
             new PathfindingService(maps, graph, Table.TrainerX, Table.TrainerY, Table.Anchor, Table.MapIdOffset),
-            createStateReader: (memory, table) => new HgssFieldSystemStateReader(memory, (HgssPointerService)table));
+            createStateReader: (memory, table) => new HgssFieldSystemStateReader(memory, (HgssPointerService)table),
+            createBattleEvent: provider => provider.GetRequiredService<BattleOrchestratorEvent>(),
+            saveGame: async (provider, bot) =>
+            {
+                bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
+                await bot.WaitForMacroAsync();
+            });
     }
 }

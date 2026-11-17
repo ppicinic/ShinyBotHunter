@@ -1,6 +1,7 @@
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -79,9 +80,42 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void HasNoBoxLayout()
+        public async Task BoxRead_FindsAPokemonPlacedInABoxAtGPokemonStorage()
         {
-            Assert.Null(new RsPointerService().BoxLayout);
+            const uint BoxesAddress = 0x020300A4; // gPokemonStorage.boxes
+            FakeMemoryClient memory = PlaceParty(PartyAddress);
+            memory.Place(BoxesAddress + 2 * 2400 + 6 * 80, Encode(0x60, 280, 0)[..80]); // box 3, slot 7
+
+            var state = await BuildReader().GetPokemonState(memory, Profile, Profile.Addresses(2));
+
+            // 14 boxes of 30 80-byte slots in one read, and the party count is never read as a pointer.
+            Assert.Equal((BoxesAddress, 14 * 2400), Assert.Single(memory.ByteReads));
+            Assert.Empty(memory.UIntReads);
+            Assert.Equal(0x60u, state.BoxPokemon[2][6]!.PID);
+            Assert.Single(state.BoxPokemon.SelectMany(box => box), slot => slot is not null);
+            Assert.True(state.Search(new PokemonData { PID = 0x60, Species = 255 }));
+        }
+
+        [Fact]
+        public void MembersForLaterTasksAreThePretAddresses()
+        {
+            RsPointerService table = new();
+
+            Assert.Equal(0x020239F8u, table.BattleTypeFlags);
+            Assert.Equal(0x030045C0u, table.EnemyParty);
+            Assert.Equal(0x02025732u, table.RunWatchX);
+            Assert.Equal(0x02025734u, table.RunWatchY);
+            Assert.Equal(0x0802C099u, table.HandleInputChooseAction);
+            Assert.Equal(0x0802C68Du, table.HandleInputChooseMove);
+        }
+
+        [Fact]
+        public void HgssRunWatchIsTheTrainerCoordinates()
+        {
+            HgssPointerService table = new();
+
+            Assert.Equal(table.TrainerX, table.RunWatchX);
+            Assert.Equal(table.TrainerY, table.RunWatchY);
         }
     }
 }

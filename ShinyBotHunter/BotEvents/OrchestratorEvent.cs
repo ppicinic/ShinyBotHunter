@@ -28,8 +28,12 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
+        internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
+
         private EncounterParams encounterParams;
-        private IBotEvent<GameState> battleEvent;
+        private IServiceProvider provider;
+        // Made at the first BattleStart from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
+        private IBotEvent<GameState>? battleEvent;
         private NavigatorEvent navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
@@ -40,7 +44,7 @@ namespace ShinyBotHunter.BotEvents
         public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams)
         {
             this.encounterParams = encounterParams;
-            battleEvent = provider.GetRequiredService<BattleOrchestratorEvent>();
+            this.provider = provider;
             navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
@@ -57,7 +61,7 @@ namespace ShinyBotHunter.BotEvents
             // back to it lets that leg carry on instead of spinning on a state nothing handles.
             if(state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                if (await CheckForCatchAsync(state))
+                if (await CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState))
                 {
                     state.State.Pop();
                     if (state.State.Count == 0)
@@ -97,7 +101,7 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if(topState == EventState.BattleStart)
                 {
-                    await battleEvent.ExecuteWithResultAsync(state, cancellationToken);
+                    await (battleEvent ??= state.Bot.Profile.CreateBattleEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
                 }
                 else if(topState == EventState.BattleComplete)
                 {
@@ -150,18 +154,18 @@ namespace ShinyBotHunter.BotEvents
         /// Returns false when the check could not be carried out at all, so the caller can leave the
         /// run parked rather than moving on and losing the catch.
         /// </summary>
-        private async Task<bool> CheckForCatchAsync(GameState state)
+        internal static async Task<bool> CheckForCatchAsync(GameState state, PokemonStateReader reader, IServiceProvider provider,
+            Func<PersistPokemonData, Task> addCaughtPokemon, Func<GameState, Task> updateMilestoneState)
         {
             if (state.TargetPokemon is null)
             {
                 // Waiting wasn't a target sighting -- a wipe parks here too, and there is nothing
                 // to look for in the party.
-                await UpdateMilestoneState(state);
+                await updateMilestoneState(state);
                 return true;
             }
-            // Boxes are required here: a caught pokemon may have gone straight to the PC, so this is
-            // the one read that must not be narrowed to the party.
-            PokemonState? pokemonState = await ReadStateForCatchCheckAsync(state);
+            // The boxes are read too: a caught pokemon may have gone straight to the PC.
+            PokemonState? pokemonState = await ReadStateForCatchCheckAsync(state, reader);
             if (pokemonState is null)
             {
                 // TargetPokemon is deliberately left set so a later resume can still record it.
@@ -172,27 +176,26 @@ namespace ShinyBotHunter.BotEvents
             Console.WriteLine($"Found pokemon: {found}");
             if (found)
             {
-                state.Bot.RunMacroString(MacroRegistry.Instance.GetMacro(state.GameFlavor, "SaveGame"));
-                await state.Bot.WaitForMacroAsync();
-                await persistenceService.AddCaughtPokemonAsync(state.TargetPokemon!);
+                await state.Bot.Profile.SaveGame!(provider, state.Bot);
+                await addCaughtPokemon(state.TargetPokemon!);
                 await Task.Delay(1000);
                 await state.Bot.FlushSave();
             }
             state.TargetPokemon = null;
-            await UpdateMilestoneState(state);
+            await updateMilestoneState(state);
             return true;
         }
 
         /// <summary>
-        /// Reads party and boxes for the catch check, retrying when the emulator can't produce a
-        /// validated party.
+        /// Reads the party and the boxes for the catch check, retrying when
+        /// the emulator can't produce a validated party.
         ///
         /// This read failing must never fault the event. The pokemon is already caught in game at this
         /// point, so a dropped run means it is never written to persistence and the milestone never
         /// completes -- state that has to be repaired by hand. Returning null instead parks the run so
         /// the check can be retried.
         /// </summary>
-        private async Task<PokemonState?> ReadStateForCatchCheckAsync(GameState state)
+        private static async Task<PokemonState?> ReadStateForCatchCheckAsync(GameState state, PokemonStateReader reader)
         {
             for (int attempt = 1; attempt <= CatchReadAttempts; attempt++)
             {
@@ -244,6 +247,57 @@ namespace ShinyBotHunter.BotEvents
             state.MilestoneComplete = complete;
         }
 
+        internal static async Task FinishAsync(GameState state)
+        {
+            if (state.Bot.Profile.Capabilities.HasOverworldNavigation)
+            {
+                // Walk home before finishing so whatever runs next starts from a known tile instead
+                // of wherever the last encounter happened to leave us.
+                state.CompleteAfterReturn = true;
+                state.BattleMode = BattleMode.Flee;
+                state.SwapState(EventState.ReturnToStart);
+                await RefreshDashboardAsync(state);
+                return;
+            }
+            // No navigation to walk home with, so the hunt completes in place.
+            state.BattleMode = BattleMode.Flee;
+            state.SwapState(EventState.Complete);
+            await RefreshDashboardAsync(state);
+        }
+
+        /// <summary>Logs the wild Pokemon and asks the target. A target is kept for the catch check, alerted, and parks the
+        /// stack in Waiting; on false the caller moves on.</summary>
+        internal static async Task<bool> LogEncounterAndAskTargetAsync(GameState state, PokemonData pokemon,
+            Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound, bool legal = true)
+        {
+            var persistPokemon = new PersistPokemonData()
+            {
+                Game = state.GameFlavor,
+                Phase = state.Milestone,
+                PokemonData = pokemon,
+                DateTime = DateTime.UtcNow,
+                GameFileName = state.Bot.GameFileName,
+                LegalityFailed = !legal,
+            };
+            await addEncounter(persistPokemon);
+            // The first wild Pokémon at or above the lead's level is the first time the lead is not above every wild level seen.
+            if (state.SpeedLines is { } lines && pokemon.Level >= state.LeadLevel && !lines.Contains(SlowTransitionLine))
+            {
+                state.SpeedLines = [.. lines, SlowTransitionLine];
+                Console.WriteLine($"[Orchestrator] {SlowTransitionLine}");
+                await RefreshDashboardAsync(state);
+            }
+            if (legal && await state.Target.IsTargetAsync(pokemon))
+            {
+                state.TargetPokemon = persistPokemon;
+                await notifyTargetFound(persistPokemon);
+                state.State.Pop();
+                state.State.Push(EventState.Waiting);
+                return true;
+            }
+            return false;
+        }
+
         private async Task DecideOverworldAction(GameState state, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
@@ -271,15 +325,9 @@ namespace ShinyBotHunter.BotEvents
             bool milestoneSatisfied = !state.Target.UsesMilestone || state.MilestoneComplete;
             if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
-                // Walk home before finishing so whatever runs next starts from a known tile instead
-                // of wherever the last encounter happened to leave us.
-                state.CompleteAfterReturn = true;
-                state.BattleMode = BattleMode.Flee;
-                state.SwapState(EventState.ReturnToStart);
-                await RefreshDashboardAsync(state);
+                await FinishAsync(state);
                 return;
             }
-
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
             {
                 if (state.Pickup)

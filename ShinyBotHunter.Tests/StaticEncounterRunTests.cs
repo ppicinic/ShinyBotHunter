@@ -72,7 +72,7 @@ namespace ShinyBotHunter.Tests
         {
             var hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(HgssProfile.DataDirectory), new GraphService());
             return new GameProfile(hgss.Flavor, hgss.Capabilities, [0], hgss.Addresses, new Pk4Parser(), hgss.BattleParser,
-                hgss.CreateOverworldReader, hgss.Maps, hgss.Graph, hgss.Pathfinding, hgss.CreateStateReader);
+                hgss.CreateOverworldReader, hgss.Maps, hgss.Graph, hgss.Pathfinding, hgss.CreateStateReader, hgss.CreateBattleEvent, hgss.SaveGame);
         }
 
         // A launched bot at position 0, standing and seeing what the test says, and the service whose Run checks see it.
