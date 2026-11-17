@@ -66,9 +66,9 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(GameFlavor.RS, profile.Flavor);
             Assert.Equal(new GameCapabilities(
-                HasOverworldNavigation: false,
+                HasOverworldNavigation: true,
                 HasWildEncounters: true,
-                HasTraining: false,
+                HasTraining: true,
                 HasEggs: false,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
@@ -109,6 +109,7 @@ namespace ShinyBotHunter.Tests
             IPointerService table = profile.Addresses(gameCode, 1);
 
             Assert.NotNull(((RsPointerService)table).DeleteMoveYesNo);
+            Assert.NotNull(((RsPointerService)table).PartyMenuMainCallback2);
             Assert.Null(profile.TrainingRefusal!(table));
         }
 
@@ -202,6 +203,30 @@ namespace ShinyBotHunter.Tests
                 new HgssBattlePokemonParser()));
 
             Assert.Contains("declares HasTraining but not HasOverworldNavigation", error.Message);
+        }
+
+        // The T3a review's gap: a chained leg that trains must reach a navigator part.
+        [Fact]
+        public void ChainedEncounterWithoutTrainingThrows()
+        {
+            var error = Assert.Throws<ArgumentException>(() => new GameProfile(
+                GameFlavor.HGSS,
+                new GameCapabilities(
+                    HasOverworldNavigation: false,
+                    HasWildEncounters: false,
+                    HasTraining: false,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false,
+                    HasChainedEncounter: true),
+                [0],
+                (_, _) => new HgssPointerService(),
+                new HgssPokemonParser(Metadata()),
+                new HgssBattlePokemonParser()));
+
+            Assert.Contains("declares HasChainedEncounter but not HasTraining", error.Message);
         }
 
         // Navigation and training as RS will declare them (FR-18b): maps, an overworld reader and a navigator part, and no

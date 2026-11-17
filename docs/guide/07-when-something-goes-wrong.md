@@ -93,8 +93,8 @@ The bot reads the game when you press Run on a Ruby or Sapphire **Wild Encounter
 | `The party could not be read; try again once the game is in the field.` | The bot could not read your party. | Wait until your character is in the field, and start again. |
 | `The first Pokémon in the party has fainted.` | Your first Pokémon has no HP left, or the party is empty. | Heal it, or put a Pokémon that can battle first, and start again. |
 | `Ruby and Sapphire have no Headbutt trees.` | Encounter Type Headbutt was sent, though it is greyed out. | Pick Spin or Run. |
-| `No Target needs a train mode, which Ruby and Sapphire do not have yet.` | Target Type NoTarget was sent, though it is greyed out. | Pick PhaseTarget or ShinyTarget. |
-| `Training is not available on Ruby and Sapphire yet.` | Train Type Standard or Switch, or Pickup, was sent, though it is greyed out. | Leave Train Type at None and Pickup unticked. |
+| `Pickup is not available on Ruby and Sapphire.` | Pickup was sent ticked, though it is greyed out. | Leave Pickup unticked. |
+| `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).` | Train Type Standard or Switch was sent for a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads. | Leave Train Type at None, or train on a US ROM. |
 
 ### Something is missing from the Start form
 

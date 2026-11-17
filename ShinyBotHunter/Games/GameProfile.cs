@@ -124,6 +124,12 @@ namespace ShinyBotHunter.Games
             {
                 throw new ArgumentException($"{flavor} declares HasTraining but not HasOverworldNavigation.");
             }
+            // A chained leg may train, and the chained start greys no choice by capability, so a training leg must find the
+            // navigator part that HasTraining brings.
+            if (capabilities.HasChainedEncounter && !capabilities.HasTraining)
+            {
+                throw new ArgumentException($"{flavor} declares HasChainedEncounter but not HasTraining.");
+            }
             if (capabilities.CanReadBoxes)
             {
                 foreach (int revision in revisions)

@@ -518,6 +518,22 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([next], state.State);
         }
 
+        // FR-18: the lead at the target level ends training, and a hunt with no target then walks home before Complete.
+        [Theory]
+        [InlineData((byte)11, false, EventState.Encountering)]
+        [InlineData((byte)12, true, EventState.ReturnToStart)]
+        public async Task Decide_RsTargetLevel_EndsTrainingAndWalksHome(byte level, bool complete, EventState next)
+        {
+            GameState state = Training(RsBot(Gen3Mon(40, level: level)), TrainType.Standard, targetLevel: 12);
+            state.Target = new NoTarget();
+
+            await DecideAsync(state);
+
+            Assert.Equal(complete, state.TrainingComplete);
+            Assert.Equal(complete, state.CompleteAfterReturn);
+            Assert.Equal([next], state.State);
+        }
+
         // QA L7: the heal trip's line names the member the check read, its HP and its damaging PP, or the empty slot.
         [Theory]
         [InlineData(TrainType.Standard, null, (ushort)40, "heal trip: Mudkip HP 40/40, damaging PP 0")]

@@ -378,7 +378,7 @@ namespace ShinyBotHunter.Tests
             public Task<string?> RunAsync() => Event.RunAsync(State, CancellationToken.None);
         }
 
-        private static NurseVisit AtTheCounter(Nurse[][] stages, string gameCode = "AXPE", ushort hp = 25, TimeSpan? stale = null)
+        private static NurseVisit AtTheCounter(Nurse[][] stages, string gameCode = "AXPE", ushort hp = 25, TimeSpan? stale = null, TimeSpan? handOff = null)
         {
             Queue<Nurse>[] queues = stages.Select(s => new Queue<Nurse>(s)).ToArray();
             uint frame = 8000;
@@ -386,7 +386,7 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = null!;
             bot = new FakeBot(Task.CompletedTask, new GameProfile(GameFlavor.RS,
                 new GameCapabilities(false, false, false, false, false, false, false, false), [], (_, _) => RsPointerService.For(gameCode),
-                new Gen3PokemonParser(new PokemonMetadataService(null!)), null, maps: Rs, seekLockHandOff: TimeSpan.FromSeconds(4)))
+                new Gen3PokemonParser(new PokemonMetadataService(null!)), null, maps: Rs, seekLockHandOff: handOff ?? TimeSpan.FromSeconds(4)))
             {
                 Pressed = macro =>
                 {
@@ -550,6 +550,18 @@ namespace ShinyBotHunter.Tests
             Assert.StartsWith("The party's HP was not full after the nurse: ", stopped);
             Assert.EndsWith(" 5/25.", stopped);
             Assert.Equal(EventState.Waiting, visit.State.State.Peek());
+        }
+
+        // From the N4b review: the nurse's lock (564 frames) outlasts SeekLockHandOff, and nothing hands it to the battle event.
+        [Fact]
+        public async Task Nurse_LockedPastTheHandOff_IsNotHandedOff()
+        {
+            NurseVisit visit = AtTheCounter(Visit(SapphireWaitForAorBPress, Arrived(SapphireWaitForAorBPress)), handOff: TimeSpan.Zero);
+
+            Assert.Null(await visit.RunAsync());
+
+            Assert.Equal(Enumerable.Repeat(FieldAdvance, 6), visit.Bot.Macros);
+            Assert.Equal([EventState.ReturnToStart], visit.State.State);
         }
 
         [Fact]

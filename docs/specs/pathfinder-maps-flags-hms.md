@@ -28,7 +28,7 @@ The spike proved the rebuild (10 s for the maps, 30 s for the graph), the flag r
 - Fly, Teleport, Dig and Flash: party-menu or route-shortcut moves, not obstacles. Fly as a route shortcut is a later spike.
 - Waterfall, Whirlpool and Rock Climb beyond what the pathfinder already models. They stay in the capability (badge and move) and keep their tile rules; their field scripts (10005, 10016, 10003) are the same shape as the three proven ones but were not run, so the HM step handles them with the same gates and QA does not cover them yet.
 - Objects that move around (walking trainers' ranges stay the 0x11 penalty tiles they are).
-- RS. RS has no map data (`HasOverworldNavigation` is false).
+- RS. RS plans over its own maps with its own navigator (`RsNavigatorEvent`, `RouteSearch`; [rs-navigation-and-training.md](rs-navigation-and-training.md)), not this pathfinder.
 - The current map's objects after a Continue. The game restores the saved map's objects on Continue rather than loading the header's; the flag read is right for every map the walk enters by a warp, and the first map is where the player already stands.
 
 ## Requirements

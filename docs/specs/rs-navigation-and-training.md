@@ -218,6 +218,7 @@ N1 and N3 can start at once. The wild-encounter feature this builds on is on `ma
 
 ## Changelog
 
+- 2026-11-17: as built (T3, #432 and #451): FR-18a by five capability members, `HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees` and `HasPickup` (HGSS only) and `HasWildRunChecks` (RS only); FR-18b by narrowing `HasOverworldNavigation` to maps, an overworld reader and a navigator part, moving the graph and pathfinding rule to `HasStaticEncounter`, and dropping the battle-parser rule from `HasTraining`. RS declares `HasTraining` and `HasOverworldNavigation`; FR-10's sentence names the map.
 - 2026-11-17: FR-17 corrected to the switch readings (T2, #431): the party list's gate, no button wait after SHIFT, the next menu at 13.3 s; FR-12: `CB2_PartyMenuMain` is read.
 - 2026-11-17: FR-11's nurse gates corrected to the emulator readings (research, "The navigator: the walk and the nurse, read frame by frame"): the talk on tile transition 0 with the facing up, the Yes/No on its task active with `data[2]` at 5, the last wait on status 0 and mode 2 with the native, after the Yes (N4b, #447).
 - 2026-11-17: FR-16's "never B" reworded to what the evolution scene allows: no B while it animates or at a text wait, B only as the No at its "Delete a move?" (orchestrator, plan of #430, answer 6; T1b, #443).

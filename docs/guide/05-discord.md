@@ -102,7 +102,7 @@ The alert mentions your role and shows a gold card:
 
 ## How do I answer a new-move question?
 
-**When it is asked.** Only in HeartGold and SoulSilver battles that train a Pokémon. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
+**When it is asked.** In any battle that trains a Pokémon, in HeartGold and SoulSilver or in Ruby and Sapphire. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
 
 **What you see.** A card titled `<name> - New Move` with the text `<name> is trying to learn a new move, <move>. Should <name> forget a move to learn <move>`. Below it there is one button per move the Pokémon knows, named after the move, and a **Do Not Learn** button.
 
