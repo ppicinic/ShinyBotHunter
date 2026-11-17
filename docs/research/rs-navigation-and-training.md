@@ -55,6 +55,8 @@ Kinds 0x00 to 0x11 and 0x80 mean what they mean on HGSS; 0x12 is the HGSS spec's
 
 Corrected 2026-11-17 (#425): Surf is not every water behaviour but the game's surfable bit (`sTileBitAttributes` in `src/metatile_behavior.c`); `MB_PUDDLE` and `MB_SHALLOW_WATER` are walked on, and the generator writes them free (0x00).
 
+2026-11-17 (#440): a warp is written only where the game fires one by the tile's behaviour (118 warp events on other tiles are not), and its landing is the tile after the game's arrival step (one tile Down off a door or stairs, 471 warps; Up off 0x6E, 2; East off an escalator or the Lavaridge B1F warp, 36).
+
 Route 101 as the prototype built it, the planes the generator's tests pin (`RsMapProcessorTests`), one hex byte per tile for the kinds and one hex digit per tile for the elevation, row 0 at the top:
 
 ```
