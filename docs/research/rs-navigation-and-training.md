@@ -298,6 +298,7 @@ The segments, each its own macro, none cleared between: `M.Left.8.33707826:H.B.1
 Other things the walk showed (observed):
 
 - A segment's coordinate is reached 16 frames (walking) or 8 (running) before the step ends, so the macro's end is not the player standing still. The next segment's macro, sent mid-step, takes over cleanly (no stop, no extra step).
+  - 2026-11-17, the first QA run of `rs-train-heal` (#467): after the last segment, `M.Right.14…` to Route 101 (14, 4) in 24 frames, the walk declared its arrival on the tile and the Spin's first turn (Up held until the facing reads up) was sent while that step was still ending; the player walked up to (14, 3). The same walk passed when its last segment took 26 frames. So the walk's arrival waits for the tile transition to read 0.
 - After every warp the game reads callback 1 as 0 with the lock 0 for 4 to 7 frames. That is not the free field: the free-field test needs callback 1 not 0, as the wild hunt's has.
 - Crossing a connection, one read shows the coordinate one row past the new map's edge (W3).
 - Locked runs with the map and tile unchanged, all warps: 69, 67 and 70 (doors), 65 (mats), 59 (a house door), 43 and 36 (arrival steps). A wild battle's is 93 before its bit. A trainer's never ends. So a clock of 240 frames (4 s, `SeekLockHandOff`) that counts only a lock with the map and tile unchanged separates them.
