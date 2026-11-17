@@ -128,6 +128,11 @@ export async function runMacro(macro: string): Promise<void> {
   throw new Error(`macro ${macro} did not finish within 30 s`)
 }
 
+/** Clears the macro, as the bot's ClearMacro does: lets go of anything it still holds (a navigator segment's B). */
+export async function clearMacro(): Promise<void> {
+  await fetch('http://127.0.0.1:20000/command', { method: 'POST', body: 'macro_clear' })
+}
+
 // --- Windows: hotkey, recorder, processes ----------------------------------------------------------
 
 function powershell(script: string): string {
