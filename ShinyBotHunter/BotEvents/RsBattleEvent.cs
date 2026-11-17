@@ -43,6 +43,11 @@ namespace ShinyBotHunter.BotEvents
         // The other single presses the training rules send, each a 2-frame hold as the two above.
         internal const string Up = "H.Up.2";
         internal const string Left = "H.Left.2";
+        internal const string B = "H.B.2";
+
+        // The move prompt's Question: 5 "Delete a move?", 10 "Stop learning?" (RsStateReader).
+        private const int DeleteMoveQuestion = 5;
+        private const int StopLearningQuestion = 10;
 
         // gBattleTypeFlags: wild, trainer, Safari Zone.
         private const ushort WildBattle = 0x0004;
@@ -165,9 +170,11 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // Before this battle's first menu the outcome can still be the last battle's: it stays until the next
                     // battle starts.
-                    // The level-up box comes only from the training reader.
+                    // The level-up box and the move prompt come only from the training reader. A forget-a-move screen met here,
+                    // outside a Yes, is not waited for: it ends in the stale stop that names it.
                     s = await GameStateWait.UntilAsync(reader, "a battle message, the action menu or the free field",
                         x => x.Screen is GameScreen.BattleMessage or GameScreen.BattleMenu or GameScreen.FieldFree or GameScreen.BattleExpPrompt
+                                or GameScreen.BattleMoveLearnPrompt
                             || (seenMenu && x.Outcome == BattleOutcome.Lost), stale, ct);
                     Stopwatch since = Stopwatch.StartNew();
                     if (seenMenu && s.Outcome == BattleOutcome.Lost)
@@ -202,6 +209,15 @@ namespace ShinyBotHunter.BotEvents
                             firstPage ? x => x.Screen == GameScreen.BattleExpPrompt && x.Prompt == 2 : x => !(x.Screen == GameScreen.BattleExpPrompt && x.Prompt == 2),
                             cursorWait, stale, ct);
                         presses += sent;
+                        continue;
+                    }
+                    if (s.Screen == GameScreen.BattleMoveLearnPrompt)
+                    {
+                        // A new move with four known (FR-15). "Stop learning?" reached any way gets its Yes.
+                        presses += s.Question == StopLearningQuestion
+                            ? await StopLearningAsync(bot, reader, s, cursorWait, stale, ct)
+                            : await AnswerMovePromptAsync(bot, reader, addresses, s,
+                                await AskMoveAsync(bot, addresses, s.PartyMonIndex!.Value, moveMetadata, decideMove, ct), cursorWait, stale, ct);
                         continue;
                     }
 
@@ -370,6 +386,71 @@ namespace ShinyBotHunter.BotEvents
             (_, int confirmed) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on move {slot}",
                 "the screen leaving the move list", list, x => x.Screen != GameScreen.BattleMoveList, cursorWait, stale, ct);
             return presses + confirmed;
+        }
+
+        // The move offered and the learner's record, read only while the prompt is up (gMoveToLearn goes stale after it),
+        // then the question HGSS's LevelUpFlow asks: a slot to forget, or -1. Nothing is pressed while it waits; it has no
+        // time bound and ends on the answer or on Cancel.
+        private static async Task<int> AskMoveAsync(IBot bot, RsPointerService addresses, int learnerSlot, Func<int, PokemonMoveMetadata> moveMetadata,
+            Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> decideMove, CancellationToken ct)
+        {
+            ChainBlockResult[] read = await bot.ReadChainBlocksAsync(
+                [new(addresses.MoveToLearn, [], 2), new(PartyRecord(addresses, learnerSlot), [], Gen3PokemonParser.PartyBlockSize)], ct: ct);
+            ushort moveId = BitConverter.ToUInt16(read[0].Bytes, 0);
+            PokemonData learner = bot.Profile.Parser.Parse(read[1].Bytes)!;
+            string offered = $"slot {learnerSlot} {learner.Name} learning {moveMetadata(moveId).Name} ({moveId})";
+            Console.WriteLine($"[RsBattle] asking Discord: {offered}; nothing is pressed until the answer");
+            int slot = await decideMove(learner, new PokemonLevelUpMoveMetadata { Id = moveId, Name = moveMetadata(moveId).Name, Level = learner.Level })
+                .WaitAsync(ct);
+            Console.WriteLine($"[RsBattle] Delete a move? {offered}: "
+                + (slot == -1 ? "No" : $"Yes over slot {slot} {moveMetadata(learner.Moves[slot].Id).Name}"));
+            return slot;
+        }
+
+        // The answer at "Delete a move?" (Question 5), at the snapshot at. Yes: A, confirmed by the prompt leaving; then on
+        // the forget-a-move screen every press only while the summary's input task runs and the fade is off (a key sent
+        // earlier is dropped): Down until the cursor is on the slot, each confirmed by the cursor, then A, confirmed by the
+        // destroy task, then the screen closing. No: B, confirmed by the prompt leaving, then Yes at "Stop learning?".
+        private static async Task<int> AnswerMovePromptAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, GameSnapshot at,
+            int slot, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
+        {
+            if (slot == -1)
+            {
+                (_, int no) = await PressConfirmedAsync(bot, reader, B, "B at Delete a move?", "the prompt leaving Delete a move?", at,
+                    x => x.Question != DeleteMoveQuestion, cursorWait, stale, ct);
+                GameSnapshot stop = await GameStateWait.UntilAsync(reader, "Stop learning?", x => x.Question == StopLearningQuestion, stale, ct);
+                return no + await StopLearningAsync(bot, reader, stop, cursorWait, stale, ct);
+            }
+            (_, int presses) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), "BattleConfirm (Yes) at Delete a move?",
+                "the prompt leaving Delete a move?", at, x => x.Question != DeleteMoveQuestion, cursorWait, stale, ct);
+            while (true)
+            {
+                GameSnapshot screen = await GameStateWait.UntilAsync(reader, "the forget-a-move screen taking input",
+                    x => x.Screen == GameScreen.OtherApp && x.TaskFunction == addresses.SummaryMoveInputTask && x.AppState == 0, stale, ct);
+                int from = screen.Prompt!.Value;
+                if (from == slot)
+                {
+                    (_, int a) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on forget slot {slot}",
+                        "the summary task closing", screen, x => x.TaskFunction == addresses.SummaryDestroyTask || x.Screen != GameScreen.OtherApp,
+                        cursorWait, stale, ct);
+                    GameSnapshot back = await GameStateWait.UntilAsync(reader, "the forget-a-move screen to close",
+                        x => x.Screen != GameScreen.OtherApp, stale, ct);
+                    Console.WriteLine($"[RsBattle] forget-a-move screen closed: {back}");
+                    return presses + a;
+                }
+                (_, int down) = await PressConfirmedAsync(bot, reader, Down, $"Down on the forget-a-move screen {from} -> {from + 1}",
+                    "the cursor", screen, x => x.Screen == GameScreen.OtherApp && x.Prompt == from + 1, cursorWait, stale, ct);
+                presses += down;
+            }
+        }
+
+        // Yes at "Stop learning?", whose cursor the game resets to Yes; confirmed by the prompt leaving.
+        private static async Task<int> StopLearningAsync(IBot bot, IGameStateReader reader, GameSnapshot at, TimeSpan cursorWait,
+            TimeSpan stale, CancellationToken ct)
+        {
+            (_, int presses) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), "BattleConfirm (Yes) at Stop learning?",
+                "the prompt leaving Stop learning?", at, x => x.Question != StopLearningQuestion, cursorWait, stale, ct);
+            return presses;
         }
 
         // The move cursor's next press toward the slot: bit 0 is the column, bit 1 the row.
