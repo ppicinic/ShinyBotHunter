@@ -235,6 +235,16 @@ namespace ShinyBotHunter.Service.Pointers
         // research "A trainer's intro speech"); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet: rs-nav-trainer
         public uint ScriptContextStatus => 0x030005B0;
 
+        // sGlobalScriptContext (0x030005B8) + 1, mode (u8, include/script.h): 2 while a native is polled, 1 bytecode, 0 no
+        // script; root (absolute; pret symbols line 468); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet:
+        // rs-nav-heal-return
+        public uint ScriptContextMode => 0x030005B9;
+
+        // gPlayerAvatar (0x0202E858) + 3, tileTransitionState (u8, include/global.fieldmap.h): 1 through a step, 2 for one
+        // frame, 0 at rest, and 0 through a turn in place; root (absolute; pret symbols line 130); observed on Sapphire 1.2;
+        // QA: none yet: rs-nav-heal-return
+        public uint PlayerTileTransition => 0x0202E85B;
+
         // Task_HandleYesNoInput, the field Yes/No task's function; constant (ROM, pret symbols line 7581, 080b5504 + 1);
         // decomp only; QA: none yet: rs-nav-heal-return
         public uint TaskHandleYesNoInput => 0x080B5505;
