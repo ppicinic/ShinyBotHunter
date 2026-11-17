@@ -53,6 +53,15 @@ namespace ShinyBotHunter.Tools
                     var pathfinding = new PathfindingService(mapService, graphService, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset);
                     await new GraphProcessor(mapService, pathfinding, outputDir).CreateBaseGraph();
                     return true;
+                case "--generatemapdatars":
+                    if (args.Length < 3)
+                    {
+                        Console.Error.WriteLine("Usage: --generatemapdatars <pokerubyDir> <outputDir>");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+                    new RsMapProcessor(args[1], args[2]).Generate();
+                    return true;
                 default:
                     return false;
             }

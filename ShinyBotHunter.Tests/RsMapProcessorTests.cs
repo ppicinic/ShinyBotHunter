@@ -217,5 +217,38 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal((2, 1), tile);
         }
+
+        [Fact]
+        public void Generate_RoundTripsThroughMapService()
+        {
+            string output = Path.Combine(Path.GetTempPath(), "rsmaps-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var processor = new RsMapProcessor(Fixture, output);
+                Dictionary<int, Map> built = processor.Build();
+
+                processor.Generate();
+                var service = new MapService(output, withElevationAndEvents: true);
+
+                Assert.Equal([0, 1, 2, 256], built.Keys.Order());
+                foreach (var (id, expected) in built)
+                {
+                    Map actual = service.GetMap(id);
+                    Assert.Equal(expected.Tiles, actual.Tiles);
+                    Assert.Equal(expected.Elevation, actual.Elevation);
+                    Assert.Equal(expected.Events.Objects, actual.Events.Objects);
+                    Assert.Equal(expected.Events.Triggers, actual.Events.Triggers);
+                    Assert.Equal(expected.Events.Warps, actual.Events.Warps);
+                    Assert.Equal(expected.Events.Connections, actual.Events.Connections);
+                    Assert.Equal(expected.Events.Dive, actual.Events.Dive);
+                    Assert.Equal(expected.Boulders.Select(b => (b.X, b.Y)), actual.Boulders.Select(b => (b.X, b.Y)));
+                }
+                Assert.Equal("OldaleTown_PokemonCenter_1F", service.GetMapLookup(256).InternalName);
+            }
+            finally
+            {
+                Directory.Delete(output, recursive: true);
+            }
+        }
     }
 }

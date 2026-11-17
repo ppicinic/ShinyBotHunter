@@ -1,8 +1,11 @@
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Util;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 
 namespace ShinyBotHunter.Scripts.Maps
@@ -257,6 +260,59 @@ namespace ShinyBotHunter.Scripts.Maps
             return maps;
         }
 
+        public void Generate()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var maps = Build();
+            Directory.CreateDirectory(outputDir);
+
+            var raw = new MemoryStream();
+            using (var writer = new BinaryWriter(raw, System.Text.Encoding.UTF8, leaveOpen: true))
+            {
+                writer.Write(maps.Count);
+                foreach (var (id, map) in maps)
+                {
+                    writer.Write(id);
+                    writer.Write(map.Height);
+                    writer.Write(map.Width);
+                    foreach (var row in map.Tiles)
+                    {
+                        writer.Write(row);
+                    }
+                    foreach (var row in map.Elevation!)
+                    {
+                        writer.Write(row);
+                    }
+                }
+            }
+            byte[] mapsBin = Gzip(raw.ToArray());
+            File.WriteAllBytes(Path.Combine(outputDir, "maps.bin"), mapsBin);
+            byte[] events = Gzip(System.Text.Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(maps.ToDictionary(pair => pair.Key, pair => pair.Value.Events))));
+            File.WriteAllBytes(Path.Combine(outputDir, "events.json.gz"), events);
+            string boulders = JsonConvert.SerializeObject(maps.Where(pair => pair.Value.Boulders.Length > 0).ToDictionary(pair => pair.Key, pair => pair.Value.Boulders));
+            File.WriteAllText(Path.Combine(outputDir, "boulders.json"), boulders);
+            string lookup = JsonConvert.SerializeObject(mapsById.ToDictionary(pair => pair.Key, pair => new MapLookup { BotMapId = pair.Key, InternalName = (string)pair.Value["name"]! }));
+            File.WriteAllText(Path.Combine(outputDir, "mapreverselookup.json"), lookup);
+
+            var all = maps.Values.Select(map => map.Events).ToList();
+            int warpEvents = mapsById.Values.Sum(json => Entries(json, "warp_events").Count());
+            int warps = all.Sum(e => e.Warps.Count);
+            Console.WriteLine($"Maps: {maps.Count} built, {maps.Values.Sum(map => map.Height * map.Width)} tiles");
+            Console.WriteLine($"maps.bin: {raw.Length} bytes raw, {mapsBin.Length} gzipped");
+            Console.WriteLine($"Flagged objects: {all.Sum(e => e.Objects.Count)}, {all.Sum(e => e.Objects.Count(o => o.Flag is null))} unresolved");
+            Console.WriteLine($"Triggers: {all.Sum(e => e.Triggers.Count)}, {all.Sum(e => e.Triggers.Count(t => t.Var is null))} unresolved");
+            Console.WriteLine($"Warps: {warps}, {warpEvents - warps} dropped");
+            Console.WriteLine($"Connections: {all.Sum(e => e.Connections.Count)}");
+            // Each pair is listed on both maps; print it once, from the map with the lower id.
+            var divePairs = maps.SelectMany(pair => pair.Value.Events.Dive.Where(d => d.Map > pair.Key)
+                .Select(d => $"{mapsById[pair.Key]["name"]} and {mapsById[d.Map]["name"]} at ({d.X}, {d.Y})")).ToList();
+            Console.WriteLine($"Dive pairs: {divePairs.Count}: {string.Join("; ", divePairs)}");
+            Console.WriteLine($"Boulders: {maps.Values.Sum(map => map.Boulders.Length)} on {maps.Values.Count(map => map.Boulders.Length > 0)} maps");
+            Console.WriteLine($"events.json.gz: {events.Length} bytes, boulders.json: {boulders.Length} bytes, mapreverselookup.json: {lookup.Length} bytes");
+            Console.WriteLine($"Data/RS: {mapsBin.Length + events.Length + boulders.Length + lookup.Length} bytes in all");
+            Console.WriteLine($"Elapsed: {stopwatch.Elapsed.TotalSeconds:F1} s");
+        }
+
         // Per tile of the map's layout: the behaviour from the tileset attributes, and the collision and elevation bits.
         private (byte Behaviour, int Collision, byte Elevation)[,] DecodeCells(JObject json)
         {
@@ -364,5 +420,15 @@ namespace ShinyBotHunter.Scripts.Maps
 
         private static int ParseNumber(string value)
             => value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(value, 16) : int.Parse(value);
+
+        private static byte[] Gzip(byte[] raw)
+        {
+            var compressed = new MemoryStream();
+            using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+            {
+                gzip.Write(raw);
+            }
+            return compressed.ToArray();
+        }
     }
 }

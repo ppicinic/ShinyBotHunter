@@ -1,4 +1,7 @@
+using Newtonsoft.Json;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using System.IO.Compression;
 
 namespace ShinyBotHunter.Tests
@@ -51,6 +54,34 @@ namespace ShinyBotHunter.Tests
                     }
                 }
             }
+        }
+
+        [Fact]
+        public void CommittedRsData_Route101_MatchesTheGenerator()
+        {
+            var processor = new RsMapProcessor(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Fixtures", "pokeruby"), Path.Combine(Path.GetTempPath(), "unused"));
+            Map expected = processor.BuildMap(processor.ReadMap("Route101"));
+
+            var service = new MapService(Path.Combine(RepoPaths.AppProject, "Data", "RS"), withElevationAndEvents: true);
+            Map committed = service.GetMap(16);
+
+            Assert.Equal("Route101", service.GetMapLookup(16).InternalName);
+            Assert.Equal("OldaleTown", service.GetMapLookup(10).InternalName);
+            Assert.Equal("LittlerootTown", service.GetMapLookup(9).InternalName);
+            Assert.Equal(expected.Tiles, committed.Tiles);
+            Assert.Equal(expected.Elevation, committed.Elevation);
+            Assert.Equal(expected.Events.Objects, committed.Events.Objects);
+            Assert.Equal(expected.Events.Triggers, committed.Events.Triggers);
+            Assert.Empty(committed.Events.Warps);
+            Assert.Empty(committed.Events.Dive);
+            Assert.Empty(committed.Boulders);
+            // The fixture has Oldale as id 0 and no Littleroot; the checkout has both.
+            Assert.Equal([new MapConnection(Direction.Up, 0, 0)], expected.Events.Connections);
+            Assert.Equal([new MapConnection(Direction.Up, 0, 10), new MapConnection(Direction.Down, 0, 9)], committed.Events.Connections);
+            var lookup = JsonConvert.DeserializeObject<Dictionary<int, Pathfinding.MapLookup>>(File.ReadAllText(Path.Combine(RepoPaths.AppProject, "Data", "RS", "mapreverselookup.json")))!;
+            Assert.Equal(394, lookup.Count);
+            Assert.All(lookup.Keys, id => Assert.Equal(id, lookup[id].BotMapId));
+            Assert.All(lookup.Keys, id => service.GetMap(id));
         }
     }
 }
