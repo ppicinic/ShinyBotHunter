@@ -101,7 +101,7 @@ namespace ShinyBotHunter.BotEvents
             RsPointerService addresses = (RsPointerService)state.Bot.Addresses;
             IGameStateReader? trainingReader = state.BattleMode == BattleMode.Battle ? new RsStateReader(state.Bot, addresses, trainingReads: true) : null;
             await RunAsync(state, addresses, trainingReader, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
-                s => alerts.NotifyTrainerBattleAsync(s),
+                s => alerts.NotifyStopAsync(s),
                 raw => legality.Analyze(raw, GameFlavor.RS), pickMove, metadata.GetPokemonMoveMetadata, decideMove,
                 BattleStartStale, BattleStartStale - state.Bot.Profile.SeekLockHandOff!.Value,
                 Stale, ChecksumWindow, CursorWait, cancellationToken);
