@@ -6,7 +6,8 @@ namespace ShinyBotHunter.Games.Rs
     /// <summary>
     /// Classifies the RS screen from seven direct reads made on one frame (docs/specs/rs-wild-encounter.md FR-7,
     /// docs/research/rs-wild-encounter.md "What memory shows through one cycle"). Built with trainingReads it reads
-    /// fifteen blocks on one frame, plus one sprite on the party screen, and also classifies the training and field
+    /// fifteen blocks on one frame, plus one sprite on the party screen and the palette fade on the forget-a-move
+    /// screen, and also classifies the training and field
     /// script screens (docs/specs/rs-navigation-and-training.md); the flee path's reader is built without it.
     /// </summary>
     public class RsStateReader : IGameStateReader
@@ -49,9 +50,22 @@ namespace ShinyBotHunter.Games.Rs
         private const int EvolutionMovePromptState = 21;
         private const int EvolutionMovePromptStep = 4;
 
-        // atk5A_StateTracker on the forget-a-move screen and at "Delete a move?" (research R130, R131).
+        // data[8] 6 is the scene's forget-a-move screen, under the still active scene task; data[12] (tPartyID) is the
+        // evolving Pokémon's party slot ("Training: the readings behind …" R6, R7).
+        private const int EvolutionForgetScreenStep = 6;
+        private const int EvolutionPartySlot = 12;
+
+        // atk5A_StateTracker on the forget-a-move screen and at either yes/no (research R130, R131; "Training: the
+        // readings behind …" R1).
         private const int ForgetMoveScreen = 3;
         private const int DeleteMovePrompt = 1;
+
+        // Question on the move prompt, the evolution scene's data[9] values: 5 "Delete a move?", 10 "Stop learning?".
+        private const int DeleteMoveQuestion = 5;
+        private const int StopLearningQuestion = 10;
+
+        // gPaletteFade.active is the top bit of its byte (struct PaletteFadeControl, include/palette.h:37).
+        private const int FadeActiveShift = 7;
 
         private readonly IMemoryClient memory;
         private readonly RsPointerService addresses;
@@ -62,6 +76,10 @@ namespace ShinyBotHunter.Games.Rs
         private readonly int moveLearnPromptOffset;
         private readonly int levelUpBoxOffset;
 
+        // One block from ActiveBattlerPartyIndex to BattlescriptCurrInstr inclusive (0x1AA bytes); the script pointer's
+        // place in it.
+        private readonly int scriptPointerOffset;
+
         public RsStateReader(IMemoryClient memory, RsPointerService addresses, bool trainingReads = false)
         {
             this.memory = memory;
@@ -69,6 +87,7 @@ namespace ShinyBotHunter.Games.Rs
             this.trainingReads = trainingReads;
             moveLearnPromptOffset = (int)(addresses.MoveLearnPromptState - addresses.ExpGetterMonId);
             levelUpBoxOffset = (int)(addresses.LevelUpBoxState - addresses.ExpGetterMonId);
+            scriptPointerOffset = (int)(addresses.BattlescriptCurrInstr - addresses.ActiveBattlerPartyIndex);
             int[] direct = [];
             blocks =
             [
@@ -89,7 +108,7 @@ namespace ShinyBotHunter.Games.Rs
                     new(addresses.ExpGetterMonId, direct, levelUpBoxOffset + 1),
                     new(addresses.MoveSelectionCursor, direct, 1),
                     new(addresses.ForgetMoveCursor, direct, 1),
-                    new(addresses.ActiveBattlerPartyIndex, direct, 2),
+                    new(addresses.ActiveBattlerPartyIndex, direct, scriptPointerOffset + 4),
                     new(addresses.FieldMessageWindowState, direct, 2),
                     new(addresses.ScriptNative, direct, 4),
                     new(addresses.Tasks, direct, TaskSize * TaskCount),
@@ -109,11 +128,21 @@ namespace ShinyBotHunter.Games.Rs
             byte[] tasks = trainingReads ? read[TasksBlock].Bytes : [];
             if (FindTask(tasks, addresses.TaskEvolutionScene) is int evolution)
             {
+                // First, so the battle's prompt and forget rules never see the scene: there the battle script and the
+                // tracker are stale (R7).
                 int state = TaskDatum(tasks, evolution, 0);
-                int? question = state == EvolutionMovePromptState && TaskDatum(tasks, evolution, 8) == EvolutionMovePromptStep
+                int step = TaskDatum(tasks, evolution, 8);
+                if (state == EvolutionMovePromptState && step == EvolutionForgetScreenStep)
+                {
+                    return await ReadForgetScreenAsync(read, tasks, null, ct);
+                }
+                int? question = state == EvolutionMovePromptState && step == EvolutionMovePromptStep
                     ? TaskDatum(tasks, evolution, 9)
                     : null;
-                return new GameSnapshot(GameScreen.Evolution, null, null, state, null, Question: question);
+                // The scene prints in the battle window, so its text waits are the battle window's state (R5).
+                return new GameSnapshot(GameScreen.Evolution, null, null, state, null, Question: question,
+                    TextPrinter: BitConverter.ToUInt16(read[WindowBlock].Bytes, 0),
+                    PartyMonIndex: TaskDatum(tasks, evolution, EvolutionPartySlot));
             }
             if ((FindTask(tasks, addresses.BattlePartyMenuTask) ?? FindTask(tasks, addresses.BattlePartyPopupTask)) is int party)
             {
@@ -142,10 +171,13 @@ namespace ShinyBotHunter.Games.Rs
             int window = BitConverter.ToUInt16(read[WindowBlock].Bytes, 0);
             byte[] battleStruct = trainingReads ? read[BattleStructBlock].Bytes : [];
             int? moveLearn = trainingReads ? battleStruct[moveLearnPromptOffset] : null;
-            if (trainingReads && moveLearn == ForgetMoveScreen
+            uint? script = trainingReads ? BitConverter.ToUInt32(read[PartyIndexBlock].Bytes, scriptPointerOffset) : null;
+            // The script stays on "Delete a move?" through the prompt, the forget screen and 17 frames after it; the
+            // tracker and callback 2 tell those apart, and a stale 3 at the next battle has the script elsewhere (R1).
+            if (moveLearn == ForgetMoveScreen && script == addresses.DeleteMoveYesNo
                 && BitConverter.ToUInt32(read[Callback2Block].Bytes, 0) != addresses.BattleMainCallback2)
             {
-                return new GameSnapshot(GameScreen.OtherApp, outcome, null, read[ForgetCursorBlock].Bytes[0], null);
+                return await ReadForgetScreenAsync(read, tasks, outcome, ct);
             }
             if (controller == addresses.HandleInputChooseAction)
             {
@@ -162,10 +194,15 @@ namespace ShinyBotHunter.Games.Rs
                 return new GameSnapshot(GameScreen.BattleExpPrompt, outcome, null, battleStruct[levelUpBoxOffset], null,
                     PartyMonIndex: battleStruct[0]);
             }
-            if (moveLearn == DeleteMovePrompt)
+            // A tracker of 1 is stale after "Stop learning?" until the next prompt; only the script on a yes/no is a prompt.
+            int? learnQuestion = moveLearn != DeleteMovePrompt ? null
+                : script == addresses.DeleteMoveYesNo ? DeleteMoveQuestion
+                : script == addresses.StopLearningYesNo ? StopLearningQuestion
+                : null;
+            if (learnQuestion is not null)
             {
                 return new GameSnapshot(GameScreen.BattleMoveLearnPrompt, outcome, null, DeleteMovePrompt, null,
-                    PartyMonIndex: battleStruct[0]);
+                    PartyMonIndex: battleStruct[0], Question: learnQuestion);
             }
             if (ButtonWaits.Contains(window))
             {
@@ -189,6 +226,20 @@ namespace ShinyBotHunter.Games.Rs
         }
 
         private static short TaskDatum(byte[] tasks, int task, int index) => BitConverter.ToInt16(tasks, task + TaskData + index * 2);
+
+        // The forget-a-move screen: its cursor, the summary task that is running (the input task once it takes keys,
+        // the destroy task from the frame A is taken), and the palette fade, during which keys are dropped (R4). The fade
+        // is one more request, on this screen only.
+        private async Task<GameSnapshot> ReadForgetScreenAsync(ChainBlockResult[] read, byte[] tasks, BattleOutcome? outcome,
+            CancellationToken ct)
+        {
+            uint? summaryTask = FindTask(tasks, addresses.SummaryMoveInputTask) is not null ? addresses.SummaryMoveInputTask
+                : FindTask(tasks, addresses.SummaryDestroyTask) is not null ? addresses.SummaryDestroyTask
+                : null;
+            ChainBlockResult[] fade = await memory.ReadChainBlocksAsync([new(addresses.PaletteFadeActive, [], 1)], ct: ct);
+            return new GameSnapshot(GameScreen.OtherApp, outcome, null, read[ForgetCursorBlock].Bytes[0], summaryTask,
+                AppState: fade[0].Bytes[0] >> FadeActiveShift);
+        }
 
         // The party cursor is data[0] of the sprite the party task's data[3] names in its high byte (research R142); one
         // more request, on the party screen only.

@@ -296,6 +296,160 @@ The battle-side trackers and cursors are in `gSharedMem` and the same in every R
 
 From the action menu: Down to POKéMON (cursor 2), A; the party screen opens (callback 2 `CB2_PartyMenuMain`). Down moves the party cursor, which is `data[0]` of the sprite named by the party task's `data[3] >> 8` (here `0x02020142`, sprite 4). A on the slot opens SHIFT / SUMMARY / CANCEL, A on SHIFT returns to the battle in under a second; 8.7 s later the action menu is back with `gBattlerPartyIndexes[0]` (`0x02024A6A`) reading 1 and the battler's species the Zigzagoon's. The submenu's readiness was not gated in the spike (a fixed wait); the party task's function changes when it opens.
 
+## Training: the readings behind the move prompt, the forget screen and the evolution scene
+
+Added 2026-11-17 (T1r, #442), from a third spike on the QA emulator (sound off): `SA-Wild` (Sapphire 1.2), then `RU-Wild` (Ruby 1.2), one at a time, each on the `qa-route101` save in the Route 101 grass. These are the readings R1 to R8 that the T1 plan (#430) asked for. Every reading is one cmd 0x05 request of 16 blocks, so all its values are from one frame; frames are `gMain.vblankCounter1`. Values marked observed were read on the emulator; values marked not read are from the decomp (`pret/pokeruby`) only. Every value in this section is observed unless it says otherwise.
+
+How the states were reached, all by RAM writes in the free field:
+
+- the lead's experience set one short of a level, and its level byte (`gPlayerParty[0] + 84`) set to the level below, so the level-up offers that level's move again;
+- a fourth move written into the record on Ruby;
+- a second party member, made by copying the lead's 100 bytes to slot 2 and writing the party count 2, then rewritten to Mudkip, Lv 15, one short of Lv 16, holding an Exp. Share (item 182).
+
+Wild battles by Spin, fought with the first move.
+
+### Addresses
+
+Checked against pret/pokeruby's symbols branch, commit 78b1990 (`pokesapphire_rev2.sym`, `pokeruby_rev2.sym`, `pokesapphire_rev1.sym`, `pokeruby_rev1.sym`). Each symbol is on the same line in all four tables, and revision 1 equals revision 2. Functions are listed as the table has them; `RsPointerService` stores them + 1, the Thumb bit, as RAM holds them. The two battle scripts are ROM data, stored as `gBattlescriptCurrInstr` holds them, with no Thumb bit.
+
+| What | Symbol | Line | Address | Member | Status |
+|---|---|---|---|---|---|
+| The battle script pointer | `gBattlescriptCurrInstr` | 57 | `0x02024C10` (u32) | `BattlescriptCurrInstr` | observed (R1) |
+| The move offered | `gMoveToLearn` | 101 | `0x02024E82` (u16) | `MoveToLearn` | observed (R2) |
+| "Delete a move?" waiting | `BattleScript_AskToLearnMove` + 0x11 | 24455 | Sapphire `0x081D8ED2` (`081d8ec1` + 0x11), Ruby `0x081D8F42` (`081d8f31` + 0x11) | `DeleteMoveYesNo` (per game) | observed on Sapphire 1.2 and Ruby 1.2 (R1); 1.1 not read |
+| "Stop learning?" waiting | `BattleScript_AskToLearnMove` + 0x20 | 24455 | Sapphire `0x081D8EE1`, Ruby `0x081D8F51` | `StopLearningYesNo` (per game) | observed on Sapphire 1.2 and Ruby 1.2 (R1); 1.1 not read |
+| The forget screen's input task | `sub_809E260` | 6648 | `0809e280` + 1 = `0x0809E281`, both games | `SummaryMoveInputTask` | observed on both (R4, R7) |
+| The forget screen after A | `SummaryScreen_DestroyTask` | 6646 | `0809e15c` + 1 = `0x0809E15D`, both games | `SummaryDestroyTask` | observed on both (R4) |
+| The palette fade | `gPaletteFade` + 7, bit 7 (`active`, `struct PaletteFadeControl`, `include/palette.h:37`) | 177 | `0x0202F38F` | `PaletteFadeActive` | observed (R4) |
+| The evolution scene's task | `Task_EvolutionScene` | 11039 | `0811242c` + 1 = `0x0811242D`, both games | `TaskEvolutionScene` (already in the table) | observed on both (R5) |
+
+`gBattlerPartyIndexes` (`0x02024A6A`, line 31) to the end of `gBattlescriptCurrInstr` is 0x1AA bytes, one block. The callback 2 values below (the summary screen's `0x0809DE65` and `0x0809D865`, the scene's `0x08112291`, `ReshowBattleScreenAfterMenu`'s `0x0807AD7D` and `0x0807ADCD`) were observed and are not members.
+
+### The request
+
+`gMain` (callback 1, callback 2, the frame counter), the field lock, the battle bit, the player's controller function, the battle window state `0x03004226`, the action and move cursors, `gBattleOutcome`, `gBattlescriptCurrInstr`, `0x02016018` for 0x85 bytes (byte 0 `expGetterMonId`, byte 2 the move-prompt tracker `0x0201601A`, byte 0x84 the level-up box counter `0x0201609C`), `gBattleCommunication` (byte 1 the yes/no cursor `0x02024D1F`), the forget cursor `0x02018079`, `gMoveToLearn`, the task list `0x03004B20` (0x280), `gPaletteFade` `0x0202F388` (12), `gBattlerPartyIndexes`, and the lead battler's PP and HP (`0x02024AA4`, 6).
+
+### R1: the script pointer at the move prompt
+
+| State | Game | Pointer | Tracker | Yes/no cursor | Battle window | Callback 2 | Callback 1 | Forget cursor |
+|---|---|---|---|---|---|---|---|---|
+| (a) "Delete a move?" waiting | SA | `0x081D8ED2` | 1 | 0 | 0 | `0x0800F809` | `0x08010825` | 0 |
+| (b) after B, "Stop learning?" waiting | SA | `0x081D8EE1` | 1 | 0 | 0 | battle | `0x08010825` | 0 |
+| (c) after A, "did not learn" waiting | SA | `0x081D8EE9` | 1 | 0 | 8 | battle | | 0 |
+| (d) next battle, "Wild … appeared!" and the first action menu | SA | `0x081D8D78` (stale) | 1 (stale) | 0 to 6 (the byte is reused), 1 at the menu | 8, then 0 | battle | | 0 |
+| (a) again, the next level-up to 15 | SA | `0x081D8ED2` | 1 | 0 | 0 | battle | | 0 |
+| (e) on the forget screen | SA | `0x081D8ED2` | 3 | 0 | 0 | `0x0809D865` | `0x08010825` | 0, then 1 after Down |
+| (f) back in battle, "1, 2 and… Poof!" | SA | `0x081D8EF1` | 3 | 0 | 4, then 8 | battle | | 1 |
+| (g) next battle's intro and menu | SA | `0x081D8D78` (stale) | 3 (stale) | | 8, then 0 | battle | | 1 (stale) |
+| (a) | RU | `0x081D8F42` | 1 | 0 | 0 | battle | `0x08010825` | 0 |
+| (b) | RU | `0x081D8F51` | 1 | 0 | 0 | battle | | 0 |
+| (c) | RU | `0x081D8F59` | 1 | 0 | 8 | battle | | 0 |
+
+An empty cell was not in the snapshot's log line for that state. Every row matched the plan's expectation.
+
+- **All four constants are right.** The pointer stays on the instruction for as long as the prompt waits and leaves on the frame the answer is taken. For one frame before each yes/no the pointer is already on it with the tracker at 0 (Sapphire f 9183 and f 9966, Ruby f 2887 and f 3183).
+- **The battle window is 0 at both yes/nos**, on both games, so the text-wait rule does not press there.
+- The pointer also stays on `DeleteMoveYesNo` the whole time the forget screen is up (tracker 2 while the battle fades out, 3 from the frame callback 2 changes), and until 17 frames after callback 2 is the battle's again. So the pointer alone is both the prompt and the forget screen; the tracker (1 or 3) and callback 2 tell them apart.
+- While a text is on screen the pointer is on the instruction **after** its `printstring`: `Ask + 4` at "… is trying to learn …", `Ask + 7` at "… can't learn more than four moves" (both wait at window 8), `Ask + 10` while "Delete a move?" prints.
+- After B at "Delete a move?" the tracker reads 4 for about 55 frames (window 4 for 31 of them, then "Stop learning?" prints), then 0 for a frame, then 1 with the pointer on `StopLearningYesNo`.
+- Seen once on Ruby: A with the forget cursor on the new move (4) goes back to the battle and to "Stop learning?" (`0x081D8F51`, tracker 4 then 1). B there (No) prints the two texts again and returns to "Delete a move?" (`0x081D8F42`, tracker 1).
+
+### R2: the move offered
+
+`gMoveToLearn` read 117 (Bide) at (a) on both games, in the same request, as expected. It turns 117 on the frame the script reaches `Ask + 4` and stays (stale) afterwards. In the evolution scene it turned 341 (Mud Shot) on the frame the task's `data[0]` became 21, and read 341 at the scene's yes/no. A move learned into a free slot also writes it (55, Water Gun). So it is meaningful only while a prompt is up.
+
+### R3: who gets the experience
+
+Lead Marshtomp Lv 16, one short of 17; slot 2 Mudkip Lv 15, one short of 16, with the Exp. Share. One battle, two boxes:
+
+| Box | `expGetterMonId` (`0x02016018`) | Counter (`0x0201609C`) |
+|---|---|---|
+| the lead's | 0 | 0 for a frame, 1, 2 after A, 3 after A |
+| slot 2's | 1 | 1, 2, 3 (straight from the stale 3 to 1 at the poll rate) |
+
+As expected: one 1, 2, 3 per box, the getter the slot of the Pokémon whose box it is, lead first. After the last box the getter counts on to 6 within 12 frames and stays 6 (stale) until the next battle's experience script sets it 0. So the getter is meaningful only while a box or a prompt is up.
+
+### The level-up box counter
+
+One level (7 to 8): 0, 1 (the gains), 2 after A (the totals), 3 after A. Two levels in one battle (8 to 10): 1, 2, 3, then 0 for a frame, 1, 2, 3. **A stale 3 is left**: it read 3 through the free field and through the whole next battle, until that battle's own box set it 0 then 1. A battle with no level-up never touches it.
+
+### R4: the forget-a-move screen
+
+Sapphire, frames from the A at "Delete a move?" (sent after the read at f 15105; the first read with the tracker at 2 is f 15133):
+
+| Frame | What |
+|---|---|
+| 15133 to 15151 | tracker 2, the battle fading out, callback 2 still the battle's |
+| 15152 | tracker 3, callback 2 `0x0809DE65`; **the forget cursor is written 0 here** (seen as a change on the second and third opens, where a 1 and a 4 had been left) |
+| about 15153 | Down sent before the input task exists: the cursor stayed 0. Dropped, as expected |
+| 15157 | callback 2 `0x0809D865`, the palette fade starts |
+| 15166 | the input task `0x0809E281` is active (not in the read at 15160), still fading |
+| 15177 | the fade ends |
+| 15250 | Down sent; cursor 1 at f 15251, the task function still `0x0809E281`. As expected |
+| after 15262 | A sent; at f 15264 the task function is `0x0809E15D` and the fade is on. As expected (Ruby: the read before the A at f 7863, `0x0809E15D` at f 7864) |
+| 15285 | callback 2 `0x0807AD7D`, then `0x0807ADCD` (`ReshowBattleScreenAfterMenu`) |
+| 15321 | callback 2 the battle's; the pointer leaves `DeleteMoveYesNo` at 15338 |
+
+- **Different from the plan: the cursor never read 4 while the screen opened.** It is set to 0 on the frame callback 2 first becomes the summary's (the frame the tracker turns 3), 14 frames before the input task and 25 before the fade ends. It reads 4 only when Down has moved it onto the new move. So the cursor says nothing about whether the screen takes input; the input task being active with the fade off does.
+- A Down sent with the input task active but the fade still on (Ruby: held over about f 7057 to 7058, the fade ended at 7059) was dropped too: the cursor stayed 0. One reading, two frames from the edge.
+- Down moves the cursor one row per press, 0 to 4, about 8 frames apart, each press confirmed (Ruby).
+- Ruby gave the same order and the same intervals: callback 2 `0x0809DE65` to the input task 14 frames, to the fade ending 27.
+
+### R5: the evolution scene's text waits
+
+`Task_EvolutionScene` is `0x0811242D` on both games; callback 2 is `0x08112291`, callback 1 stays the battle's `0x08010825` and the battle bit stays set. The battle window states seen per `data[0]` (two scenes):
+
+| `data[0]` | Window states | Waits? |
+|---|---|---|
+| 1, 3 to 13, 15 | 0 only | no |
+| 2 ("What? … is evolving!") | 1, 2, 3, 6 | **no**: it prints and the scene goes on by itself |
+| 14 ("Congratulations! …", and "… did not learn …" on the No path) | 1, 2, 3, 6, 10, **8** | yes |
+| 21 with `data[8]` 1 ("… is trying to learn …") | 1, 2, 3, **8** | yes |
+| 21 with `data[8]` 2 ("… can't learn more than four moves") | 2, 3, **8** | yes |
+| 21 with `data[8]` 3 ("Delete a move?" printing, and "Stop learning?") | 1, 2, 3, 4, 6 | no |
+| 21 with `data[8]` 4 (the yes/no) | **0** | no: the yes/no |
+| 21 with `data[8]` 5, 6 (the forget screen) | 0 | no |
+| 21 with `data[8]` 7 ("1, 2 and… Poof!") | 4, 1, 2, 3, **8** | yes |
+| 21 with `data[8]` 8 ("… forgot …" / "And…") | 1, 2, 3, **8** | yes |
+| 19 ("… learned …!") | 3, **8** | yes |
+| 20 | 1, 2, 3, 10, **8** | yes |
+
+As expected, with one difference: **`data[0]` 2 never waits**. The wait value is 8 every time (5 and 9 not seen), never during `data[0]` 3 to 13. On the No path the A presses landed at 14, 21/1 and 21/2, then B and A at the yes/nos, then one A at 14 ("did not learn"): four text presses. On the Yes path: 14, 21/1, 21/2, A at the yes/no, the forget screen, then 21/7, 21/8, 19 and 20.
+
+### R6: which Pokémon evolves
+
+`data[12]` was 0 when the lead evolved and **1 when slot 2 evolved** (the Exp. Share holder; the lead did not evolve in that battle). As expected.
+
+### R7: the scene's own prompt and forget screen
+
+- **The yes/no:** `data[0]` 21, `data[8]` 4, `data[9]` 5 for "Delete a move?" and 10 for "Stop learning?"; the battle window 0; the cursor is `gBattleCommunication[1]` (0, Yes). `gBattlescriptCurrInstr` is stale there (`0x081D8D78`) and so is the in-battle tracker (3), so the battle's prompt rule must not be applied in the scene.
+- **The Yes path:** after A, `data[8]` 5 while the scene fades out (19 frames), then 6 with callback 2 `0x0809DE65`, then `0x0809D865`. The evolution task **stays in the task list** beside the summary tasks; callback 1 is `0x08010825`; the forget cursor is written 0 on the frame callback 2 changes (a 1 had been left); the input task `0x0809E281` appears 15 frames later, and the fade is off 12 after that. Down: cursor 1. A: `0x0809E15D`, then callback 2 `0x08111CB1` (the scene reloading), `0x08112291`, and `data[8]` 7. Then the texts as in R5. As expected.
+- **The No path:** `data[8]` 4 (`data[9]` 5); after B, 3 with `data[9]` 10 (window 4 for 30 frames, then "Stop learning?" prints), then 4 with `data[9]` 10; after A, `data[0]` 14 with `data[8]` 10 and "did not learn" waiting at 8. As expected, except that `data[8]` 9 (after B) and `data[0]` 21 with `data[8]` 10 (after A) each last less than a poll and were not caught (not read).
+
+### R8: PP and HP in the party record
+
+After one Tackle, at the next action menu, in the party record (decrypted) and in `gBattleMons[0]`: PP 35 to 34 in both (Sapphire battle 1; again 33 to 32 in battle 2; 35 to 34 on Ruby). As expected. HP follows as well: the record read 28 then 25 at the next menu after the wild Pokémon's hit, the same as the battle copy.
+
+### Other things seen
+
+- "1, 2 and… Poof!" holds the window at state 4 (the text's own pauses) for about 110 frames before it reaches 8. State 4 is not a button wait.
+- The window read 10 for 40 to 180 frames inside several texts (the fanfare ones: "grew to Lv.", "Congratulations", "learned"), then 8. State 10 is not a button wait either.
+- One press was dropped in the whole round: Right, Down at the action menu, sent on the very read the controller function first showed `HandleInputChooseAction` (f 11865), was not taken; sent again 1.5 s later it was. The A on FIGHT, sent one read later each time, was never dropped (11 times).
+- After the refused move the level byte and experience are as the game left them (Lv 15); the same level-up can be offered again by writing the level byte back, which is how the Yes path was run from the same emulator session.
+
+### Not read
+
+- R1 (d) to (g) on Ruby: (a), (b), (c) and the forget screen were read; the next battle's intro after them was not.
+- R3 with a real switch: the second Pokémon here is a copy of the lead holding an Exp. Share, never sent out.
+- Window states 5 and 9 in the scene; a cancelled evolution; an HM chosen on the forget screen; the scene's prompt for a Pokémon with a free slot (`data[0]` 19 directly).
+- `data[8]` 9 and 10 in the scene (each shorter than a poll).
+- "Use next Pokémon?".
+- Versions 1.0 and 1.1: the 1.1 values of the two script constants are from the symbol tables only.
+
+### Evidence
+
+Not committed, kept in the orchestrator's session: the request and its drivers (Python, over ApiHawk's chain read), the change log (2,571 lines: every change of the request through both games, and every poll through the forget screens) and screenshots. Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
+
 ## Not proved
 
 - Any HM on the emulator, and the field script each one runs: the save has no HMs or badges. Waterfall, Strength and Dive routes even offline. Ledges, ice and the other special floors on the emulator. Currents are written as plain surf.
@@ -304,9 +458,9 @@ From the action menu: Down to POKéMON (cursor 2), A; the party screen opens (ca
 - The 24 Secret Base layouts.
 - 144 trainer sight entries and 32 triggers whose flag or variable the prototype did not resolve (scripts that reach the battle through a `call`, special variables).
 - NPCs that walk a fixed path (only wander and walk ranges are marked), and objects a script moves.
-- The lead fainting in training, running out of PP, the "No" answer to the in-battle move prompt, a Pokémon that evolves while it is not the lead, EXP for a switched-out lead.
+- The lead fainting in training, running out of PP, EXP for a switched-out lead (the two-getter reading used an Exp. Share holder, never sent out). The "No" answer to the in-battle move prompt and a Pokémon that evolves while it is not the lead were read since ("Training: the readings behind the move prompt, the forget screen and the evolution scene", R1, R6 and R7), and that section lists what it did not read.
 - The Yes/No menu gated on its task, and the party submenu gated at all.
-- Ruby. Everything here ran on Sapphire 1.2; the battle-side addresses are shared, the field-side functions are not.
+- Ruby, for the first spike: the maps, the walks, healing, the switch and the first training run ran on Sapphire 1.2 only; the battle-side addresses are shared, the field-side functions are not. The trainer speech and the training readings were read on Ruby 1.2 as well (their sections say what was not).
 
 ## What this means for the bot
 

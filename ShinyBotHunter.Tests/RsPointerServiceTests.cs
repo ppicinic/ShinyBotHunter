@@ -107,6 +107,35 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x02025734u, table.RunWatchY);
             Assert.Equal(0x0802C099u, table.HandleInputChooseAction);
             Assert.Equal(0x0802C68Du, table.HandleInputChooseMove);
+            Assert.Equal(0x02024C10u, table.BattlescriptCurrInstr);
+            Assert.Equal(0x02024E82u, table.MoveToLearn);
+            Assert.Equal(0x0809E281u, table.SummaryMoveInputTask);
+            Assert.Equal(0x0809E15Du, table.SummaryDestroyTask);
+            Assert.Equal(0x0202F38Fu, table.PaletteFadeActive);
+        }
+
+        // pret symbols, commit 78b1990, line 24455: BattleScript_AskToLearnMove + 0x11 and + 0x20, script addresses
+        // without a Thumb bit.
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void SapphireHasItsLearnMoveScript(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXPE", revision);
+
+            Assert.Equal(0x081D8ED2u, table.DeleteMoveYesNo);
+            Assert.Equal(0x081D8EE1u, table.StopLearningYesNo);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void RubyHasItsLearnMoveScript(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXVE", revision);
+
+            Assert.Equal(0x081D8F42u, table.DeleteMoveYesNo);
+            Assert.Equal(0x081D8F51u, table.StopLearningYesNo);
         }
 
         // pret symbols, commit 78b1990, line 4437: WaitForAorBPress, + 1 for the Thumb bit.
@@ -138,6 +167,8 @@ namespace ShinyBotHunter.Tests
             var table = (RsPointerService)Profile.Addresses(gameCode, 2);
 
             Assert.Null(table.WaitForAorBPress);
+            Assert.Null(table.DeleteMoveYesNo);
+            Assert.Null(table.StopLearningYesNo);
         }
 
         [Theory]
