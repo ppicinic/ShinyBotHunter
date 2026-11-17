@@ -1,0 +1,231 @@
+# Spec: navigation and training in Ruby and Sapphire
+
+Status: Draft, from the spike of 2026-11-15. Not started. Builds on the [wild encounter hunt](rs-wild-encounter.md), which is on `main` (epic #380, PR #412); checked against it as built on 2026-11-16 ("Checked against main" below).
+Last updated: 2026-11-16
+Owner: Phil
+Related: [research: the spike](../research/rs-navigation-and-training.md) (the source for every address, kind, cost and rule here), [RS wild encounter spec](rs-wild-encounter.md) and [its research](../research/rs-wild-encounter.md), [HGSS pathfinder spec](pathfinder-maps-flags-hms.md) (the flag-gated design this builds first), the HGSS guide page [Wild and chained encounters](../guide/04-hunts/01-wild-encounter.md), [feature workflow](feature-workflow.md), the decision [Hunts act as a human would](../decisions/global.md), AGENTS rule 16.
+
+## Summary
+
+Two things, in the order they depend on each other.
+
+1. **Hoenn map data and pathfinding.** A generator beside the HGSS one reads a `pret/pokeruby` checkout and writes `Data/RS` in the HGSS container: one kind byte per tile with HGSS's meanings, plus an elevation byte. Script state is in from the first version: NPCs that exist only while a flag is clear, and script trigger tiles with their variables. Trainers' lines of sight are not part of the route (owner, 2026-11-15): a trainer is an NPC like any other, and meeting one is a stop. The bot reads the flags and variables once per navigation. `HasOverworldNavigation` becomes true for Ruby and Sapphire.
+2. **Training.** The Wild Encounter action's Train Type Standard and Switch open to Ruby and Sapphire: fight with a move, the level-up box, new moves, evolution, the in-battle switch, and the trip to a Pokémon Center and back when the party is spent. `HasTraining` becomes true.
+
+The spike generated the data for 370 maps (53 KB gzipped), walked routes from it on the emulator at the first try (across a map connection, through a door, over an exit mat, the length of Route 102), healed at two Pokémon Centers, saw a script trigger stay quiet because its variable did not match, and drove every training screen from Lv 7 through an evolution at Lv 16 from memory.
+
+A trainer battle is never fought by the bot: it goes to Waiting, pings Discord, and waits for Resume (owner, 2026-11-15).
+
+## Goals
+
+- G1: Ruby and Sapphire map data in the HGSS byte-per-tile container, generated from the decomp checkout with one command.
+- G2: routes that respect the save's story state: flags and variables read from RAM decide which NPCs and script tiles are live (owner, 2026-11-15: done in the first version, not later).
+- G3: the walk to a Pokémon Center, the heal, and the walk back, with every press confirmed and every wait bounded.
+- G4: Standard and Switch training with the same choices as HGSS.
+- G5: reuse. The HGSS search, navigator and level-up decisions where they fit; the differences in the profile, the address table and the macro registry.
+- G6: a trainer battle stops the bot for the operator, with a ping.
+
+## Non-goals
+
+- Using an HM in the field, and reading from RAM which ones the party can use (the moves and the badges). The data and the search model every HM (FR-4a), and the capability is a value passed in; until the reads and the field-move step exist it is empty, so routes that need an HM are not taken (owner, 2026-11-15: all the HMs in the data and the search, the capability addresses later).
+- Flash. It lights a cave and changes no route.
+- Ice, slides, currents, rails, cracked floors and the Mach Bike slopes as walkable ground. They are one kind and the search treats it as blocked.
+- Secret Bases, the Safari Zone, the Battle Tower, the Trick House, contests.
+- Fighting trainers, and routing round their lines of sight. Meeting one is a stop (FR-10).
+- Pickup and Chained Encounter on Ruby and Sapphire.
+- Building the flag gates for HGSS. The design is shared with the [HGSS pathfinder spec](pathfinder-maps-flags-hms.md); this feature builds the pieces flavor-neutral so HGSS can adopt them, and does not regenerate `Data/HGSS`.
+
+## Requirements
+
+### Map data
+
+| ID | Requirement | Priority | Verified by |
+|---|---|---|---|
+| FR-1 | A setup command beside the HGSS one takes a pokeruby checkout and an output folder and writes `Data/RS`. It reads `map_groups.json` (map id = group × 256 + number, as `gSaveBlock1.location`), each map's `map.json`, the layouts' `map.bin` (metatile bits 0 to 9, collision 10 to 11, elevation 12 to 15) and the tilesets' `metatile_attributes.bin`. It needs no ROM. | Must | The command on a clean folder; unit tests on fixture maps. |
+| FR-2 | `maps.bin` is the HGSS container (gzip; count; per map id, height, width, bytes) with a second plane: after a map's kind bytes come its elevation bytes. The kinds are HGSS's for what they share (research doc, "The generated data") and two more: `MAP_FlaggedNpc` 0x12 and `MAP_ScriptTrigger` 0x14. `MapService` loads either layout; HGSS maps have no elevation plane and read as elevation 0. | Must | Unit test: the Route 101 fixture decodes to the research doc's grid. Size in the PR (the spike: 53 KB). |
+| FR-3 | Side data per map, in one file the size of HGSS's `flagged.json` idea: flagged objects `{x, y, flag}`; triggers `{x, y, var, value}`; warps `{x, y, destination map, destination warp, arrow direction or none}`; connections `{direction, offset, neighbour}`. An entry whose flag or variable cannot be resolved is kept with no id and is always live. | Must | Unit tests; the generator prints the unresolved count (the spike: 32 triggers). |
+| FR-4 | Objects: a cut tree and a smash rock by their graphic; an object with a flag becomes 0x12 on its tile; one without is blocked; a wandering or walking object's range box becomes NPC range (0x11) over free and grass tiles. A trainer is an object like any other: its own tile is blocked whether or not it has been beaten (a beaten trainer still stands there), and a trainer that walks has its range marked. Nothing is written for a trainer's line of sight. | Must | Unit tests on Route 102's fixture: the trainers' tiles blocked, no other tile changed by them. |
+
+### HMs
+
+| ID | Requirement | Priority | Verified by |
+|---|---|---|---|
+| FR-4a | Every HM obstacle is in the data with HGSS's kinds and rules, and the search takes HGSS's capability mask: Cut trees (0x0F, cost 10) and smash rocks (0x10, cost 30) from the objects' graphics; water (0x04; 10 to start surfing, 3 a tile after) and waterfalls (0x0D) from the tile behaviours, entered and left regardless of elevation; Strength boulders listed per map as HGSS's `boulders.json` is (60 on nine maps) and pushed by HGSS's rule; A tile whose capability is not in the mask is blocked. Dive is different (owner, 2026-11-15): it is in effect a warp between a surface map and its underwater map, so it is not a tile kind at all. Each `dive` or `emerge` connection becomes one edge between the two maps, carrying a new Dive capability bit, and it matters only to the search between maps. The edge joins a single tile on each side, one access point per pair of maps (owner, 2026-11-15): the generator picks one deep-water tile on the surface map and the tile under it on the underwater map, and writes the pair in the side file. The other deep-water tiles are plain water. | Must | Unit tests on the committed data, each route with and without its capability: the Petalburg Woods cut trees (19, 10) and (19, 11); the Rusturf Tunnel rocks (24, 4) and (24, 5); Route 103's channel by Surf; a waterfall on Route 114; a boulder fixture. For Dive, one unit test on the cross-map search is enough for now: a route between a surface map and its underwater map exists with the Dive bit and not without, and it passes through the one access tile on each side. |
+| FR-4b | The capability passed to the search by the navigator is empty in this feature. Building it from the party's moves and the badges, and the field-move step that uses an HM at an obstacle, are a later feature; nothing in the data or the search changes when they arrive. | Must | Unit test: with an empty mask no route crosses an HM tile. |
+
+### Search and walking
+
+| ID | Requirement | Priority | Verified by |
+|---|---|---|---|
+| FR-5 | The search takes the set flags and the variables. A flagged NPC's tile is free when its flag is set and blocked when clear. A trigger costs 200 while its variable holds its value and is ordinary ground otherwise. Other costs are HGSS's. | Must | Unit tests: a corridor closed by a flagged NPC opens when the flag is set; a route that detours round a live trigger and goes straight when its variable differs. |
+| FR-6 | Elevation: a step onto a tile whose elevation is not 0 or 15 is allowed only when the player's elevation is 0 or equal to it; the player then has that tile's elevation, unchanged over a 15. The search state carries it. | Must | Unit test on a bridge fixture. |
+| FR-7 | Connections and warps are edges between maps: stepping off a map's edge lands on the neighbour's facing edge, shifted by the connection's offset; a door is entered by stepping onto it; an arrow warp is taken by pressing its direction while standing on it. Whether cross-map search is HGSS's graph with connection nodes or tile-level across maps is the planner's choice; the spike's tile-level search found every route at once. | Must | Unit tests; QA `rs-nav-heal-return`. |
+| FR-8 | A route becomes one `M` macro per straight run, `M.<dir>.<coordinate>.<address>` with the registry's `RunHold` macro joined to the first run's own step with `:` (never a step of its own, as `RunEncounterEvent` does it), on the address table's `RunWatchX` and `RunWatchY`. A run may cross a connection or pass through a door when its last tile is in the destination map (the coordinate waited for is the destination's). An arrow warp's run waits for the coordinate outside. | Must | Unit test: the Route 101 to Oldale Pokémon Center route gives the research doc's five macros. |
+| FR-9 | Walking a route: per segment, run the macro and wait for it to end with the field free on the expected map and tile; 20 s without that stops the walk ("Stuck walking to …" with the map and tile). The battle bit during a segment ends it: a wild battle is handled by the encounter loop and the route is planned again from where the player stands; a trainer battle is FR-10. Flags and variables are read once per plan (`gSaveBlock1 + 0x1220`, 0x120 bytes; `+ 0x1340`, 0x200 bytes). | Must | QA log: segments with frames; a re-plan after a battle. |
+| FR-10 | A trainer battle (battle type `0x0008`) at any time, which is what happens when a route passes an unbeaten trainer's line of sight: the bot goes to Waiting, sends a Discord message ("A trainer battle started on <map>."), and presses nothing. Today `RsBattleEvent` and the seek already stop in Waiting on a battle that is not wild ("Something other than a wild battle started."); this adds the trainer's own sentence, the Discord message, and a Resume that goes on. Resume today runs the catch check (`CheckForCatchAsync`); after a trainer stop there is nothing to find, so it waits for the free field and carries on with whatever it was doing, planning again. A Safari battle keeps today's stop. This applies to the flee-only wild hunt too. | Must | Unit test; QA `rs-nav-trainer`. |
+| FR-11 | The Pokémon Center: the nearest one by route cost, from the generated data (a map whose name ends `_PokemonCenter_1F`; the nurse's object gives the counter tile). The bot walks to the tile two below the nurse, faces up, presses A, and then by rule until the field is free: A at a field message wait (window state 5, 8 or 9 at `0x0202E87C + 0x16`), A at the Yes/No once its menu task is running, A at the script's wait-for-button. The party's HP must read full afterwards, or the bot stops. | Must | QA `rs-nav-heal-return`: HP written low, read full after. |
+| FR-12 | Field-side function addresses (the wait-for-button native, the Yes/No task, the party menu's and the evolution scene's callbacks and task) differ between Ruby and Sapphire. They are ROM code above `0x0803FBDC`, so they also move between revisions, and the profile serves revisions 1 and 2 (1.1 and 1.2) from one table today. The address table gains a part chosen by game code and revision: `GameProfile.Addresses` takes the revision alone today (`BotFactory` calls it with `context.Revision`), so it is given the game code as well, which `RomInfo` carries. The 1.2 values are the spike's (Sapphire observed, Ruby four bytes lower). The 1.1 values come from pret's symbol tables and are marked decomp only; if the planner cannot get them, Run refuses a train mode on revision 1 with one sentence and the wild hunt is unchanged there. The battle-side and RAM addresses stay one table. Every new member carries the table's comment (symbol, root or constant, observed or decomp only, its QA scenario), and no address appears outside the pointer services. | Must | `RsPointerServiceTests`; QA on both games at 1.2. |
+
+### Training
+
+| ID | Requirement | Priority | Verified by |
+|---|---|---|---|
+| FR-13 | The RS battle event fights when the orchestrator's battle mode is Battle: at the action menu with the cursor at 0, the registry's `BattleConfirm` macro (its file's comment widened from RUN to any action), confirmed by the snapshot's screen becoming `BattleMoveList` (the controller function reading `HandleInputChooseMove`, which `RsStateReader` already classifies); the move cursor (`0x02024E64`) moved to the chosen slot, each press confirmed by the cursor; confirm, confirmed by the screen leaving the move list. The move is chosen by the HGSS damage picker from the party record. | Must | Unit tests; QA `rs-train`. |
+| FR-14 | The level-up box: A when `0x0201609C` reads 1, confirmed by 2; A when 2, confirmed by 3. A battle that gains several levels shows one box per level, and a move prompt can follow any of them; each is handled as it comes. More than one Pokémon can level up from one battle (the switched-out trainee and the battler, or an Exp. Share holder): each gets its own boxes and prompts in turn, and the bot reads which party slot the box is for (`gBattleStruct->expGetterMonId`) so its decisions are about the right Pokémon. | Must | QA: one pair of presses per level gained; `rs-train-double-levelup`, `rs-train-double-levelup-learn`, `rs-train-two-levelup`, `rs-train-two-levelup-learn`. |
+| FR-15 | A new move: with a free slot, text only. With four moves, the prompt is waiting when `0x0201601A` reads 1. The decision is HGSS's `LevelUpFlow` rule. Yes: A (confirmed by the tracker leaving 1), then on the forget-a-move screen Down until `0x02018079` is the slot (each confirmed), A (confirmed by the battle's callback returning). No: B, then A at "Stop learning?". | Must | QA `rs-train-learn-slot1` to `-slot4`, `rs-train-learn-refuse`. |
+| FR-16 | Evolution: while the evolution task runs the bot presses only at text waits, never B. Its move prompt is waiting when the task's `data[0]` is 21 and `data[8]` is 4, with `data[9]` 5 ("Delete a move?") or 10 ("Stop learning?"); answered as FR-15. The party record's species is read again afterwards. | Must | QA `rs-train-evolve`. |
+| FR-17 | Switch training: at the first action menu of a battle, Down to POKéMON (cursor 2, confirmed), confirm; on the party screen Down until the party cursor (the sprite `data[0]` named by the party task) is the battler's slot, confirm, confirm on SHIFT once the submenu is up (the party task's function changes); the switch is confirmed by `0x02024A6A` reading the slot. Three failed tries flee the battle, as on HGSS. | Must | QA `rs-train-switch` and the six `rs-train-switch-*` scenarios; a unit test with scripted snapshots for the three failed tries. |
+| FR-18 | The orchestrator's existing decisions apply unchanged: too hurt or out of PP means the Pokémon Center trip and the walk back to the start tile; the target level ends training; a faint goes to Waiting. `HasTraining` and `HasOverworldNavigation` are true for RS; the Train Type choices are no longer greyed out. What else those two capabilities switch on is FR-18a. | Must | Unit tests; QA `rs-train-heal`. |
+| FR-18a | On `main` the two capabilities decide more than training, and each of these is kept as it is for RS when they turn true. `HasOverworldNavigation` is what the `Chained Encounter` and `HGSS Static Encounter` entries require and what greys Headbutt ("Ruby and Sapphire have no Headbutt trees."): an RS bot is still not offered either action and Headbutt stays greyed with that sentence. `HasTraining` is what greys Pickup and No Target (`BotService.DisabledByCapabilities`): Pickup stays greyed on RS with a sentence of its own (the party check alone would offer it, since Zigzagoon has the ability); No Target becomes available, as it needs only a train mode. `HasTraining` false is also what runs the RS checks at Run (`WildRefusalAsync`: the field not free, the player not object 0, the party unreadable, the lead fainted) and the speed lines: they keep running for every RS Wild Encounter, with or without a train mode. How the profile says these (new capability members or otherwise) is the planner's choice; a flavor check in `BotService` is not. | Must | Unit tests on the registry and on `DisabledByCapabilities` for both profiles; `rs-wild-refusals` and `rs-wild-sapphire` still pass, the latter with Headbutt and Pickup greyed and the train types not. |
+| FR-18b | The profile's own rules on `main`: `HasTraining` needs a battle parser (RS has none) and `HasOverworldNavigation`; `HasOverworldNavigation` needs maps, a graph and a pathfinding service. The RS profile supplies each or the rule is narrowed with its reason in the PR; the constructor never passes by a dummy part. | Must | `GameProfileTests`. |
+| FR-18c | Every Gen 3 shiny is checked with PKHeX (decision of 2026-11-15). Training goes through the same first-action-menu read as the flee-only hunt, so the wild hunt's FR-18 holds unchanged in every train mode: a shiny is analysed there before it is logged, a legal one is the target and nothing is pressed, an illegal one is logged with `IsShiny` false and then fought as any other. | Must | Unit test: an illegal shiny in Train Standard is logged once, not alerted, and the battle goes on with FIGHT. |
+| FR-19 | Log lines: `[Navigator]` for the plan (cost, steps, segments, flags set, any live trigger tile the route crosses) and each segment; `[RsBattle]` for the training rules, each press with what confirmed it. | Must | QA parses them. |
+| FR-20 | The guide's page [Ruby and Sapphire wild encounters](../guide/04-hunts/08-rs-wild-encounter.md), its greyed-choices table and the stops in [When something goes wrong](../guide/07-when-something-goes-wrong.md): training, what the save needs (a Pokémon Center reachable on foot without HMs, the bot stops at any trainer on the way who has not been beaten), the trainer stop and its ping. | Must | Reviewer reads it. |
+
+### Non-functional
+
+| ID | Requirement | Verified by |
+|---|---|---|
+| NFR-1 | `Data/RS` under 150 KB in all. Generating it takes under a minute. | PR. |
+| NFR-2 | Reading flags and variables adds under 100 ms to a plan. A plan within three maps takes under a second. | Logged. |
+| NFR-3 | No ApiHawk change. No new package. HGSS's data and behaviour unchanged; its unit tests and route scenarios pass. | Tests; QA. |
+
+## Design
+
+### The tile byte and the second plane
+
+The owner's HGSS data is a byte per tile holding a kind, compressed as a whole. Hoenn keeps that exactly, so the search's tile rules carry over, and adds what Hoenn needs that a kind cannot say: the elevation. Two planes of bytes compress to 53 KB for the region. Packing kind and elevation into one byte was considered: the kinds already use the top bit for blocked and need five bits, elevation needs four.
+
+### Script state
+
+Two kinds of thing on the map depend on the story, and the decomp names the flag or variable for each:
+
+| On the map | Lives while | Data | Effect on a route |
+|---|---|---|---|
+| An NPC with an event flag (0x12) | the flag is clear | 545 objects, all resolved | blocked while live, free after |
+| A script trigger tile (0x14) | its variable holds its value | 194 tiles, 162 resolved | cost 200 while live |
+
+The spike saw both rules hold on the emulator, and a trigger whose variable did not match did nothing.
+
+Trainers are left out of the route on purpose (owner, 2026-11-15). The spike's prototype marked each trainer's line of sight as costly ground and the first draft kept that; the owner's call is that it is not the pathfinder's business. A trainer who sees the player starts a battle, the bot stops, pings and waits (FR-10), the operator wins, and after that the trainer never challenges again. What does matter for a route is the trainer as an object: one that walks a path can be in the way at any moment, and a beaten trainer still stands on its tile and blocks it. Both are covered by treating a trainer as any other NPC: its tile blocked, its walking range marked.
+
+This is the design of the [HGSS pathfinder spec](pathfinder-maps-flags-hms.md)'s second part, which is specified and not built. Building the flag set, the gated kinds and the side file flavor-neutral here means HGSS gets them by regenerating its data later.
+
+### Maps joined by connections
+
+HGSS's outdoor world is a few stitched maps with one coordinate space. Hoenn's towns and routes each have their own, and the game swaps the map and the coordinates as the player steps over an edge. So an edge between maps is a connection (walk off the side) or a warp (a door, or a mat with a direction). The `M` action does not mind: it waits for a coordinate, and the coordinate after the edge is the new map's, so one macro can run across it.
+
+### Training by rule
+
+The wild-encounter battle event already knows the action menu, the text wait and the free field. Training adds five waits, each a byte or a task state found in the spike: the move list, the level-up box (a counter that reads 1 then 2), the move prompt (a tracker and a cursor), the forget-a-move screen (a cursor), the evolution task (its state and sub-state), and the party screen for the switch. What to do at each is already decided in HGSS's `LevelUpFlow` and damage picker, which work from parsed party data; the planner confirms how much of those two is free of HGSS reads.
+
+As built, the battle event waits on `GameSnapshot`s from `RsStateReader` (seven direct reads in one request on one frame) and reads the rest itself in one-frame blocks. The new waits follow that: each becomes a screen or a value on the snapshot, or a block read beside it, and none is a loop of single reads. `BattleMoveList` and `BattleTurn` are already classified.
+
+### Addresses per game
+
+Until now one table has served Ruby and Sapphire, because the bot read RAM and battle code, which are identical. The nurse, the Yes/No menu, the party menu and the evolution scene are field-side code, four bytes apart between the two games at 1.2. The table gains a small per-game part, keyed by the game code in the ROM header that `RomInfo` already carries.
+
+### Where it lives
+
+- `ShinyBotHunter/Scripts/Maps/`: the RS generator beside the HGSS processors; `Tools/SetupCommands.cs`: the command.
+- `ShinyBotHunter/Data/RS/`: `maps.bin`, the side file, the lookup.
+- `ShinyBotHunter/Pathfinding/MapService.cs`, `PathfindingService.cs`, `Util/Constants.cs`: the second plane, the three kinds, flags and variables in the search, elevation, connections, the two warps.
+- `ShinyBotHunter/BotEvents/NavigatorEvent.cs`: the walk by segments for RS, the nurse rule, the trainer stop; what is HGSS-only moves behind the profile.
+- `ShinyBotHunter/BotEvents/RsBattleEvent.cs`, `LevelUpFlow.cs`: FR-13 to FR-17.
+- `ShinyBotHunter/Service/Pointers/RsPointerService.cs`, `Games/Rs/RsProfile.cs`, `RsStateReader.cs`, `RsOverworldReader.cs`: the new reads, the per-game addresses, the capabilities.
+- `ShinyBotHunter/Service/ShinyAlertService.cs` (which `RsBattleEvent` already holds) or `DiscordBotService.cs`: the trainer ping.
+- `ShinyBotHunter/Service/BotService.cs`, `Games/GameCapabilities.cs`, `Games/GameProfile.cs`, `Games/EventRegistry.cs`, `Bot/BotFactory.cs`: FR-18a, FR-18b and FR-12's game code.
+- `ShinyBotHunter/Macro/Configs/RS/`: any new press text.
+- The guide, `docs/architecture/system-overview.md`, `docs/specs/qa-automation.md`.
+
+## QA
+
+The scenarios use what the wild hunt's QA put on `main`: the ROM handles `SA-Wild` and `RU-Wild` (the Ruby scenario), the save `rs.qa-route101` installed pristine before each run from `../shinybothunterqasaves/rs/qa-route101.SaveRAM` (Route 101 grass, a shiny Lv 7 Mudkip, no HMs), the RS milestone `Route 101` in the QA Mongo, the `rs-usa-rev2` cheat folder, and the helpers in `rs-wild.ts` (the log parsers, the catch helper for the second Pokémon, Cancel from any tab). The scenarios reach their starting state with RAM writes the spike used: HP at `gPlayerParty + 86`, experience by rewriting the party record's encrypted block (`setexp.py`), a Master Ball in the bag for a second Pokémon. A second save, standing west of Route 102's first trainer with him beaten, would make `rs-nav-heal-return` shorter; the owner can make one.
+
+| Scenario | Flow | Passes when |
+|---|---|---|
+| `rs-nav-heal-return` | Wild Encounter, Train Standard, target level 101, lead HP written to 5 at Run | the plan to Oldale's Pokémon Center with its segments; HP full after the nurse; back on the start tile; the first battle after it is fought |
+| `rs-nav-trainer` | a navigator walk from Oldale toward Petalburg with the first Route 102 trainer unbeaten | the bot is Waiting on (33, 16), where he sees the player, with one Discord message and no press after the battle bit; after the scenario wins the battle and presses Resume the walk carries on |
+| `rs-nav-flags` | unit level, on the committed data: a route past a flagged NPC with its flag clear and set, and past a trigger with its variable matching and not | the routes differ as the flags and variables say |
+| `rs-train` | experience set one short of Lv 9; Train Standard, target 9 | one battle fought with a move, one level-up box cleared by two confirmed presses, Complete |
+| `rs-train-learn-slot1` to `rs-train-learn-slot4` | four scenarios, one per move slot: experience set one short of Lv 15 with four moves, so Bide is offered in battle; the rule's answer is to learn it over that slot | the prompt seen waiting (`0x0201601A` reads 1) and answered Yes; the forget-a-move cursor (`0x02018079`) confirmed on that slot (0, 1, 2 or 3) by as many Down presses as it takes, none for slot 1; the party's moves afterwards are the old four with Bide in exactly that slot; the field free. The spike ran slot 3 only |
+| `rs-train-learn-refuse` | the same start; the rule's answer is not to learn | the prompt answered No (B), "Stop learning BIDE?" answered Yes; the four moves unchanged; the field free. Not run in battle in the spike |
+| `rs-train-double-levelup` | Train Standard; the Mudkip at Lv 8 with experience set so one battle takes it past two levels (Lv 8 to 10) with three moves, so Water Gun is learned at Lv 10 into the free slot | two level-up boxes in the one battle, each cleared by its own pair of confirmed presses (the counter at `0x0201609C` reads 1, 2, 3 twice); Water Gun in slot 4 with text presses only; the party reads Lv 10; the field free |
+| `rs-train-double-levelup-learn` | Train Standard; a Pokémon with four moves whose learnset teaches a move at each of two levels it will cross in one battle, short of any level it evolves at. Mudkip's own moves (Lv 10, then Lv 15) are too far apart for two levels, so the scenario either writes enough experience to cross both or uses another species; it names the species and levels it uses | a level-up box for every level crossed; two move prompts in the one battle, each seen waiting and answered by the rule, one replacing a slot and one refusing; the party's moves as decided; the field free. The spike saw five levels in one battle (Lv 10 to 15, five boxes, one prompt at the end); two prompts in one battle is a first run here |
+| `rs-train-switch-double-levelup` | Train Switch; the benched trainee's experience set to cross two levels in one battle | two boxes for the trainee, cleared as above; its level two higher |
+| `rs-train-two-levelup` | Train Switch; the trainee (slot 1) and the battler (slot 2) both have their experience set one short of a level, so both level up from the same battle. An Exp. Share on a third Pokémon, written into its held item, is an equally good way to get two level-ups from one battle and may be used instead | two Pokémon level up in the one battle: a level-up box for each, in the order the game gives the experience, each cleared by its own pair of confirmed presses; both levels one higher in the party record afterwards; the field free. Not run in the spike |
+| `rs-train-two-levelup-learn` | the same, with both Pokémon at a level that teaches a move: one with a free slot, one with four moves | both boxes cleared; the free-slot move learned with text presses only; the other Pokémon's prompt seen waiting and answered by the rule; a second run with both Pokémon at four moves, so there are two prompts in the one battle for two different Pokémon, one replaced and one refused; the party's moves as decided. Not run in the spike |
+| `rs-train-evolve` | experience set one short of Lv 16 on the Mudkip, which has four moves, so the evolution scene offers Mud Shot; the rule's answer is to keep the moves | no B while the scene animates; the party reads Marshtomp (species 284) at Lv 16; the scene's prompt is seen waiting (task state 21, sub-state 4, question 5), answered No, then "Stop learning?" (question 10) answered Yes; the four moves unchanged; the field free |
+| `rs-train-evolve-learn` | the same start, with the rule's answer to learn it over a named slot | the prompt answered Yes; the forget-a-move screen's cursor confirmed on the slot; the party reads Marshtomp with Mud Shot in that slot; the field free. The spike ran Yes only in battle and No only in the evolution scene, so this scenario is the first run of Yes inside the scene |
+| `rs-train-evolve-free-slot` | the same start with one move slot emptied in party RAM | Marshtomp learns Mud Shot into the free slot with text presses only, no prompt |
+| `rs-train-switch` | a second, stronger Pokémon in slot 2 (caught by the scenario, its level raised by an experience write); Train Switch with slot 2, three battles | in each battle: the trainee leads; POKéMON chosen with the cursor confirmed; the party cursor confirmed on slot 2; SHIFT pressed only once the submenu is up (the party task's function has changed), no fixed wait; the switch confirmed by `0x02024A6A` reading 1; the battler then fights with a move and wins; the trainee's experience in the party record is higher after each battle; the field free. The spike ran the switch once and fled; the win and the experience are first runs here |
+| `rs-train-switch-levelup` | the same, with the trainee's experience set one short of its next level | the level-up box for the benched trainee cleared by its two confirmed presses; the trainee's level is one higher; training goes on |
+| `rs-train-switch-learn` | the same, the trainee with four moves and one short of a level that teaches a move | the move prompt for the benched trainee answered by the rule (one run replacing a slot, one refusing); the trainee's moves as decided |
+| `rs-train-switch-evolve` | the same, the trainee one short of the level it evolves at | the trainee evolves after the battle with no B during the scene; the party reads the new species in slot 1 |
+| `rs-train-switch-target` | Train Switch with a target level one above the trainee's, experience set one short | training ends at the target level with Complete, after the walk the orchestrator makes |
+| `rs-train-switch-battler-spent` | the battler's HP written to 1, or its PP to 0, before Run | the orchestrator's rule: the Pokémon Center trip, then Switch training resumes; and with the battler fainted in battle, the battle is fled and the bot heals |
+| `rs-train-switch-ruby` | `rs-train-switch` on the Ruby 1.2 ROM | the same checks; proves the per-game party-screen addresses (FR-12) |
+| `rs-train-heal` | Train Standard, the lead's PP written to 0 | the Pokémon Center trip, then training resumes |
+| Regression | the nine `rs-wild-*` scenarios (`rs-wild-speed` still at 265 an hour or better: the flee path gains no read or wait); `hgss-route33`, `hgss-route33-train`, `hgss-navigate-heal-return`, `hgss-heal-variants`, `hgss-pickup` | still pass |
+
+## Suggested task split
+
+| Task | Scope | Depends on | Size |
+|---|---|---|---|
+| N1 | The RS generator, the container's second plane, the side file, the boulders, `Data/RS` (FR-1 to FR-4a's data) | none | L |
+| N2 | The search: flags and variables, the new kinds, the HM rules, the Dive edge between maps, elevation, connections, warps, macros (FR-4a, FR-4b, FR-5 to FR-8) | N1 | L |
+| N3 | The address part by game code and revision, and the new reads (FR-12, the reads of FR-9 and FR-11) | none | M |
+| N4 | The navigator for RS: segments, re-plan, the trainer stop and ping, the nurse (FR-9 to FR-11, FR-19) | N2, N3 | L |
+| T1 | Fighting, the level-up box, new moves, evolution in the RS battle event (FR-13 to FR-16, FR-18c) | N3 | L; the planner may split evolution out |
+| T2 | The switch (FR-17) | T1 | M |
+| T3 | Training wired into the action: capabilities and what else they switch, the profile's parts, the choices, the heal trip (FR-18, FR-18a, FR-18b) | N4, T1 | M |
+| Q1 | QA scenarios, `docs/specs/qa-automation.md` | all | L |
+| D1 | Guide, architecture, close-out (FR-20) | T3 | S |
+
+N1 and N3 can start at once. The wild-encounter feature this builds on is on `main`.
+
+## Decided
+
+- Owner, 2026-11-15: the map data is byte-per-tile and compressed, as HGSS's.
+- Owner, 2026-11-15: script flags and scripts are done in the first version, for Ruby and Sapphire; the same design is still owed to HGSS.
+- Owner, 2026-11-15: a trainer battle puts the bot into Waiting and needs a Resume; it also pings Discord.
+- Owner, 2026-11-15: training is Standard and Switch, as on HGSS.
+- Spike: a second plane for elevation rather than a packed byte.
+- Owner, 2026-11-15: trainers' lines of sight are not in the map or the route. A trainer matters to a route only as an NPC: one that walks, or a beaten one still standing on its tile. This replaces the spike's costly sight tiles.
+- Owner, 2026-11-15: all the HMs are in the data and the search now; the addresses that say what the party can use, and using an HM in the field, come later.
+- Spike: no special floors (ice, slides, currents, rails) in this feature.
+
+## Open questions
+
+- HGSS graph or tile-level search across maps (FR-7). Not blocking; the planner measures.
+- Whether HGSS's `LevelUpFlow` and damage picker can be called as they are with Gen 3 party data, or need their HGSS reads moved behind the profile first. Read, not run.
+
+- Whether RS gets a Gen 3 battle parser over `gBattleMons` (`0x02024A80`, already in the table) or the `HasTraining` rule is narrowed to the party record (FR-18b). The spike chose moves and read HP from the party record alone.
+
+## Checked against main
+
+2026-11-16, against `main` at `d29053c` (the wild-encounter feature merged, PR #412). Nothing the spike proved is contradicted. What the as-built code changes in this spec:
+
+| On `main` | What it means here |
+|---|---|
+| `HasOverworldNavigation` also gates Chained Encounter, HGSS Static Encounter and the Headbutt choice; `HasTraining` also gates Pickup, No Target, the RS checks at Run and the speed lines | FR-18a: turning the two capabilities on must not offer RS those actions or drop the RS checks |
+| The profile's constructor needs a battle parser for `HasTraining` and a graph for `HasOverworldNavigation` | FR-18b, and an open question |
+| One RS address table for revisions 1 and 2, chosen by revision alone | FR-12: field-side functions need game code and revision; 1.1 was not spiked |
+| Every Gen 3 shiny is checked with PKHeX; an illegal one is logged with `IsShiny` false | FR-18c |
+| A battle that is not wild already stops in Waiting; Resume runs the catch check | FR-10 builds on that stop |
+| `RunWatchX`/`RunWatchY`, `RunHold` joined to the first step, `BattleConfirm`, `BattleMoveList` on the snapshot | FR-8 and FR-13 name them |
+| The catch check reads the PC boxes; a full party is not refused | no change: a second Pokémon caught for the Switch scenarios is found either way |
+| QA: `SA-Wild`, `RU-Wild`, `rs.qa-route101`, `rs-wild.ts`, nine `rs-wild-*` scenarios; the guide page `08-rs-wild-encounter.md` | the QA section, the regression row and FR-20 name them |
+
+## Changelog
+
+- 2026-11-15: first draft, from the spike.
+- 2026-11-16: checked against `main` with the wild-encounter feature merged: FR-18a to FR-18c added; FR-8, FR-10, FR-12, FR-13, FR-20, the QA section and the task split's dependencies updated; "Checked against main" added.
+- 2026-11-16: QA for two Pokémon levelling up from the same battle, plain and with moves to learn (owner: this is what "double level up" meant; a switch battle or an Exp. Share gets there). The scenarios for one Pokémon gaining two levels stay. Listed, not spiked.
+- 2026-11-15: QA for more than one level in a battle: two levels, two levels with a move prompt at each, and two levels for a benched trainee (owner). Listed, not spiked.
+- 2026-11-15: Switch training's QA is seven scenarios covering a full battle, a benched trainee's level-up, new move and evolution, the target level, a spent battler, and Ruby (owner). Listed, not spiked beyond the switch itself.
+- 2026-11-15: the in-battle move prompt's QA is five scenarios: replacing each of the four slots, and not learning (owner). Listed, not spiked.
+- 2026-11-15: evolution's QA split into three scenarios (keep the moves, learn over a slot, learn into a free slot) so a move learned on evolution is covered both ways (owner).
+- 2026-11-15: Dive is an edge between maps with a capability bit, not a tile kind, with one unit test; one access tile on each side per pair of maps (owner).
+- 2026-11-15: the owner asked for every HM in the data and the search, with the capability reads left for later; FR-4a and FR-4b added, checked offline with the prototype.
+- 2026-11-15: the owner removed trainer sight tiles from the data and the search; FR-2 to FR-5, the design's script-state section and two QA scenarios follow.
