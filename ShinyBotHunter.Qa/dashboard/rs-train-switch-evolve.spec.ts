@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  ASKING, copyLeadToSlot2, expAt, MARSHTOMP, movesOf, oneShort, PARTY_AFTER, PRESS, SCENE, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, writeSlot
+  ASKING, boxes, copyLeadToSlot2, expAt, MARSHTOMP, movesOf, oneShort, PARTY_AFTER, PRESS, SCENE, switchLines, trainingRun, writeSlot
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { MINUTE } from './static'
@@ -9,21 +9,8 @@ import { MINUTE } from './static'
 // to slot 2 at Lv 20, which does not level up from a Lv 2 or 3 wild, so it does not evolve. The benched trainee one short
 // of Lv 16 with the save's three moves: it evolves after the switch battle and learns Mud Shot into the free slot. Target
 // 16, so the event ends in Complete.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges. Complete with No Target is approval answer 9.
-
-// The battle's switch: its try and the action menu that confirmed it.
-const switchLines = (b: string[]): string[] => b.flatMap((l) => {
-  const t = SWITCH_TRY.exec(l)
-  const c = SWITCH_CONFIRMED.exec(l)
-  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
-})
-// The level-up box presses: page, slot and what confirmed each.
-const boxes = (b: string[]): string[] => b.flatMap((l) => {
-  const m = PRESS.exec(l)
-  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
-  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
-})
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
+// Complete with No Target is approval answer 9.
 
 test('rs-train-switch-evolve: the benched trainee evolves into Marshtomp after a Switch battle, with no B during the scene', async () => {
   test.setTimeout(25 * MINUTE)

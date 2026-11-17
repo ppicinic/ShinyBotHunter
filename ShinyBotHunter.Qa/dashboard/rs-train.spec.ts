@@ -2,9 +2,8 @@
 // Standard training to 9. One battle fought with a move, one level-up box cleared by two confirmed presses, Complete.
 // The plan's run line (#433, Q1b): `npx playwright test rs-train.spec`; QA_RS_ROM=RU-Wild runs it on Ruby.
 //
-// Depends on T3b (#451), not merged when this was written: Train Type Standard and No Target in the form (rs-training.ts's
-// startTraining), and HasOverworldNavigation for RS, without which Complete comes with no walk home and no `already at
-// start` line. Check both after T3b merges.
+// Depends on T3b (#451): Train Type Standard and No Target in the form (rs-training.ts's startTraining), and
+// HasOverworldNavigation for RS, without which Complete comes with no walk home and no `already at start` line.
 import { expect, test } from '@playwright/test'
 import { snapshotField, OVER, START } from './rs-wild'
 import { MINUTE } from './static'

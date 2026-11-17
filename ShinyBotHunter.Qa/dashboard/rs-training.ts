@@ -9,7 +9,7 @@ import { expect, type Locator, type Page } from '@playwright/test'
 import { clearMacro, readMemory, repoDir, runMacro, shotAll, step } from './driver'
 import {
   ADVANCE, cancelBot, cancelEventAndBot, CONFIRM, dashboardState, ENCOUNTER, flashUnchanged, installPristine, launchRs, LOCK,
-  OVER, PARTY, PARTY_COUNT, parseEncounter, psqlRows, readBattleBit, readTile, readU8, removeCheats, ROMS, SLOT_SIZE, startWild,
+  OVER, PARTY, PARTY_COUNT, parseEncounter, psqlRows, readBattleBit, readTile, readU32, readU8, removeCheats, ROMS, SLOT_SIZE, startWild,
   STOPPED, teardown, TO_RUN, type Tile, writeBytes
 } from './rs-wild'
 import { backendLog, CRASHED, hex8, MINUTE, settings, shutdown, startFrame, type Frame } from './static'
@@ -158,8 +158,7 @@ export async function readParty(): Promise<Mon[]> {
   return Array.from({ length: count }, (_, i) => decodeRecord(raw.subarray(i * SLOT_SIZE, (i + 1) * SLOT_SIZE)))
 }
 
-// --- log patterns: each matches one Console.WriteLine; the comment names the PR or, for a line not merged yet, the task
-// whose plan words it, so the pattern is checked when that task merges ------------------------------------------------
+// --- log patterns: each matches one Console.WriteLine; the comment names the PR or the task that added it ------------
 
 // RsBattleEvent.PressConfirmedAsync (T1a, #446): every gated press of the training rules, T2's switch presses included.
 // Its `what` is e.g. `BattleConfirm on FIGHT`, `Down on the move list 0 -> 2`, `BattleConfirm on move 1`,
@@ -191,7 +190,7 @@ export const SWITCH_MISSED = /\[RsBattle\] switch try (\d) did not land: 0x02024
 // T2 (#459): the QA plan's L2 (the move prompt's gate) and L10 (a lock that is not a trainer's).
 export const MOVE_PROMPT = /\[RsBattle\] move prompt at (.*)$/
 export const LOCK_HANDED = /\[RsBattle\] lock handed over: not a trainer \((.*)\)\s*$/
-// T3b (#451), not merged: the trainer stop's sentence with the map's internal name (today `on map 0.17.`).
+// T3b (#451): the trainer stop's sentence with the map's internal name, then what was read.
 export const TRAINER_STOP = /\[RsBattle\] stopped: A trainer battle started on (\w+)\. (.*)$/
 
 // N4a (#449): RsNavigatorEvent's walk. Tiles are `<internal map name> (x, y)`.
@@ -214,7 +213,7 @@ export const STATE = /\[Orchestrator\] State: (\w+)\s*$/
 export const RESUME = /\[Orchestrator\] Resume: (.*)$/
 // OrchestratorEvent.SlowTransitionLine (N5, #439); the é as above.
 export const SLOW_TRANSITION = /\[Orchestrator\] A first Pok.{1,2}mon at or below the wild level gets the long battle transition\.\s*$/
-// T3b (#451), not merged: the QA plan's L7, why a heal trip was taken.
+// T3b (#451): the QA plan's L7, why a heal trip was taken.
 export const HEAL_TRIP = /\[Orchestrator\] heal trip: (.+?) HP (\d+)\/(\d+), damaging PP (\d+)\s*$/
 
 // DiscordBotService: the login at start-up, or no token; and a move prompt declined with no login.
@@ -269,6 +268,73 @@ export function checkPresses(log: string[]): void {
     }
     step(`battle ${battle}: ${counted} presses; dropped and sent again: ${JSON.stringify(repairs)}`)
   })
+}
+
+// --- the log extractors the scenarios share ------------------------------------------------------------------------
+
+/** A gated press as `<what> | <confirmed by>`, or null for any other line. */
+export const pressOf = (line: string): string | null => {
+  const m = PRESS.exec(line)
+  return m ? `${m[1]} | ${m[3]}` : null
+}
+
+/** The level-up boxes (`box <slot> <page>`) and the move prompts (`ask <slot>`), in log order. */
+export const events = (log: string[]): string[] => log.flatMap((l) => {
+  const box = /^level-up box page (\d) for slot (\d): BattleConfirm \|/.exec(pressOf(l) ?? '')
+  const ask = ASKING.exec(l)
+  return box ? [`box ${box[2]} ${box[1]}`] : ask ? [`ask ${ask[1]}`] : []
+})
+
+/** The n-th prompt's answer presses, from its asking line to the next prompt or the battle's end. */
+export function answerPresses(log: string[], n: number): { presses: string[]; closed: number } {
+  const ask = log.flatMap((l, i) => (ASKING.test(l) ? [i] : []))[n - 1]
+  const end = log.findIndex((l, i) => i > ask && (MOVE_PROMPT.test(l) || OVER.test(l)))
+  const lines = log.slice(ask, end)
+  return {
+    presses: lines.map(pressOf).filter((p): p is string => p !== null && /Delete a move\?|Stop learning\?|forget/.test(p)),
+    closed: lines.filter((l) => FORGET_CLOSED.test(l)).length
+  }
+}
+
+// The battle's switch: its try and the action menu that confirmed it.
+export const switchLines = (b: string[]): string[] => b.flatMap((l) => {
+  const t = SWITCH_TRY.exec(l)
+  const c = SWITCH_CONFIRMED.exec(l)
+  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
+})
+// The level-up box presses: page, slot and what confirmed each.
+export const boxes = (b: string[]): string[] => b.flatMap((l) => {
+  const m = PRESS.exec(l)
+  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
+  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
+})
+
+/** A [Navigator] line's tile from its groups at, at + 1 and at + 2, as the line prints it: `<internal map name> (x, y)`. */
+export const tileOf = (m: RegExpExecArray, at: number): string => `${m[at]} (${m[at + 1]}, ${m[at + 2]})`
+export const indexOf = (log: string[], pattern: RegExp, from = 0): number => log.findIndex((l, i) => i >= from && pattern.test(l))
+
+/**
+ * "Back on the start tile", after the nurse (`healed`, the line of its party HP): the last arrival on the start tile, then
+ * `arrived back at start`; or, when a wild battle starts on the last step onto the start tile, that battle bit on it, a
+ * plan from it with 0 segments, and `already at start` (no arrival line). `criterion` begins each failure.
+ */
+export function checkHome(log: string[], healed: number, start: string, criterion: string): void {
+  const cleared = indexOf(log, CLEARING, healed)
+  expect(cleared, `${criterion}: no "Clearing navigation path" after the nurse`).toBeGreaterThan(healed)
+  const reason = CLEARING.exec(log[cleared])![1]
+  const before = log.slice(healed, cleared)
+  step(`back on the start tile: ${reason}`)
+  if (reason === 'arrived back at start') {
+    const home = before.filter((l) => ARRIVED.test(l)).pop()
+    expect(home, `${criterion}: no arrival line before the clear`).toBeDefined()
+    expect(tileOf(ARRIVED.exec(home!)!, 1), `${criterion}: ${home}`).toBe(start)
+    return
+  }
+  const bit = before.map((l) => NAV_BATTLE.exec(l)).filter((m) => m !== null).pop()
+  expect(bit && tileOf(bit, 3), `${criterion}: "already at start" with no battle bit on the start tile before it`).toBe(start)
+  const zero = before.slice(before.indexOf(bit!.input)).map((l) => PLAN.exec(l)).find((m) => m !== null)
+  expect(zero && [tileOf(zero, 1), tileOf(zero, 4), zero[10]], `${criterion}: no plan from the start tile with 0 segments after ${bit!.input.trim()}`)
+    .toEqual([start, start, '0'])
 }
 
 // --- waits ------------------------------------------------------------------------------------------------------
@@ -436,12 +502,28 @@ export async function answerPrompt(run: Run, expected: Prompt): Promise<string> 
 export type TrainForm = { trainType: 'Standard' | 'Switch'; targetLevel: number; switchSlot?: number; discord?: boolean; expectedStop?: RegExp }
 
 /**
+ * A refused Run: the dashboard shows startAction's 400 text in the card's red feedback box (BotControlTab's
+ * renderFeedback) and leaves the form up.
+ */
+const refusal = (card: Locator): Locator => card.locator('div[class~="bg-red-900/20"]')
+
+/**
  * startWild with Spin (the player never leaves the start tile, so the walk home at Complete is `already at start`), then
  * NoTarget (with ShinyTarget the milestone never completes), the train type, the target level and the battler's slot,
- * read after the party is reloaded from the game. Returns the ISO time of the Run click.
+ * read after the party is reloaded from the game. A refusal fails at once with its sentence, instead of startWild's 30 s
+ * wait for the form to go. Returns the ISO time of the Run click.
  */
 export async function startTraining(card: Locator, form: TrainForm): Promise<string> {
-  return startWild(card, { mode: 'Spin' }, async () => {
+  // Set once the race below is settled; read only by `refused`'s loop, on the one test thread.
+  let settled = false
+  const refused = async (): Promise<never> => {
+    while (!settled) {
+      if ((await refusal(card).count()) > 0) throw new Error(`the Run was refused: "${(await refusal(card).innerText()).trim()}"`)
+      await sleep(250)
+    }
+    return new Promise<never>(() => undefined)
+  }
+  const start = startWild(card, { mode: 'Spin' }, async () => {
     await card.getByTestId('param-TargetType').locator('select').selectOption('NoTarget')
     await card.getByTestId('param-TrainType').locator('select').selectOption(form.trainType)
     await card.getByTestId('param-TargetLevel').locator('input').fill(String(form.targetLevel))
@@ -452,6 +534,11 @@ export async function startTraining(card: Locator, form: TrainForm): Promise<str
     }
     step(`training form: ${JSON.stringify({ ...form, expectedStop: form.expectedStop?.source })}`)
   })
+  try {
+    return await Promise.race([start, refused()])
+  } finally {
+    settled = true
+  }
 }
 
 /** QA_RS_ROM: SA-Wild by default, or RU-Wild. */
@@ -563,22 +650,39 @@ export async function setTrainerFlag(flag: number, on: boolean): Promise<void> {
 /** One segment as the navigator walks it: the macro and the tile it ends on, `RouteSearch`'s segments printed. */
 export type Segment = Tile & { macro: string }
 
+// gMain.callback1 (research, the gMain row of "Addresses from pret's symbol tables"): 0 with the lock 0 for 4 to 7 frames
+// after every warp, which is not the free field (research W1, W2).
+const CALLBACK1 = 0x03001770
+// gPlayerAvatar.tileTransitionState (gPlayerAvatar + 3): 1 through a step, 2 for a frame, 0 at rest (research W9).
+const TILE_TRANSITION = 0x0202e85b
+
 /**
- * Each segment's macro, then the tile, the lock and the battle bit every 250 ms until the player is on the segment's tile
- * with the field free; 20 s without fails naming the tile and the lock, and a battle bit fails naming it. Then the macro
- * is cleared, as the navigator clears it, which lets go of the last segment's held B.
+ * Each segment's macro, then the tile, the lock, callback 1, the tile transition and the battle bit every 250 ms until the
+ * player is free on the segment's tile with the step ended (lock 0, callback 1 not 0, tile transition 0) on two reads in a
+ * row: the reads are separate requests, so one read can mix frames from either side of a warp's 4 to 7 frames of
+ * callback 1 0, and two reads 250 ms apart cannot both fall in them. The game's locked arrival step after a door (36 to 43
+ * frames) is waited out the same way. 20 s without fails naming the last read, and a battle bit fails naming it. Then the
+ * macro is cleared, as the navigator clears it, which lets go of the last segment's held B.
  */
 export async function walkTo(segments: Segment[]): Promise<void> {
   for (const { macro, group, num, x, y } of segments) {
     const target = { group, num, x, y }
     await runMacro(macro)
     const deadline = Date.now() + 20_000
+    let freeBefore = false
     while (true) {
       const tile = await readTile()
       const lock = await readU8(LOCK)
+      const callback1 = await readU32(CALLBACK1)
+      const transition = await readU8(TILE_TRANSITION)
       if ((await readBattleBit()) === 1) throw new Error(`the scenario's walk: battle bit 1 on ${JSON.stringify(tile)} after ${macro}`)
-      if (lock === 0 && tile.group === group && tile.num === num && tile.x === x && tile.y === y) break
-      if (Date.now() > deadline) throw new Error(`the scenario's walk: ${macro} not on ${JSON.stringify(target)} with the field free in 20 s; ${JSON.stringify(tile)}, lock ${lock}`)
+      const free = lock === 0 && callback1 !== 0 && transition === 0 && tile.group === group && tile.num === num && tile.x === x && tile.y === y
+      if (free && freeBefore) break
+      freeBefore = free
+      if (Date.now() > deadline) {
+        throw new Error(`the scenario's walk: ${macro} not free on ${JSON.stringify(target)} with the step ended (lock 0, callback 1 not 0, ` +
+          `tile transition 0, two reads in a row) in 20 s; last read ${JSON.stringify(tile)}, lock ${lock}, callback 1 0x${hex8(callback1)}, tile transition ${transition}`)
+      }
       await sleep(250)
     }
     step(`walk: ${macro} on ${JSON.stringify(target)}`)

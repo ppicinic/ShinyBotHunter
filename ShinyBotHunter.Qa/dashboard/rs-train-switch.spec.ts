@@ -4,19 +4,20 @@ import {
   AFTER_SHIFT, CHOSEN, copyLeadToSlot2, expAt, FLEEING, MUDKIP, PARTY_AFTER, PRESS, rsRom, SWITCH_CONFIRMED, SWITCH_MISSED,
   SWITCH_TRY, trainingRun, waitLine, writeSlot
 } from './rs-training'
-import { ADVANCE, ENCOUNTER, FOUND, OVER, snapshotField } from './rs-wild'
+import { ADVANCE, ENCOUNTER, FOUND, OVER, parseEncounter, snapshotField } from './rs-wild'
 import { MINUTE } from './static'
 
 // rs-train-switch (#433, Q1c; spec QA table, FR-17), and rs-train-switch-ruby with QA_RS_ROM=RU-Wild: the same checks,
 // which prove the per-game CB2_PartyMenuMain (FR-12). The battler is built in RAM (approval answer 5): the lead copied
 // to slot 2 and raised to Lv 20, which the damage formula makes stronger. Three battles, then a cancel.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
 const ROM = rsRom()
 // Task_HandlePopupMenuInput, the party task's function once SHIFT is up, and HandleBattlePartyMenu, the list's: the same
 // in both games (RsPointerService; research S10). The snapshot prints a uint in decimal.
 const POPUP_TASK = String(0x08095429)
 const LIST_TASK = String(0x08095139)
+// The base experience yield of the Route 101 wilds, by national number (pret base_stats.h): Poochyena, Zigzagoon, Wurmple.
+const YIELD: Record<number, number> = { 261: 55, 263: 60, 265: 54 }
 
 test(`rs-train-switch${ROM === 'RU-Wild' ? '-ruby' : ''}: three Switch battles to slot 2 on ${ROM}, each switch gated and confirmed, the battler wins`, async () => {
   test.setTimeout(25 * MINUTE)
@@ -115,11 +116,23 @@ test(`rs-train-switch${ROM === 'RU-Wild' ? '-ruby' : ''}: three Switch battles t
 
   // "The trainee's experience in the party record is higher after each battle": no line carries the experience (QA plan
   // L3, not added by T2), and the bot is never idle between battles, so the read with the bot idle after the third
-  // battle is compared with the write before the Run. Each battle above was won with the trainee in it.
+  // battle is compared with the write before the Run plus each battle's share. Each battle above was won with the trainee
+  // in it, so its share is the game's floor(floor(yield × L / 7) / 2): the wild's base experience yield times its level
+  // from the battle's encounter line, split between the two that took part (#468). A fourth battle started before the
+  // cancel may have given its share too.
+  const shareOf = (line: string): number => {
+    const { species, level } = parseEncounter(line)
+    return Math.floor(Math.floor((YIELD[species] * level) / 7) / 2)
+  }
+  const shares = overs.slice(0, 3).map((over, k) => shareOf(log.slice(k === 0 ? 0 : overs[k - 1] + 1, over).find((l) => ENCOUNTER.test(l))!))
+  const fourthEncounter = log.slice(overs[2] + 1).find((l) => ENCOUNTER.test(l))
+  const expected = expAt(7) + shares[0] + shares[1] + shares[2]
   const [trainee, battler] = idle.party
-  step(`trainee experience ${expAt(7)} before the Run, ${trainee.exp} with the bot idle after three won battles`)
+  step(`trainee experience ${expAt(7)} before the Run, shares ${shares.join(', ')}, ${trainee.exp} with the bot idle after three won battles`)
   expect(idle.party.length, '"party count 2"').toBe(2)
-  expect(trainee.exp, '"the trainee\'s experience is higher after each battle": the trainee\'s experience after three battles').toBeGreaterThan(expAt(7))
+  expect(fourthEncounter ? [expected, expected + shareOf(fourthEncounter)] : [expected],
+    `"the trainee's experience is higher after each battle": ${trainee.exp} with the bot idle, from ${expAt(7)} and the shares ${shares.join(', ')}`)
+    .toContain(trainee.exp)
   expect([battler.species, battler.level], 'the battler, Mudkip at Lv 20').toEqual([MUDKIP, 20])
   // "The field free": every battle over is logged at the free field; with the bot idle the field is free, unless the
   // cancel came after a fourth battle had started.

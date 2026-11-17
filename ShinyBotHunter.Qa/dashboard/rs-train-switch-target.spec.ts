@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { step } from './driver'
 import {
-  CLEARING, copyLeadToSlot2, expAt, failOnStops, PARTY_AFTER, PRESS, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, waitLine, writeSlot
+  boxes, CLEARING, copyLeadToSlot2, expAt, failOnStops, PARTY_AFTER, switchLines, trainingRun, waitLine, writeSlot
 } from './rs-training'
 import { dashboardState, OVER, START } from './rs-wild'
 import { backendLog, MINUTE } from './static'
@@ -9,22 +9,9 @@ import { backendLog, MINUTE } from './static'
 // rs-train-switch-target (#433, Q1c; spec QA table, FR-17 and FR-18). The battler as in rs-train-switch: the lead copied
 // to slot 2 at Lv 20; the benched Lv 7 trainee one short of Lv 8, the target. After the battle the orchestrator walks
 // home (Spin never left the start tile, so `already at start`) and the event is Complete.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges. Complete with No Target is approval answer 9.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
+// Complete with No Target is approval answer 9.
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-
-// The battle's switch: its try and the action menu that confirmed it.
-const switchLines = (b: string[]): string[] => b.flatMap((l) => {
-  const t = SWITCH_TRY.exec(l)
-  const c = SWITCH_CONFIRMED.exec(l)
-  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
-})
-// The level-up box presses: page, slot and what confirmed each.
-const boxes = (b: string[]): string[] => b.flatMap((l) => {
-  const m = PRESS.exec(l)
-  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
-  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
-})
 
 test('rs-train-switch-target: Switch training ends at the target level, Lv 8, with Complete after the walk home', async () => {
   test.setTimeout(25 * MINUTE)
