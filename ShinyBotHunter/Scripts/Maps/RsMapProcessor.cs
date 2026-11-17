@@ -203,14 +203,14 @@ namespace ShinyBotHunter.Scripts.Maps
 
             foreach (var w in Entries(json, "warp_events"))
             {
-                int x = (int)w["x"]!;
-                int y = (int)w["y"]!;
-                // Warps to MAP_DYNAMIC (secret bases, the truck, the elevator) and the few placed off their map are dropped.
-                if (!idByConstant.TryGetValue((string)w["dest_map"]!, out int destination) || x >= width || y >= height)
+                if (WhyDropped(json, w) is not null)
                 {
                     continue;
                 }
-                var to = mapsById[destination]["warp_events"]![ParseNumber((string)w["dest_warp_id"]!)]!;
+                int x = (int)w["x"]!;
+                int y = (int)w["y"]!;
+                int destination = idByConstant[(string)w["dest_map"]!];
+                var to = Landing(destination, w);
                 Direction arrow = cells[y, x].Behaviour switch
                 {
                     MB_UNUSED_EAST_ARROW_WARP => Direction.Right,
@@ -295,13 +295,14 @@ namespace ShinyBotHunter.Scripts.Maps
             File.WriteAllText(Path.Combine(outputDir, "mapreverselookup.json"), lookup);
 
             var all = maps.Values.Select(map => map.Events).ToList();
-            int warpEvents = mapsById.Values.Sum(json => Entries(json, "warp_events").Count());
             int warps = all.Sum(e => e.Warps.Count);
+            var dropped = mapsById.Values.SelectMany(json => Entries(json, "warp_events").Select(w => WhyDropped(json, w)))
+                .OfType<string>().GroupBy(reason => reason).ToList();
             Console.WriteLine($"Maps: {maps.Count} built, {maps.Values.Sum(map => map.Height * map.Width)} tiles");
             Console.WriteLine($"maps.bin: {raw.Length} bytes raw, {mapsBin.Length} gzipped");
             Console.WriteLine($"Flagged objects: {all.Sum(e => e.Objects.Count)}, {all.Sum(e => e.Objects.Count(o => o.Flag is null))} unresolved");
             Console.WriteLine($"Triggers: {all.Sum(e => e.Triggers.Count)}, {all.Sum(e => e.Triggers.Count(t => t.Var is null))} unresolved");
-            Console.WriteLine($"Warps: {warps}, {warpEvents - warps} dropped");
+            Console.WriteLine($"Warps: {warps}, {dropped.Sum(group => group.Count())} dropped ({string.Join(", ", dropped.Select(group => $"{group.Count()} {group.Key}"))})");
             Console.WriteLine($"Connections: {all.Sum(e => e.Connections.Count)}");
             // Each pair is listed on both maps; print it once, from the map with the lower id.
             var divePairs = maps.SelectMany(pair => pair.Value.Events.Dive.Where(d => d.Map > pair.Key)
@@ -311,6 +312,32 @@ namespace ShinyBotHunter.Scripts.Maps
             Console.WriteLine($"events.json.gz: {events.Length} bytes, boulders.json: {boulders.Length} bytes, mapreverselookup.json: {lookup.Length} bytes");
             Console.WriteLine($"Data/RS: {mapsBin.Length + events.Length + boulders.Length + lookup.Length} bytes in all");
             Console.WriteLine($"Elapsed: {stopwatch.Elapsed.TotalSeconds:F1} s");
+        }
+
+        // Null for a warp the side file keeps; otherwise why it is dropped. Warps to MAP_DYNAMIC (secret bases, the
+        // truck, the elevator) have no destination, and a few warps sit, or land, outside their map's layout.
+        private string? WhyDropped(JObject json, JToken warp)
+        {
+            if (!idByConstant.TryGetValue((string)warp["dest_map"]!, out int destination))
+            {
+                return "to an unknown map";
+            }
+            if (!OnLayout(json, (int)warp["x"]!, (int)warp["y"]!))
+            {
+                return "off their own map";
+            }
+            var to = Landing(destination, warp);
+            return OnLayout(mapsById[destination], (int)to["x"]!, (int)to["y"]!) ? null : "landing off their destination";
+        }
+
+        // The destination map's warp event that the warp lands on.
+        private JToken Landing(int destination, JToken warp)
+            => mapsById[destination]["warp_events"]![ParseNumber((string)warp["dest_warp_id"]!)]!;
+
+        private bool OnLayout(JObject json, int x, int y)
+        {
+            var layout = layouts[(string)json["layout"]!];
+            return x >= 0 && x < (int)layout["width"]! && y >= 0 && y < (int)layout["height"]!;
         }
 
         // Per tile of the map's layout: the behaviour from the tileset attributes, and the collision and elevation bits.

@@ -165,6 +165,38 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void Warp_LandingOffItsDestination_IsDropped()
+        {
+            // A copy of the fixture with the Pokemon Center's warp 0, Oldale's door's landing, moved off the 14-wide Center.
+            string copy = Path.Combine(Path.GetTempPath(), "rsfixture-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                foreach (string file in Directory.GetFiles(Fixture, "*", SearchOption.AllDirectories))
+                {
+                    string target = Path.Combine(copy, Path.GetRelativePath(Fixture, file));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(file, target);
+                }
+                string centerFile = Path.Combine(copy, "data", "maps", "OldaleTown_PokemonCenter_1F", "map.json");
+                JObject centerJson = JObject.Parse(File.ReadAllText(centerFile));
+                centerJson["warp_events"]![0]!["x"] = 20;
+                File.WriteAllText(centerFile, centerJson.ToString());
+                var processor = new RsMapProcessor(copy, Path.Combine(Path.GetTempPath(), "unused"));
+
+                Map oldale = processor.BuildMap(processor.ReadMap("OldaleTown"));
+                Map center = processor.BuildMap(processor.ReadMap("OldaleTown_PokemonCenter_1F"));
+
+                Assert.Empty(oldale.Events.Warps);
+                Assert.NotEqual(Constant.MAP_Portal1, oldale[16, 6]);
+                Assert.Equal([new MapWarp(6, 8, 0, 6, 16, Direction.Down)], center.Events.Warps);
+            }
+            finally
+            {
+                Directory.Delete(copy, recursive: true);
+            }
+        }
+
+        [Fact]
         public void ObjectsByGraphic_TreeRockBoulder()
         {
             var processor = Processor();
