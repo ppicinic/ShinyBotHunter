@@ -40,7 +40,10 @@ namespace ShinyBotHunter.Tests
         public sealed record TrainerBytes(byte Lock, byte InBattle, byte Status, ushort Opponent, params int[] FlagsSet);
 
         private static readonly TrainerBytes NoScriptRunning = new(1, 0, 2, 0);
-        private const string Route102 = "A trainer battle started on map 0.17.";
+        private const string Route102 = "A trainer battle started on Route102.";
+
+        // The committed RS maps, for the trainer sentence's map name.
+        private static readonly Pathfinding.MapService Rs = new(Path.Combine(RepoPaths.AppProject, "Data", "RS"), withElevationAndEvents: true);
 
         // Short for the tests that time out; Long for those whose snapshots repeat over a few polls on the way.
         private static readonly TimeSpan Short = TimeSpan.FromMilliseconds(50);
@@ -318,7 +321,7 @@ namespace ShinyBotHunter.Tests
                 }
                 return new ChainBlockResult(ChainBlockStatus.Ok, 0, bytes);
             }
-            FakeBot bot = new(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>())))
+            FakeBot bot = new(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!), Rs))
             {
                 ChainBlocks = blocks =>
                 {
@@ -655,6 +658,15 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([Route102], battle.TrainerMessages);
             Assert.Empty(battle.Presses);
             Assert.Empty(battle.EnemyReads);
+        }
+
+        // FR-10: the sentence names the map by its internal name.
+        [Theory]
+        [InlineData((byte)0, (byte)17, "A trainer battle started on Route102.")]
+        [InlineData((byte)0, (byte)16, "A trainer battle started on Route101.")]
+        public void TrainerSentence_NamesTheMap(byte group, byte number, string sentence)
+        {
+            Assert.Equal(sentence, RsBattleEvent.TrainerSentence(Rs, group, number));
         }
 
         // A wild battle that reaches the seek's battle screen makes no trainer read: the entry request is today's two blocks.

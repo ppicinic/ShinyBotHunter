@@ -10,7 +10,7 @@ Discord is optional. The bot hunts the same way without it; see "How do I run wi
 When Discord is set up, the bot posts three kinds of message:
 
 - A **shiny alert**, in one channel, mentioning a role, when a hunt finds its shiny.
-- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on map <group>.<number>.` See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
+- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on <map>.`, with the game's name for the map, for example `Route102`. See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 - A **new-move question**, in a second channel, when a Pokémon in training wants to learn a fifth move. You answer it with buttons.
 
 The two channels are separate settings. You can use one channel for both.

@@ -79,7 +79,7 @@ A trainer stops the bot before its battle (see below). A Safari Zone battle, or 
 
 A trainer who sees your character, or whom you talk to, starts a speech, and the bot stops before anything is pressed: it does not fight trainers.
 
-1. The entry shows the bot waiting, and the backend's window shows `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` with the trainer's number and what the game showed. The same sentence goes to [Discord](../05-discord.md), once, in the shiny-alert channel with the role mention. The map is shown as two numbers until the bot knows map names; Route 102 is `0.17`.
+1. The entry shows the bot waiting, and the backend's window shows `[RsBattle] stopped: A trainer battle started on <map>.` with the trainer's number and what the game showed. The same sentence goes to [Discord](../05-discord.md), once, in the shiny-alert channel with the role mention. The map is the game's own name for it, for example `Route102`.
 2. In the emulator, press through the trainer's speech and fight the battle yourself. The speech may not be up yet when the bot stops; it comes up on its own.
 3. Once you have won and your character stands in the field, press **Resume** on the entry.
 
@@ -183,7 +183,7 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
 **It means** the game left the field for something other than a message or a script, such as a loading screen, and no battle started within 15 s.
 
-**You see** `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed.
+**You see** `[RsBattle] stopped: A trainer battle started on <map>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed.
 **It means** a trainer challenged your character. See [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 
 **You see** `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>`.

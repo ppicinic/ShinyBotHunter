@@ -4,6 +4,7 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -634,13 +635,14 @@ namespace ShinyBotHunter.BotEvents
             return challenge ? (read[5].Bytes[0], read[5].Bytes[1], trainer) : null;
         }
 
-        // The trainer stop's sentence; the map is group.number until the navigator has names.
-        internal static string TrainerSentence(byte group, byte number) => $"A trainer battle started on map {group}.{number}.";
+        // The trainer stop's sentence, naming the map from the profile's maps.
+        internal static string TrainerSentence(MapService maps, byte group, byte number) =>
+            $"A trainer battle started on {maps.GetMapLookup((group << 8) | number).InternalName}.";
 
         // Parks the bot with the trainer's sentence, marks the stop as a trainer's for Resume, then sends the sentence.
         private static async Task<string> TrainerStopAsync(GameState state, byte group, byte number, string seen, Func<string, Task> notifyTrainer)
         {
-            string sentence = Stop(state, TrainerSentence(group, number), seen);
+            string sentence = Stop(state, TrainerSentence(state.Bot.Profile.Maps!, group, number), seen);
             state.StoppedForTrainer = true;
             await notifyTrainer(sentence);
             return sentence;
