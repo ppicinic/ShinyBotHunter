@@ -1,6 +1,10 @@
 # A on RUN. Sent only at the action menu with the cursor (0x02024E60) at 3, and confirmed by the player's controller
 # function (0x03004330) leaving HandleInputChooseAction, that is the screen leaving the action menu. A 2-frame hold.
 # docs/research/rs-wild-encounter.md, "Presses".
+# Training sends it as every A its rules press, each gated and confirmed as RsBattleEvent's log line names: FIGHT (cursor
+# 0, confirmed by the move list), the move (confirmed by leaving the move list), the level-up box's two pages (confirmed
+# by its counter), Yes at "Delete a move?" and at "Stop learning?" (confirmed by the prompt leaving), and the slot on the
+# forget-a-move screen (confirmed by the summary's destroy task). docs/specs/rs-navigation-and-training.md FR-13 to FR-15.
 name: BattleConfirm
 flavor: RS
 steps:
