@@ -52,6 +52,7 @@ namespace ShinyBotHunter.Games.Hgss
             {
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
                 await bot.WaitForMacroAsync();
-            });
+            },
+            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>());
     }
 }

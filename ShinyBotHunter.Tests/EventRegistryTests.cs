@@ -10,7 +10,9 @@ using ShinyBotHunter.Context;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -65,7 +67,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task RsBotSeesWildEncounterOnly()
         {
-            var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
@@ -148,9 +150,43 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task NavigatingTrainingProfileWithoutTheHgssMembers_ListsWildEncounterOnly()
+        {
+            // RS as T3b will declare it (FR-18a): navigation, training, wild encounters and the run checks.
+            GameProfile profile = new(
+                GameFlavor.RS,
+                new GameCapabilities(
+                    HasOverworldNavigation: true,
+                    HasWildEncounters: true,
+                    HasTraining: true,
+                    HasEggs: false,
+                    CanReadBoxes: false,
+                    HasSoftResetStarterHunt: false,
+                    HasShinyStarterHunt: false,
+                    HasWishmakerJirachi: false,
+                    HasWildRunChecks: true),
+                [1],
+                (_, _) => new RsPointerService(),
+                new Gen3PokemonParser(new PokemonMetadataService(null!)),
+                battleParser: null,
+                createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),
+                maps: new MapService(new Dictionary<int, Map>()),
+                createStateReader: (memory, t) => new RsStateReader(memory, (RsPointerService)t),
+                createBattleEvent: _ => throw new NotImplementedException(),
+                saveGame: (_, _) => Task.CompletedTask,
+                createNavigatorEvent: _ => throw new NotImplementedException());
+            var service = Build(profile);
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
+
+            Assert.Equal(["Wild Encounter"], names);
+        }
+
+        [Fact]
         public async Task UnsupportedActionIs400()
         {
-            var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             var args = new NewEventArguments { EventName = "Chained Encounter", PhaseName = "x" };
 
@@ -166,7 +202,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task RsBot_StaticEncounterIs400NamingHasStaticEncounter()
         {
-            var service = Build(RsProfile.Create(new PokemonMetadataService(null!)));
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             var args = new NewEventArguments { EventName = "HGSS Static Encounter", PhaseName = "x", StaticEncounter = "Dialga (Sinjoh Ruins)" };
 

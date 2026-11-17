@@ -55,11 +55,13 @@ namespace ShinyBotHunter.Tests
 
         private static readonly byte[][] OneHealthy = [Mon(20, 7)];
 
-        private static async Task<(BotService Service, FakeBot Bot, ScreenReader Screen, FakeMemoryClient Memory)> LaunchAsync(byte[][] party)
+        private static async Task<(BotService Service, FakeBot Bot, ScreenReader Screen, FakeMemoryClient Memory)> LaunchAsync(byte[][] party,
+            GameCapabilities? capabilities = null)
         {
-            var rs = RsProfile.Create(new PokemonMetadataService(null!));
-            var profile = new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
-                rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame);
+            var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+            var profile = new GameProfile(rs.Flavor, capabilities ?? rs.Capabilities, [0], (_, _) => new RsPointerService(), new HpLevelPidParser(), rs.BattleParser,
+                rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
+                createNavigatorEvent: rs.CreateNavigatorEvent);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
@@ -239,6 +241,28 @@ namespace ShinyBotHunter.Tests
             var (service, _, _, _) = await LaunchAsync(OneHealthy);
 
             Assert.Equal("A x or y range must be supplied for Run Encounter Event", await RefusalAsync(service, Run()));
+        }
+
+        [Theory]
+        [InlineData(true, StandInTheField)]
+        [InlineData(false, "A x or y range must be supplied for Run Encounter Event")]
+        public async Task RunChecks_FollowHasWildRunChecks(bool hasWildRunChecks, string refusal)
+        {
+            // A training profile, so Standard is not greyed; the field is not free, which only the run checks read.
+            GameCapabilities caps = new(
+                HasOverworldNavigation: true,
+                HasWildEncounters: true,
+                HasTraining: true,
+                HasEggs: false,
+                CanReadBoxes: true,
+                HasSoftResetStarterHunt: false,
+                HasShinyStarterHunt: false,
+                HasWishmakerJirachi: false,
+                HasWildRunChecks: hasWildRunChecks);
+            var (service, _, screen, _) = await LaunchAsync(OneHealthy, caps);
+            screen.Screen = GameScreen.FieldTask;
+
+            Assert.Equal(refusal, await RefusalAsync(service, Run(a => a.TrainType = TrainType.Standard)));
         }
 
         [Fact]

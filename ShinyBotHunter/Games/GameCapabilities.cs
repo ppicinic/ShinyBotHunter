@@ -2,9 +2,9 @@ namespace ShinyBotHunter.Games
 {
     /// <summary>What the bot may try on a flavor, declared by its profile.</summary>
     public sealed record GameCapabilities(
-        bool HasOverworldNavigation,   // map, position, facing, pathfinding
+        bool HasOverworldNavigation,   // map, position, facing, and a navigator part that walks to a Pokémon Center and back
         bool HasWildEncounters,        // the spin and run loops and a battle that can be fled
-        bool HasTraining,              // a battle parser and overworld navigation: train modes, Pickup, healing
+        bool HasTraining,              // overworld navigation: train modes and healing
         bool HasEggs,                  // Togepi and Primo egg events
         bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
         bool HasSoftResetStarterHunt,  // RS wave hunt

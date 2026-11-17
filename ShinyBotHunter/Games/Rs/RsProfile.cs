@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
@@ -14,7 +15,15 @@ namespace ShinyBotHunter.Games.Rs
             ? RsPointerService.For(gameCode)
             : throw new NotSupportedException($"RS revision {revision}: no address table. Hunts run on revisions 1 and 2.");
 
-        public static GameProfile Create(PokemonMetadataService metadata) => new(
+        public const string DataDirectory = ".\\data\\RS";
+
+        internal const string NoTrainingAddresses = "Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).";
+
+        // RS plans over the maps alone (RouteSearch), so they carry elevation and events and there is no graph or pathfinding.
+        public static GameProfile Create(PokemonMetadataService metadata)
+            => Create(metadata, new MapService(DataDirectory, withElevationAndEvents: true));
+
+        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps) => new(
             GameFlavor.RS,
             new GameCapabilities(
                 HasOverworldNavigation: false,
@@ -35,6 +44,7 @@ namespace ShinyBotHunter.Games.Rs
             new Gen3PokemonParser(metadata),
             battleParser: null,
             createOverworldReader: (memory, table) => new RsOverworldReader(memory, (RsPointerService)table),
+            maps,
             createStateReader: (memory, table) => new RsStateReader(memory, (RsPointerService)table),
             createBattleEvent: provider => new RsBattleEvent(provider.GetRequiredService<PokemonPersistenceService>(), provider.GetRequiredService<ShinyAlertService>(), provider.GetRequiredService<LegalityService>(),
                 metadata, p => provider.GetRequiredService<SmogonDamageService>().PickBestMove(p, 3),
@@ -52,6 +62,11 @@ namespace ShinyBotHunter.Games.Rs
             // an hour"). A trainer's speech waits unpressed from 148 to 180 frames on (docs/research/rs-navigation-and-training.md,
             // "A trainer's intro speech"), so the later read costs nothing. A transition that ever crossed the hand-off costs
             // one one-frame read, false because the script status is 2, and the battle then goes on as normal.
-            seekLockHandOff: TimeSpan.FromSeconds(4));
+            seekLockHandOff: TimeSpan.FromSeconds(4),
+            createNavigatorEvent: provider => new RsNavigatorEvent(provider.GetRequiredService<PokemonStateReader>()),
+            // Training reads the per-game part (the new-move questions, the nurse's wait for A or B), which only the US tables have.
+            trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null }
+                ? null
+                : NoTrainingAddresses);
     }
 }
