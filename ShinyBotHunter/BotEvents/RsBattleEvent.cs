@@ -165,8 +165,9 @@ namespace ShinyBotHunter.BotEvents
                 {
                     // Before this battle's first menu the outcome can still be the last battle's: it stays until the next
                     // battle starts.
+                    // The level-up box comes only from the training reader.
                     s = await GameStateWait.UntilAsync(reader, "a battle message, the action menu or the free field",
-                        x => x.Screen is GameScreen.BattleMessage or GameScreen.BattleMenu or GameScreen.FieldFree
+                        x => x.Screen is GameScreen.BattleMessage or GameScreen.BattleMenu or GameScreen.FieldFree or GameScreen.BattleExpPrompt
                             || (seenMenu && x.Outcome == BattleOutcome.Lost), stale, ct);
                     Stopwatch since = Stopwatch.StartNew();
                     if (seenMenu && s.Outcome == BattleOutcome.Lost)
@@ -189,6 +190,18 @@ namespace ShinyBotHunter.BotEvents
                         GameSnapshot advanced = await GameStateWait.UntilAsync(reader, $"the battle window to leave {window}",
                             x => x.TextPrinter != window, stale, ct);
                         Console.WriteLine($"[RsBattle] BattleAdvance at window {window}, {since.ElapsedMilliseconds} ms: {advanced}");
+                        continue;
+                    }
+                    if (s.Screen == GameScreen.BattleExpPrompt)
+                    {
+                        // The level-up box, one per level and getter (FR-14): page 1 is confirmed by page 2, page 2 by the
+                        // counter leaving it (3, or 1 for the next box). The getter is named only from the box's own snapshot.
+                        bool firstPage = s.Prompt == 1;
+                        (_, int sent) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"),
+                            $"level-up box page {s.Prompt} for slot {s.PartyMonIndex}: BattleConfirm", firstPage ? "page 2" : "the box leaving page 2", s,
+                            firstPage ? x => x.Screen == GameScreen.BattleExpPrompt && x.Prompt == 2 : x => !(x.Screen == GameScreen.BattleExpPrompt && x.Prompt == 2),
+                            cursorWait, stale, ct);
+                        presses += sent;
                         continue;
                     }
 

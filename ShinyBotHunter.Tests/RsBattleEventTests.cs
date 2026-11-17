@@ -75,6 +75,7 @@ namespace ShinyBotHunter.Tests
             ("H.Up.2", GameScreen.BattleMoveList) => "Up",
             ("H.Right.2", GameScreen.BattleMoveList) => "Right",
             ("H.Down.2", GameScreen.BattleMoveList) => "Down",
+            ("H.A.2", GameScreen.BattleExpPrompt) => $"Box{at.Prompt}",
             _ => $"{macro} at {at}",
         };
 
@@ -86,6 +87,9 @@ namespace ShinyBotHunter.Tests
         private static GameSnapshot TMenu(int cursor, int battler = 0) => new(GameScreen.BattleMenu, null, null, cursor, null, PartyMonIndex: battler);
 
         private static GameSnapshot MoveList(int cursor) => new(GameScreen.BattleMoveList, null, null, cursor, null);
+
+        // The level-up box's page for the getter's slot.
+        private static GameSnapshot Box(int page, int getter = 0) => new(GameScreen.BattleExpPrompt, null, null, page, null, PartyMonIndex: getter);
 
         // Serves each stage's snapshots in turn, the last repeating; every press moves to the next stage, so a test does not
         // depend on how many polls a step makes. A press past the last stage throws, so a doubled press fails the test.
@@ -901,15 +905,56 @@ namespace ShinyBotHunter.Tests
 
         // Each training press with its happy script, the stage its press leads to (which opens with the snapshot it was sent
         // at), and a snapshot that differs from that one without confirming the press.
-        public static TheoryData<string> RepairCases => new() { "FIGHT", "move A", "direction" };
+        public static TheoryData<string> RepairCases => new() { "FIGHT", "move A", "direction", "box page 1", "box page 2" };
 
         private static (GameSnapshot[][] Stages, int After, GameSnapshot Changed, Action<Battle> Setup) RepairCase(string name) => name switch
         {
             "FIGHT" => (FightStages(0), 2, Turn, _ => { }),
             "move A" => (FightStages(0), 3, Turn, _ => { }),
             "direction" => (FightStages(0, 1), 3, Turn, b => b.PickMove = _ => 1),
+            "box page 1" => (Won([Message(), Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Free]), 5, Turn, _ => { }),
+            "box page 2" => (Won([Message(), Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Free]), 6, Box(2) with { Outcome = BattleOutcome.Won }, _ => { }),
             _ => throw new ArgumentException(name),
         };
+
+        // Train Standard with move 0, then "... fainted!" and the stages given after it, the first opening with that message.
+        private static GameSnapshot[][] Won(params GameSnapshot[][] after) =>
+        [
+            [Turn, Message()],
+            [Message(), Turn, TMenu(0)],
+            [TMenu(0), Turn, MoveList(0)],
+            [MoveList(0), Turn, Message()],
+            .. after,
+        ];
+
+        [Fact]
+        public async Task LevelUpBox_TwoConfirmedPresses()
+        {
+            // Page 1 is read twice after its A before page 2: the second A waits for page 2.
+            Battle battle = Train(Won([Message(), Turn, Box(1)], [Box(1), Box(1), Box(2)], [Box(2), Turn, Free]));
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal(["Advance", "Fight", "Move0", "Advance", "Box1", "Box2"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Contains("[RsBattle] level-up box page 1 for slot 0: BattleConfirm", log);
+            Assert.Contains("confirmed by page 2", log);
+            Assert.Contains("[RsBattle] level-up box page 2 for slot 0: BattleConfirm", log);
+        }
+
+        [Fact]
+        public async Task TwoLevelsInOneBattle_OnePairPerBox()
+        {
+            // Boxes 1, 2, 3, 0, 1, 2, 3, then "... learned ...!" into a free slot.
+            Battle battle = Train(Won(
+                [Message(), Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Message()],
+                [Message(), Turn, Free]));
+
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal(["Advance", "Fight", "Move0", "Advance", "Box1", "Box2", "Box1", "Box2", "Advance"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+        }
 
         private static readonly TimeSpan RepairWait = TimeSpan.FromMilliseconds(200);
 
