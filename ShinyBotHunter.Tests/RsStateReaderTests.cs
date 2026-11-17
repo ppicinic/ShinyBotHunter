@@ -277,7 +277,7 @@ namespace ShinyBotHunter.Tests
             (uint, int, int)[] expected =
             [
                 (0x030006A4, 0, 1), (0x03001770, 0, 4), (0x03001BAD, 0, 1), (0x03004330, 0, 4),
-                (0x03004226, 0, 2), (0x02024D26, 0, 1), (0x02024E60, 0, 1),
+                (0x03004226, 0, 2), (0x02024D1E, 0, 9), (0x02024E60, 0, 1),
                 (0x03001774, 0, 4), (0x02016018, 0, 0x85), (0x02024E64, 0, 1), (0x02018079, 0, 1),
                 (0x02024A6A, 0, 0x1AA), (0x0202E892, 0, 2), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
             ];
@@ -481,15 +481,24 @@ namespace ShinyBotHunter.Tests
         }
 
         // "Use next POKéMON?" (research "A battler faints: the readings", F1): the script pointer on the per-game yes/no, the
-        // controller PlayerBufferRunCommand, the window 0; the snapshot names the fainted slot.
+        // controller PlayerBufferRunCommand, the window 0; the snapshot names the fainted slot. Round six, A: the box takes keys
+        // once gBattleCommunication[0] reads 1 (0 on the frame the pointer arrives, a stale 4 before).
         private const uint PlayerBufferRunCommand = 0x0802C015;
+        private const uint Communication = 0x02024D1E;    // gBattleCommunication
+
+        private static FakeMemoryClient UseNextMemory(uint script, byte state = 1, byte moveLearn = 0)
+        {
+            FakeMemoryClient memory = BattleMemory(controller: PlayerBufferRunCommand, moveLearn: moveLearn, script: script);
+            memory.Place(Communication, [state]);
+            return memory;
+        }
 
         [Theory]
         [InlineData("AXPE", 0x081D8C56u)]
         [InlineData("AXVE", 0x081D8CC6u)]
         public async Task UseNextPokemon_IsBattleScriptWithTheFaintedSlot(string gameCode, uint script)
         {
-            FakeMemoryClient memory = BattleMemory(controller: PlayerBufferRunCommand, script: script);
+            FakeMemoryClient memory = UseNextMemory(script);
             memory.Place(PartyIndex, BitConverter.GetBytes((ushort)1));
 
             GameSnapshot snapshot = await ReadTraining(memory, gameCode);
@@ -499,13 +508,37 @@ namespace ShinyBotHunter.Tests
             Assert.Single(memory.ChainReads);
         }
 
+        // The pointer on the prompt while the box is drawn (0) or before the byte is reset (a stale 4): a turn, no question.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(4)]
+        public async Task UseNextPokemon_BeforeTheBoxTakesKeys_IsBattleTurn(byte state)
+        {
+            GameSnapshot snapshot = await ReadTraining(UseNextMemory(0x081D8C56, state));
+
+            Assert.Equal(GameScreen.BattleTurn, snapshot.Screen);
+        }
+
         // F1: the move-prompt tracker read a stale 3 at this prompt.
         [Fact]
         public async Task UseNextPokemon_StaleTrackerThree_StillBattleScript()
         {
-            GameSnapshot snapshot = await ReadTraining(BattleMemory(controller: PlayerBufferRunCommand, moveLearn: 3, script: 0x081D8C56));
+            GameSnapshot snapshot = await ReadTraining(UseNextMemory(0x081D8C56, moveLearn: 3));
 
             Assert.Equal(GameScreen.BattleScript, snapshot.Screen);
+        }
+
+        // gBattleCommunication[0] shares the block with the outcome: "Got away safely!" still reads Fled.
+        [Fact]
+        public async Task UseNextPokemon_OutcomeStillReadBesideTheYesNoState()
+        {
+            FakeMemoryClient memory = BattleMemory(window: 8);
+            memory.Place(Communication, [1]);
+            memory.Place(Outcome, [4]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(BattleOutcome.Fled, snapshot.Outcome);
         }
 
         // Ruby's pointer read on Sapphire, Sapphire's on Ruby, and either on a game code with no per-game part.
@@ -515,7 +548,7 @@ namespace ShinyBotHunter.Tests
         [InlineData("AXVD", 0x081D8C56u)]
         public async Task UseNextPokemon_OtherGameCode_IsNotBattleScript(string gameCode, uint script)
         {
-            GameSnapshot snapshot = await ReadTraining(BattleMemory(controller: PlayerBufferRunCommand, script: script), gameCode);
+            GameSnapshot snapshot = await ReadTraining(UseNextMemory(script), gameCode);
 
             Assert.Equal(GameScreen.BattleTurn, snapshot.Screen);
         }

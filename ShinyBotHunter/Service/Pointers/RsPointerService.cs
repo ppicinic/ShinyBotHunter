@@ -118,7 +118,11 @@ namespace ShinyBotHunter.Service.Pointers
         // gPlayerParty; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
         public uint BattlePartyPokemon => 0x03004360;
 
-        // gBattleCommunication; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
+        // gBattleCommunication; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt. [0] is a battle yes/no's
+        // state: 0 while "Use next POKéMON?" draws its box, 1 once it reads keys; the training reader reads from here through
+        // BattleOutcome, 8 bytes on, in one block (pret symbols lines 80 and 82); observed on
+        // Sapphire 1.2 and Ruby 1.2 (research "A battler faints: the readings", round six, A); QA: none yet:
+        // rs-train-switch-battler-spent fainted
         public uint BattleCommunication => 0x02024D1E;
 
         // gActionSelectionCursor; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
