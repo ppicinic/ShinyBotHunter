@@ -7,6 +7,7 @@ using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 
@@ -14,8 +15,9 @@ namespace ShinyBotHunter.BotEvents
 {
     // The Ruby and Sapphire battle of a wild encounter, from BattleStart to BattleComplete or Waiting (docs/specs/rs-wild-encounter.md
     // FR-9 to FR-11, FR-14; docs/research/rs-wild-encounter.md "Presses", "Tuned for speed", "A failed escape"): A at each
-    // message, the read at the first action menu, then RUN. Every press is sent from the snapshot its rule needs and confirmed
-    // by the byte it changes; anything else stops the bot in Waiting for the operator.
+    // message, the read at the first action menu, then RUN. In Battle mode it fights instead, and answers the level-up box
+    // and the new-move prompt (docs/specs/rs-navigation-and-training.md FR-13 to FR-15, FR-18c). Every press is sent from
+    // the snapshot its rule needs and confirmed by the byte it changes; anything else stops the bot in Waiting for the operator.
     public class RsBattleEvent : AbstractBotEvent<GameState>
     {
         internal const string NotWild = SpinEncounterEvent.NotAWildBattle;
@@ -38,6 +40,10 @@ namespace ShinyBotHunter.BotEvents
         internal const string Right = "H.Right.2";
         internal const string Down = "H.Down.2";
 
+        // The other single presses the training rules send, each a 2-frame hold as the two above.
+        internal const string Up = "H.Up.2";
+        internal const string Left = "H.Left.2";
+
         // gBattleTypeFlags: wild, trainer, Safari Zone.
         private const ushort WildBattle = 0x0004;
         private const ushort TrainerBattle = 0x0008;
@@ -49,7 +55,8 @@ namespace ShinyBotHunter.BotEvents
         private const byte NoScript = 2;
         private const int TrainerFlagBase = 0x500;
 
-        // The action cursor on RUN.
+        // The action cursor on FIGHT and on RUN.
+        private const int FightCursor = 0;
         private const int RunCursor = 3;
 
         // A party record's current HP: pokeruby struct Pokemon.hp, Gen3PokemonParser's HpOffset.
@@ -146,6 +153,9 @@ namespace ShinyBotHunter.BotEvents
             // A wild battle: one that trains reads the rest of it through the training reader.
             reader = trainingReader ?? reader;
 
+            // Battle mode fights until its rule says to flee; from then on, and in Flee mode, the menu runs RUN.
+            bool training = state.BattleMode == BattleMode.Battle;
+            bool fleeing = !training;
             bool seenMenu = false;
             int runPresses = 0;
             int presses = 0;
@@ -183,7 +193,8 @@ namespace ShinyBotHunter.BotEvents
                     }
 
                     // The action menu.
-                    ChainBlockResult[] menu = await ReadMenuAsync(bot, addresses, ct);
+                    int? battler = training ? s.PartyMonIndex : null;
+                    ChainBlockResult[] menu = await ReadMenuAsync(bot, addresses, battler, ct);
                     if (!seenMenu)
                     {
                         PokemonData wild = state.Bot.Profile.Parser.Parse(menu[0].Bytes)!;
@@ -195,13 +206,14 @@ namespace ShinyBotHunter.BotEvents
                                 return Stop(state, Corrupt, s.ToString());
                             }
                             await Task.Delay(Constant.PollIntervalMs, ct);
-                            menu = await ReadMenuAsync(bot, addresses, ct);
+                            menu = await ReadMenuAsync(bot, addresses, battler, ct);
                             wild = state.Bot.Profile.Parser.Parse(menu[0].Bytes)!;
                         }
                         Console.WriteLine($"[RsBattle] {wild.Name} species {wild.Species} Lv {wild.Level} PV {wild.PID:X8} "
                             + $"shiny value {wild.ShinyValue} shiny {wild.IsShiny}");
                         // A GBA emulator can build a shiny no cartridge could (docs/decisions/global.md, "Every Gen 3 shiny is
-                        // checked with PKHeX"): a shiny that fails is logged as not shiny, is not a target, and is fled like any other.
+                        // checked with PKHeX"): a shiny that fails is logged as not shiny, is not a target, and is fled or fought
+                        // like any other (FR-18c).
                         bool legal = true;
                         if (wild.IsShiny)
                         {
@@ -209,7 +221,7 @@ namespace ShinyBotHunter.BotEvents
                             legal = verdict.IsLegal;
                             Console.WriteLine(legal
                                 ? $"[RsBattle] legality OK   {wild.Name} PV {wild.PID:X8}"
-                                : $"[RsBattle] legality FAIL {wild.Name} PV {wild.PID:X8}: logged as not shiny, running{Environment.NewLine}{verdict.Report}");
+                                : $"[RsBattle] legality FAIL {wild.Name} PV {wild.PID:X8}: logged as not shiny, {(fleeing ? "running" : "fighting")}{Environment.NewLine}{verdict.Report}");
                         }
                         if (await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, wild, addEncounter, notifyTargetFound, legal))
                         {
@@ -218,10 +230,36 @@ namespace ShinyBotHunter.BotEvents
                         }
                         seenMenu = true;
                     }
-                    ushort leadHp = BitConverter.ToUInt16(menu[1].Bytes, 0);
+                    ushort leadHp = BitConverter.ToUInt16(menu[1].Bytes, training ? LeadHpOffset : 0);
                     if (leadHp == 0)
                     {
                         return Stop(state, Fainted, s.ToString());
+                    }
+                    if (!fleeing)
+                    {
+                        // HGSS's order (BattleOrchestratorEvent.DecideAction): too hurt or no damaging PP flees, then the
+                        // damage picker, whose -1 flees too. The party record carries the live HP and PP.
+                        PokemonData fighter = state.Bot.Profile.Parser.Parse(menu[1].Bytes)!;
+                        PokemonData enemy = state.Bot.Profile.Parser.Parse(menu[0].Bytes)!;
+                        string? flee = BattleReadiness.IsTooHurtToFight(fighter.HP, fighter.MaxHP) ? $"lead HP {fighter.HP}/{fighter.MaxHP} is too low"
+                            : !fighter.Moves.Any(m => m.Id > 0 && m.PP > 0 && moveMetadata(m.Id).IsDamageMove) ? "no damaging PP"
+                            : null;
+                        int slot = -1;
+                        if (flee is null)
+                        {
+                            slot = pickMove(new PokemonBattleState { ActivePokemon = ToBattlePokemon(fighter), EnemyPokemon = ToBattlePokemon(enemy) });
+                            flee = slot == -1 ? "the picker found no move" : null;
+                        }
+                        if (flee is null)
+                        {
+                            Move move = fighter.Moves[slot];
+                            string chosen = $"[RsBattle] move {slot} {moveMetadata(move.Id).Name} chosen by the damage picker, lead HP "
+                                + $"{fighter.HP}/{fighter.MaxHP} PP {move.PP}, wild HP {enemy.HP}";
+                            presses += await FightAsync(bot, reader, slot, chosen, cursorWait, stale, ct);
+                            continue;
+                        }
+                        Console.WriteLine($"[RsBattle] fleeing: {flee}");
+                        fleeing = true;
                     }
                     if (runPresses == MaxRunPresses)
                     {
@@ -277,10 +315,84 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        // The wild Pokémon's record and the lead's HP, on one frame.
-        private static Task<ChainBlockResult[]> ReadMenuAsync(IBot bot, RsPointerService addresses, CancellationToken ct)
+        // The wild Pokémon's record and, on one frame, the lead's HP; in Battle mode the battler's whole party record instead.
+        private static Task<ChainBlockResult[]> ReadMenuAsync(IBot bot, RsPointerService addresses, int? battler, CancellationToken ct)
             => bot.ReadChainBlocksAsync(
-                [new(addresses.EnemyParty, [], Gen3PokemonParser.PartyBlockSize), new(addresses.BattlePartyPokemon + LeadHpOffset, [], 2)], ct: ct);
+                [
+                    new(addresses.EnemyParty, [], Gen3PokemonParser.PartyBlockSize),
+                    battler is int slot
+                        ? new(PartyRecord(addresses, slot), [], Gen3PokemonParser.PartyBlockSize)
+                        : new(addresses.BattlePartyPokemon + LeadHpOffset, [], 2),
+                ], ct: ct);
+
+        private static uint PartyRecord(RsPointerService addresses, int slot)
+            => (uint)(addresses.BattlePartyPokemon + slot * Gen3PokemonParser.PartyBlockSize);
+
+        private static BattlePokemon ToBattlePokemon(PokemonData p) => new()
+        {
+            Pokemon = p, Species = p.Species, PID = p.PID, Level = p.Level, HP = p.HP, MaxHP = p.MaxHP,
+            Move1PP = p.Move1PP, Move2PP = p.Move2PP, Move3PP = p.Move3PP, Move4PP = p.Move4PP,
+        };
+
+        // FIGHT, the move cursor to the slot, then the move: each press gated on its screen and confirmed by the byte it
+        // changes (the controller function, then gMoveSelectionCursor). The cursor clears its bits first (Left, Up), then
+        // sets them (Right, Down), so it never crosses an empty slot: the game refuses Right or Down onto a slot past the
+        // move count, and moves fill from slot 0.
+        private static async Task<int> FightAsync(IBot bot, IGameStateReader reader, int slot, string chosen, TimeSpan cursorWait,
+            TimeSpan stale, CancellationToken ct)
+        {
+            GameSnapshot at = await GameStateWait.UntilAsync(reader, "the action cursor on FIGHT",
+                x => x.Screen == GameScreen.BattleMenu && x.Prompt == FightCursor, stale, ct);
+            (GameSnapshot list, int presses) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), "BattleConfirm on FIGHT",
+                "the move list", at, x => x.Screen == GameScreen.BattleMoveList, cursorWait, stale, ct);
+            Console.WriteLine(chosen);
+            while (list.Prompt != slot)
+            {
+                int from = list.Prompt!.Value;
+                (string macro, string name, int next) = MoveCursorStep(from, slot);
+                (list, int sent) = await PressConfirmedAsync(bot, reader, macro, $"{name} on the move list {from} -> {next}", $"cursor {next}",
+                    list, x => x.Screen == GameScreen.BattleMoveList && x.Prompt == next, cursorWait, stale, ct);
+                presses += sent;
+            }
+            (_, int confirmed) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on move {slot}",
+                "the screen leaving the move list", list, x => x.Screen != GameScreen.BattleMoveList, cursorWait, stale, ct);
+            return presses + confirmed;
+        }
+
+        // The move cursor's next press toward the slot: bit 0 is the column, bit 1 the row.
+        private static (string Macro, string Name, int Next) MoveCursorStep(int from, int to)
+            => (from & 1) > (to & 1) ? (Left, "Left", from & ~1)
+            : (from & 2) > (to & 2) ? (Up, "Up", from & ~2)
+            : (from & 1) < (to & 1) ? (Right, "Right", from | 1)
+            : (Down, "Down", from | 2);
+
+        // Sends the macro at the snapshot it was gated on and waits for confirmed (AGENTS rule 16). Each confirming byte
+        // changes on the frame the game reads the key, so a snapshot still equal to at, same screen and cursor, cursorWait
+        // after the press proves the key was dropped: it is sent once more, never a third time. A snapshot that changed but
+        // is not confirmed yet gets no second press. Then the wait for confirmed is bounded by stale. One log line, naming
+        // what confirmed the press.
+        private static async Task<(GameSnapshot Confirmed, int Presses)> PressConfirmedAsync(IBot bot, IGameStateReader reader,
+            string macro, string what, string by, GameSnapshot at, Func<GameSnapshot, bool> confirmed, TimeSpan cursorWait,
+            TimeSpan stale, CancellationToken ct)
+        {
+            Stopwatch since = Stopwatch.StartNew();
+            int presses = await PressAsync(bot, macro, ct);
+            bool moved = false;
+            GameSnapshot s = await GameStateWait.UntilAsync(reader, $"{by} after {what}",
+                x => confirmed(x) || (moved |= x != at) || since.Elapsed >= cursorWait, stale, ct);
+            string dropped = "";
+            if (!confirmed(s) && !moved)
+            {
+                presses += await PressAsync(bot, macro, ct);
+                dropped = "; dropped, sent again";
+            }
+            if (!confirmed(s))
+            {
+                s = await GameStateWait.UntilAsync(reader, $"{by} after {what}", confirmed, stale, ct);
+            }
+            Console.WriteLine($"[RsBattle] {what}, {since.ElapsedMilliseconds} ms: confirmed by {by} ({s}){dropped}");
+            return (s, presses);
+        }
 
         private static string Macro(string name) => MacroRegistry.Instance.GetMacro(GameFlavor.RS, name);
 
