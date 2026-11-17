@@ -159,7 +159,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([new MapWarp(6, 16, 256, 7, 8, Direction.None)], oldale.Events.Warps);
             Assert.Equal(Constant.MAP_Portal1, center[8, 6]);
             Assert.Equal(Constant.MAP_Portal1, center[8, 7]);
-            Assert.Equal([new MapWarp(7, 8, 0, 6, 16, Direction.Down), new MapWarp(6, 8, 0, 6, 16, Direction.Down)], center.Events.Warps);
+            Assert.Equal([new MapWarp(7, 8, 0, 6, 17, Direction.Down), new MapWarp(6, 8, 0, 6, 17, Direction.Down)], center.Events.Warps);
             Assert.Equal([new MapConnection(Direction.Down, 0, 1), new MapConnection(Direction.Left, 0, 2)], oldale.Events.Connections);
             Assert.Contains(new MapTrigger(0, 10, 0x4051, 0), oldale.Events.Triggers);
         }
@@ -188,12 +188,63 @@ namespace ShinyBotHunter.Tests
 
                 Assert.Empty(oldale.Events.Warps);
                 Assert.NotEqual(Constant.MAP_Portal1, oldale[16, 6]);
-                Assert.Equal([new MapWarp(6, 8, 0, 6, 16, Direction.Down)], center.Events.Warps);
+                Assert.Equal([new MapWarp(6, 8, 0, 6, 17, Direction.Down)], center.Events.Warps);
             }
             finally
             {
                 Directory.Delete(copy, recursive: true);
             }
+        }
+
+        [Fact]
+        public void WarpOnATileTheGameDoesNotWarpFrom_IsNotWritten()
+        {
+            var processor = Processor();
+            JObject json = processor.ReadMap("Route101");
+            ((JArray)json["warp_events"]!).Add(JObject.FromObject(new { x = 8, y = 4, elevation = 0, dest_map = "MAP_OLDALE_TOWN", dest_warp_id = "0" }));
+
+            Map map = processor.BuildMap(json);
+
+            Assert.Empty(map.Events.Warps);
+            Assert.Equal(Constant.MAP_Free, map[4, 8]);
+        }
+
+        [Theory]
+        [InlineData(0x00, null)]
+        [InlineData(0x08, null)]
+        [InlineData(0x20, null)]
+        [InlineData(0x69, Direction.None)]
+        [InlineData(0x60, Direction.None)]
+        [InlineData(0x61, Direction.None)]
+        [InlineData(0x6A, Direction.None)]
+        [InlineData(0x0F, Direction.None)]
+        [InlineData(0x64, Direction.Up)]
+        [InlineData(0x1B, Direction.Up)]
+        [InlineData(0x65, Direction.Down)]
+        [InlineData(0x6D, Direction.Down)]
+        [InlineData(0x1C, Direction.Down)]
+        [InlineData(0x63, Direction.Left)]
+        [InlineData(0x62, Direction.Right)]
+        public void WarpArrow_FollowsTheGame(byte behaviour, Direction? arrow)
+        {
+            Assert.Equal(arrow, RsMapProcessor.WarpArrow(behaviour));
+        }
+
+        [Theory]
+        [InlineData(0x65, 0x69, 0, 1)]
+        [InlineData(0x65, 0x8D, 0, 1)]
+        [InlineData(0x60, 0x60, 0, 1)]
+        [InlineData(0x6D, 0x6C, 0, 1)]
+        [InlineData(0x64, 0x6E, 0, -1)]
+        [InlineData(0x69, 0x65, 0, 0)]
+        [InlineData(0x61, 0x61, 0, 0)]
+        [InlineData(0x68, 0x29, 0, 0)]
+        [InlineData(0x67, 0x67, 0, 0)]
+        [InlineData(0x6A, 0x6B, 1, 0)]
+        [InlineData(0x29, 0x68, 1, 0)]
+        public void ArrivalStep_FollowsTheGame(byte fired, byte landing, int dx, int dy)
+        {
+            Assert.Equal((dx, dy), RsMapProcessor.ArrivalStep(fired, landing));
         }
 
         [Fact]
