@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { step } from './driver'
 import {
-  ARRIVED, CLEARING, copyLeadToSlot2, expAt, failOnStops, HEAL_TRIP, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, pressCount, readSlot,
+  AFTER_SHIFT, ARRIVED, CLEARING, copyLeadToSlot2, expAt, failOnStops, FLEEING, HEAL_TRIP, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, pressCount, readSlot,
   rsRom, STATE, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, variant, waitLine, writeSlot
 } from './rs-training'
 import { ADVANCE, CONTROLLER, dashboardState, ENCOUNTER, MENU_FN, OVER, readBattleBit, readU32, snapshotField } from './rs-wild'
@@ -68,11 +68,16 @@ function checkHealTrip(log: string[]): void {
   const members = NURSE_HP.exec(log[healed])![1].split(', ').map((m) => /^(.+) (\d+)\/(\d+)$/.exec(m)!)
   expect(members.map((m) => m[2] === m[3]), `"the nurse heals both": ${log[healed].trim()}`).toEqual([true, true])
 
-  // The walk back: arrived on the start tile, then the orchestrator's arrived back at start.
+  // The walk back: arrived on the start tile, then the orchestrator's arrived back at start. A wild battle on the step
+  // onto the start tile (grass) instead re-plans with 0 segments: no arrived line, and `already at start`.
   const home = log.findIndex((l, i) => i > healed && ARRIVED.test(l) && l.includes(`arrived on ${START}`))
-  expect(home, `"the walk back": arrived on ${START} after the nurse`).toBeGreaterThan(healed)
-  const clearing = indexOf(log, CLEARING, home)
-  expect(CLEARING.exec(log[clearing])?.[1], '"the walk back": Clearing navigation path').toBe('arrived back at start')
+  const onStart = log.findIndex((l, i) => i > healed && NAV_BATTLE.test(l) && l.includes(`battle bit on ${START}`))
+  const reached = home > healed ? home : onStart
+  expect(reached, `"the walk back": neither arrived on ${START} nor a battle bit on it after the nurse`).toBeGreaterThan(healed)
+  const clearing = indexOf(log, CLEARING, reached)
+  const cleared = CLEARING.exec(log[clearing] ?? '')?.[1]
+  step(`the walk back: ${home > healed ? `arrived on ${START}` : `a battle on the step onto ${START}, then 0 segments`}; ${cleared}`)
+  expect(cleared, '"the walk back": Clearing navigation path').toBe(home > healed ? 'arrived back at start' : 'already at start')
 
   // "then Switch training resumes": the next battle's first switch try, to the battler's slot.
   const resumed = indexOf(log, SWITCH_TRY, clearing)
@@ -92,7 +97,9 @@ async function checkFaintedStop(): Promise<void> {
   const deadline = Date.now() + 6 * MINUTE
   while (indexOf(log, FAINTED_END) === -1) {
     failOnStops(log, FAINTED_END)
-    if (Date.now() > deadline) throw new Error(`${criterion}: no stop within 6 minutes`)
+    if (Date.now() > deadline) {
+      throw new Error(`${criterion}: no stop within 6 minutes; fleeing lines: ${JSON.stringify(log.filter((l) => FLEEING.test(l)).map((l) => l.trim()))}`)
+    }
     await sleep(250)
     log = backendLog()
     const n = log.filter((l) => ADVANCE.test(l)).length
@@ -103,11 +110,15 @@ async function checkFaintedStop(): Promise<void> {
   step(`logged: ${log[stop].trim()}`)
   expect(log.slice(0, stop).filter((l) => OVER.test(l)).length, `${criterion}: within five battles`).toBeLessThan(5)
 
-  // After the battle's switch, the last press is the A at "… fainted!" (window 8), and the stop follows within 45 s.
-  const switched = log.flatMap((l, i) => (i < stop && SWITCH_CONFIRMED.test(l) ? [i] : [])).at(-1)
-  expect(switched, `${criterion}: no "switch confirmed" before the stop`).toBeDefined()
-  const faint = log.flatMap((l, i) => (i > switched! && i < stop && ADVANCE.test(l) ? [i] : [])).at(-1)
-  expect(faint, `${criterion}: no BattleAdvance after the switch`).toBeDefined()
+  // After the battle's SHIFT, the last press is the A at "… fainted!" (window 8), and the stop follows within 45 s. The
+  // wild Pokémon acts in the switch turn, so the 1 HP battler can faint before its first action menu, with no "switch
+  // confirmed"; or a turn later, after it. Both pass; steps.log says which.
+  const shifted = log.flatMap((l, i) => (i < stop && AFTER_SHIFT.test(l) ? [i] : [])).at(-1)
+  expect(shifted, `${criterion}: no "after SHIFT" before the stop`).toBeDefined()
+  const faint = log.flatMap((l, i) => (i > shifted! && i < stop && ADVANCE.test(l) ? [i] : [])).at(-1)
+  expect(faint, `${criterion}: no BattleAdvance after SHIFT`).toBeDefined()
+  const confirmed = log.slice(shifted!, faint!).some((l) => SWITCH_CONFIRMED.test(l))
+  step(`the battler fainted ${confirmed ? 'a turn after "switch confirmed"' : 'in the switch turn, before its first action menu'}`)
   expect(ADVANCE.exec(log[faint!])![1], `${criterion}: the last BattleAdvance ("fainted!") window`).toBe('8')
   step(`the faint text's BattleAdvance first seen ${stopSeen - advanceSeen} ms before the stop`)
   expect(stopSeen - advanceSeen, `${criterion}: the stop within 45 s of the faint text`).toBeLessThanOrEqual(45_000)

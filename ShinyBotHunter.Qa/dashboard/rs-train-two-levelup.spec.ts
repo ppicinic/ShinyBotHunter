@@ -27,7 +27,7 @@ const EXPECTED: Record<typeof VARIANT, Expected> = {
     events: ['box 0 1', 'box 0 2', 'box 1 1', 'box 1 2'], prompts: [], moves: [null, null]
   },
   'learn-free': {
-    trainee: oneShort(10), battler: { ...oneShort(15), ...FOUR }, target: 10,
+    trainee: { ...oneShort(10), ...movesOf(33, 45, 189) }, battler: { ...oneShort(15), ...FOUR }, target: 10,
     events: ['box 0 1', 'box 0 2', 'box 1 1', 'box 1 2', 'ask 1'],
     prompts: [{ n: 1, learner: 1, move: BIDE, forget: 2 }],
     moves: [[33, 45, 189, 55], [33, 45, BIDE, 55]]
