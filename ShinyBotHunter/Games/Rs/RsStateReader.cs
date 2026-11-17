@@ -187,6 +187,14 @@ namespace ShinyBotHunter.Games.Rs
             {
                 return await ReadForgetScreenAsync(read, tasks, outcome, ct);
             }
+            // "Use next POKéMON?" after a faint: only the script pointer tells it apart, and the tracker can be a stale 3
+            // there, so it comes before the trackers (research "A battler faints: the readings", F1). trainingReads is
+            // needed: the flee reader's script and an unknown game's address are both null.
+            if (trainingReads && script == addresses.UseNextPokemonYesNo)
+            {
+                return new GameSnapshot(GameScreen.BattleScript, outcome, null, null, null,
+                    PartyMonIndex: BitConverter.ToUInt16(read[PartyIndexBlock].Bytes, 0));
+            }
             if (controller == addresses.HandleInputChooseAction)
             {
                 int? slot = trainingReads ? BitConverter.ToUInt16(read[PartyIndexBlock].Bytes, 0) : null;

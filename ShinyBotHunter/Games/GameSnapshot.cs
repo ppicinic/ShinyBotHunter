@@ -32,5 +32,6 @@ namespace ShinyBotHunter.Games
     // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active);
     // PartyMonIndex on BattleMenu (the battler's party slot); Prompt on BattleMoveList (the move cursor); Prompt (the
     // level-up box page, 1 or 2) and PartyMonIndex (the getter's slot) on BattleExpPrompt; Prompt (1), PartyMonIndex
-    // (the getter's slot) and Question (5 "Delete a move?", 10 "Stop learning?") on BattleMoveLearnPrompt.
+    // (the getter's slot) and Question (5 "Delete a move?", 10 "Stop learning?") on BattleMoveLearnPrompt; Outcome and
+    // PartyMonIndex (the fainted slot) on BattleScript, "Use next POKéMON?".
 }

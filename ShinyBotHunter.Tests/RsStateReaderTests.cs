@@ -480,6 +480,46 @@ namespace ShinyBotHunter.Tests
             Assert.All(others, memory => Assert.Single(memory.ChainReads));
         }
 
+        // "Use next POKéMON?" (research "A battler faints: the readings", F1): the script pointer on the per-game yes/no, the
+        // controller PlayerBufferRunCommand, the window 0; the snapshot names the fainted slot.
+        private const uint PlayerBufferRunCommand = 0x0802C015;
+
+        [Theory]
+        [InlineData("AXPE", 0x081D8C56u)]
+        [InlineData("AXVE", 0x081D8CC6u)]
+        public async Task UseNextPokemon_IsBattleScriptWithTheFaintedSlot(string gameCode, uint script)
+        {
+            FakeMemoryClient memory = BattleMemory(controller: PlayerBufferRunCommand, script: script);
+            memory.Place(PartyIndex, BitConverter.GetBytes((ushort)1));
+
+            GameSnapshot snapshot = await ReadTraining(memory, gameCode);
+
+            Assert.Equal(GameScreen.BattleScript, snapshot.Screen);
+            Assert.Equal(1, snapshot.PartyMonIndex);
+            Assert.Single(memory.ChainReads);
+        }
+
+        // F1: the move-prompt tracker read a stale 3 at this prompt.
+        [Fact]
+        public async Task UseNextPokemon_StaleTrackerThree_StillBattleScript()
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(controller: PlayerBufferRunCommand, moveLearn: 3, script: 0x081D8C56));
+
+            Assert.Equal(GameScreen.BattleScript, snapshot.Screen);
+        }
+
+        // Ruby's pointer read on Sapphire, Sapphire's on Ruby, and either on a game code with no per-game part.
+        [Theory]
+        [InlineData("AXPE", 0x081D8CC6u)]
+        [InlineData("AXVE", 0x081D8C56u)]
+        [InlineData("AXVD", 0x081D8C56u)]
+        public async Task UseNextPokemon_OtherGameCode_IsNotBattleScript(string gameCode, uint script)
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(controller: PlayerBufferRunCommand, script: script), gameCode);
+
+            Assert.Equal(GameScreen.BattleTurn, snapshot.Screen);
+        }
+
         [Fact]
         public async Task MoveListCarriesTheMoveCursor()
         {
