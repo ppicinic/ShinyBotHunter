@@ -179,5 +179,305 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(memory.UIntReads);
             Assert.Empty(memory.PointerReads);
         }
+
+        // The flee path (rs-wild-speed): the bot's own reader keeps today's one request of seven blocks, whatever the screen.
+        [Fact]
+        public async Task FleeReaderSendsTodaysSevenBlocks()
+        {
+            (uint, int, int)[] today =
+            [
+                (0x030006A4, 0, 1), (0x03001770, 0, 4), (0x03001BAD, 0, 1), (0x03004330, 0, 4),
+                (0x03004226, 0, 2), (0x02024D26, 0, 1), (0x02024E60, 0, 1),
+            ];
+            FakeMemoryClient[] memories =
+            [
+                Memory(),
+                Memory(locked: 1, inBattle: BattleBit, controller: ChooseAction),
+                Memory(locked: 1, inBattle: BattleBit, controller: OtherController, window: 8),
+            ];
+
+            foreach (FakeMemoryClient memory in memories)
+            {
+                await Read(memory);
+
+                var request = Assert.Single(memory.ChainReads);
+                Assert.Equal(0, request.RetryFrames);
+                Assert.Equal(today, request.Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+            }
+        }
+
+        // The training reads (docs/specs/rs-navigation-and-training.md).
+        private const uint Callback2 = 0x03001774;        // gMain.callback2
+        private const uint ExpGetter = 0x02016018;        // gBattleStruct->expGetterMonId
+        private const uint MoveLearnState = 0x0201601A;   // gBattleStruct->atk5A_StateTracker
+        private const uint LevelUpBox = 0x0201609C;       // gBattleStruct->atk6C_statetracker
+        private const uint MoveCursor = 0x02024E64;       // gMoveSelectionCursor[0]
+        private const uint ForgetCursor = 0x02018079;     // pssData.selectedMoveIndex
+        private const uint PartyIndex = 0x02024A6A;       // gBattlerPartyIndexes[0]
+        private const uint FieldWindow = 0x0202E892;      // gFieldMessageBoxWindow + 0x16
+        private const uint Native = 0x030005BC;           // sGlobalScriptContext.nativePtr
+        private const uint Tasks = 0x03004B20;            // gTasks
+
+        private const uint BattleMain = 0x0800F809;       // BattleMainCB2
+        private const uint EvolutionScene = 0x0811242D;   // Task_EvolutionScene
+        private const uint PartyList = 0x08095139;        // HandleBattlePartyMenu
+        private const uint PartyPopup = 0x08095429;       // Task_HandlePopupMenuInput
+        private const uint YesNo = 0x080B5505;            // Task_HandleYesNoInput
+        private const uint WaitForButton = 0x080670E5;    // WaitForAorBPress, Sapphire
+
+        private static Task<GameSnapshot> ReadTraining(FakeMemoryClient memory)
+            => new RsStateReader(memory, RsPointerService.For("AXPE"), trainingReads: true).ReadAsync(CancellationToken.None);
+
+        // A task in slot `slot` of gTasks: func at + 0, isActive at + 4, s16 data[] from + 8.
+        private static void PlaceTask(FakeMemoryClient memory, int slot, uint function, bool active = true, params short[] data)
+        {
+            uint task = (uint)(Tasks + slot * 0x28);
+            memory.Place(task, BitConverter.GetBytes(function));
+            memory.Place(task + 4, [active ? (byte)1 : (byte)0]);
+            for (int i = 0; i < data.Length; i++) memory.Place((uint)(task + 8 + i * 2), BitConverter.GetBytes(data[i]));
+        }
+
+        // A battle with the training values; callback 2 is the battle's unless a test says otherwise.
+        private static FakeMemoryClient BattleMemory(uint controller = OtherController, ushort window = 0, uint callback2 = BattleMain,
+            byte expGetter = 0, byte moveLearn = 0, byte levelUp = 0)
+        {
+            FakeMemoryClient memory = Memory(locked: 1, inBattle: BattleBit, controller: controller, window: window);
+            memory.Place(Callback2, BitConverter.GetBytes(callback2));
+            memory.Place(ExpGetter, [expGetter]);
+            memory.Place(MoveLearnState, [moveLearn]);
+            memory.Place(LevelUpBox, [levelUp]);
+            return memory;
+        }
+
+        [Fact]
+        public async Task TrainingReadsAreOneRequestOfFifteenBlocks()
+        {
+            FakeMemoryClient memory = BattleMemory();
+
+            await ReadTraining(memory);
+
+            var request = Assert.Single(memory.ChainReads);
+            Assert.Equal(0, request.RetryFrames);
+            (uint, int, int)[] expected =
+            [
+                (0x030006A4, 0, 1), (0x03001770, 0, 4), (0x03001BAD, 0, 1), (0x03004330, 0, 4),
+                (0x03004226, 0, 2), (0x02024D26, 0, 1), (0x02024E60, 0, 1),
+                (0x03001774, 0, 4), (0x02016018, 0, 0x85), (0x02024E64, 0, 1), (0x02018079, 0, 1),
+                (0x02024A6A, 0, 2), (0x0202E892, 0, 2), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
+            ];
+            Assert.Equal(expected, request.Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+        }
+
+        [Fact]
+        public async Task TrainingReadsReadTheSpriteOnlyOnThePartyScreen()
+        {
+            FakeMemoryClient party = BattleMemory();
+            PlaceTask(party, 0, PartyList, data: [0, 0, 0, 4 << 8]);
+            FakeMemoryClient battle = BattleMemory(controller: ChooseAction);
+
+            await ReadTraining(party);
+            await ReadTraining(battle);
+
+            Assert.Equal(2, party.ChainReads.Count);
+            (uint, int, int)[] sprite = [(0x02020142, 0, 2)]; // sprite 4's data[0]
+            Assert.Equal(sprite, party.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+            Assert.Single(battle.ChainReads);
+        }
+
+        [Fact]
+        public async Task TrainingReadsClassifyTheFleeScreensAsBefore()
+        {
+            Assert.Equal(GameScreen.Transitioning, (await ReadTraining(Memory(callback1: 0))).Screen);
+            Assert.Equal(GameScreen.FieldFree, (await ReadTraining(Memory())).Screen);
+            Assert.Equal(GameScreen.FieldTask, (await ReadTraining(Memory(locked: 1))).Screen);
+            Assert.Equal(GameScreen.BattleTurn, (await ReadTraining(BattleMemory(window: 3))).Screen);
+
+            FakeMemoryClient action = BattleMemory(controller: ChooseAction);
+            action.Place(Cursor, [1]);
+            GameSnapshot menu = await ReadTraining(action);
+            Assert.Equal(GameScreen.BattleMenu, menu.Screen);
+            Assert.Equal(1, menu.Prompt);
+
+            Assert.Equal(GameScreen.BattleMoveList, (await ReadTraining(BattleMemory(controller: ChooseMove))).Screen);
+
+            FakeMemoryClient fled = BattleMemory(window: 8);
+            fled.Place(Outcome, [4]);
+            GameSnapshot message = await ReadTraining(fled);
+            Assert.Equal(GameScreen.BattleMessage, message.Screen);
+            Assert.Equal(8, message.TextPrinter);
+            Assert.Equal(BattleOutcome.Fled, message.Outcome);
+        }
+
+        [Fact]
+        public async Task LevelUpBoxFirstPage()
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(window: 8, expGetter: 2, levelUp: 1));
+
+            Assert.Equal(GameScreen.BattleExpPrompt, snapshot.Screen);
+            Assert.Equal(1, snapshot.Prompt);
+            Assert.Equal(2, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task LevelUpBoxSecondPage()
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(window: 8, expGetter: 1, levelUp: 2));
+
+            Assert.Equal(GameScreen.BattleExpPrompt, snapshot.Screen);
+            Assert.Equal(2, snapshot.Prompt);
+            Assert.Equal(1, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task MovePromptWaitingIsBattleMoveLearnPrompt()
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(window: 8, expGetter: 3, moveLearn: 1));
+
+            Assert.Equal(GameScreen.BattleMoveLearnPrompt, snapshot.Screen);
+            Assert.Equal(1, snapshot.Prompt);
+            Assert.Equal(3, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task ForgetMoveScreenIsOtherAppWithItsCursor()
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: 0x080A0001, moveLearn: 3);
+            memory.Place(ForgetCursor, [2]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(2, snapshot.Prompt);
+        }
+
+        [Fact]
+        public async Task MoveListCarriesTheMoveCursor()
+        {
+            FakeMemoryClient memory = BattleMemory(controller: ChooseMove);
+            memory.Place(MoveCursor, [3]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.BattleMoveList, snapshot.Screen);
+            Assert.Equal(3, snapshot.Prompt);
+        }
+
+        [Fact]
+        public async Task ActionMenuCarriesTheBattlerSlot()
+        {
+            FakeMemoryClient memory = BattleMemory(controller: ChooseAction);
+            memory.Place(Cursor, [2]);
+            memory.Place(PartyIndex, BitConverter.GetBytes((ushort)1));
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.BattleMenu, snapshot.Screen);
+            Assert.Equal(2, snapshot.Prompt);
+            Assert.Equal(1, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task EvolutionTaskIsEvolution()
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            PlaceTask(memory, 2, EvolutionScene, data: [21, 0, 0, 0, 0, 0, 0, 0, 3]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(21, snapshot.Prompt);
+            Assert.Null(snapshot.Question);
+        }
+
+        [Theory]
+        [InlineData(5)]
+        [InlineData(10)]
+        public async Task EvolutionPromptCarriesTheQuestion(short question)
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            PlaceTask(memory, 2, EvolutionScene, data: [21, 0, 0, 0, 0, 0, 0, 0, 4, question]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(21, snapshot.Prompt);
+            Assert.Equal(question, snapshot.Question);
+        }
+
+        [Fact]
+        public async Task InactiveTaskIsIgnored()
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            PlaceTask(memory, 2, EvolutionScene, active: false, data: [21]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+        }
+
+        [Fact]
+        public async Task PartyListIsOtherAppWithCursor()
+        {
+            FakeMemoryClient memory = BattleMemory();
+            PlaceTask(memory, 1, PartyList, data: [0, 0, 0, 4 << 8]);
+            memory.Place(0x02020142, BitConverter.GetBytes((short)1)); // sprite 4's data[0]
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(PartyList, snapshot.TaskFunction);
+            Assert.Equal(1, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task PartyPopupChangesTheTaskFunction()
+        {
+            FakeMemoryClient memory = BattleMemory();
+            PlaceTask(memory, 1, PartyPopup, data: [0, 0, 0, 4 << 8]);
+            memory.Place(0x02020142, BitConverter.GetBytes((short)2));
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(PartyPopup, snapshot.TaskFunction);
+            Assert.Equal(2, snapshot.PartyMonIndex);
+        }
+
+        [Fact]
+        public async Task FieldMessageWaitIsFieldTaskWithWindowState()
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            memory.Place(FieldWindow, BitConverter.GetBytes((ushort)8));
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+            Assert.Equal(8, snapshot.TextPrinter);
+            Assert.Null(snapshot.TaskFunction);
+        }
+
+        [Fact]
+        public async Task YesNoTaskIsFieldTaskWithItsFunction()
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            PlaceTask(memory, 3, YesNo);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+            Assert.Equal(YesNo, snapshot.TaskFunction);
+        }
+
+        [Fact]
+        public async Task WaitForButtonNativeIsOnFieldTask()
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            memory.Place(Native, BitConverter.GetBytes(WaitForButton));
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+            Assert.Equal(WaitForButton, snapshot.Native);
+        }
     }
 }
