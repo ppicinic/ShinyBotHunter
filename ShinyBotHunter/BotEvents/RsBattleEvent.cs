@@ -481,8 +481,8 @@ namespace ShinyBotHunter.BotEvents
             string macro, string what, string by, GameSnapshot at, Func<GameSnapshot, bool> confirmed, TimeSpan cursorWait,
             TimeSpan stale, CancellationToken ct)
         {
-            Stopwatch since = Stopwatch.StartNew();
             int presses = await PressAsync(bot, macro, ct);
+            Stopwatch since = Stopwatch.StartNew();
             bool moved = false;
             GameSnapshot s = await GameStateWait.UntilAsync(reader, $"{by} after {what}",
                 x => confirmed(x) || (moved |= x != at) || since.Elapsed >= cursorWait, stale, ct);

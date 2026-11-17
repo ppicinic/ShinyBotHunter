@@ -947,7 +947,7 @@ namespace ShinyBotHunter.Tests
         private static (GameSnapshot[][] Stages, int After, GameSnapshot Changed, Action<Battle> Setup) RepairCase(string name) => name switch
         {
             "FIGHT" => (FightStages(0), 2, Turn, _ => { }),
-            "move A" => (FightStages(0), 3, Turn, _ => { }),
+            "move A" => (FightStages(0), 3, MoveList(0) with { Outcome = BattleOutcome.Won }, _ => { }),
             "direction" => (FightStages(0, 1), 3, Turn, b => b.PickMove = _ => 1),
             "box page 1" => (Won([Message(), Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Free]), 5, Turn, _ => { }),
             "box page 2" => (Won([Message(), Turn, Box(1)], [Box(1), Box(2)], [Box(2), Turn, Free]), 6, Box(2) with { Outcome = BattleOutcome.Won }, _ => { }),
@@ -1116,7 +1116,7 @@ namespace ShinyBotHunter.Tests
             Battle battle = Train(Won([Message(), Turn, Prompt(5)], [Prompt(5)]));
             TaskCompletionSource<int> never = new();
             battle.DecideMove = (_, _) => never.Task;
-            using CancellationTokenSource cancel = new(TimeSpan.FromMilliseconds(1500));
+            using CancellationTokenSource cancel = new(TimeSpan.FromMilliseconds(300));
 
             string log = await CaptureAsync(() => Assert.ThrowsAnyAsync<OperationCanceledException>(() => battle.RunAsync(ct: cancel.Token)));
 
@@ -1179,15 +1179,21 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([.. presses[..after], press, .. presses[after..]], dropped.Presses);
 
             // Changed but not yet confirmed, for longer than cursorWait: no second press.
-            Battle moving = Train([.. stages[..after], [at, .. Enumerable.Repeat(changed, 12), .. stages[after][1..]], .. stages[(after + 1)..]]);
+            Battle moving = Train([.. stages[..after], [at, .. Enumerable.Repeat(changed, 7), .. stages[after][1..]], .. stages[(after + 1)..]]);
             setup(moving);
             Assert.Null(await moving.RunAsync(cursorWait: RepairWait));
             Assert.Equal(presses, moving.Presses);
 
+            // Changed, then back to the pressed snapshot past cursorWait: the key was read, so still no second press.
+            Battle back = Train([.. stages[..after], [at, changed, .. Enumerable.Repeat(at, 12), .. stages[after][1..]], .. stages[(after + 1)..]]);
+            setup(back);
+            Assert.Null(await back.RunAsync(cursorWait: RepairWait));
+            Assert.Equal(presses, back.Presses);
+
             // Unchanged after the second press too: no third, and the stale stop names the snapshot.
             Battle stuck = Train([.. stages[..after], [at], [at]]);
             setup(stuck);
-            string? stop = await stuck.RunAsync(cursorWait: RepairWait, stale: TimeSpan.FromMilliseconds(600));
+            string? stop = await stuck.RunAsync(cursorWait: RepairWait, stale: TimeSpan.FromMilliseconds(300));
             Assert.Contains(at.ToString(), stop);
             Assert.Equal([.. presses[..after], press], stuck.Presses);
             Assert.Equal([EventState.Waiting], stuck.State.State);
