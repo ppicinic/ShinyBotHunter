@@ -15,9 +15,9 @@ namespace ShinyBotHunter.BotEvents
 {
     // The Ruby and Sapphire battle of a wild encounter, from BattleStart to BattleComplete or Waiting (docs/specs/rs-wild-encounter.md
     // FR-9 to FR-11, FR-14; docs/research/rs-wild-encounter.md "Presses", "Tuned for speed", "A failed escape"): A at each
-    // message, the read at the first action menu, then RUN. In Battle mode it fights instead, and answers the level-up box
-    // and the new-move prompt, then the evolution scene's texts and prompt (docs/specs/rs-navigation-and-training.md FR-13
-    // to FR-16, FR-18c). Every press is sent from the snapshot its rule needs and confirmed by the byte it changes; anything
+    // message, the read at the first action menu, then RUN. In Battle mode it fights instead, first switching to the
+    // battler when training Switch, and answers the level-up box and the new-move prompt, then the evolution scene's texts
+    // and prompt (docs/specs/rs-navigation-and-training.md FR-13 to FR-17, FR-18c). Every press is sent from the snapshot its rule needs and confirmed by the byte it changes; anything
     // else stops the bot in Waiting for the operator.
     public class RsBattleEvent : AbstractBotEvent<GameState>
     {
@@ -35,6 +35,10 @@ namespace ShinyBotHunter.BotEvents
 
         // Presses on RUN in one battle before it counts as a trap: the escape chance rises with each try.
         internal const int MaxRunPresses = 12;
+
+        // Switch tries in one battle before it is fled, as HGSS's MaxSwitchAttempts. A try is one pass from the action menu
+        // to the next with 0x02024A6A not on the battler's slot.
+        private const int MaxSwitchTries = 3;
 
         // The two halves of BattleCursorToRun, each sent alone to a cursor the other one already moved; a test pins them to
         // the registry text.
@@ -57,8 +61,9 @@ namespace ShinyBotHunter.BotEvents
         private const byte NoScript = 2;
         private const int TrainerFlagBase = 0x500;
 
-        // The action cursor on FIGHT and on RUN.
+        // The action cursor on FIGHT, on POKéMON and on RUN.
         private const int FightCursor = 0;
+        private const int PokemonCursor = 2;
         private const int RunCursor = 3;
 
         // A party record's current HP: pokeruby struct Pokemon.hp, Gen3PokemonParser's HpOffset.
@@ -161,6 +166,11 @@ namespace ShinyBotHunter.BotEvents
             bool seenMenu = false;
             int runPresses = 0;
             int presses = 0;
+            // Switch training (FR-17): the battler's 0-based party slot, switched to until 0x02024A6A reads it at an action
+            // menu. One RunAsync is one battle, so GameState.SwitchPerformed is not used.
+            int? switchSlot = training && state.TrainType == TrainType.Switch ? state.SwitchSlot!.Value - 1 : null;
+            bool switched = switchSlot is null;
+            int switchTries = 0;
             try
             {
                 while (true)
@@ -230,15 +240,27 @@ namespace ShinyBotHunter.BotEvents
                         // A new move with four known (FR-15), in battle or at the evolution scene's own yes/no, where the
                         // learner is the evolving slot (data[12]) and B is sent only as the No (FR-16). "Stop learning?"
                         // reached any way gets its Yes.
-                        presses += s.Question == RsStateReader.StopLearningQuestion
+                        Console.WriteLine($"[RsBattle] move prompt at {s}");
+                        presses +=s.Question == RsStateReader.StopLearningQuestion
                             ? await StopLearningAsync(bot, reader, s, cursorWait, stale, ct)
                             : await AnswerMovePromptAsync(bot, reader, addresses, s,
                                 await AskMoveAsync(bot, addresses, s.PartyMonIndex!.Value, moveMetadata, decideMove, ct), cursorWait, stale, ct);
                         continue;
                     }
 
-                    // The action menu.
-                    int? battler = training ? s.PartyMonIndex : null;
+                    // The action menu. Before the switch the menu read takes the battler's record; after it, or once fleeing,
+                    // the active one's.
+                    if (!switched && s.PartyMonIndex == switchSlot)
+                    {
+                        switched = true;
+                        Console.WriteLine($"[RsBattle] switch confirmed: 0x02024A6A reads {s.PartyMonIndex} at the action menu, try {switchTries}");
+                    }
+                    else if (!switched && !fleeing && switchTries > 0)
+                    {
+                        Console.WriteLine($"[RsBattle] switch try {switchTries} did not land: 0x02024A6A reads {s.PartyMonIndex}");
+                    }
+                    bool toSwitch = !switched && !fleeing;
+                    int? battler = !training ? null : toSwitch ? switchSlot : s.PartyMonIndex;
                     ChainBlockResult[] menu = await ReadMenuAsync(bot, addresses, battler, ct);
                     if (!seenMenu)
                     {
@@ -276,7 +298,23 @@ namespace ShinyBotHunter.BotEvents
                         seenMenu = true;
                     }
                     ushort leadHp = BitConverter.ToUInt16(menu[1].Bytes, training ? LeadHpOffset : 0);
-                    if (leadHp == 0)
+                    if (toSwitch)
+                    {
+                        // HGSS's order (BattleOrchestratorEvent.DecideAction): a fainted battler or the last failed try
+                        // flees; otherwise one more try. The checks below apply once switched.
+                        string? flee = leadHp == 0 ? $"the battler in slot {switchSlot} has fainted"
+                            : switchTries == MaxSwitchTries ? $"the switch to slot {switchSlot} failed {MaxSwitchTries} times"
+                            : null;
+                        if (flee is null)
+                        {
+                            switchTries++;
+                            presses += await SwitchAsync(bot, reader, addresses, s, switchSlot!.Value, switchTries, cursorWait, stale, ct);
+                            continue;
+                        }
+                        Console.WriteLine($"[RsBattle] fleeing: {flee}");
+                        fleeing = true;
+                    }
+                    else if (leadHp == 0)
                     {
                         return Stop(state, Fainted, s.ToString());
                     }
@@ -402,6 +440,56 @@ namespace ShinyBotHunter.BotEvents
             (_, int confirmed) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on move {slot}",
                 "the screen leaving the move list", list, x => x.Screen != GameScreen.BattleMoveList, cursorWait, stale, ct);
             return presses + confirmed;
+        }
+
+        // One switch try from the action menu at, to the battler's 0-based slot (FR-17; research "The in-battle switch, read
+        // frame by frame"). Every press is gated on its snapshot and confirmed by the byte it changes: the action cursor to
+        // POKéMON, A (the screen leaving the action menu); on the party list, only once it takes keys (the task, callback 2
+        // CB2_PartyMenuMain and the fade off), Down until the cursor is on the slot (each confirmed by the cursor leaving its
+        // value; Down alone reaches any slot, last -> 7 -> 0), A (the popup's task function), then A on SHIFT with the popup
+        // up and the fade off (the function leaving the popup). Then nothing is pressed and no party record is read until
+        // the next screen the main loop acts on: "Come back", "Go!" and the wild Pokémon's move go by themselves, and for
+        // about 22 frames after SHIFT the party records are swapped. A refused SHIFT ends in this wait's stale stop.
+        private static async Task<int> SwitchAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, GameSnapshot at,
+            int slot, int attempt, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
+        {
+            int presses = 0;
+            GameSnapshot menu = at;
+            while (menu.Prompt != PokemonCursor)
+            {
+                int from = menu.Prompt!.Value;
+                (string macro, string name, int next) = MoveCursorStep(from, PokemonCursor);
+                (menu, int sent) = await PressConfirmedAsync(bot, reader, macro, $"{name} on the action menu {from} -> {next}", $"cursor {next}",
+                    menu, x => x.Screen == GameScreen.BattleMenu && x.Prompt == next, cursorWait, stale, ct);
+                presses += sent;
+            }
+            Stopwatch since = Stopwatch.StartNew();
+            (_, int pokemon) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on POKéMON (switch try {attempt} of {MaxSwitchTries})",
+                "the screen leaving the action menu", menu, x => x.Screen != GameScreen.BattleMenu, cursorWait, stale, ct);
+            presses += pokemon;
+
+            bool TakesKeys(GameSnapshot x) => x.Screen == GameScreen.OtherApp && x.AppState == 0;
+            GameSnapshot list = await GameStateWait.UntilAsync(reader, $"the party list to take keys (the switch to slot {slot})",
+                x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyMenuTask, stale, ct);
+            Console.WriteLine($"[RsBattle] switch try {attempt} of {MaxSwitchTries} to slot {slot}: the party list takes keys, "
+                + $"{since.ElapsedMilliseconds} ms after POKéMON: {list}");
+            while (list.PartyMonIndex != slot)
+            {
+                int from = list.PartyMonIndex!.Value;
+                (list, int down) = await PressConfirmedAsync(bot, reader, Down, $"Down on the party list from {from}", $"the party cursor leaving {from}",
+                    list, x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyMenuTask && x.PartyMonIndex != from, cursorWait, stale, ct);
+                presses += down;
+            }
+            (GameSnapshot popup, int slotA) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on party slot {slot}",
+                "the SHIFT submenu", list, x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyPopupTask, cursorWait, stale, ct);
+            (_, int shift) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on SHIFT at {popup}", "the submenu closing",
+                popup, x => !(x.Screen == GameScreen.OtherApp && x.TaskFunction == addresses.BattlePartyPopupTask), cursorWait, stale, ct);
+
+            Stopwatch afterShift = Stopwatch.StartNew();
+            GameSnapshot back = await GameStateWait.UntilAsync(reader, $"the next action menu after SHIFT (the switch to slot {slot})",
+                x => x.Screen != GameScreen.BattleTurn, stale, ct);
+            Console.WriteLine($"[RsBattle] after SHIFT, {afterShift.ElapsedMilliseconds} ms: {back}");
+            return presses + slotA + shift;
         }
 
         // The move offered and the learner's record, read only while the prompt is up (gMoveToLearn goes stale after it),
@@ -537,6 +625,12 @@ namespace ShinyBotHunter.BotEvents
                 && trainer != 0
                 && (flag >> 3) < read[4].Bytes.Length
                 && (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) == 0;
+            if (!challenge)
+            {
+                Console.WriteLine($"[RsBattle] lock handed over: not a trainer (lock {read[0].Bytes[0]}, battle bit {(read[1].Bytes[0] & InBattleBit) >> 1}, "
+                    + $"script status {read[2].Bytes[0]}, opponent {trainer}, flag {flag} "
+                    + $"{((flag >> 3) >= read[4].Bytes.Length ? "past the flags" : (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) != 0 ? "set" : "clear")})");
+            }
             return challenge ? (read[5].Bytes[0], read[5].Bytes[1], trainer) : null;
         }
 

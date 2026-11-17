@@ -67,10 +67,15 @@ namespace ShinyBotHunter.Tests
         private static string Name(string macro, GameSnapshot at) => (macro, at.Screen) switch
         {
             ("H.A.2", GameScreen.BattleMessage) => "Advance",
-            ("H.A.2", GameScreen.BattleMenu) => at.Prompt == 0 ? "Fight" : "Confirm",
+            ("H.A.2", GameScreen.BattleMenu) => at.Prompt switch { 0 => "Fight", 2 => "ToPokemon", _ => "Confirm" },
             ("H.Right.2;H.Down.2", GameScreen.BattleMenu) => "ToRun",
             ("H.Right.2", GameScreen.BattleMenu) => "Right",
             ("H.Down.2", GameScreen.BattleMenu) => "Down",
+            ("H.Left.2", GameScreen.BattleMenu) => "Left",
+            // On the battle party list and its popup only with the fade off (the list taking keys).
+            ("H.Down.2", GameScreen.OtherApp) when at.TaskFunction == PartyListTask && at.AppState == 0 => "PartyDown",
+            ("H.A.2", GameScreen.OtherApp) when at.TaskFunction == PartyListTask && at.AppState == 0 => $"Slot{at.PartyMonIndex}",
+            ("H.A.2", GameScreen.OtherApp) when at.TaskFunction == PartyPopupTask && at.AppState == 0 => "Shift",
             ("H.A.2", GameScreen.BattleMoveList) => $"Move{at.Prompt}",
             ("H.Left.2", GameScreen.BattleMoveList) => "Left",
             ("H.Up.2", GameScreen.BattleMoveList) => "Up",
@@ -96,6 +101,18 @@ namespace ShinyBotHunter.Tests
         private const uint InputTask = 0x0809E281;
         private const uint DestroyTask = 0x0809E15D;
         private const uint MoveToLearn = 0x02024E82;
+
+        // The battle party list's task function and its popup's (SHIFT / SUMMARY / CANCEL).
+        private const uint PartyListTask = 0x08095139;
+        private const uint PartyPopupTask = 0x08095429;
+
+        // The party list as the reader gives it: under CB2_InitPartyMenu the task alone (switch research point 1); under
+        // CB2_PartyMenuMain the cursor and the fade. The popup the same with its function.
+        private static GameSnapshot PartyInit() => new(GameScreen.OtherApp, null, null, null, PartyListTask);
+
+        private static GameSnapshot Party(int cursor, int fade = 0) => new(GameScreen.OtherApp, null, null, null, PartyListTask, AppState: fade, PartyMonIndex: cursor);
+
+        private static GameSnapshot Popup(int cursor, int fade = 0) => new(GameScreen.OtherApp, null, null, null, PartyPopupTask, AppState: fade, PartyMonIndex: cursor);
 
         // The move prompt for the getter's slot: question 5 "Delete a move?", 10 "Stop learning?".
         private static GameSnapshot Prompt(int question, int getter = 0)
@@ -205,6 +222,8 @@ namespace ShinyBotHunter.Tests
             // The trainer messages sent, and every chain request made, in order.
             public List<string> TrainerMessages { get; } = [];
             public List<IReadOnlyList<ChainBlockRequest>> Requests { get; } = [];
+            // The snapshot last served at each request that reads a party record.
+            public List<GameSnapshot> RecordReadsAt { get; } = [];
             // The training reader, null in Flee mode; the damage picker, the move collection and the new-move question, which
             // throw unless a test sets them.
             public IGameStateReader? TrainingReader { get; set; }
@@ -229,7 +248,8 @@ namespace ShinyBotHunter.Tests
         // and fleeReader the bot's own, by default one past the entry at once.
         private static Battle Start(PressedReader reader, ITarget? target = null, ushort flags = Wild, byte[][]? enemies = null,
             Func<int, ushort>? leadHp = null, uint[]? counter = null, TrainerBytes? trainer = null,
-            BattleMode mode = BattleMode.Flee, IGameStateReader? fleeReader = null, byte[][]? party = null)
+            BattleMode mode = BattleMode.Flee, IGameStateReader? fleeReader = null, byte[][]? party = null,
+            TrainType trainType = TrainType.None, int? switchSlot = null)
         {
             byte[][] partyRecords = party ?? [Fighter()];
             Queue<byte[]> records = new(enemies ?? [Plain]);
@@ -303,21 +323,31 @@ namespace ShinyBotHunter.Tests
                 ChainBlocks = blocks =>
                 {
                     battle!.Requests.Add(blocks);
+                    if (blocks.Any(b => b.Anchor >= PlayerParty && b.Anchor < PlayerParty + 600))
+                    {
+                        battle.RecordReadsAt.Add(reader.Last);
+                    }
                     return blocks.Select(Answer).ToArray();
                 },
                 Pressed = macro =>
                 {
-                    // A at the action menu only ever with the cursor on RUN, or in Battle mode on FIGHT, in every test.
+                    // A at the action menu only ever with the cursor on RUN, in Battle mode on FIGHT, and when switching on
+                    // POKéMON, in every test.
                     if (macro == Confirm && reader.Last.Screen == GameScreen.BattleMenu)
                     {
-                        Assert.Contains(reader.Last.Prompt, mode == BattleMode.Battle ? new int?[] { 0, 3 } : [3]);
+                        Assert.Contains(reader.Last.Prompt, mode != BattleMode.Battle ? [3]
+                            : battle!.State.TrainType == TrainType.Switch ? new int?[] { 0, 2, 3 } : [0, 3]);
                     }
                     battle!.Presses.Add(Name(macro, reader.Last));
                     reader.Advance();
                 },
                 State = mode == BattleMode.Battle ? fleeReader ?? new PressedReader([Turn]) : reader,
             };
-            GameState state = new() { Bot = bot, Profile = bot.Profile, Target = target ?? new NoTarget(), Milestone = "Route 101", BattleMode = mode };
+            GameState state = new()
+            {
+                Bot = bot, Profile = bot.Profile, Target = target ?? new NoTarget(), Milestone = "Route 101", BattleMode = mode,
+                TrainType = trainType, SwitchSlot = switchSlot,
+            };
             state.State.Push(EventState.BattleStart);
             battle = new Battle { Bot = bot, State = state, Reader = reader, TrainingReader = mode == BattleMode.Battle ? reader : null };
             return battle;
@@ -586,9 +616,12 @@ namespace ShinyBotHunter.Tests
         {
             Battle battle = Start(new PressedReader([Locked]), trainer: read);
 
-            string? stop = await battle.RunAsync(battleStart: Short);
+            string? stop = null;
+            string log = await CaptureAsync(async () => stop = await battle.RunAsync(battleStart: Short));
 
             Assert.Equal(RsBattleEvent.NotWild, stop);
+            Assert.Contains($"[RsBattle] lock handed over: not a trainer (lock {read.Lock}, battle bit {read.InBattle >> 1}, "
+                + $"script status {read.Status}, opponent {read.Opponent}, flag {0x500 + read.Opponent} ", log);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.False(battle.State.StoppedForTrainer);
             Assert.Empty(battle.TrainerMessages);
@@ -955,6 +988,7 @@ namespace ShinyBotHunter.Tests
         public static TheoryData<string> RepairCases => new()
         {
             "FIGHT", "move A", "direction", "box page 1", "box page 2", "Yes", "B", "Stop learning", "Down", "forget A",
+            "to POKéMON", "POKéMON A", "party Down", "slot A", "SHIFT",
         };
 
         private static (GameSnapshot[][] Stages, int After, GameSnapshot Changed, Action<Battle> Setup) RepairCase(string name) => name switch
@@ -969,8 +1003,24 @@ namespace ShinyBotHunter.Tests
             "forget A" => (ReplaceSlotOne(), 7, Forget(1, fade: 1), b => b.DecideMove = Answer(1)),
             "B" => (Refuse(), 5, Prompt(5) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
             "Stop learning" => (Refuse(), 6, Prompt(10) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
+            // The switch to slot 1: Down to POKéMON leads to stage 2, then A, the party Down, A on the slot and SHIFT.
+            "to POKéMON" => (SwitchToFree(), 2, Turn, SwitchToSlot1),
+            "POKéMON A" => (SwitchToFree(), 3, TMenu(2) with { Outcome = BattleOutcome.Won }, SwitchToSlot1),
+            "party Down" => (SwitchToFree(), 4, Party(0, fade: 1), SwitchToSlot1),
+            "slot A" => (SwitchToFree(), 5, Party(1, fade: 1), SwitchToSlot1),
+            "SHIFT" => (SwitchToFree(), 6, Popup(1, fade: 1), SwitchToSlot1),
             _ => throw new ArgumentException(name),
         };
+
+        // One switch try to slot 1, ended by the free field after SHIFT so the theory runs short: the presses after the one
+        // under test do not matter to it.
+        private static GameSnapshot[][] SwitchToFree() => [[Turn, Message()], [Message(), Turn, TMenu(0)], .. SwitchTry(1, Free)];
+
+        private static void SwitchToSlot1(Battle battle)
+        {
+            battle.State.TrainType = TrainType.Switch;
+            battle.State.SwitchSlot = 2;
+        }
 
         private static Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> Answer(int slot) => (_, _) => Task.FromResult(slot);
 
@@ -1177,34 +1227,36 @@ namespace ShinyBotHunter.Tests
         {
             (GameSnapshot[][] stages, int after, GameSnapshot changed, Action<Battle> setup) = RepairCase(name);
             GameSnapshot at = stages[after][0];
+            // Two Pokémon, so a switch case has its battler's record; the other cases read slot 0 only.
+            byte[][] party = [Fighter(), Fighter(pid: 0x78)];
 
             // The happy path, for its press list.
-            Battle happy = Train(stages);
+            Battle happy = Train(stages, party: party);
             setup(happy);
             Assert.Null(await happy.RunAsync(cursorWait: RepairWait));
             List<string> presses = happy.Presses;
             string press = presses[after - 1];
 
             // Unchanged for cursorWait: exactly one press more, right after the first.
-            Battle dropped = Train([.. stages[..after], [at], .. stages[after..]]);
+            Battle dropped = Train([.. stages[..after], [at], .. stages[after..]], party: party);
             setup(dropped);
             Assert.Null(await dropped.RunAsync(cursorWait: RepairWait));
             Assert.Equal([.. presses[..after], press, .. presses[after..]], dropped.Presses);
 
             // Changed but not yet confirmed, for longer than cursorWait: no second press.
-            Battle moving = Train([.. stages[..after], [at, .. Enumerable.Repeat(changed, 7), .. stages[after][1..]], .. stages[(after + 1)..]]);
+            Battle moving = Train([.. stages[..after], [at, .. Enumerable.Repeat(changed, 7), .. stages[after][1..]], .. stages[(after + 1)..]], party: party);
             setup(moving);
             Assert.Null(await moving.RunAsync(cursorWait: RepairWait));
             Assert.Equal(presses, moving.Presses);
 
             // Changed, then back to the pressed snapshot past cursorWait: the key was read, so still no second press.
-            Battle back = Train([.. stages[..after], [at, changed, .. Enumerable.Repeat(at, 12), .. stages[after][1..]], .. stages[(after + 1)..]]);
+            Battle back = Train([.. stages[..after], [at, changed, .. Enumerable.Repeat(at, 12), .. stages[after][1..]], .. stages[(after + 1)..]], party: party);
             setup(back);
             Assert.Null(await back.RunAsync(cursorWait: RepairWait));
             Assert.Equal(presses, back.Presses);
 
             // Unchanged after the second press too: no third, and the stale stop names the snapshot.
-            Battle stuck = Train([.. stages[..after], [at], [at]]);
+            Battle stuck = Train([.. stages[..after], [at], [at]], party: party);
             setup(stuck);
             string? stop = await stuck.RunAsync(cursorWait: RepairWait, stale: TimeSpan.FromMilliseconds(300));
             Assert.Contains(at.ToString(), stop);
@@ -1423,6 +1475,246 @@ namespace ShinyBotHunter.Tests
 
             Assert.Contains(Scene(21, 10).ToString(), stop);
             Assert.Equal(WonPresses, battle.Presses);
+        }
+
+        // One switch try from the action menu, from the switch research (S0 to S5): the action cursor along path, A on
+        // POKéMON, the party list opening (opening: by default the task under CB2_InitPartyMenu, then the fade-in), Down to the
+        // slot, A, then SHIFT's stage: the battle's own turns and then next.
+        private static List<GameSnapshot[]> SwitchTry(int slot, GameSnapshot next, int[]? path = null, GameSnapshot[]? opening = null)
+        {
+            int[] cursors = path ?? [0, 2];
+            List<GameSnapshot[]> stages = [];
+            for (int i = 1; i < cursors.Length; i++)
+            {
+                stages.Add([TMenu(cursors[i - 1]), TMenu(cursors[i])]);
+            }
+            stages.Add([TMenu(2), Turn, .. opening ?? [PartyInit(), Party(0, fade: 1)], Party(0)]);
+            for (int cursor = 0; cursor < slot; cursor++)
+            {
+                stages.Add([Party(cursor), Party(cursor + 1)]);
+            }
+            stages.Add([Party(slot), Popup(slot)]);
+            stages.Add([Popup(slot), Turn, Turn, next]);
+            return stages;
+        }
+
+        // "Wild ... appeared!", the menu, one switch try that lands, then the battler fights with move 0 and wins; then the
+        // stages given after "... fainted!", by default the free field.
+        private static GameSnapshot[][] SwitchFight(int slot, int[]? path = null, GameSnapshot[]? opening = null, params GameSnapshot[][] after) =>
+        [
+            [Turn, Message()],
+            [Message(), Turn, TMenu((path ?? [0])[0])],
+            .. SwitchTry(slot, TMenu(0, battler: slot), path, opening),
+            [TMenu(0, battler: slot), Turn, MoveList(0)],
+            [MoveList(0), Turn, Message(BattleOutcome.Won)],
+            .. (after.Length == 0 ? [[Message(BattleOutcome.Won), Turn, Free]] : after),
+        ];
+
+        // Train Switch to the 0-based slot, with the party up to it: slot 0 pid 0x60, the next ones 0x78, 0x90, …
+        private static Battle Switch(GameSnapshot[][] stages, int slot)
+        {
+            byte[][] party = [.. Enumerable.Range(0, Math.Max(slot + 1, 2)).Select(i => Fighter(pid: (uint)(0x60 + 0x18 * i)))];
+            Battle battle = Start(new PressedReader(stages), mode: BattleMode.Battle, party: party, trainType: TrainType.Switch, switchSlot: slot + 1);
+            battle.MoveMetadata = Damaging;
+            battle.PickMove = _ => 0;
+            return battle;
+        }
+
+        private static readonly string[] SwitchToSlot1Presses = ["Advance", "Down", "ToPokemon", "PartyDown", "Slot1", "Shift"];
+
+        [Fact]
+        public async Task Switch_Clean_EachPressConfirmed_ThenTheBattlerFights()
+        {
+            Battle battle = Switch(SwitchFight(1), 1);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            // Nothing between SHIFT and the next action menu.
+            Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            // The menu read before the switch and the one after it both take the battler's record.
+            IReadOnlyList<ChainBlockRequest>[] menus = [.. battle.Requests.Where(r => r.Any(b => b.Anchor == EnemyParty))];
+            Assert.Equal(2, menus.Length);
+            Assert.All(menus, menu => Assert.Equal([(EnemyParty, 100), (PlayerParty + 100, 100)], menu.Select(b => (b.Anchor, b.Length))));
+            Assert.Contains("[RsBattle] Down on the action menu 0 -> 2", log);
+            Assert.Contains("confirmed by cursor 2", log);
+            Assert.Contains("[RsBattle] BattleConfirm on POKéMON (switch try 1 of 3)", log);
+            Assert.Contains("confirmed by the screen leaving the action menu", log);
+            Assert.Contains("[RsBattle] switch try 1 of 3 to slot 1: the party list takes keys", log);
+            Assert.Contains("[RsBattle] Down on the party list from 0", log);
+            Assert.Contains("confirmed by the party cursor leaving 0", log);
+            Assert.Contains("[RsBattle] BattleConfirm on party slot 1", log);
+            Assert.Contains("confirmed by the SHIFT submenu", log);
+            Assert.Contains($"[RsBattle] BattleConfirm on SHIFT at {Popup(1)}", log);
+            Assert.Contains("confirmed by the submenu closing", log);
+            Assert.Contains("[RsBattle] after SHIFT", log);
+            Assert.Contains("[RsBattle] switch confirmed: 0x02024A6A reads 1 at the action menu, try 1", log);
+        }
+
+        // The task first reads under CB2_InitPartyMenu with the fade off, then the fade-in: no Down until the list takes keys.
+        [Fact]
+        public async Task Switch_NoDownBeforeTheListTakesKeys()
+        {
+            Battle battle = Switch(SwitchFight(1, opening: [PartyInit(), PartyInit(), PartyInit(), Party(0, fade: 1), Party(0, fade: 1), Party(0, fade: 1)]), 1);
+
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance"], battle.Presses);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(4)]
+        public async Task Switch_DownsUntilTheSlot(int slot)
+        {
+            Battle battle = Switch(SwitchFight(slot), slot);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal(["Advance", "Down", "ToPokemon", .. Enumerable.Repeat("PartyDown", slot), $"Slot{slot}", "Shift", "Fight", "Move0", "Advance"],
+                battle.Presses);
+            for (int cursor = 0; cursor < slot; cursor++)
+            {
+                Assert.Contains($"confirmed by the party cursor leaving {cursor}", log);
+            }
+        }
+
+        // The action cursor clears its bits first, as the move cursor does: 1 goes Left then Down, 3 goes Left.
+        [Theory]
+        [InlineData(new[] { 1, 0, 2 }, new[] { "Left", "Down" })]
+        [InlineData(new[] { 3, 2 }, new[] { "Left" })]
+        public async Task Switch_CursorNotOnFight_ReachesPokemon(int[] path, string[] directions)
+        {
+            Battle battle = Switch(SwitchFight(1, path), 1);
+
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal(["Advance", .. directions, "ToPokemon", "PartyDown", "Slot1", "Shift", "Fight", "Move0", "Advance"], battle.Presses);
+        }
+
+        // Each try comes back to the menu with the trainee still out; the fourth menu runs.
+        [Fact]
+        public async Task Switch_ThreeFailedTries_Flees()
+        {
+            Battle battle = Switch(
+            [
+                [Turn, Message()],
+                [Message(), Turn, TMenu(0)],
+                .. SwitchTry(1, TMenu(0)),
+                .. SwitchTry(1, TMenu(0)),
+                .. SwitchTry(1, TMenu(0)),
+                [TMenu(0), TMenu(3)],
+                [TMenu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Free],
+            ], 1);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            string[] attempt = ["Down", "ToPokemon", "PartyDown", "Slot1", "Shift"];
+            Assert.Equal(["Advance", .. attempt, .. attempt, .. attempt, "ToRun", "Confirm", "Advance"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Contains("[RsBattle] switch try 3 did not land: 0x02024A6A reads 0", log);
+            Assert.Contains("[RsBattle] fleeing: the switch to slot 1 failed 3 times", log);
+            Assert.DoesNotContain("switch try 4", log);
+        }
+
+        // For about 22 frames after SHIFT the records are swapped (switch research point 2): from SHIFT to the next menu the
+        // reader gives BattleTurn, and no record is read there.
+        [Fact]
+        public async Task Switch_NoPartyRecordReadBetweenShiftAndTheNextMenu()
+        {
+            GameSnapshot[][] stages = SwitchFight(1);
+            stages[6] = [Popup(1), .. Enumerable.Repeat(Turn, 8), TMenu(0, battler: 1)];
+            Battle battle = Switch(stages, 1);
+
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance"], battle.Presses);
+            Assert.NotEmpty(battle.RecordReadsAt);
+            Assert.All(battle.RecordReadsAt, at => Assert.Contains(at.Screen, new[] { GameScreen.BattleMenu, GameScreen.FieldFree }));
+        }
+
+        // A refused SHIFT: the refusal's message reads as BattleTurn, unchanged, so the wait after SHIFT stops naming the switch.
+        [Fact]
+        public async Task Switch_RefusedShift_StaleStopNamesTheSwitch()
+        {
+            GameSnapshot[][] stages = SwitchFight(1);
+            Battle battle = Switch([.. stages[..6], [Popup(1), Turn]], 1);
+
+            string? stop = await battle.RunAsync(stale: TimeSpan.FromMilliseconds(200));
+
+            Assert.Contains("the next action menu after SHIFT (the switch to slot 1)", stop);
+            Assert.Contains(Turn.ToString(), stop);
+            Assert.Equal(SwitchToSlot1Presses, battle.Presses);
+            Assert.Equal([EventState.Waiting], battle.State.State);
+        }
+
+        // The battler's record at HP 0: the battle is fled with no try, and no Fainted stop.
+        [Fact]
+        public async Task Switch_BattlerFainted_FleesWithoutTrying()
+        {
+            Battle battle = Start(new PressedReader(TrainFleeStages()), mode: BattleMode.Battle, party: [Fighter(), Fighter(hp: 0, pid: 0x78)],
+                trainType: TrainType.Switch, switchSlot: 2);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal(["Advance", "ToRun", "Confirm", "Advance"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Contains("[RsBattle] fleeing: the battler in slot 1 has fainted", log);
+        }
+
+        // The orchestrator's heal trip: Switch with Flee mode runs today's flee, with today's reads.
+        [Fact]
+        public async Task Switch_FleeMode_DoesNotSwitch()
+        {
+            Battle flee = Start(Fled());
+            Battle battle = Start(Fled(), trainType: TrainType.Switch, switchSlot: 2);
+
+            Assert.Null(await flee.RunAsync());
+            Assert.Null(await battle.RunAsync());
+
+            Assert.Equal(["Advance", "ToRun", "Confirm", "Advance"], battle.Presses);
+            Assert.Equal(flee.Requests.Select(r => r.Select(b => (b.Anchor, b.Length)).ToArray()),
+                battle.Requests.Select(r => r.Select(b => (b.Anchor, b.Length)).ToArray()));
+        }
+
+        // Switch research S8: the benched trainee's boxes (getter 0) come first, then the battler's (getter 1).
+        [Fact]
+        public async Task Switch_TraineesBoxThenTheBattlers()
+        {
+            Battle battle = Switch(SwitchFight(1, after:
+            [
+                [Message(BattleOutcome.Won), Turn, Box(1, 0)], [Box(1, 0), Box(2, 0)], [Box(2, 0), Turn, Box(1, 1)], [Box(1, 1), Box(2, 1)],
+                [Box(2, 1), Turn, Free],
+            ]), 1);
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance", "Box1", "Box2", "Box1", "Box2"], battle.Presses);
+            int trainee = log.IndexOf("level-up box page 1 for slot 0", StringComparison.Ordinal);
+            int battler = log.IndexOf("level-up box page 1 for slot 1", StringComparison.Ordinal);
+            Assert.InRange(trainee, 0, battler - 1);
+        }
+
+        // The benched trainee's move prompt after a switch battle asks about slot 0, read beside gMoveToLearn.
+        [Fact]
+        public async Task Switch_BenchedTraineesPrompt_AsksAboutSlot0()
+        {
+            Battle battle = Switch(SwitchFight(1, after:
+            [
+                [Message(BattleOutcome.Won), Turn, Prompt(5, getter: 0)], [Prompt(5, 0), Turn, Prompt(10, 0)], [Prompt(10, 0), Turn, Free],
+            ]), 1);
+            List<uint> asked = [];
+            battle.DecideMove = (p, _) => { asked.Add(p.PID); return Task.FromResult(-1); };
+
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
+
+            Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance", "No", "StopYes"], battle.Presses);
+            Assert.Contains($"[RsBattle] move prompt at {Prompt(5, 0)}", log);
+            Assert.Equal([0x60u], asked);
+            IReadOnlyList<ChainBlockRequest> prompt = Assert.Single(battle.Requests, r => r.Any(b => b.Anchor == MoveToLearn));
+            Assert.Equal([(MoveToLearn, 2), (PlayerParty, 100)], prompt.Select(b => (b.Anchor, b.Length)));
         }
 
         private sealed class LoggedReader(IGameStateReader inner, Action log) : IGameStateReader
