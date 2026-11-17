@@ -19,21 +19,35 @@ namespace ShinyBotHunter.Scripts.Maps
         private const byte MB_LONG_GRASS = 0x03;
         private const byte MB_LONG_GRASS_SOUTH_EDGE = 0x09;
         private const byte MB_INDOOR_ENCOUNTER = 0x0B;
+        private const byte MB_MT_PYRE_HOLE = 0x0F;
         private const byte MB_WATERFALL = 0x13;
+        private const byte MB_STAIRS_OUTSIDE_ABANDONED_SHIP = 0x1B;
+        private const byte MB_SHOAL_CAVE_ENTRANCE = 0x1C;
         private const byte MB_ICE = 0x20;
         private const byte MB_ASHGRASS = 0x24;
         private const byte MB_THIN_ICE = 0x26;
         private const byte MB_CRACKED_ICE = 0x27;
+        private const byte MB_LAVARIDGE_GYM_B1F_WARP = 0x29;
         private const byte MB_JUMP_EAST = 0x38;
         private const byte MB_JUMP_WEST = 0x39;
         private const byte MB_JUMP_SOUTH = 0x3B;
         private const byte MB_SLIDE_EAST = 0x44;
         private const byte MB_SLIDE_SOUTH = 0x47;
+        private const byte MB_NON_ANIMATED_DOOR = 0x60;
+        private const byte MB_LADDER = 0x61;
         private const byte MB_UNUSED_EAST_ARROW_WARP = 0x62;
         private const byte MB_WEST_ARROW_WARP = 0x63;
         private const byte MB_NORTH_ARROW_WARP = 0x64;
         private const byte MB_SOUTH_ARROW_WARP = 0x65;
+        private const byte MB_AQUA_HIDEOUT_WARP = 0x67;
+        private const byte MB_LAVARIDGE_GYM_1F_WARP = 0x68;
+        private const byte MB_ANIMATED_DOOR = 0x69;
+        private const byte MB_UP_ESCALATOR = 0x6A;
+        private const byte MB_DOWN_ESCALATOR = 0x6B;
+        private const byte MB_WATER_DOOR = 0x6C;
         private const byte MB_WATER_SOUTH_ARROW_WARP = 0x6D;
+        private const byte MB_UNUSED_DEEP_SOUTH_WARP = 0x6E;
+        private const byte MB_PETALBURG_GYM_DOOR = 0x8D;
         // MB_MUDDY_SLOPE to MB_HORIZONTAL_RAIL: slopes, cracked floor and rails.
         private const byte MB_MUDDY_SLOPE = 0xD0;
         private const byte MB_HORIZONTAL_RAIL = 0xD6;
@@ -103,6 +117,40 @@ namespace ShinyBotHunter.Scripts.Maps
             }
             return Constant.MAP_Free;
         }
+
+        // How the game fires a warp event on a tile of this behaviour (src/field_control_avatar.c): null when it does
+        // not; None for a step onto the tile (TryStartWarpEventScript, IsWarpMetatileBehavior), and for an animated
+        // door also a press Up into it from the tile below (map_warp_consider_2_to_inside); otherwise the direction to
+        // press while standing on the tile (mapheader_run_first_tag2_script_list_match_conditionally, IsArrowWarpMetatileBehavior).
+        internal static Direction? WarpArrow(byte behaviour) => behaviour switch
+        {
+            MB_ANIMATED_DOOR or MB_LADDER or MB_UP_ESCALATOR or MB_DOWN_ESCALATOR or MB_NON_ANIMATED_DOOR or MB_UNUSED_DEEP_SOUTH_WARP
+                or MB_WATER_DOOR or MB_LAVARIDGE_GYM_B1F_WARP or MB_LAVARIDGE_GYM_1F_WARP or MB_AQUA_HIDEOUT_WARP or MB_MT_PYRE_HOLE => Direction.None,
+            MB_NORTH_ARROW_WARP or MB_STAIRS_OUTSIDE_ABANDONED_SHIP => Direction.Up,
+            MB_SOUTH_ARROW_WARP or MB_WATER_SOUTH_ARROW_WARP or MB_SHOAL_CAVE_ENTRANCE => Direction.Down,
+            MB_WEST_ARROW_WARP => Direction.Left,
+            MB_UNUSED_EAST_ARROW_WARP => Direction.Right,
+            _ => null,
+        };
+
+        // Where the player stands when control returns, from the destination warp event's tile, by the behaviour of
+        // the tile the warp fired on and of the tile it lands on. Escalators walk East (sub_8086A2C, sub_8086ED4) and
+        // the Lavaridge B1F warp jumps East (mapldr_080851BC, sub_8087548); the Lavaridge 1F warp and the Mt. Pyre hole
+        // fall in place (sub_8086748) and the Aqua Hideout warp appears in place (sub_8080B78). Every other warp goes
+        // through mapldr_default (src/field_fadetransition.c, sub_8080AE4): off a door one tile Down (sub_8080B9C), off
+        // a non-animated door one tile in the facing direction (task_map_chg_seq_0807E20C), which
+        // GetAdjustedInitialDirection (src/overworld.c) makes North for 0x6E and South for the others.
+        internal static (int Dx, int Dy) ArrivalStep(byte fired, byte landing) => fired switch
+        {
+            MB_UP_ESCALATOR or MB_DOWN_ESCALATOR or MB_LAVARIDGE_GYM_B1F_WARP => (1, 0),
+            MB_LAVARIDGE_GYM_1F_WARP or MB_AQUA_HIDEOUT_WARP or MB_MT_PYRE_HOLE => (0, 0),
+            _ => landing switch
+            {
+                MB_ANIMATED_DOOR or MB_PETALBURG_GYM_DOOR or MB_NON_ANIMATED_DOOR or MB_WATER_DOOR => (0, 1),
+                MB_UNUSED_DEEP_SOUTH_WARP => (0, -1),
+                _ => (0, 0),
+            },
+        };
 
         // The first tile in reading order that is diveable on the surface and can be surfaced from underwater.
         internal static (int X, int Y) PickDiveTile(string surfaceName, (byte Behaviour, int Collision, byte Elevation)[,] surface,
@@ -203,7 +251,7 @@ namespace ShinyBotHunter.Scripts.Maps
 
             foreach (var w in Entries(json, "warp_events"))
             {
-                if (WhyDropped(json, w) is not null)
+                if (WhyDropped(json, w, cells) is not null)
                 {
                     continue;
                 }
@@ -211,16 +259,11 @@ namespace ShinyBotHunter.Scripts.Maps
                 int y = (int)w["y"]!;
                 int destination = idByConstant[(string)w["dest_map"]!];
                 var to = Landing(destination, w);
-                Direction arrow = cells[y, x].Behaviour switch
-                {
-                    MB_UNUSED_EAST_ARROW_WARP => Direction.Right,
-                    MB_WEST_ARROW_WARP => Direction.Left,
-                    MB_NORTH_ARROW_WARP => Direction.Up,
-                    MB_SOUTH_ARROW_WARP or MB_WATER_SOUTH_ARROW_WARP => Direction.Down,
-                    _ => Direction.None,
-                };
+                int toX = (int)to["x"]!;
+                int toY = (int)to["y"]!;
+                var (dx, dy) = ArrivalStep(cells[y, x].Behaviour, DecodeCells(mapsById[destination])[toY, toX].Behaviour);
                 map[y, x] = Constant.MAP_Portal1;
-                map.Events.Warps.Add(new MapWarp(x, y, destination, (int)to["x"]!, (int)to["y"]!, arrow));
+                map.Events.Warps.Add(new MapWarp(x, y, destination, toX + dx, toY + dy, WarpArrow(cells[y, x].Behaviour)!.Value));
             }
 
             foreach (var c in Entries(json, "connections"))
@@ -296,7 +339,11 @@ namespace ShinyBotHunter.Scripts.Maps
 
             var all = maps.Values.Select(map => map.Events).ToList();
             int warps = all.Sum(e => e.Warps.Count);
-            var dropped = mapsById.Values.SelectMany(json => Entries(json, "warp_events").Select(w => WhyDropped(json, w)))
+            var dropped = mapsById.Values.SelectMany(json =>
+                {
+                    var cells = DecodeCells(json);
+                    return Entries(json, "warp_events").Select(w => WhyDropped(json, w, cells));
+                })
                 .OfType<string>().GroupBy(reason => reason).ToList();
             Console.WriteLine($"Maps: {maps.Count} built, {maps.Values.Sum(map => map.Height * map.Width)} tiles");
             Console.WriteLine($"maps.bin: {raw.Length} bytes raw, {mapsBin.Length} gzipped");
@@ -315,19 +362,26 @@ namespace ShinyBotHunter.Scripts.Maps
         }
 
         // Null for a warp the side file keeps; otherwise why it is dropped. Warps to MAP_DYNAMIC (secret bases, the
-        // truck, the elevator) have no destination, and a few warps sit, or land, outside their map's layout.
-        private string? WhyDropped(JObject json, JToken warp)
+        // truck, the elevator) have no destination, and a few warps sit, or land, outside their map's layout. A warp
+        // event on a tile the game does not warp from (WarpArrow) is only ever a landing, for a script or another warp.
+        private string? WhyDropped(JObject json, JToken warp, (byte Behaviour, int Collision, byte Elevation)[,] cells)
         {
             if (!idByConstant.TryGetValue((string)warp["dest_map"]!, out int destination))
             {
                 return "to an unknown map";
             }
-            if (!OnLayout(json, (int)warp["x"]!, (int)warp["y"]!))
+            int x = (int)warp["x"]!;
+            int y = (int)warp["y"]!;
+            if (!OnLayout(json, x, y))
             {
                 return "off their own map";
             }
             var to = Landing(destination, warp);
-            return OnLayout(mapsById[destination], (int)to["x"]!, (int)to["y"]!) ? null : "landing off their destination";
+            if (!OnLayout(mapsById[destination], (int)to["x"]!, (int)to["y"]!))
+            {
+                return "landing off their destination";
+            }
+            return WarpArrow(cells[y, x].Behaviour) is null ? "on a tile the game does not warp from" : null;
         }
 
         // The destination map's warp event that the warp lands on.

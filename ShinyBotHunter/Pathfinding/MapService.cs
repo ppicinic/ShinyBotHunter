@@ -51,8 +51,10 @@ namespace ShinyBotHunter.Pathfinding
     // always live. The game compares the variable with Value cut to a byte (VarGet(var) == (u8)value).
     public record MapTrigger(int X, int Y, int? Var, int Value);
 
-    // ToX, ToY is the destination's tile (its warp event's tile), not the destination warp's index.
-    // Arrow is the direction to press on the tile for an arrow warp, None for a door.
+    // ToX, ToY is the tile the player stands on when control returns: the destination warp event's tile, moved by the
+    // game's arrival step (one tile Down off a door or stairs, East off an escalator). Arrow: None is a step-on warp
+    // (door, stairs, ladder, escalator, hole), entered by stepping onto the tile, or for an animated door by pressing Up
+    // from the tile below; otherwise it is the direction to press while standing on the tile.
     public record MapWarp(int X, int Y, int Map, int ToX, int ToY, Direction Arrow);
 
     public record MapConnection(Direction Direction, int Offset, int Map);
