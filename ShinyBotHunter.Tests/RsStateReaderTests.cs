@@ -224,6 +224,8 @@ namespace ShinyBotHunter.Tests
         private const uint EvolutionScene = 0x0811242D;   // Task_EvolutionScene
         private const uint PartyList = 0x08095139;        // HandleBattlePartyMenu
         private const uint PartyPopup = 0x08095429;       // Task_HandlePopupMenuInput
+        private const uint SapphirePartyMenuMain = 0x0806AF01; // CB2_PartyMenuMain, Sapphire
+        private const uint SapphireInitPartyMenu = 0x0806B485; // CB2_InitPartyMenu, Sapphire (switch research S1)
         private const uint YesNo = 0x080B5505;            // Task_HandleYesNoInput
         private const uint WaitForButton = 0x080670E5;    // WaitForAorBPress, Sapphire
         private const uint SummaryInput = 0x0809E281;     // sub_809E260, the forget screen's input task
@@ -285,7 +287,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task TrainingReadsReadTheSpriteOnlyOnThePartyScreen()
         {
-            FakeMemoryClient party = BattleMemory();
+            FakeMemoryClient party = BattleMemory(callback2: SapphirePartyMenuMain);
             PlaceTask(party, 0, PartyList, data: [0, 0, 0, 4 << 8]);
             FakeMemoryClient battle = BattleMemory(controller: ChooseAction);
 
@@ -293,9 +295,55 @@ namespace ShinyBotHunter.Tests
             await ReadTraining(battle);
 
             Assert.Equal(2, party.ChainReads.Count);
-            (uint, int, int)[] sprite = [(0x02020142, 0, 2)]; // sprite 4's data[0]
-            Assert.Equal(sprite, party.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+            (uint, int, int)[] spriteAndFade = [(0x02020142, 0, 2), (0x0202F38F, 0, 1)]; // sprite 4's data[0], gPaletteFade + 7
+            Assert.Equal(spriteAndFade, party.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
             Assert.Single(battle.ChainReads);
+        }
+
+        // The switch research, point 1 and S1 (b): the task is first read under CB2_InitPartyMenu with the fade off and
+        // data[3] still 0, so nothing more is read and the snapshot carries no cursor and no fade.
+        [Fact]
+        public async Task PartyScreen_BeforeCB2PartyMenuMain_NoCursorRead()
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: SapphireInitPartyMenu);
+            PlaceTask(memory, 0, PartyList);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(PartyList, snapshot.TaskFunction);
+            Assert.Null(snapshot.PartyMonIndex);
+            Assert.Null(snapshot.AppState);
+            Assert.Single(memory.ChainReads);
+        }
+
+        [Theory]
+        [InlineData(0x80, 1)]
+        [InlineData(0x00, 0)]
+        public async Task PartyScreen_CarriesTheFade(byte fadeByte, int fading)
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: SapphirePartyMenuMain);
+            PlaceTask(memory, 0, PartyList, data: [0, 0, 0, 4 << 8]);
+            memory.Place(Fade, [fadeByte]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(fading, snapshot.AppState);
+            Assert.Equal(0, snapshot.PartyMonIndex);
+        }
+
+        // A game code with no per-game part has no CB2_PartyMenuMain, so the list never reads as taking keys.
+        [Fact]
+        public async Task PartyScreen_UnknownGameCode_NeverTakesKeys()
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: SapphirePartyMenuMain);
+            PlaceTask(memory, 0, PartyList, data: [0, 0, 0, 4 << 8]);
+
+            GameSnapshot snapshot = await ReadTraining(memory, "AXVD");
+
+            Assert.Equal(PartyList, snapshot.TaskFunction);
+            Assert.Null(snapshot.AppState);
+            Assert.Null(snapshot.PartyMonIndex);
         }
 
         [Fact]
@@ -566,7 +614,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task PartyListIsOtherAppWithCursor()
         {
-            FakeMemoryClient memory = BattleMemory();
+            FakeMemoryClient memory = BattleMemory(callback2: SapphirePartyMenuMain);
             PlaceTask(memory, 1, PartyList, data: [0, 0, 0, 4 << 8]);
             memory.Place(0x02020142, BitConverter.GetBytes((short)1)); // sprite 4's data[0]
 
@@ -580,7 +628,7 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task PartyPopupChangesTheTaskFunction()
         {
-            FakeMemoryClient memory = BattleMemory();
+            FakeMemoryClient memory = BattleMemory(callback2: SapphirePartyMenuMain);
             PlaceTask(memory, 1, PartyPopup, data: [0, 0, 0, 4 << 8]);
             memory.Place(0x02020142, BitConverter.GetBytes((short)2));
 
