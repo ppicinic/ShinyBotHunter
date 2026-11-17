@@ -240,7 +240,8 @@ namespace ShinyBotHunter.BotEvents
                         // A new move with four known (FR-15), in battle or at the evolution scene's own yes/no, where the
                         // learner is the evolving slot (data[12]) and B is sent only as the No (FR-16). "Stop learning?"
                         // reached any way gets its Yes.
-                        presses += s.Question == RsStateReader.StopLearningQuestion
+                        Console.WriteLine($"[RsBattle] move prompt at {s}");
+                        presses +=s.Question == RsStateReader.StopLearningQuestion
                             ? await StopLearningAsync(bot, reader, s, cursorWait, stale, ct)
                             : await AnswerMovePromptAsync(bot, reader, addresses, s,
                                 await AskMoveAsync(bot, addresses, s.PartyMonIndex!.Value, moveMetadata, decideMove, ct), cursorWait, stale, ct);
@@ -481,7 +482,7 @@ namespace ShinyBotHunter.BotEvents
             }
             (GameSnapshot popup, int slotA) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on party slot {slot}",
                 "the SHIFT submenu", list, x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyPopupTask, cursorWait, stale, ct);
-            (_, int shift) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), "BattleConfirm on SHIFT", "the submenu closing",
+            (_, int shift) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on SHIFT at {popup}", "the submenu closing",
                 popup, x => !(x.Screen == GameScreen.OtherApp && x.TaskFunction == addresses.BattlePartyPopupTask), cursorWait, stale, ct);
 
             Stopwatch afterShift = Stopwatch.StartNew();
@@ -624,6 +625,12 @@ namespace ShinyBotHunter.BotEvents
                 && trainer != 0
                 && (flag >> 3) < read[4].Bytes.Length
                 && (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) == 0;
+            if (!challenge)
+            {
+                Console.WriteLine($"[RsBattle] lock handed over: not a trainer (lock {read[0].Bytes[0]}, battle bit {(read[1].Bytes[0] & InBattleBit) >> 1}, "
+                    + $"script status {read[2].Bytes[0]}, opponent {trainer}, flag {flag} "
+                    + $"{((flag >> 3) >= read[4].Bytes.Length ? "past the flags" : (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) != 0 ? "set" : "clear")})");
+            }
             return challenge ? (read[5].Bytes[0], read[5].Bytes[1], trainer) : null;
         }
 

@@ -616,9 +616,12 @@ namespace ShinyBotHunter.Tests
         {
             Battle battle = Start(new PressedReader([Locked]), trainer: read);
 
-            string? stop = await battle.RunAsync(battleStart: Short);
+            string? stop = null;
+            string log = await CaptureAsync(async () => stop = await battle.RunAsync(battleStart: Short));
 
             Assert.Equal(RsBattleEvent.NotWild, stop);
+            Assert.Contains($"[RsBattle] lock handed over: not a trainer (lock {read.Lock}, battle bit {read.InBattle >> 1}, "
+                + $"script status {read.Status}, opponent {read.Opponent}, flag {0x500 + read.Opponent} ", log);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.False(battle.State.StoppedForTrainer);
             Assert.Empty(battle.TrainerMessages);
@@ -1542,7 +1545,7 @@ namespace ShinyBotHunter.Tests
             Assert.Contains("confirmed by the party cursor leaving 0", log);
             Assert.Contains("[RsBattle] BattleConfirm on party slot 1", log);
             Assert.Contains("confirmed by the SHIFT submenu", log);
-            Assert.Contains("[RsBattle] BattleConfirm on SHIFT", log);
+            Assert.Contains($"[RsBattle] BattleConfirm on SHIFT at {Popup(1)}", log);
             Assert.Contains("confirmed by the submenu closing", log);
             Assert.Contains("[RsBattle] after SHIFT", log);
             Assert.Contains("[RsBattle] switch confirmed: 0x02024A6A reads 1 at the action menu, try 1", log);
@@ -1705,9 +1708,10 @@ namespace ShinyBotHunter.Tests
             List<uint> asked = [];
             battle.DecideMove = (p, _) => { asked.Add(p.PID); return Task.FromResult(-1); };
 
-            Assert.Null(await battle.RunAsync());
+            string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
 
             Assert.Equal([.. SwitchToSlot1Presses, "Fight", "Move0", "Advance", "No", "StopYes"], battle.Presses);
+            Assert.Contains($"[RsBattle] move prompt at {Prompt(5, 0)}", log);
             Assert.Equal([0x60u], asked);
             IReadOnlyList<ChainBlockRequest> prompt = Assert.Single(battle.Requests, r => r.Any(b => b.Anchor == MoveToLearn));
             Assert.Equal([(MoveToLearn, 2), (PlayerParty, 100)], prompt.Select(b => (b.Anchor, b.Length)));
