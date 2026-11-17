@@ -132,7 +132,8 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        public int PickBestMove(PokemonBattleState state)
+        // generation is the calculator's: 4 splits physical and special per move (HGSS), 3 by the move's type (RS).
+        public int PickBestMove(PokemonBattleState state, int generation = 4)
         {
             var moves = state.Moves;
             var attacker = state.ActivePokemon;
@@ -147,7 +148,7 @@ namespace ShinyBotHunter.Service
                     var moveMetadata = pokemonMetadataService.GetPokemonMoveMetadata(moves[i].Id);
                     try
                     {
-                        result[i] = GetDamageResult(4, attacker.Pokemon.Name, defender.Pokemon.Name, moveMetadata.Name, new
+                        result[i] = GetDamageResult(generation, attacker.Pokemon.Name, defender.Pokemon.Name, moveMetadata.Name, new
                         {
                             attackerOpts = new
                             {

@@ -37,6 +37,11 @@ namespace ShinyBotHunter.Service
             _nameLookup.Add(poke.PokemonName, poke.Id);
         }
 
+        internal void SeedMove(PokemonMoveMetadata move)
+        {
+            _moveMetadata.Add(move.Id, move);
+        }
+
         public PokemonMetadata GetPokemonMetadata(string name)
         {
             return _metadata[_nameLookup[name]];
