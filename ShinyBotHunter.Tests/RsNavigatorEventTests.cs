@@ -50,10 +50,13 @@ namespace ShinyBotHunter.Tests
             Directory.SetCurrentDirectory(RepoPaths.AppProject);
         }
 
-        // One walk read: where the player stands, the lock, callback 1 and the battle bit.
-        private sealed record Read(int Map, int X, int Y, byte Lock = 0, uint Callback = Overworld, bool Battle = false);
+        // One walk read: where the player stands, the lock, callback 1, the battle bit and the tile transition.
+        private sealed record Read(int Map, int X, int Y, byte Lock = 0, uint Callback = Overworld, bool Battle = false, byte Transition = 0);
 
         private static Read Free(int map, int x, int y) => new(map, x, y);
+
+        // W9: free on the tile with its step still running.
+        private static Read Stepping(int map, int x, int y) => new(map, x, y, Transition: 1);
 
         private static Read Locked(int map, int x, int y) => new(map, x, y, Lock: 1);
 
@@ -117,6 +120,7 @@ namespace ShinyBotHunter.Tests
             VBlankCounter => BitConverter.GetBytes(frame),
             PlayerPosition => [.. BitConverter.GetBytes((short)read.X), .. BitConverter.GetBytes((short)read.Y)],
             PlayerLocation => [(byte)(read.Map >> 8), (byte)read.Map],
+            PlayerTileTransition => [read.Transition],
             _ => throw new InvalidOperationException($"unexpected read at 0x{address:X8}"),
         };
 
@@ -182,6 +186,40 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(["M.Down.8.33707828:H.B.1", "M.Down.17.33707828:H.B.1", "clear"], walk.Bot.Macros);
             Assert.Equal(EventState.DecideOverworldAction, walk.State.State.Peek());
+        }
+
+        // W9 (#467): a segment's tile is read 8 or 16 frames before its step ends. A segment before the last ends on its
+        // tile mid-step, the next macro taking the step over; the last ends only once the step has, tile transition 0 after
+        // 1 and 2, so nothing is sent to a player still stepping.
+        [Fact]
+        public async Task LastSegment_EndsOnlyWhenItsStepHasEnded()
+        {
+            (string, int, int, int)[] segments = [("M.Down.8.33707828:H.B.1", OldaleCenter, 7, 8), ("M.Down.17.33707828:H.B.1", OldaleTown, 6, 17)];
+            Walk walk = Start(EventState.ReturnToStart,
+                [[Free(OldaleCenter, 7, 4)], [Stepping(OldaleCenter, 7, 8)],
+                    [Stepping(OldaleTown, 6, 17), Stepping(OldaleTown, 6, 17), new(OldaleTown, 6, 17, Transition: 2), Free(OldaleTown, 6, 17)]],
+                start: (OldaleTown, 6, 17));
+
+            Assert.Null(await walk.RunAsync());
+
+            Assert.Equal(["M.Down.8.33707828:H.B.1", "M.Down.17.33707828:H.B.1", "clear"], walk.Bot.Macros);
+            Assert.Equal(1, walk.ReadsInStage[1]);
+            Assert.Equal(4, walk.ReadsInStage[2]);
+            Assert.Equal(EventState.DecideOverworldAction, walk.State.State.Peek());
+        }
+
+        // W9 (#467): the last segment on its tile with the transition never back to 0 is not an arrival; the segment's stale
+        // time stops the walk, naming the transition it read, the macro cleared.
+        [Fact]
+        public async Task LastSegment_StepNeverEnding_StopsNamingTheTransition()
+        {
+            Walk walk = Start(EventState.ReturnToStart, [[Free(OldaleCenter, 7, 8)], [Stepping(OldaleTown, 6, 17)]],
+                start: (OldaleTown, 6, 17), stale: Short);
+
+            Assert.Equal("The last step to OldaleTown (6, 17) did not end (tile transition 1).", await walk.RunAsync());
+
+            Assert.Equal(["M.Down.17.33707828:H.B.1", "clear"], walk.Bot.Macros);
+            Assert.Equal(EventState.Waiting, walk.State.State.Peek());
         }
 
         // W1: after the warp callback 1 reads 0 with the lock 0 for 4 to 7 frames. On the segment's own tile that read does

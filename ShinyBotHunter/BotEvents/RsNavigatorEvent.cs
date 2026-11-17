@@ -65,9 +65,10 @@ namespace ShinyBotHunter.BotEvents
         private const int TaskIsActive = 4;
         private const int TaskYesNoCounter = 0x0C;
 
-        // One walk read: six blocks on one frame, classified in RsStateReader's order. Callback 1 at 0 is a transition and
+        // One walk read: seven blocks on one frame, classified in RsStateReader's order. Callback 1 at 0 is a transition and
         // never free: after every warp it reads 0 with the lock 0 for 4 to 7 frames. Then the battle bit, then the lock.
-        private readonly record struct WalkRead(byte Lock, uint Callback1, bool InBattle, uint Frame, int Map, int X, int Y)
+        // The tile transition is 1 through a step, 2 for its last frame, 0 at rest (W9).
+        private readonly record struct WalkRead(byte Lock, uint Callback1, bool InBattle, uint Frame, int Map, int X, int Y, byte TileTransition)
         {
             public bool Battle => Callback1 != 0 && InBattle;
 
@@ -78,7 +79,7 @@ namespace ShinyBotHunter.BotEvents
             public bool On(int map, int x, int y) => Map == map && X == x && Y == y;
 
             public override string ToString() =>
-                $"(f {Frame}: map {Map >> 8}.{Map & 0xFF} ({X}, {Y}), lock {Lock}, callback 1 0x{Callback1:X8}, battle bit {(InBattle ? 1 : 0)})";
+                $"(f {Frame}: map {Map >> 8}.{Map & 0xFF} ({X}, {Y}), lock {Lock}, callback 1 0x{Callback1:X8}, battle bit {(InBattle ? 1 : 0)}, tile transition {TileTransition})";
         }
 
         // One nurse read: ten blocks on one frame. YesNo is the Yes/No task's data[2], null when that task is not active.
@@ -177,7 +178,10 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // FR-9 per segment: send its macro with no clear before it, then poll the walk read until the macro has ended and the
-        // field is free on the segment's map and tile, which for a segment cut at a door's coordinate is the landing (R3). The
+        // field is free on the segment's map and tile, which for a segment cut at a door's coordinate is the landing (R3).
+        // The tile is read 8 or 16 frames before its step ends (W9): the next segment's macro takes that step over cleanly,
+        // but after the last one the field goes to the seek or the nurse, and a direction held as a step ends is a walk, so
+        // the last segment ends only once the tile transition reads 0 (#467). The
         // battle bit, or a lock with the map and tile unchanged for the profile's SeekLockHandOff, clears the macro and pushes
         // BattleStart: a lock's longest unchanged run was 70 frames at a door and 93 before a wild battle's bit, while a
         // trainer's never ends, and the battle event reads the trainer (N5). Arrived, or not with the stop sentence, or with
@@ -192,6 +196,7 @@ namespace ShinyBotHunter.BotEvents
             for (int i = 0; i < count; i++)
             {
                 (string macro, int map, int x, int y) = route.Segments[i];
+                bool last = i == count - 1;
                 string segment = $"[Navigator] segment {i + 1}/{count}:";
                 Console.WriteLine($"{segment} {macro} to {Tile(maps, map, x, y)}");
                 bot.RunMacroString(macro);
@@ -227,7 +232,8 @@ namespace ShinyBotHunter.BotEvents
                         state.State.Push(EventState.BattleStart);
                         return (false, null);
                     }
-                    if (macroEnded.IsCompleted && at.Free && at.On(map, x, y))
+                    bool onTile = macroEnded.IsCompleted && at.Free && at.On(map, x, y);
+                    if (onTile && (!last || at.TileTransition == 0))
                     {
                         Console.WriteLine($"{segment} on {Tile(maps, map, x, y)} after {at.Frame - sent} frames");
                         break;
@@ -235,7 +241,9 @@ namespace ShinyBotHunter.BotEvents
                     if (sinceSent.Elapsed >= SegmentStale)
                     {
                         await ClearAsync(bot, macroEnded);
-                        return (false, Stop(state, $"Stuck walking to {Tile(maps, map, x, y)}.", at));
+                        return (false, Stop(state, onTile
+                            ? $"The last step to {Tile(maps, map, x, y)} did not end (tile transition {at.TileTransition})."
+                            : $"Stuck walking to {Tile(maps, map, x, y)}.", at));
                     }
                     await Task.Delay(Constant.PollIntervalMs, ct);
                 }
@@ -386,10 +394,11 @@ namespace ShinyBotHunter.BotEvents
                 new(addresses.VBlankCounter, direct, 4),
                 new(addresses.PlayerPosition, direct, 4),
                 new(addresses.PlayerLocation, direct, 2),
+                new(addresses.PlayerTileTransition, direct, 1),
             ], ct: ct);
             return new WalkRead(read[0].Bytes[0], BitConverter.ToUInt32(read[1].Bytes, 0), (read[2].Bytes[0] & InBattleBit) != 0,
                 BitConverter.ToUInt32(read[3].Bytes, 0), read[5].Bytes[0] * 256 + read[5].Bytes[1],
-                BitConverter.ToInt16(read[4].Bytes, 0), BitConverter.ToInt16(read[4].Bytes, 2));
+                BitConverter.ToInt16(read[4].Bytes, 0), BitConverter.ToInt16(read[4].Bytes, 2), read[6].Bytes[0]);
         }
 
         // Clearing lets go of the held d-pad and B; the macro then ends.
