@@ -38,6 +38,10 @@ namespace ShinyBotHunter.Games.Rs
                 StarterHuntConfig config = StarterHuntConfig.Load();
                 return provider.GetRequiredService<RsStartMenuService>().SaveViaStartMenuAsync(bot, Table,
                     config.SaveMenuActionId, config.SaveConfirmMacro, config.BattleWaitTimeoutMs, config.BattlePollIntervalMs, CancellationToken.None);
-            });
+            },
+            // Above a wild roll's lock to the battle bit, about 1.4 s (docs/research/rs-wild-encounter.md, "What memory
+            // shows through one cycle") and 1.6 to 2.1 s in the QA logs, and about when a trainer's speech first waits,
+            // 148 to 180 frames (docs/research/rs-navigation-and-training.md, "A trainer's intro speech").
+            seekLockHandOff: TimeSpan.FromSeconds(3));
     }
 }

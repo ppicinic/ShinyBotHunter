@@ -14,6 +14,9 @@ namespace ShinyBotHunter.BotEvents
         // FR-9; init so a test can shorten it.
         internal TimeSpan NoBattleWithin { get; init; } = TimeSpan.FromSeconds(15);
 
+        // The profile's SeekLockHandOff, set where the orchestrator builds the encounter (SpinEncounterEvent.SeekAsync).
+        internal TimeSpan? LockedHandOff { get; init; }
+
         private EncounterParams param;
         private IBot bot;
         private readonly IPointerService addresses;
@@ -50,7 +53,7 @@ namespace ShinyBotHunter.BotEvents
             long seekMs = 0;
             try
             {
-                toBattle = await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                toBattle = await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
                 seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)

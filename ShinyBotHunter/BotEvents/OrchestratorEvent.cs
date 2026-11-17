@@ -127,9 +127,9 @@ namespace ShinyBotHunter.BotEvents
         // meet at the non-generic IBotEvent -- which is fine, the result is discarded.
         internal static IBotEvent BuildEncounter(IBot bot, EncounterParams encounterParams) => encounterParams.type switch
         {
-            EncounterType.Spin => new SpinEncounterEvent(bot),
+            EncounterType.Spin => new SpinEncounterEvent(bot) { LockedHandOff = bot.Profile.SeekLockHandOff },
             EncounterType.Headbutt => new HeadbuttEncounterEvent(bot),
-            _ => new RunEncounterEvent(bot, encounterParams),
+            _ => new RunEncounterEvent(bot, encounterParams) { LockedHandOff = bot.Profile.SeekLockHandOff },
         };
 
         internal static async Task CaptureStartAsync(GameState state, IOverworldReader overworld, CancellationToken cancellationToken)

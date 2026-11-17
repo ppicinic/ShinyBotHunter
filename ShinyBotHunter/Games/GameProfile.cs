@@ -49,6 +49,10 @@ namespace ShinyBotHunter.Games
         /// <summary>Saves the game after a catch; done when the save is. Null when the flavor has no wild encounters.</summary>
         public Func<IServiceProvider, IBot, Task>? SaveGame { get; }
 
+        /// <summary>How long a seek lets the field stay locked before it hands the lock to the battle event, which reads
+        /// what locked it. Null when the seek waits for the battle screen alone.</summary>
+        public TimeSpan? SeekLockHandOff { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -63,7 +67,8 @@ namespace ShinyBotHunter.Games
             PathfindingService? pathfinding = null,
             Func<IMemoryClient, IPointerService, IGameStateReader>? createStateReader = null,
             Func<IServiceProvider, IBotEvent<GameState>>? createBattleEvent = null,
-            Func<IServiceProvider, IBot, Task>? saveGame = null)
+            Func<IServiceProvider, IBot, Task>? saveGame = null,
+            TimeSpan? seekLockHandOff = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -129,6 +134,7 @@ namespace ShinyBotHunter.Games
             CreateStateReader = createStateReader;
             CreateBattleEvent = createBattleEvent;
             SaveGame = saveGame;
+            SeekLockHandOff = seekLockHandOff;
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
@@ -51,13 +52,19 @@ namespace ShinyBotHunter.Tests
             return new FakeBot(Task.CompletedTask) { State = new ScriptedReader(Free, Battle), Overworld = new HgssOverworldReader(memory, Hgss) };
         }
 
-        private static FakeBot RsBot(short x, short y, byte facing)
+        // chainRead is called at each chain request the bot is asked for.
+        private static FakeBot RsBot(short x, short y, byte facing, Action? chainRead = null)
         {
             FakeMemoryClient memory = new();
             memory.Place(RsPosition, [.. BitConverter.GetBytes(x), .. BitConverter.GetBytes(y)]);
             memory.Place(RsFacing, [facing]);
             return new FakeBot(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)))
             {
+                ChainBlocks = _ =>
+                {
+                    chainRead?.Invoke();
+                    return [];
+                },
                 State = new ScriptedReader(Free, Battle),
                 Overworld = new RsOverworldReader(memory, new RsPointerService()),
             };
@@ -157,16 +164,100 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task RsEncounterHandsOverAfterTheLock()
         {
-            FakeBot bot = RsBot(14, 4, 0x22);
+            int chainReads = 0;
+            FakeBot bot = RsBot(14, 4, 0x22, () => chainReads++);
             bot.State = new ScriptedReader(Free, Free, At(GameScreen.FieldTask), Battle);
             GameState state = Encountering(14, 4);
 
-            bool found = await new SpinEncounterEvent(bot).ExecuteWithResultAsync(state, CancellationToken.None);
+            bool found = await new SpinEncounterEvent(bot) { LockedHandOff = TimeSpan.FromSeconds(3) }.ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.True(found);
             Assert.Equal(EventState.BattleStart, state.State.Peek());
             Assert.Equal(["RP:" + RsUpSpin, "clear"], bot.Macros);
+            // A normal seek makes no trainer read.
+            Assert.Equal(0, chainReads);
         }
+
+        [Fact]
+        public async Task Seek_LockHeldPastTheHandOff_ReturnsAsABattle()
+        {
+            ScriptedReader game = new(Free, At(GameScreen.FieldTask));
+
+            TimeSpan locked = await SpinEncounterEvent.SeekAsync(game, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+            Assert.InRange(locked, TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task Seek_NullHandOff_LockStillTimesOut()
+        {
+            ScriptedReader game = new(Free, At(GameScreen.FieldTask));
+
+            GameStateTimeoutException ex = await Assert.ThrowsAsync<GameStateTimeoutException>(() =>
+                SpinEncounterEvent.SeekAsync(game, TimeSpan.FromMilliseconds(100), null, CancellationToken.None));
+
+            Assert.Equal("a battle within 0.1 s of the field leaving free", ex.WaitingFor);
+        }
+
+        // The hand-off clears the repeat macro and goes to BattleStart, where RsBattleEvent reads what locked the field.
+        [Fact]
+        public async Task RsSpin_LockPastTheHandOff_HandsOverToBattleStart()
+        {
+            int chainReads = 0;
+            FakeBot bot = RsBot(14, 4, 0x22, () => chainReads++);
+            bot.State = new ScriptedReader(Free, Free, At(GameScreen.FieldTask));
+            GameState state = Encountering(14, 4);
+
+            bool found = await new SpinEncounterEvent(bot) { LockedHandOff = TimeSpan.FromMilliseconds(50) }.ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.True(found);
+            Assert.Equal(EventState.BattleStart, state.State.Peek());
+            Assert.Equal(["RP:" + RsUpSpin, "clear"], bot.Macros);
+            Assert.Equal(0, chainReads);
+        }
+
+        // The hand-off is the profile's: 3 s on RS, none on HGSS, whose seek is today's.
+        [Fact]
+        public void BuildEncounter_HandOffIsTheProfiles()
+        {
+            Assert.Equal(TimeSpan.FromSeconds(3), RsProfile.Create(new PokemonMetadataService(null!)).SeekLockHandOff);
+            SpinEncounterEvent rsSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(RsBot(14, 4, 0x22), new EncounterParams(EncounterType.Spin));
+            SpinEncounterEvent hgssSpin = (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Spin));
+            RunEncounterEvent hgssRun = (RunEncounterEvent)OrchestratorEvent.BuildEncounter(HgssBot(14, 4, Direction.Up), new EncounterParams(EncounterType.Run, yRange: 2));
+
+            Assert.Equal(TimeSpan.FromSeconds(3), rsSpin.LockedHandOff);
+            Assert.Null(hgssSpin.LockedHandOff);
+            Assert.Null(hgssRun.LockedHandOff);
+        }
+
+        // A Resume pressed while the trainer's battle is still on: the spin's wait for the free field stops on its own
+        // sentence, naming the battle screen, and nothing is pressed.
+        [Fact]
+        public async Task RsSpin_ResumedDuringTheBattle_StopsInTheReadyWait()
+        {
+            FakeBot bot = RsBot(14, 4, 0x22);
+            bot.State = new ScriptedReader(Battle);
+            GameState state = Encountering(14, 4);
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            bool found;
+            try
+            {
+                found = await BuildRsSpin(bot).ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.False(found);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+            Assert.Empty(bot.Macros);
+            Assert.Contains($"Waited for the overworld ready; the game state stayed {Battle}", log.ToString());
+        }
+
+        private static SpinEncounterEvent BuildRsSpin(FakeBot bot) => (SpinEncounterEvent)OrchestratorEvent.BuildEncounter(bot, new EncounterParams(EncounterType.Spin));
 
         [Fact]
         public async Task SpinLogsTheSeekInTwoParts()
