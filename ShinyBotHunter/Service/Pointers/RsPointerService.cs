@@ -202,6 +202,10 @@ namespace ShinyBotHunter.Service.Pointers
         // (absolute; pret symbols line 468); observed; QA: none yet: rs-nav-heal-return
         public uint ScriptNative => 0x030005BC;
 
+        // sGlobalScriptContextStatus (u8): 0 a script is running, 1 stopped in a waitstate, 2 no script; root (absolute;
+        // research "A trainer's intro speech"); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet: rs-nav-trainer
+        public uint ScriptContextStatus => 0x030005B0;
+
         // Task_HandleYesNoInput, the field Yes/No task's function; constant (ROM, pret symbols line 7581, 080b5504 + 1);
         // decomp only; QA: none yet: rs-nav-heal-return
         public uint TaskHandleYesNoInput => 0x080B5505;
