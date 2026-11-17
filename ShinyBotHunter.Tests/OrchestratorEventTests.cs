@@ -517,5 +517,21 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal([next], state.State);
         }
+
+        // QA L7: the heal trip's line names the member the check read, its HP and its damaging PP, or the empty slot.
+        [Theory]
+        [InlineData(TrainType.Standard, null, (ushort)40, "heal trip: Mudkip HP 40/40, damaging PP 0")]
+        [InlineData(TrainType.Switch, 2, (ushort)40, "heal trip: Mudkip HP 10/40, damaging PP 35")]
+        [InlineData(TrainType.Switch, 2, (ushort)0, "heal trip: Mudkip HP 0/40, damaging PP 0")]
+        [InlineData(TrainType.Switch, 3, (ushort)40, "heal trip: switch slot 3 is empty")]
+        public async Task HealTripLine_NamesWhyTheTripWasTaken(TrainType trainType, int? switchSlot, ushort leadHp, string line)
+        {
+            FakeBot bot = RsBot(Gen3Mon(leadHp, tacklePp: 0), Gen3Mon(10));
+            GameState state = Training(bot, trainType, switchSlot);
+            PokemonState party = await new PokemonStateReader().GetPartyState(bot);
+
+            Assert.False(OrchestratorEvent.CanFightNextEncounter(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
+            Assert.Equal(line, OrchestratorEvent.HealTripLine(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
+        }
     }
 }

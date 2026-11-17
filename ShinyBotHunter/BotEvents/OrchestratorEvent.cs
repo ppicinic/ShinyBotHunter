@@ -375,6 +375,7 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
+                Console.WriteLine($"[Orchestrator] {HealTripLine(state, pokeState, lead, moveMetadata)}");
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
@@ -391,14 +392,29 @@ namespace ShinyBotHunter.BotEvents
             {
                 return CanBattle(lead, moveMetadata);
             }
-            int battlerIndex = state.SwitchSlot!.Value - 1;
-            var battler = battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+            var battler = Battler(state, pokeState);
             if (battler is null)
             {
                 // The configured slot is empty -- nothing to switch to, so treat it like a spent party.
                 return false;
             }
             return lead.HP > 0 && CanBattle(battler, moveMetadata);
+        }
+
+        // Why the heal trip was taken: the member the check above read (the lead, or a living lead's battler) with its HP and
+        // damaging PP, or the empty slot.
+        internal static string HealTripLine(GameState state, PokemonState pokeState, PokemonData lead, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
+            PokemonData? member = state.TrainType == TrainType.Switch && lead.HP > 0 ? Battler(state, pokeState) : lead;
+            return member is null
+                ? $"heal trip: switch slot {state.SwitchSlot} is empty"
+                : $"heal trip: {member.Name} HP {member.HP}/{member.MaxHP}, damaging PP {DamagingPp(member, moveMetadata)}";
+        }
+
+        private static PokemonData? Battler(GameState state, PokemonState pokeState)
+        {
+            int battlerIndex = state.SwitchSlot!.Value - 1;
+            return battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
         }
 
         private static bool CanBattle(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
@@ -408,6 +424,11 @@ namespace ShinyBotHunter.BotEvents
             {
                 return false;
             }
+            return DamagingPp(pokemon, moveMetadata) >= 3;
+        }
+
+        private static int DamagingPp(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
             int moveCount = 0;
             foreach(var move in pokemon.Moves)
             {
@@ -416,7 +437,7 @@ namespace ShinyBotHunter.BotEvents
                     moveCount += move.PP;
                 }
             }
-            return moveCount >= 3;
+            return moveCount;
         }
     }
 }
