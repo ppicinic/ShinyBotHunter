@@ -44,8 +44,8 @@ namespace ShinyBotHunter.Service.Pointers
 
         // WaitForAorBPress, the field script native that waits for A or B; ROM code, stored with the Thumb bit as RAM
         // holds it (pret symbols 78b1990 line 4437: Sapphire 080670e4, Ruby 080670e0, rev 1 equal to rev 2);
-        // constant, per game; observed on Sapphire 1.2 (research R119), Ruby and both 1.1 values decomp only;
-        // QA: none yet: rs-nav-heal-return (Ruby: none yet)
+        // constant, per game; observed on Sapphire 1.2 and Ruby 1.2 (research "A trainer's intro speech", "The nurse"),
+        // both 1.1 values decomp only; QA: rs-train-heal (Sapphire and Ruby)
         public uint? WaitForAorBPress { get; private init; }
 
         // BattleScript_AskToLearnMove + 0x11, the battle script's yesnoboxlearnmove at "Delete a move?"; ROM data, the
@@ -209,7 +209,7 @@ namespace ShinyBotHunter.Service.Pointers
         // rs-nav-heal-return
         public int EventFlagBytes => 0x120;
 
-        // The byte that holds event flag `flag`; the flag is bit flag & 7 of it (research "Event flags").
+        // The byte that holds event flag `flag`; the flag is bit flag & 7 of it (research "Flags, variables and trainers in memory").
         public uint EventFlagByte(int flag) => EventFlags + (uint)(flag >> 3);
 
         // gSaveBlock1 + 0x1340, the script variables, u16 each from 0x4000; root (absolute; pret symbols line 106);
@@ -252,15 +252,15 @@ namespace ShinyBotHunter.Service.Pointers
         public uint PlayerTileTransition => 0x0202E85B;
 
         // Task_HandleYesNoInput, the field Yes/No task's function; constant (ROM, pret symbols line 7581, 080b5504 + 1);
-        // decomp only; QA: none yet: rs-nav-heal-return
+        // observed on Sapphire 1.2 and Ruby 1.2 (research "The nurse"); QA: none yet: rs-nav-heal-return
         public uint TaskHandleYesNoInput => 0x080B5505;
 
-        // gTasks, 16 tasks of 0x28 bytes (0x280); root (absolute; pret symbols line 642); decomp only;
+        // gTasks, 16 tasks of 0x28 bytes (0x280); root (absolute; pret symbols line 642); observed (research "The nurse");
         // QA: none yet: rs-nav-heal-return
         public uint Tasks => 0x03004B20;
 
-        // gMain (0x03001770) + 4, callback2 (u32, include/main.h:13); root (absolute; pret symbols line 526); decomp only;
-        // QA: none yet: rs-train-learn-slot1
+        // gMain (0x03001770) + 4, callback2 (u32, include/main.h:13); root (absolute; pret symbols line 526); observed
+        // (research R1, R4); QA: none yet: rs-train-learn-slot1
         public uint Callback2 => 0x03001774;
 
         // BattleMainCB2, callback2 during a battle; constant (ROM below 0x0803FBDC, pret symbols line 1378, 0800f808 + 1);
@@ -272,7 +272,8 @@ namespace ShinyBotHunter.Service.Pointers
         public uint MoveSelectionCursor => 0x02024E64;
 
         // gBattleStruct->expGetterMonId (u8): gSharedMem (0x02000000) + 0x16018 (include/battle.h:338, include/ewram.h:25);
-        // root (absolute; pret symbols line 1); decomp only; QA: none yet: rs-train-two-levelup
+        // root (absolute; pret symbols line 1); observed (research R3; "The in-battle switch", S8); QA: none yet:
+        // rs-train-two-levelup
         public uint ExpGetterMonId => 0x02016018;
 
         // gBattleStruct->atk5A_StateTracker (u8): gSharedMem + 0x1601A; 1 at "Delete a move?", 3 on the forget-a-move
@@ -298,11 +299,13 @@ namespace ShinyBotHunter.Service.Pointers
         public uint ActiveBattlerPartyIndex => 0x02024A6A;
 
         // HandleBattlePartyMenu, the battle party list's task function; constant (ROM, pret symbols line 6372,
-        // 08095138 + 1); decomp only; QA: none yet: rs-train-switch
+        // 08095138 + 1); observed on Sapphire 1.2 and Ruby 1.2 (research "The in-battle switch"); QA: none yet:
+        // rs-train-switch
         public uint BattlePartyMenuTask => 0x08095139;
 
         // Task_HandlePopupMenuInput (battle_party_menu.c), the task's function once SHIFT / SUMMARY / CANCEL is up;
-        // constant (ROM, pret symbols line 6379, 08095428 + 1); decomp only; QA: none yet: rs-train-switch
+        // constant (ROM, pret symbols line 6379, 08095428 + 1); observed on Sapphire 1.2 and Ruby 1.2 (research "The
+        // in-battle switch", S3); QA: none yet: rs-train-switch
         public uint BattlePartyPopupTask => 0x08095429;
 
         // gSprites, 65 sprites of 0x44 bytes, data[0] at + 0x2E (include/sprite.h:207); root (absolute; pret symbols

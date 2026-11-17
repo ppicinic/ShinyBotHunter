@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md, docs/guide/01-install.md (Install from a release), ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Service/BotService.cs (WildRefusalAsync, DisabledByCapabilities) -->
+<!-- Derived from: ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinLauncher.cs, ShinyBotHunter/Emulators/Dolphin/DolphinPad.cs, ShinyBotHunter/Service/BotService.cs, docs/specs/wishmaker-jirachi.md (FR-2, FR-5, FR-9, FR-14, FR-15, FR-20), docs/specs/hgss-state-reader.md (Stale-timeouts), ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Games/GameStateWait.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/StarterHuntEvent.cs, ShinyBotHunter/BotEvents/MultiStarterHuntEvent.cs, ShinyBotHunter/Emulators/Dolphin/BonusDisc.cs, ShinyBotHunter/Emulators/Dolphin/DolphinGbaWindow.cs, Scripts/deploy-apihawk.ps1, Scripts/deploy-dolphin.ps1, ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ToolManager.cs (the trust question), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/tools/ExternalToolManager.cs (TrustedExtTools), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (CheckMayCloseAndCleanup, CloseGame, FlushSaveRAM), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.Common/config/Config.cs (AutosaveSaveRAM off), ApiHawk/CommandServer.cs (flush), ShinyBotHunter/BotEvents/WishmakerJirachiConfig.cs (DsuPort), Dolphin/Config/DSUClient.ini, https://learn.microsoft.com/windows-server/administration/windows-commands/netstat, https://learn.microsoft.com/windows-server/administration/windows-commands/tasklist, ShinyBotHunter/BotEvents/OrchestratorEvent.cs (Resume, DecideOverworldAction), docs/guide/04-hunts/05-wishmaker-jirachi.md, docs/guide/01-install.md (Install from a release), ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Service/BotService.cs (WildRefusalAsync, DisabledByCapabilities, StartWildEncounter), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (WalkToAsync, WalkAsync, HealAsync, Stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, DecideOverworldAction), ShinyBotHunter/Games/Rs/RsProfile.cs (NoTrainingAddresses), ShinyBotHunter/Util/Overworld.cs (WaitForReadyAsync) -->
 # When something goes wrong
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -190,16 +190,72 @@ On the dashboard, the bot shows as waiting, with **Resume**. A word in angle bra
 | `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]` | Something stopped your character walking, such as a message or a script, and no battle started within 15 s. Both games; on Ruby and Sapphire a message or a script is looked at after 4 s instead and ends in one of the `[RsBattle]` lines below. | Finish what the game shows yourself until your character can walk, put it back on the start tile or the line, and press **Resume**. |
 | `[RsBattle] stopped: A trainer battle started on <map>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed; the same sentence arrives once on Discord | Ruby and Sapphire. A trainer challenged your character. The bot pressed nothing and does not fight trainers. | Press through the speech and win the battle yourself. Once your character stands in the field, press **Resume**: the hunt carries on. If you press **Resume** while the speech or the battle is still waiting for you, the bot goes back to waiting with `[Orchestrator] Resume: Waited for the free field after the trainer stop; the game state stayed <state>` and sends no second message; finish, and press **Resume** again. |
 | `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>` | Ruby and Sapphire. The field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one, such as a Safari Zone battle. | End the battle or close the message yourself, put your character back on the start tile or the line, and press **Resume**. |
-| `[RsBattle] stopped: The first Pokémon fainted. <state>` | Ruby and Sapphire. Your first Pokémon fainted in the battle. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
+| `[RsBattle] stopped: The first Pokémon fainted. <state>` | Ruby and Sapphire. Your first Pokémon fainted in the battle, or, when training, the Pokémon fighting fainted with no other able to battle and the battle was lost. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
 | `[RsBattle] stopped: Could not run from this battle. <state>` | Ruby and Sapphire. The bot pressed RUN 12 times in this battle without getting away. A wild Pokémon with Arena Trap, Shadow Tag or Magnet Pull can do this. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
 | `[RsBattle] stopped: The wild Pokémon's record failed its checksum for 2 s. <state>` | Ruby and Sapphire. The wild Pokémon's record in the game's memory kept failing its checksum, so the bot could not read it. | Finish the battle yourself, put your character back on the start tile or the line, and press **Resume**. |
+
+After a lost battle the game sends your character to a Pokémon Center, so put it back on the start tile or the line before you press **Resume**; otherwise Resume stops again with the `[Spin]` or `[Run]` sentence at the top of this table.
+
+## A Ruby or Sapphire hunt stops while training or walking
+
+On the dashboard, the bot shows as waiting, with **Resume**. These come from Ruby and Sapphire hunts with Train Type Standard or Switch, which fight and walk to a Pokémon Center to heal, and from any Ruby and Sapphire hunt as it walks back to its start tile to finish. The [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#training) page explains training and the walks.
+
+A `<place>` is the game's name for the map and a tile, for example `Route101 (14, 4)` or `OldaleTown_PokemonCenter_1F (7, 4)`. Most `[Navigator]` lines end with what the bot last read, in brackets.
+
+**Before you press Resume after any of these, walk your character back to the tile the hunt started on.** A stop on a walk or at the nurse leaves your character somewhere else, and so does a lost battle. Resume checks the start tile (Spin) or the line (Run) before the next encounter, and stops again with `[Spin] The player moved while turning.` or `[Run] The player is off the run line.` if your character is not there. If a Pokémon still needs healing, the bot walks to the Pokémon Center again by itself.
+
+### On the walk
+
+| You see | It means | Do |
+|---|---|---|
+| `[Navigator] stopped: No route to a Pokémon Center on foot from <place>.` | The bot found no way from where your character stands to a Pokémon Center. It uses no HM, so a Pokémon Center behind a Cut tree, water or a rock is out of reach, and so is one behind a person who still blocks the path at this point in the story. | Heal yourself, walk back to the start tile and press **Resume**. The same stop comes back at the next heal, so to train, start the hunt from a tile with a Pokémon Center you can walk to without HMs. |
+| `[Navigator] stopped: No route back to the start tile <place> from <place>.` | The bot found no way from where your character stands back to the tile the hunt started on, under the same rules. | Walk back to the start tile yourself and press **Resume**. |
+| `[Navigator] stopped: Stuck walking to <place>.` | One straight stretch of the walk did not end on the tile it was heading for within 20 s. Something was in the way, such as a person walking into the path. A message or a script does not end this way: it locks the field, and see the next row. | Walk back to the start tile and press **Resume**. |
+| `[Navigator] stopped: The last step to <place> did not end (running state <n>, tile transition <n>).` | Your character reached the last tile of the walk, but the game did not show it standing still within 20 s. | Look at the emulator, walk back to the start tile and press **Resume**. |
+| `[Navigator] stopped: Waited for the overworld ready; the game state stayed <state>` | Before planning a walk, the bot waited for your character to be free to walk, and for 10 s nothing changed. | Close what the game shows, walk back to the start tile and press **Resume**. |
+| `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, on a walk | The field locked on the walk (a message, a script) and stayed locked for 4 s with your character on the same tile. The walk handed it to the battle event, which found no trainer, and no battle started within about 15 s of the lock. | Close what the game shows and press **Resume**: the bot plans the walk again from where your character stands. |
+| `[RsBattle] stopped: A trainer battle started on <map>.` on a walk | A trainer who has not been beaten challenged your character on the way. | As for the same line in the table above: press through the speech, win, and press **Resume**. The bot plans the walk again from where your character stands, so you need not walk back first. |
+
+### At the nurse
+
+| You see | It means | Do |
+|---|---|---|
+| `[Navigator] stopped: Waited for <what>; the game state stayed <read>.` | At the Pokémon Center counter, the nurse's talk did not reach its next step, and nothing changed for 10 s. `<what>` is one of: `the player at rest on the counter tile`, `the player at rest on the counter tile facing up`, `the facing up after SpinUp`, `the field locked after the talk`, `a page break or the Yes/No with its counter at 5`, `the window leaving <n>`, `the Yes/No task gone after Yes`, `a page break or the script's last button wait`, `the lock 0 and status 2 after the last line`. | Finish talking to the nurse yourself, walk back to the start tile and press **Resume**. |
+| `[Navigator] stopped: The party's HP was not full after the nurse: <name> <hp>/<max>, ….` | The bot talked to the nurse, but afterwards a Pokémon in the party was not at full HP. | Heal at the counter yourself, walk back to the start tile and press **Resume**. |
+
+### In a battle while training
+
+| You see | It means | Do |
+|---|---|---|
+| `[RsBattle] stopped: Waited for a battle message, the action menu, an evolution text wait or yes/no, or the free field; the game state stayed <state>` | Between presses, the game showed nothing the bot acts on for 30 s. "Use next POKéMON?", after the Pokémon fighting faints with another left that can battle, ends this way: the bot does not answer it. So does a forget-a-move screen the bot did not open. | Finish the battle yourself, heal, walk back to the start tile and press **Resume**. |
+| `[RsBattle] stopped: Waited for <what>; the game state stayed <state>`, where `<what>` is one of the waits listed below | A press while fighting, switching or answering a new move was not followed by what it should change, or a screen did not come, and nothing in the game changed for 30 s. | Finish what the game shows yourself (the battle, the move question), walk back to the start tile and press **Resume**. |
+
+The `<what>` of those stops, as the bot writes them. Party slots and move slots in them count from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1, and a Pokémon's first move is move 0. A direction is Left, Up, Right or Down.
+
+| `<what>` | The bot was |
+|---|---|
+| `the action cursor on FIGHT` | waiting for the battle menu with the cursor on FIGHT |
+| `the move list after BattleConfirm on FIGHT` | opening the move list |
+| `cursor <n> after <direction> on the move list <n> -> <n>` | moving to the chosen move |
+| `the screen leaving the move list after BattleConfirm on move <n>` | choosing the move |
+| `page 2 after level-up box page 1 for slot <n>: BattleConfirm`, `the box leaving page 2 after level-up box page 2 for slot <n>: BattleConfirm` | closing a level-up box |
+| `the prompt leaving Delete a move? after BattleConfirm (Yes) at Delete a move?`, `the prompt leaving Delete a move? after B at Delete a move?` | answering "Delete a move?" as you chose on Discord |
+| `the forget-a-move screen taking input`, `the cursor after Down on the forget-a-move screen <n> -> <n>`, `the summary task closing after BattleConfirm on forget slot <n>`, `the forget-a-move screen to close` | forgetting the move you chose |
+| `Stop learning?`, `the prompt leaving Stop learning? after BattleConfirm (Yes) at Stop learning?` | declining the new move |
+| `cursor <n> after <direction> on the action menu <n> -> <n>`, `the screen leaving the action menu after BattleConfirm on POKéMON (switch try <n> of 3)` | opening the party list for the switch |
+| `the party list to take keys (the switch to slot <n>)`, `the party cursor leaving <n> after Down on the party list from <n>`, `the SHIFT submenu after BattleConfirm on party slot <n>`, `the submenu closing after BattleConfirm on SHIFT at <state>` | choosing the Battler and SHIFT |
+| `the next action menu after SHIFT (the switch to slot <n>)` | waiting for the Battler to come out; the game refusing the switch ends here |
+| `the battle window to leave <n>` | pressing A at a battle message or an evolution text |
+| `the cursor on RUN`, `the cursor on RUN after the missing press`, `the screen to leave the action menu` | running from the battle: when training, because the Pokémon fighting is too hurt or out of damaging PP, the calculator found no move, or the switch failed |
+
+The two refusals training can meet when you press **Run**, `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).` and `Pickup is not available on Ruby and Sapphire.`, are under [A Ruby or Sapphire wild hunt is not ready](#a-ruby-or-sapphire-wild-hunt-is-not-ready).
 
 ## A hunt stops with "Waited for ...; the game state stayed ..."
 
 This is a stale timeout.
 
-- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]`, `[Spin]`, `[Run]` or `[RsBattle]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
-- **It means:** the game did not reach the screen the bot expected, and nothing in the game changed for the time limit. The bot stops and waits for you rather than pressing on. This happens in wild and chained encounters in HeartGold and SoulSilver, and in wild encounters in Ruby and Sapphire.
+- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]`, `[Spin]`, `[Run]`, `[RsBattle]` or `[Orchestrator]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
+- **It means:** the game did not reach the screen the bot expected, and nothing in the game changed for the time limit. The bot stops and waits for you rather than pressing on. This happens in wild and chained encounters in HeartGold and SoulSilver, and in wild encounters in Ruby and Sapphire, training and walking included. The Ruby and Sapphire training and walk stops are listed one by one under [A Ruby or Sapphire hunt stops while training or walking](#a-ruby-or-sapphire-hunt-stops-while-training-or-walking).
 
 The time limits are:
 
@@ -215,6 +271,9 @@ The time limits are:
 | A script in the field, such as the nurse's | 20 s |
 | A battle, once the field stops being free while turning or walking for an encounter, whether or not the game changes | 15 s |
 | In a Ruby or Sapphire battle, the next screen | 30 s |
+| In Ruby or Sapphire, the field free before a walk is planned | 10 s |
+| In Ruby or Sapphire, the nurse's next step | 10 s |
+| In Ruby or Sapphire, the free field when you press **Resume** after a trainer stop | 10 s |
 
 - **Do:** look at that emulator to see what the game shows. Then press **Resume** on the dashboard, or **Cancel**.
 

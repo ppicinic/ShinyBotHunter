@@ -1,7 +1,7 @@
 # A in the field: the nurse's talk and every wait of her script. Each press is sent once, on its gate, and confirmed by
 # the value it changes (docs/specs/rs-navigation-and-training.md FR-11):
 #   the talk: the field free, the tile transition 0 and the facing up; confirmed by the lock.
-#   a page break: the field message window state 5, 8 or 9; confirmed by the state leaving it.
+#   a page break: the field locked and the field message window state 5, 8 or 9; confirmed by the state leaving it.
 #   Yes: Task_HandleYesNoInput active with its data[2] at 5; confirmed by the task gone.
 #   the last line: status 0, mode 2, the native WaitForAorBPress, after the Yes; confirmed by the lock 0 and status 2.
 # A 2-frame hold, as BattleAdvance. docs/research/rs-navigation-and-training.md, "The navigator: the walk and the nurse,

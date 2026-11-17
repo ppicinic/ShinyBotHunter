@@ -46,7 +46,7 @@ namespace ShinyBotHunter.Games.Rs
         private const int SpriteSize = 0x44;
         private const int SpriteData = 0x2E;
 
-        // The evolution scene's move prompt: data[0] 21 and data[8] 4, with the question in data[9] (research R134).
+        // The evolution scene's move prompt: data[0] 21 and data[8] 4, with the question in data[9] ("Training: the readings behind …" R7).
         private const int EvolutionMovePromptState = 21;
         private const int EvolutionMovePromptStep = 4;
 
@@ -55,7 +55,7 @@ namespace ShinyBotHunter.Games.Rs
         private const int EvolutionForgetScreenStep = 6;
         private const int EvolutionPartySlot = 12;
 
-        // atk5A_StateTracker on the forget-a-move screen and at either yes/no (research R130, R131; "Training: the
+        // atk5A_StateTracker on the forget-a-move screen and at either yes/no (research "Training"; "Training: the
         // readings behind …" R1).
         private const int ForgetMoveScreen = 3;
         private const int DeleteMovePrompt = 1;
@@ -249,7 +249,7 @@ namespace ShinyBotHunter.Games.Rs
                 AppState: fade[0].Bytes[0] >> FadeActiveShift);
         }
 
-        // The party cursor is data[0] of the sprite the party task's data[3] names in its high byte (research R142), and the
+        // The party cursor is data[0] of the sprite the party task's data[3] names in its high byte (research "The switch"), and the
         // palette fade, during which the list and its popup take no key; one more request, on the party screen only.
         private async Task<(int Cursor, int Fade)> ReadPartyCursorAsync(byte[] tasks, int party, CancellationToken ct)
         {
