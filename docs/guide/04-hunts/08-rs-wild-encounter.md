@@ -7,7 +7,7 @@ Part of the [ShinyBotHunter guide](../README.md)
 
 The bot turns on the spot, or runs back and forth along a short line in the grass, until a wild battle starts. It presses A at "Wild … appeared!" and reads the wild Pokémon at the FIGHT / BAG / POKéMON / RUN menu, once it has slid in and, if it is shiny, sparkled. It writes the Pokémon to the encounter log and runs away. It stops when it finds a Pokémon you are hunting for, or when the milestone is complete.
 
-It runs from every battle. Ruby and Sapphire have no training, healing, Pickup or chained hunts.
+With Train Type None it runs from every battle; that is the hunt this page describes. With Train Type Standard or Switch it trains a Pokémon instead: it fights, and when the Pokémon is too hurt or out of PP it walks to the nearest Pokémon Center, heals and walks back. Ruby and Sapphire have no Pickup or chained hunts.
 
 It is tested on version 1.2 of Ruby and Sapphire. Version 1.1 runs, untested. Version 1.0 cannot be used: launching it fails, and the backend's window shows `RS revision 0: no address table. Hunts run on revisions 1 and 2.`
 
@@ -40,10 +40,10 @@ Every button press is checked against the game's memory before the next one.
 | What it means | Field on the dashboard |
 |---|---|
 | The milestone the encounters are filed under, and the list of shiny Pokémon the hunt is trying to complete. | Milestone |
-| What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. Either way the hunt also ends once the milestone is complete. NoTarget is greyed out. | Target Type |
+| What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. Either way the hunt also ends once the milestone is complete. **NoTarget**: nothing is a target; it needs a train mode, and the hunt ends when the Pokémon reaches the target level. | Target Type |
 | How to meet wild Pokémon. **Spin**: turn on the spot. **Run**: run back and forth in a straight line. Headbutt is greyed out. | Encounter Type |
 | How many tiles to run each way from the start tile, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
-| Leave it at **None**. Standard and Switch are greyed out, so Target Level, Battler and Pickup never show. | Train Type |
+| **None** for this hunt. **Standard** and **Switch** train a Pokémon up to Target Level; Switch sends out the Battler after the first Pokémon. They need a US Ruby or Sapphire ROM. Pickup shows with them, greyed out. | Train Type |
 
 ### Greyed-out choices
 
@@ -52,8 +52,7 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 | Choice | Reason |
 |---|---|
 | Encounter Type Headbutt | `Ruby and Sapphire have no Headbutt trees.` |
-| Target Type NoTarget | `No Target needs a train mode, which Ruby and Sapphire do not have yet.` |
-| Train Type Standard and Switch | `Training is not available on Ruby and Sapphire yet.` |
+| Pickup, once a train type is chosen | `Pickup is not available on Ruby and Sapphire.` |
 
 ## Spin and Run
 
@@ -79,7 +78,7 @@ A trainer stops the bot before its battle (see below). A Safari Zone battle, or 
 
 A trainer who sees your character, or whom you talk to, starts a speech, and the bot stops before anything is pressed: it does not fight trainers.
 
-1. The entry shows the bot waiting, and the backend's window shows `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` with the trainer's number and what the game showed. The same sentence goes to [Discord](../05-discord.md), once, in the shiny-alert channel with the role mention. The map is shown as two numbers until the bot knows map names; Route 102 is `0.17`.
+1. The entry shows the bot waiting, and the backend's window shows `[RsBattle] stopped: A trainer battle started on <map>.` with the trainer's number and what the game showed. The same sentence goes to [Discord](../05-discord.md), once, in the shiny-alert channel with the role mention. The map is the game's own name for it, for example `Route102`.
 2. In the emulator, press through the trainer's speech and fight the battle yourself. The speech may not be up yet when the bot stops; it comes up on its own.
 3. Once you have won and your character stands in the field, press **Resume** on the entry.
 
@@ -96,7 +95,7 @@ There is nothing to catch, so Resume checks nothing in your party. It waits unti
 3. Close every message (the Pokédex page, the nickname question) until your character stands in the field.
 4. On the dashboard, press **Resume** on the entry.
 
-The bot then looks for the Pokémon in your party and in your PC boxes. It reads them from the game's memory and opens nothing on screen, so a Pokémon sent to the PC because your party was full is found too. If it is there, the bot saves the game through the start menu: it opens the menu, moves to SAVE and confirms. It records the Pokémon as caught and writes the save file. Then it carries on hunting, or finishes where it stands if the milestone is complete.
+The bot then looks for the Pokémon in your party and in your PC boxes. It reads them from the game's memory and opens nothing on screen, so a Pokémon sent to the PC because your party was full is found too. If it is there, the bot saves the game through the start menu: it opens the menu, moves to SAVE and confirms. It records the Pokémon as caught and writes the save file. Then it carries on hunting, or, if the milestone is complete, walks back to its start tile and finishes.
 
 - If the Pokémon is not in your party or your PC (you ran from it, or it fainted), nothing is recorded as caught, and the hunt carries on.
 - If the bot could not read your party and boxes, it stays waiting. Press **Resume** again.
@@ -139,7 +138,7 @@ The backend's window also shows:
 
 ## How does it stop?
 
-- **It finishes where it stands.** The milestone is complete. There is no walk home.
+- **It finishes on its start tile.** The milestone is complete. Before it finishes, the bot walks back to the tile the hunt started on: after Spin it is already there, after Run it walks back along the line.
 - **It waits for you.** It found a Pokémon you are hunting for, or it stopped with one of the sentences below.
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
@@ -164,9 +163,13 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 **It means** your first Pokémon has no HP left, or the party is empty.
 **Do** heal it, or put a Pokémon that can battle first, then press **Run** again.
 
-**You see** Run refused with "Ruby and Sapphire have no Headbutt trees.", "No Target needs a train mode, which Ruby and Sapphire do not have yet." or "Training is not available on Ruby and Sapphire yet."
-**It means** a greyed-out choice was sent anyway, for example from outside the dashboard. Pickup sent as ticked gets "Training is not available on Ruby and Sapphire yet." too.
+**You see** Run refused with "Ruby and Sapphire have no Headbutt trees." or "Pickup is not available on Ruby and Sapphire."
+**It means** a greyed-out choice was sent anyway, for example from outside the dashboard.
 **Do** pick a choice that is not greyed out.
+
+**You see** Run refused with "Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE)."
+**It means** Train Type Standard or Switch was chosen on a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads.
+**Do** leave Train Type at None, or train on a US ROM.
 
 The X Range and Y Range refusals are the same as on HeartGold and SoulSilver; see [If it stops early](01-wild-encounter.md#if-it-stops-early) on that page.
 
@@ -183,7 +186,7 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
 **It means** the game left the field for something other than a message or a script, such as a loading screen, and no battle started within 15 s.
 
-**You see** `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed.
+**You see** `[RsBattle] stopped: A trainer battle started on <map>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed.
 **It means** a trainer challenged your character. See [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 
 **You see** `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>`.

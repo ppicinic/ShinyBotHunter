@@ -10,7 +10,7 @@ Discord is optional. The bot hunts the same way without it; see "How do I run wi
 When Discord is set up, the bot posts three kinds of message:
 
 - A **shiny alert**, in one channel, mentioning a role, when a hunt finds its shiny.
-- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on map <group>.<number>.` See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
+- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on <map>.`, with the game's name for the map, for example `Route102`. See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 - A **new-move question**, in a second channel, when a Pokémon in training wants to learn a fifth move. You answer it with buttons.
 
 The two channels are separate settings. You can use one channel for both.
@@ -102,7 +102,7 @@ The alert mentions your role and shows a gold card:
 
 ## How do I answer a new-move question?
 
-**When it is asked.** Only in HeartGold and SoulSilver battles that train a Pokémon. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
+**When it is asked.** In any battle that trains a Pokémon, in HeartGold and SoulSilver or in Ruby and Sapphire. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
 
 **What you see.** A card titled `<name> - New Move` with the text `<name> is trying to learn a new move, <move>. Should <name> forget a move to learn <move>`. Below it there is one button per move the Pokémon knows, named after the move, and a **Do Not Learn** button.
 

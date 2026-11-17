@@ -115,7 +115,7 @@ public sealed record GameProfile
     public required IPokemonParser Parser { get; init; }
     public IBattlePokemonParser? BattleParser { get; init; }          // null when the flavor has no battle reads
 
-    public MapService? Maps { get; init; }                            // null when !Capabilities.HasOverworldNavigation
+    public MapService? Maps { get; init; }                            // required by Capabilities.HasOverworldNavigation; HGSS and RS both have maps
     public GraphService? Graph { get; init; }
     public PathfindingService? Pathfinding { get; init; }
 
@@ -179,6 +179,8 @@ Changed 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md), FR-1: 
 Changed 2026-11-16 by the [RS wild encounter spec](rs-wild-encounter.md) (#413): RS declares `CanReadBoxes`, so both profiles do. RS's `BoxLayout` is `gPokemonStorage`'s boxes: 14 boxes of 30 80-byte slots, 2,400 bytes a box. `BoxLayout.Storage` is an offset from the base the party read uses: the dereferenced anchor on HGSS, the anchor itself on RS (`PartyAddressing.Absolute`), so RS's is `0x020300A4 - 0x03004350`.
 
 Changed 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-training.md), FR-18a and FR-18b (#432, T3a): five capabilities are appended, each defaulting to false: `HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees` and `HasPickup` (HGSS declares them; Chained Encounter, HGSS Static Encounter, the Headbutt choice and Pickup require them) and `HasWildRunChecks` (RS declares it; the RS checks and speed lines at a Wild Encounter's Run). Two parts are added: `CreateNavigatorEvent` (HGSS's `NavigatorEvent`, RS's `RsNavigatorEvent`; the orchestrator's navigation states go through it) and `TrainingRefusal` (RS: a table without the per-game part cannot train). RS now has `Maps`, from `data/RS` with elevation and events. The constructor's rules are narrowed: `HasOverworldNavigation ⇒ CreateOverworldReader, Maps, CreateNavigatorEvent present`, since RS plans over the maps with `RouteSearch` and has no graph or pathfinding; `HasStaticEncounter ⇒ Graph, Pathfinding present`, as the static start is the one caller of `Pathfinding` outside HGSS's navigator; `HasTraining ⇒ HasOverworldNavigation` only, since training reads HP and PP from the party record, which carries them through the battle. RS still declares neither `HasOverworldNavigation` nor `HasTraining`.
+
+Changed 2026-11-17 by the same spec, FR-18 (#451, T3b): RS declares `HasOverworldNavigation` and `HasTraining`. The constructor adds `HasChainedEncounter ⇒ HasTraining`, since a chained leg may train and needs the navigator part. Without `HasTraining` nothing is greyed any more; a train mode is refused at Run when `TrainingRefusal` gives a sentence for the bot's table.
 
 `PokemonStateReader.GetPokemonState` checks `CanReadBoxes` and throws `InvalidOperationException` otherwise, replacing today's `NotSupportedException` from the pointer service. `PokemonState`'s hard-coded 18x30 (`PokemonStateReader.cs:17-20`) reads `BoxLayout` instead.
 
@@ -368,3 +370,4 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-10-22: implemented under epic #118 (PRs #126 to #132). "As built" notes mark where the code differs from the draft: get-only profile members, existing address names kept, flavor-only members on the concrete tables, the data directory in `HgssProfile`, the `EventRegistration` shape, the top-level options, and the FR-5 wording. The full list is in the plan's implementation notes.
 - 2026-11-15: Ruby and Sapphire wild encounters (epic #380): `HasTraining`, the as-built declarations and constructor checks, `CreateBattleEvent` and `SaveGame` on the profile, a second overworld reader (`RsOverworldReader`), and `Chained Encounter` requiring `HasOverworldNavigation`.
 - 2026-11-16 (#413): RS declares `CanReadBoxes` with `gPokemonStorage`'s boxes as its `BoxLayout`, whose `Storage` is an offset from the party read's base (the anchor itself on RS).
+- 2026-11-17 (#451): RS declares `HasOverworldNavigation` and `HasTraining`; `HasChainedEncounter ⇒ HasTraining`; `Maps` is required by navigation.

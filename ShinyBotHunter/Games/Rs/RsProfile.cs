@@ -26,9 +26,9 @@ namespace ShinyBotHunter.Games.Rs
         internal static GameProfile Create(PokemonMetadataService metadata, MapService maps) => new(
             GameFlavor.RS,
             new GameCapabilities(
-                HasOverworldNavigation: false,
+                HasOverworldNavigation: true,
                 HasWildEncounters: true,
-                HasTraining: false,
+                HasTraining: true,
                 HasEggs: false,
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: true,
@@ -64,8 +64,10 @@ namespace ShinyBotHunter.Games.Rs
             // one one-frame read, false because the script status is 2, and the battle then goes on as normal.
             seekLockHandOff: TimeSpan.FromSeconds(4),
             createNavigatorEvent: provider => new RsNavigatorEvent(provider.GetRequiredService<PokemonStateReader>()),
-            // Training reads the per-game part (the new-move questions, the nurse's wait for A or B), which only the US tables have.
-            trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null }
+            // Training reads the per-game part (the new-move questions, the nurse's wait for A or B, the switch's party menu),
+            // which only the US tables have.
+            trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null,
+                PartyMenuMainCallback2: not null }
                 ? null
                 : NoTrainingAddresses);
     }

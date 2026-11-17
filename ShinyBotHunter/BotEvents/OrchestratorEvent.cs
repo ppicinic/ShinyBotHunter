@@ -3,6 +3,7 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -84,7 +85,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state, cancellationToken);
+                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken);
                 }
                 else if(topState == EventState.Encountering)
                 {
@@ -325,7 +326,9 @@ namespace ShinyBotHunter.BotEvents
             return false;
         }
 
-        private async Task DecideOverworldAction(GameState state, CancellationToken cancellationToken)
+        // Static with its services passed in, so a test can drive the decisions without the services that open a database.
+        internal static async Task DecideOverworldAction(GameState state, PokemonStateReader reader, Func<int, PokemonMoveMetadata> moveMetadata,
+            PickupTally pickupTally, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -355,7 +358,7 @@ namespace ShinyBotHunter.BotEvents
                 await FinishAsync(state);
                 return;
             }
-            if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
+            if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead, moveMetadata))
             {
                 if (state.Pickup)
                 {
@@ -372,6 +375,7 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
+                Console.WriteLine($"[Orchestrator] {HealTripLine(state, pokeState, lead, moveMetadata)}");
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
@@ -382,38 +386,58 @@ namespace ShinyBotHunter.BotEvents
         /// the configured slot is the one that needs HP and PP. A fainted lead is still fatal though:
         /// the game would send out someone else and the trainee would stop banking EXP entirely.
         /// </summary>
-        private bool CanFightNextEncounter(GameState state, PokemonState pokeState, PokemonData lead)
+        internal static bool CanFightNextEncounter(GameState state, PokemonState pokeState, PokemonData lead, Func<int, PokemonMoveMetadata> moveMetadata)
         {
             if (state.TrainType != TrainType.Switch)
             {
-                return CanBattle(lead);
+                return CanBattle(lead, moveMetadata);
             }
-            int battlerIndex = state.SwitchSlot!.Value - 1;
-            var battler = battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+            var battler = Battler(state, pokeState);
             if (battler is null)
             {
                 // The configured slot is empty -- nothing to switch to, so treat it like a spent party.
                 return false;
             }
-            return lead.HP > 0 && CanBattle(battler);
+            return lead.HP > 0 && CanBattle(battler, moveMetadata);
         }
 
-        private bool CanBattle(PokemonData pokemon)
+        // Why the heal trip was taken: the member the check above read (the lead, or a living lead's battler) with its HP and
+        // damaging PP, or the empty slot.
+        internal static string HealTripLine(GameState state, PokemonState pokeState, PokemonData lead, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
+            PokemonData? member = state.TrainType == TrainType.Switch && lead.HP > 0 ? Battler(state, pokeState) : lead;
+            return member is null
+                ? $"heal trip: switch slot {state.SwitchSlot} is empty"
+                : $"heal trip: {member.Name} HP {member.HP}/{member.MaxHP}, damaging PP {DamagingPp(member, moveMetadata)}";
+        }
+
+        private static PokemonData? Battler(GameState state, PokemonState pokeState)
+        {
+            int battlerIndex = state.SwitchSlot!.Value - 1;
+            return battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+        }
+
+        private static bool CanBattle(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
         {
             // Same boundary the battle loop flees on -- see BattleReadiness.
             if(BattleReadiness.IsTooHurtToFight(pokemon.HP, pokemon.MaxHP))
             {
                 return false;
             }
+            return DamagingPp(pokemon, moveMetadata) >= 3;
+        }
+
+        private static int DamagingPp(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
             int moveCount = 0;
             foreach(var move in pokemon.Moves)
             {
-                if(move.Id > 0 && metadataService.GetPokemonMoveMetadata(move.Id).IsDamageMove) // TODO check for bad moves like False Swipe or recoil
+                if(move.Id > 0 && moveMetadata(move.Id).IsDamageMove) // TODO check for bad moves like False Swipe or recoil
                 {
                     moveCount += move.PP;
                 }
             }
-            return moveCount >= 3;
+            return moveCount;
         }
     }
 }
