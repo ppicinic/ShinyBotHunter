@@ -217,6 +217,8 @@ namespace ShinyBotHunter.Tests
         private const uint FieldWindow = 0x0202E892;      // gFieldMessageBoxWindow + 0x16
         private const uint Native = 0x030005BC;           // sGlobalScriptContext.nativePtr
         private const uint Tasks = 0x03004B20;            // gTasks
+        private const uint Script = 0x02024C10;           // gBattlescriptCurrInstr
+        private const uint Fade = 0x0202F38F;             // gPaletteFade + 7, active in bit 7
 
         private const uint BattleMain = 0x0800F809;       // BattleMainCB2
         private const uint EvolutionScene = 0x0811242D;   // Task_EvolutionScene
@@ -224,9 +226,19 @@ namespace ShinyBotHunter.Tests
         private const uint PartyPopup = 0x08095429;       // Task_HandlePopupMenuInput
         private const uint YesNo = 0x080B5505;            // Task_HandleYesNoInput
         private const uint WaitForButton = 0x080670E5;    // WaitForAorBPress, Sapphire
+        private const uint SummaryInput = 0x0809E281;     // sub_809E260, the forget screen's input task
+        private const uint SummaryDestroy = 0x0809E15D;   // SummaryScreen_DestroyTask
+        private const uint SummaryCallback = 0x0809D865;  // callback 2 on the forget screen (research R1 e)
 
-        private static Task<GameSnapshot> ReadTraining(FakeMemoryClient memory)
-            => new RsStateReader(memory, RsPointerService.For("AXPE"), trainingReads: true).ReadAsync(CancellationToken.None);
+        // The battle script on the move prompt (BattleScript_AskToLearnMove + 0x11, + 0x20; research R1).
+        private const uint SapphireDelete = 0x081D8ED2;
+        private const uint SapphireStop = 0x081D8EE1;
+        private const uint RubyDelete = 0x081D8F42;
+        private const uint RubyStop = 0x081D8F51;
+        private const uint StaleScript = 0x081D8D78;      // the next battle's intro (R1 d, g)
+
+        private static Task<GameSnapshot> ReadTraining(FakeMemoryClient memory, string gameCode = "AXPE")
+            => new RsStateReader(memory, RsPointerService.For(gameCode), trainingReads: true).ReadAsync(CancellationToken.None);
 
         // A task in slot `slot` of gTasks: func at + 0, isActive at + 4, s16 data[] from + 8.
         private static void PlaceTask(FakeMemoryClient memory, int slot, uint function, bool active = true, params short[] data)
@@ -239,10 +251,11 @@ namespace ShinyBotHunter.Tests
 
         // A battle with the training values; callback 2 is the battle's unless a test says otherwise.
         private static FakeMemoryClient BattleMemory(uint controller = OtherController, ushort window = 0, uint callback2 = BattleMain,
-            byte expGetter = 0, byte moveLearn = 0, byte levelUp = 0)
+            byte expGetter = 0, byte moveLearn = 0, byte levelUp = 0, uint script = 0)
         {
             FakeMemoryClient memory = Memory(locked: 1, inBattle: BattleBit, controller: controller, window: window);
             memory.Place(Callback2, BitConverter.GetBytes(callback2));
+            memory.Place(Script, BitConverter.GetBytes(script));
             memory.Place(ExpGetter, [expGetter]);
             memory.Place(MoveLearnState, [moveLearn]);
             memory.Place(LevelUpBox, [levelUp]);
@@ -263,7 +276,7 @@ namespace ShinyBotHunter.Tests
                 (0x030006A4, 0, 1), (0x03001770, 0, 4), (0x03001BAD, 0, 1), (0x03004330, 0, 4),
                 (0x03004226, 0, 2), (0x02024D26, 0, 1), (0x02024E60, 0, 1),
                 (0x03001774, 0, 4), (0x02016018, 0, 0x85), (0x02024E64, 0, 1), (0x02018079, 0, 1),
-                (0x02024A6A, 0, 2), (0x0202E892, 0, 2), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
+                (0x02024A6A, 0, 0x1AA), (0x0202E892, 0, 2), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
             ];
             Assert.Equal(expected, request.Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
         }
@@ -331,23 +344,91 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task MovePromptWaitingIsBattleMoveLearnPrompt()
         {
-            GameSnapshot snapshot = await ReadTraining(BattleMemory(window: 8, expGetter: 3, moveLearn: 1));
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(expGetter: 3, moveLearn: 1, script: SapphireDelete));
 
             Assert.Equal(GameScreen.BattleMoveLearnPrompt, snapshot.Screen);
             Assert.Equal(1, snapshot.Prompt);
             Assert.Equal(3, snapshot.PartyMonIndex);
         }
 
-        [Fact]
-        public async Task ForgetMoveScreenIsOtherAppWithItsCursor()
+        // Research R1: the tracker is stale at 1 after "Stop learning?", reads 4 then 0 after B, and the script is on the
+        // instruction after a printstring while a text waits; only the tracker at 1 with the script on a yes/no is a prompt.
+        [Theory]
+        [InlineData("AXPE", 1, SapphireDelete, 0, GameScreen.BattleMoveLearnPrompt, 5)]
+        [InlineData("AXPE", 1, SapphireStop, 0, GameScreen.BattleMoveLearnPrompt, 10)]
+        [InlineData("AXPE", 1, 0x081D8EE9u, 8, GameScreen.BattleMessage, null)]
+        [InlineData("AXPE", 1, StaleScript, 0, GameScreen.BattleTurn, null)]
+        [InlineData("AXPE", 4, SapphireDelete, 0, GameScreen.BattleTurn, null)]
+        [InlineData("AXPE", 0, SapphireStop, 0, GameScreen.BattleTurn, null)]
+        [InlineData("AXVE", 1, RubyDelete, 0, GameScreen.BattleMoveLearnPrompt, 5)]
+        [InlineData("AXVE", 1, RubyStop, 0, GameScreen.BattleMoveLearnPrompt, 10)]
+        [InlineData("AXVE", 1, 0x081D8F59u, 8, GameScreen.BattleMessage, null)]
+        [InlineData("AXVE", 1, SapphireDelete, 0, GameScreen.BattleTurn, null)]
+        public async Task MovePrompt_NeedsTrackerOneAndTheScriptOnTheYesNo(string gameCode, byte tracker, uint script,
+            ushort window, GameScreen expected, int? question)
         {
-            FakeMemoryClient memory = BattleMemory(callback2: 0x080A0001, moveLearn: 3);
-            memory.Place(ForgetCursor, [2]);
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(window: window, moveLearn: tracker, script: script), gameCode);
+
+            Assert.Equal(expected, snapshot.Screen);
+            Assert.Equal(question, snapshot.Question);
+        }
+
+        // Research R1 and R4: the tracker is 2 while the battle fades out, 3 from the frame callback 2 changes, and still 3
+        // with the script on "Delete a move?" for 17 frames after callback 2 is the battle's again; a stale 3 has the script
+        // elsewhere.
+        [Theory]
+        [InlineData(3, SapphireDelete, SummaryCallback, GameScreen.OtherApp)]
+        [InlineData(2, SapphireDelete, BattleMain, GameScreen.BattleTurn)]
+        [InlineData(3, SapphireDelete, BattleMain, GameScreen.BattleTurn)]
+        [InlineData(3, StaleScript, SummaryCallback, GameScreen.BattleTurn)]
+        public async Task ForgetScreen_NeedsTrackerThreeTheSummaryCallbackAndTheScript(byte tracker, uint script,
+            uint callback2, GameScreen expected)
+        {
+            GameSnapshot snapshot = await ReadTraining(BattleMemory(callback2: callback2, moveLearn: tracker, script: script));
+
+            Assert.Equal(expected, snapshot.Screen);
+        }
+
+        // Research R4: the input task appears while the screen still fades, the fade ends, then A changes the task function.
+        [Theory]
+        [InlineData(0u, 0x80, 0, null, 1)]
+        [InlineData(SummaryInput, 0xFF, 0, SummaryInput, 1)]
+        [InlineData(SummaryInput, 0x7F, 1, SummaryInput, 0)]
+        [InlineData(SummaryDestroy, 0x80, 1, SummaryDestroy, 1)]
+        public async Task ForgetScreen_CarriesCursorTaskAndFade(uint task, byte fade, byte cursor, uint? function, int fading)
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: SummaryCallback, moveLearn: 3, script: SapphireDelete);
+            if (task != 0) PlaceTask(memory, 1, task);
+            memory.Place(Fade, [fade]);
+            memory.Place(ForgetCursor, [cursor]);
 
             GameSnapshot snapshot = await ReadTraining(memory);
 
             Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
-            Assert.Equal(2, snapshot.Prompt);
+            Assert.Equal(cursor, snapshot.Prompt);
+            Assert.Equal(function, snapshot.TaskFunction);
+            Assert.Equal(fading, snapshot.AppState);
+        }
+
+        [Fact]
+        public async Task ForgetScreen_FadeIsReadOnlyThere()
+        {
+            FakeMemoryClient forget = BattleMemory(callback2: SummaryCallback, moveLearn: 3, script: SapphireDelete);
+            FakeMemoryClient[] others =
+            [
+                BattleMemory(moveLearn: 1, script: SapphireDelete),
+                BattleMemory(moveLearn: 3, script: SapphireDelete),
+                BattleMemory(controller: ChooseAction, moveLearn: 3, script: StaleScript),
+                Memory(),
+            ];
+
+            await ReadTraining(forget);
+            foreach (FakeMemoryClient memory in others) await ReadTraining(memory);
+
+            Assert.Equal(2, forget.ChainReads.Count);
+            (uint, int, int)[] fade = [(0x0202F38F, 0, 1)];
+            Assert.Equal(fade, forget.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+            Assert.All(others, memory => Assert.Single(memory.ChainReads));
         }
 
         [Fact]

@@ -25,9 +25,10 @@ namespace ShinyBotHunter.Games
     // window's state. With trainingReads, also: Prompt on Evolution, the scene task's data[0]; Question on Evolution while
     // its move prompt waits (data[0] 21, data[8] 4), data[9]: 5 "Delete a move?", 10 "Stop learning?"; on OtherApp for
     // the battle party screen, TaskFunction (the list's or the popup's) and PartyMonIndex (the party cursor); on OtherApp
-    // for the forget-a-move screen, Prompt (its cursor); on FieldTask, TextPrinter (the field message window's state),
+    // for the forget-a-move screen, Prompt (its cursor), TaskFunction (the summary's input task or its destroy task while
+    // one is active, else null) and AppState (gPaletteFade.active, 1 while the screen fades); on FieldTask, TextPrinter (the field message window's state),
     // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active);
     // PartyMonIndex on BattleMenu (the battler's party slot); Prompt on BattleMoveList (the move cursor); Prompt (the
-    // level-up box page, 1 or 2) and PartyMonIndex (the getter's slot) on BattleExpPrompt; Prompt (1) and PartyMonIndex
-    // (the getter's slot) on BattleMoveLearnPrompt.
+    // level-up box page, 1 or 2) and PartyMonIndex (the getter's slot) on BattleExpPrompt; Prompt (1), PartyMonIndex
+    // (the getter's slot) and Question (5 "Delete a move?", 10 "Stop learning?") on BattleMoveLearnPrompt.
 }
