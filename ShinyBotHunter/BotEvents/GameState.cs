@@ -73,6 +73,9 @@ namespace ShinyBotHunter.BotEvents
         public IReadOnlyList<string>? SpeedLines { get; set; }
         // The lead's level at Run, which the slow-transition line compares each wild level with.
         public int LeadLevel { get; set; }
+        // The bot stopped for a trainer (FR-10): Resume waits for the free field before the hunt carries on. Set by the
+        // battle event, cleared by that Resume; both run on the event's one loop, in sequence.
+        public bool StoppedForTrainer { get; set; }
 
         public void SwapState(EventState newState)
         {

@@ -28,6 +28,9 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
+        // As Overworld.WaitForReadyAsync: the snapshot may stay unchanged this long before Resume parks again.
+        private static readonly TimeSpan TrainerResumeStale = TimeSpan.FromSeconds(10);
+
         internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
 
         private EncounterParams encounterParams;
@@ -61,20 +64,8 @@ namespace ShinyBotHunter.BotEvents
             // back to it lets that leg carry on instead of spinning on a state nothing handles.
             if(state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                if (await CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState))
-                {
-                    state.State.Pop();
-                    if (state.State.Count == 0)
-                    {
-                        state.State.Push(EventState.DecideOverworldAction);
-                    }
-                }
-                else
-                {
-                    // Back to Waiting rather than onwards: the event stays alive on the dashboard and
-                    // another Resume can record the catch.
-                    state.SwapState(EventState.Waiting);
-                }
+                await ResumeAsync(state, () => CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState),
+                    TrainerResumeStale, cancellationToken);
             }
             if(state.State.Count > 0 && state.State.Peek() == EventState.Init)
             {
@@ -123,13 +114,49 @@ namespace ShinyBotHunter.BotEvents
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
         }
 
+        // Resume: after a trainer stop, the free field first; then the catch check, then on to the state underneath. A
+        // separate method so a test can drive it, with fieldFreeStale short.
+        internal static async Task ResumeAsync(GameState state, Func<Task<bool>> checkForCatch, TimeSpan fieldFreeStale, CancellationToken ct)
+        {
+            if (state.StoppedForTrainer)
+            {
+                // The speech or the battle may still be on: nothing is pressed or started until the field is free (FR-10).
+                try
+                {
+                    await GameStateWait.UntilAsync(state.Bot.State, "the free field after the trainer stop",
+                        s => s.Screen == GameScreen.FieldFree, fieldFreeStale, ct);
+                }
+                catch (GameStateTimeoutException ex)
+                {
+                    Console.WriteLine($"[Orchestrator] Resume: {ex.Message}");
+                    state.SwapState(EventState.Waiting);
+                    return;
+                }
+                state.StoppedForTrainer = false;
+            }
+            if (await checkForCatch())
+            {
+                state.State.Pop();
+                if (state.State.Count == 0)
+                {
+                    state.State.Push(EventState.DecideOverworldAction);
+                }
+            }
+            else
+            {
+                // Back to Waiting rather than onwards: the event stays alive on the dashboard and
+                // another Resume can record the catch.
+                state.SwapState(EventState.Waiting);
+            }
+        }
+
         // Dispatch on the configured type. The events report different result types, so they only
         // meet at the non-generic IBotEvent -- which is fine, the result is discarded.
         internal static IBotEvent BuildEncounter(IBot bot, EncounterParams encounterParams) => encounterParams.type switch
         {
-            EncounterType.Spin => new SpinEncounterEvent(bot),
+            EncounterType.Spin => new SpinEncounterEvent(bot) { LockedHandOff = bot.Profile.SeekLockHandOff },
             EncounterType.Headbutt => new HeadbuttEncounterEvent(bot),
-            _ => new RunEncounterEvent(bot, encounterParams),
+            _ => new RunEncounterEvent(bot, encounterParams) { LockedHandOff = bot.Profile.SeekLockHandOff },
         };
 
         internal static async Task CaptureStartAsync(GameState state, IOverworldReader overworld, CancellationToken cancellationToken)

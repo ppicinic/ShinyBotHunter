@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/HgssPrimoEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/ShinyBotHunter.csproj (Discord.Net 3.19.1), discord-net/Discord.Net@3.19.1:src/Discord.Net.Rest/BaseDiscordClient.cs (LoginInternalAsync), discord-net/Discord.Net@3.19.1:src/Discord.Net.Core/Utils/TokenUtils.cs (ValidateToken), https://docs.discord.com/developers/quick-start/getting-started (Create App, Bot page, Reset Token, privileged intents on the Bot page, Installation page, Default Install Settings, Install Link, Add to server, MANAGE_GUILD), https://docs.discord.com/developers/events/gateway (Privileged Gateway Intents section, close code 4014), https://docs.discord.com/developers/topics/opcodes-and-status-codes (close codes 4004 and 4014), https://docs.discord.com/developers/topics/permissions (MANAGE_GUILD, VIEW_CHANNEL, SEND_MESSAGES, EMBED_LINKS, ATTACH_FILES), https://docs.discord.com/developers/topics/oauth2 (bot authorization flow: says only "proper permissions"), https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID (read through https://support.discord.com/api/v2/help_center/en-us/articles/206346498.json, since the article page refuses automated reads; it does not cover role ids), https://support.discord.com/hc/en-us/articles/214836687-Role-Management-101 (read through https://support.discord.com/api/v2/help_center/en-us/articles/214836687.json; Server Settings > Roles), the owner's answers of 2026-10-27 -->
+<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/HgssPrimoEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (TrainerSentence), ShinyBotHunter/ShinyBotHunter.csproj (Discord.Net 3.19.1), discord-net/Discord.Net@3.19.1:src/Discord.Net.Rest/BaseDiscordClient.cs (LoginInternalAsync), discord-net/Discord.Net@3.19.1:src/Discord.Net.Core/Utils/TokenUtils.cs (ValidateToken), https://docs.discord.com/developers/quick-start/getting-started (Create App, Bot page, Reset Token, privileged intents on the Bot page, Installation page, Default Install Settings, Install Link, Add to server, MANAGE_GUILD), https://docs.discord.com/developers/events/gateway (Privileged Gateway Intents section, close code 4014), https://docs.discord.com/developers/topics/opcodes-and-status-codes (close codes 4004 and 4014), https://docs.discord.com/developers/topics/permissions (MANAGE_GUILD, VIEW_CHANNEL, SEND_MESSAGES, EMBED_LINKS, ATTACH_FILES), https://docs.discord.com/developers/topics/oauth2 (bot authorization flow: says only "proper permissions"), https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID (read through https://support.discord.com/api/v2/help_center/en-us/articles/206346498.json, since the article page refuses automated reads; it does not cover role ids), https://support.discord.com/hc/en-us/articles/214836687-Role-Management-101 (read through https://support.discord.com/api/v2/help_center/en-us/articles/214836687.json; Server Settings > Roles), the owner's answers of 2026-10-27 -->
 # Discord
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -7,9 +7,10 @@ Part of the [ShinyBotHunter guide](README.md)
 
 Discord is optional. The bot hunts the same way without it; see "How do I run without Discord?" below.
 
-When Discord is set up, the bot posts two kinds of message:
+When Discord is set up, the bot posts three kinds of message:
 
 - A **shiny alert**, in one channel, mentioning a role, when a hunt finds its shiny.
+- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on map <group>.<number>.` See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 - A **new-move question**, in a second channel, when a Pokémon in training wants to learn a fifth move. You answer it with buttons.
 
 The two channels are separate settings. You can use one channel for both.
@@ -45,7 +46,7 @@ The bot asks Discord for every intent when it connects, so all three switches mu
 
 In your server, make:
 
-1. A text channel for shiny alerts.
+1. A text channel for shiny alerts (Ruby and Sapphire trainer stops go there too).
 2. A text channel for new-move questions, or use the shiny-alert channel for both.
 3. A role for the bot to mention in each shiny alert. Give it to everyone who wants to be pinged. The mention is a role mention, so it has to be a role, not a person.
 

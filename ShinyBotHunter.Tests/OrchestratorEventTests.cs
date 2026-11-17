@@ -194,6 +194,118 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["save", "caught", "milestone"], calls);
         }
 
+        private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
+        private static readonly GameSnapshot Speech = new(GameScreen.FieldTask, null, null, null, null);
+        private static readonly GameSnapshot TrainerBattle = new(GameScreen.BattleMessage, null, null, null, null, TextPrinter: 8);
+
+        // Each read takes the next snapshot; the last one repeats. Counts the reads.
+        private sealed class ScriptedReader(params GameSnapshot[] snapshots) : IGameStateReader
+        {
+            private readonly Queue<GameSnapshot> queue = new(snapshots);
+
+            public int Reads { get; private set; }
+
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                Reads++;
+                return Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
+            }
+        }
+
+        // The Resume block with the real catch check; calls records the catch, the milestone, the save and every press.
+        private static Task ResumeAsync(GameState state, List<string> calls) => OrchestratorEvent.ResumeAsync(state,
+            () => OrchestratorEvent.CheckForCatchAsync(state, new PokemonStateReader(), new ServiceCollection().BuildServiceProvider(),
+                _ => { calls.Add("caught"); return Task.CompletedTask; },
+                _ => { calls.Add("milestone"); return Task.CompletedTask; }),
+            TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        private static FakeBot RsBot(List<string> calls, IGameStateReader game) =>
+            new(Task.CompletedTask, NoNavigationProfile(calls)) { State = game, Pressed = m => calls.Add("press " + m) };
+
+        // After a trainer stop there is no target: with the field free, Resume reads no party and goes on to the state
+        // underneath. Resume runs before any encounter is built, so this holds for Spin and Run alike.
+        [Theory]
+        [InlineData(new EventState[0], EventState.DecideOverworldAction)]
+        [InlineData(new[] { EventState.GoToPokemonCenter }, EventState.GoToPokemonCenter)]
+        public async Task Resume_AfterATrainerStop_FieldFree_SkipsTheCatchAndCarriesOn(EventState[] under, EventState next)
+        {
+            List<string> calls = [];
+            FakeBot bot = RsBot(calls, new ScriptedReader(FieldFree));
+            GameState state = StateFor(bot, new ShinyTarget(), [.. under, EventState.Resume]);
+            state.StoppedForTrainer = true;
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Equal(["milestone"], calls);
+            Assert.Empty(bot.Macros);
+            Assert.False(state.StoppedForTrainer);
+            Assert.Equal([next], state.State);
+        }
+
+        // Resume pressed during the speech or a battle screen that does not change: it parks again, logging the snapshot,
+        // with no catch check, no press and no macro, so no spin or run starts.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Resume_AfterATrainerStop_FieldNotFree_ParksAgainAndStartsNothing(bool inBattle)
+        {
+            List<string> calls = [];
+            GameSnapshot seen = inBattle ? TrainerBattle : Speech;
+            FakeBot bot = RsBot(calls, new ScriptedReader(seen));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+            state.StoppedForTrainer = true;
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await ResumeAsync(state, calls);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.Equal([EventState.Waiting], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Empty(calls);
+            Assert.Empty(bot.Macros);
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Contains($"[Orchestrator] Resume: Waited for the free field after the trainer stop; the game state stayed {seen}", log.ToString());
+        }
+
+        // The operator fights on after pressing Resume: each change restarts the stale clock, and the free field carries on.
+        [Fact]
+        public async Task Resume_AfterATrainerStop_BattleThenFreeField_CarriesOn()
+        {
+            List<string> calls = [];
+            FakeBot bot = RsBot(calls, new ScriptedReader(TrainerBattle, TrainerBattle with { TextPrinter = null }, Speech, FieldFree));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+            state.StoppedForTrainer = true;
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(["milestone"], calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
+        // Not after a trainer stop (HGSS always): Resume reads no game state, as before.
+        [Fact]
+        public async Task Resume_NotAfterATrainerStop_ReadsNoGameState()
+        {
+            List<string> calls = [];
+            ScriptedReader game = new(Speech);
+            FakeBot bot = RsBot(calls, game);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(0, game.Reads);
+            Assert.Equal(["milestone"], calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
         [Fact]
         public async Task Finish_WithoutOverworldNavigation_CompletesInPlace()
         {

@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs, ShinyBotHunter/Games/Rs/RsProfile.cs, ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -61,7 +61,7 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 - **Run** runs between the two ends of the line with B held. Before every run, the bot checks you are on the line and inside its two ends.
 - Both check for an encounter every 8 frames (7.5 times a second), so neither is faster than the other.
 - While your character is free to walk, there is no time limit.
-- If the field stops being free (a message, a script) and no battle starts within 15 s, the bot stops.
+- If the field stops being free (a message, a script, a trainer), the bot stops turning or running after 4 s and looks at what locked it. A trainer stops the bot at once (see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume)). Anything else that does not become a battle stops the bot about 15 s after the field locked.
 
 ## What happens in each encounter?
 
@@ -73,7 +73,20 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 6. At "Can't escape!" it presses A, and A on RUN again when the menu comes back. The cursor stays on RUN.
 7. It presses A at "Got away safely!", then turns or runs again once your character is free to walk.
 
-A trainer battle, or any battle that is not wild, stops the bot.
+A trainer stops the bot before its battle (see below). A Safari Zone battle, or any other battle that is not wild, stops the bot too.
+
+## When a trainer stops you: win the battle and press Resume
+
+A trainer who sees your character, or whom you talk to, starts a speech, and the bot stops before anything is pressed: it does not fight trainers.
+
+1. The entry shows the bot waiting, and the backend's window shows `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` with the trainer's number and what the game showed. The same sentence goes to [Discord](../05-discord.md), once, in the shiny-alert channel with the role mention. The map is shown as two numbers until the bot knows map names; Route 102 is `0.17`.
+2. In the emulator, press through the trainer's speech and fight the battle yourself. The speech may not be up yet when the bot stops; it comes up on its own.
+3. Once you have won and your character stands in the field, press **Resume** on the entry.
+
+There is nothing to catch, so Resume checks nothing in your party. It waits until your character is free to walk, then carries on hunting.
+
+- If you press **Resume** before the battle is over, the bot waits while the game changes and carries on when your character is free. If the game shows the same thing for 10 s (the speech waiting for you, a battle menu), the bot goes back to waiting and the backend's window shows `[Orchestrator] Resume: Waited for the free field after the trainer stop; the game state stayed <state>`. Nothing is pressed and no second Discord message is sent. Finish the speech or the battle, and press **Resume** again.
+- If you lose the battle, the game may treat later messages as that trainer again, and the bot can stop with the trainer sentence when no trainer is there. Close the message and press **Resume**. This has not been seen on the emulator.
 
 ## When it finds a target: catch it and press Resume
 
@@ -168,10 +181,13 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **It means** before a run, your character was not on the line, or was past one of its ends.
 
 **You see** `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
-**It means** something stopped your character walking, such as a message or a script, and no battle started within 15 s.
+**It means** the game left the field for something other than a message or a script, such as a loading screen, and no battle started within 15 s.
+
+**You see** `[RsBattle] stopped: A trainer battle started on map <group>.<number>.` followed by `trainer <number>` or `battle type 0x<flags>`, and what the game showed.
+**It means** a trainer challenged your character. See [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 
 **You see** `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>`.
-**It means** after the field locked, no battle showed and nothing in the game changed for 15 s; or, with `battle type`, the battle is not a wild one (a trainer battle, for example).
+**It means** the field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one (a Safari Zone battle, for example).
 
 **You see** `[RsBattle] stopped: The first Pokémon fainted. <state>`
 **It means** your first Pokémon fainted in the battle.

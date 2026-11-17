@@ -15,6 +15,9 @@ namespace ShinyBotHunter.BotEvents
         // FR-9; init so a test can shorten it.
         internal TimeSpan NoBattleWithin { get; init; } = TimeSpan.FromSeconds(15);
 
+        // The profile's SeekLockHandOff, set where the orchestrator builds the encounter; init so a test can shorten it.
+        internal TimeSpan? LockedHandOff { get; init; }
+
         private IBot bot;
         Queue<Direction> directions = new Queue<Direction>();
         Dictionary<Direction, string> cachedMacros = new Dictionary<Direction, string>();
@@ -66,7 +69,7 @@ namespace ShinyBotHunter.BotEvents
             long seekMs = 0;
             try
             {
-                toBattle = await SeekAsync(bot.State, NoBattleWithin, cancellationToken);
+                toBattle = await SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
                 seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)
@@ -99,8 +102,9 @@ namespace ShinyBotHunter.BotEvents
         // Waits for a battle while the seek macro repeats. A deadline from the moment the field leaves free, not a stale:
         // an RS field snapshot is the screen alone, so spinning in the free field looks unchanged, and an HGSS lock whose
         // task fields change would keep restarting a stale clock. Seeking in the free field stays unbounded; any other
-        // non-battle screen (a field task, a load, an app) has 15 s to become a battle (FR-9, G7).
-        internal static async Task<TimeSpan> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, CancellationToken ct)
+        // non-battle screen (a field task, a load, an app) has 15 s to become a battle (FR-9, G7). With a lockedHandOff, a
+        // field task that lasts that long returns as a battle would, so the battle event reads what locked the field.
+        internal static async Task<TimeSpan> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, TimeSpan? lockedHandOff, CancellationToken ct)
         {
             Stopwatch? sinceLeftFree = null;
             await GameStateWait.UntilAsync(game, "a battle", s =>
@@ -115,6 +119,10 @@ namespace ShinyBotHunter.BotEvents
                     return false;
                 }
                 sinceLeftFree ??= Stopwatch.StartNew();
+                if (lockedHandOff is not null && s.Screen == GameScreen.FieldTask && sinceLeftFree.Elapsed >= lockedHandOff)
+                {
+                    return true;
+                }
                 if (sinceLeftFree.Elapsed >= noBattleWithin)
                 {
                     throw new GameStateTimeoutException($"a battle within {noBattleWithin.TotalSeconds} s of the field leaving free", s);

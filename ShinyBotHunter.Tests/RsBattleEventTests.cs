@@ -22,8 +22,22 @@ namespace ShinyBotHunter.Tests
         private const uint VBlankCounter = 0x03001790;
         private const uint EnemyParty = 0x030045C0;
         private const uint LeadHp = 0x03004360 + 0x56;
+        private const uint FieldControlsLock = 0x030006A4;
+        private const uint InBattle = 0x03001BAD;
+        private const uint ScriptContextStatus = 0x030005B0;
+        private const uint TrainerBattleOpponent = 0x0202FF5E;
+        private const uint EventFlags = 0x02026954;
+        private const uint PlayerLocation = 0x02025738;
 
         private const ushort Wild = 0x0004;
+
+        // The trainer read's bytes, from docs/research/rs-navigation-and-training.md "A trainer's intro speech": the lock,
+        // the in-battle byte, the script status, the opponent and the event flags that are set. The player is on Route 102,
+        // map (0, 17).
+        public sealed record TrainerBytes(byte Lock, byte InBattle, byte Status, ushort Opponent, params int[] FlagsSet);
+
+        private static readonly TrainerBytes NoScriptRunning = new(1, 0, 2, 0);
+        private const string Route102 = "A trainer battle started on map 0.17.";
 
         // Short for the tests that time out; Long for those whose snapshots repeat over a few polls on the way.
         private static readonly TimeSpan Short = TimeSpan.FromMilliseconds(50);
@@ -115,27 +129,56 @@ namespace ShinyBotHunter.Tests
             // PKHeX's verdict for every record analysed, and the records it was asked about.
             public LegalityResult Verdict { get; set; } = new(true, "legal");
             public List<byte[]> Analysed { get; } = [];
+            // The trainer messages sent, and every chain request made, in order.
+            public List<string> TrainerMessages { get; } = [];
+            public List<IReadOnlyList<ChainBlockRequest>> Requests { get; } = [];
 
+            // afterHandOff defaults to battleStart.
             public Task<string?> RunAsync(TimeSpan? battleStart = null, TimeSpan? stale = null, TimeSpan? checksum = null, TimeSpan? cursorWait = null)
                 => RsBattleEvent.RunAsync(State, new RsPointerService(),
                     p => { Logged.Add(p); return Task.CompletedTask; },
                     p => { Alerted.Add(p); return Task.CompletedTask; },
+                    s => { TrainerMessages.Add(s); return Task.CompletedTask; },
                     raw => { Analysed.Add(raw); return Verdict; },
-                    battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
+                    battleStart ?? Long, battleStart ?? Long, stale ?? Long, checksum ?? Long, cursorWait ?? Long, CancellationToken.None);
         }
 
-        // The records come from the queue, the last repeating; the lead's HP by the reader's stage; the counter from its queue.
+        // The records come from the queue, the last repeating; the lead's HP by the reader's stage; the counter from its queue;
+        // the trainer read from trainer, by default a locked field with no script.
         private static Battle Start(PressedReader reader, ITarget? target = null, ushort flags = Wild, byte[][]? enemies = null,
-            Func<int, ushort>? leadHp = null, uint[]? counter = null)
+            Func<int, ushort>? leadHp = null, uint[]? counter = null, TrainerBytes? trainer = null)
         {
             Queue<byte[]> records = new(enemies ?? [Plain]);
             Queue<uint> frames = new(counter ?? [1000]);
+            TrainerBytes read = trainer ?? NoScriptRunning;
             Battle? battle = null;
             ChainBlockResult Answer(ChainBlockRequest block)
             {
                 byte[] bytes;
                 switch (block.Anchor)
                 {
+                    case FieldControlsLock:
+                        bytes = [read.Lock];
+                        break;
+                    case InBattle:
+                        bytes = [read.InBattle];
+                        break;
+                    case ScriptContextStatus:
+                        bytes = [read.Status];
+                        break;
+                    case TrainerBattleOpponent:
+                        bytes = BitConverter.GetBytes(read.Opponent);
+                        break;
+                    case EventFlags:
+                        bytes = new byte[block.Length];
+                        foreach (int flag in read.FlagsSet)
+                        {
+                            bytes[flag >> 3] |= (byte)(1 << (flag & 7));
+                        }
+                        break;
+                    case PlayerLocation:
+                        bytes = [0, 17];
+                        break;
                     case BattleTypeFlags:
                         bytes = BitConverter.GetBytes(flags);
                         break;
@@ -156,7 +199,11 @@ namespace ShinyBotHunter.Tests
             }
             FakeBot bot = new(Task.CompletedTask, RsProfile.Create(new PokemonMetadataService(null!)))
             {
-                ChainBlocks = blocks => blocks.Select(Answer).ToArray(),
+                ChainBlocks = blocks =>
+                {
+                    battle!.Requests.Add(blocks);
+                    return blocks.Select(Answer).ToArray();
+                },
                 Pressed = macro =>
                 {
                     // A at the action menu only ever with the cursor at 3, in every test.
@@ -365,9 +412,10 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(expected, battle.Presses);
         }
 
+        // Safari (0x0084) and a battle with no wild bit keep today's stop.
         [Theory]
-        [InlineData((ushort)(0x0008 | 0x0004))]
         [InlineData((ushort)(0x0080 | 0x0004))]
+        [InlineData((ushort)0x0000)]
         public async Task NotAWildBattle_Stops(ushort flags)
         {
             Battle battle = Start(new PressedReader([Locked, Turn]), flags: flags);
@@ -378,6 +426,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.Empty(battle.Presses);
             Assert.Empty(battle.EnemyReads);
+            Assert.Empty(battle.TrainerMessages);
         }
 
         [Fact]
@@ -390,6 +439,107 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(RsBattleEvent.NotWild, stop);
             Assert.Equal([EventState.Waiting], battle.State.State);
             Assert.Empty(battle.Presses);
+            Assert.Empty(battle.TrainerMessages);
+        }
+
+        // The seek handed over a lock: Calvin (318) with his flag 1598 clear, at the walk-up (status 1) and while the
+        // speech prints (status 0); and Rick (615) talked to, with Calvin beaten and Rick's flag 1895 clear.
+        [Theory]
+        [InlineData((byte)0, (ushort)318, new int[0])]
+        [InlineData((byte)1, (ushort)318, new int[0])]
+        [InlineData((byte)0, (ushort)615, new[] { 1598 })]
+        public async Task TrainerChallenge_TheHandedOverLock_StopsWithTheSentenceOneMessageAndNoPress(byte status, ushort opponent, int[] flagsSet)
+        {
+            Battle battle = Start(new PressedReader([Locked]), trainer: new TrainerBytes(1, 0, status, opponent, flagsSet));
+
+            string? stop = await battle.RunAsync();
+
+            Assert.Equal(Route102, stop);
+            Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.True(battle.State.StoppedForTrainer);
+            Assert.Empty(battle.Presses);
+            Assert.Equal([Route102], battle.TrainerMessages);
+            Assert.Empty(battle.Alerted);
+            Assert.Empty(battle.EnemyReads);
+            // One read on one frame: the one request with the script status holds every block the rule needs.
+            IReadOnlyList<ChainBlockRequest> read = Assert.Single(battle.Requests, r => r.Any(b => b.Anchor == ScriptContextStatus));
+            Assert.Equal([FieldControlsLock, InBattle, ScriptContextStatus, TrainerBattleOpponent, EventFlags, PlayerLocation], read.Select(b => b.Anchor));
+            Assert.Equal(0x120, read.Single(b => b.Anchor == EventFlags).Length);
+            Assert.Single(battle.Requests);
+        }
+
+        // The research table's rows where the rule is false.
+        public static TheoryData<TrainerBytes> NotAChallenge => new()
+        {
+            new TrainerBytes(1, 0, 0, 0),             // a sign read before any trainer: no id
+            new TrainerBytes(1, 0, 0, 318, 1598),     // the beaten Calvin talked to, or a sign after winning: his flag set
+            new TrainerBytes(1, 0, 1, 318, 1598),     // the return from the won battle
+            new TrainerBytes(1, 0, 2, 318),           // a wild battle starting with an unbeaten stale id: no script
+            new TrainerBytes(1, 0x02, 1, 318),        // in the battle
+            new TrainerBytes(1, 0, 0, 1024),          // an id whose flag is past the 0x120 bytes read
+        };
+
+        [Theory]
+        [MemberData(nameof(NotAChallenge))]
+        public async Task TrainerChallenge_StaleOrNoScript_IsNotATrainer(TrainerBytes read)
+        {
+            Battle battle = Start(new PressedReader([Locked]), trainer: read);
+
+            string? stop = await battle.RunAsync(battleStart: Short);
+
+            Assert.Equal(RsBattleEvent.NotWild, stop);
+            Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.False(battle.State.StoppedForTrainer);
+            Assert.Empty(battle.TrainerMessages);
+            Assert.Empty(battle.Presses);
+        }
+
+        [Fact]
+        public async Task TrainerMiss_ThenTheBattleBit_FleesAsBefore()
+        {
+            Battle battle = Start(Fled(), trainer: new TrainerBytes(1, 0, 2, 318));
+
+            string? stop = await battle.RunAsync();
+
+            Assert.Null(stop);
+            Assert.Equal(["Advance", "ToRun", "Confirm", "Advance"], battle.Presses);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Empty(battle.TrainerMessages);
+        }
+
+        // The battle type is the backstop: an operator's press at the speech before the hand-off.
+        [Fact]
+        public async Task TrainerBattleType_Backstop_SameSentenceOneMessage()
+        {
+            Battle battle = Start(new PressedReader([Turn]), flags: 0x000C);
+
+            string? stop = await battle.RunAsync();
+
+            Assert.Equal(Route102, stop);
+            Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.True(battle.State.StoppedForTrainer);
+            Assert.Equal([Route102], battle.TrainerMessages);
+            Assert.Empty(battle.Presses);
+            Assert.Empty(battle.EnemyReads);
+        }
+
+        // A wild battle that reaches the seek's battle screen makes no trainer read: the entry request is today's two blocks.
+        [Fact]
+        public async Task NormalWildBattle_MakesNoTrainerRead()
+        {
+            Battle battle = Start(new PressedReader(
+                [Turn, Message()],
+                [Message(), Turn, Menu(0)],
+                [Menu(0), Menu(3)],
+                [Menu(3), Turn, Message(BattleOutcome.Fled)],
+                [Message(BattleOutcome.Fled), Turn, Locked, Free]));
+
+            string? stop = await battle.RunAsync();
+
+            Assert.Null(stop);
+            Assert.Equal([EventState.BattleComplete], battle.State.State);
+            Assert.Equal([BattleTypeFlags, VBlankCounter], battle.Requests[0].Select(b => b.Anchor));
+            Assert.DoesNotContain(battle.Requests, r => r.Any(b => b.Anchor is ScriptContextStatus or TrainerBattleOpponent or EventFlags));
         }
 
         [Fact]

@@ -41,6 +41,12 @@ namespace ShinyBotHunter.BotEvents
         private const ushort TrainerBattle = 0x0008;
         private const ushort SafariBattle = 0x0080;
 
+        // gMain.inBattle's bit in the InBattle byte; the script status with no script running (research "A trainer's intro
+        // speech"); a trainer's flag is 0x500 + its id.
+        private const byte InBattleBit = 0x02;
+        private const byte NoScript = 2;
+        private const int TrainerFlagBase = 0x500;
+
         // The action cursor on RUN.
         private const int RunCursor = 3;
 
@@ -60,16 +66,23 @@ namespace ShinyBotHunter.BotEvents
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
         {
+            // The seek hands over a lock that has lasted SeekLockHandOff, so a lock that is not a trainer waits for the battle
+            // bit only for what is left of 15 s from the lock (FR-9).
             await RunAsync(state, (RsPointerService)state.Bot.Addresses, persistence.AddEncounterAsync, p => alerts.NotifyTargetFoundAsync(p),
-                raw => legality.Analyze(raw, GameFlavor.RS), BattleStartStale, Stale, ChecksumWindow, CursorWait, cancellationToken);
+                s => alerts.NotifyTrainerBattleAsync(s),
+                raw => legality.Analyze(raw, GameFlavor.RS), BattleStartStale, BattleStartStale - state.Bot.Profile.SeekLockHandOff!.Value,
+                Stale, ChecksumWindow, CursorWait, cancellationToken);
             return state;
         }
 
         // The battle. Null when it is over (BattleComplete) or parked on a target (Waiting), otherwise the sentence it stopped
-        // with (Waiting). The delegates are the encounter log and the alert; the times are parameters so the tests run short.
+        // with (Waiting). The delegates are the encounter log and the two alerts. The times are parameters so the tests run
+        // short: afterHandOff is the battle bit's wait once a lock the seek handed over is not a trainer.
         internal static async Task<string?> RunAsync(GameState state, RsPointerService addresses,
             Func<PersistPokemonData, Task> addEncounter, Func<PersistPokemonData, Task> notifyTargetFound,
-            Func<byte[], LegalityResult> analyze, TimeSpan battleStart, TimeSpan stale, TimeSpan checksumWindow, TimeSpan cursorWait, CancellationToken ct)
+            Func<string, Task> notifyTrainer,
+            Func<byte[], LegalityResult> analyze, TimeSpan battleStart, TimeSpan afterHandOff, TimeSpan stale, TimeSpan checksumWindow,
+            TimeSpan cursorWait, CancellationToken ct)
         {
             IBot bot = state.Bot;
             IGameStateReader reader = bot.State;
@@ -77,7 +90,17 @@ namespace ShinyBotHunter.BotEvents
             try
             {
                 s = await GameStateWait.UntilAsync(reader, "the battle bit after the field left free",
-                    x => x.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask), battleStart, ct);
+                    x => x.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree), battleStart, ct);
+                if (s.Screen == GameScreen.FieldTask)
+                {
+                    // A trainer's battle type is set only after a press at the speech, so the trainer is read from the lock.
+                    if (await ReadTrainerChallengeAsync(bot, addresses, ct) is { } trainer)
+                    {
+                        return await TrainerStopAsync(state, trainer.Group, trainer.Number, $"trainer {trainer.Trainer}, {s}", notifyTrainer);
+                    }
+                    s = await GameStateWait.UntilAsync(reader, "the battle bit after the field left free",
+                        x => x.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask), afterHandOff, ct);
+                }
             }
             catch (GameStateTimeoutException ex)
             {
@@ -88,7 +111,14 @@ namespace ShinyBotHunter.BotEvents
                 [new(addresses.BattleTypeFlags, [], 2), new(addresses.VBlankCounter, [], 4)], ct: ct);
             ushort flags = BitConverter.ToUInt16(entry[0].Bytes, 0);
             uint startFrame = BitConverter.ToUInt32(entry[1].Bytes, 0);
-            if ((flags & WildBattle) == 0 || (flags & (TrainerBattle | SafariBattle)) != 0)
+            if ((flags & TrainerBattle) != 0)
+            {
+                // A press at the speech, the operator's, came before the hand-off. A trainer stop's own battle never gets
+                // here: Resume after it waits for the free field.
+                ChainBlockResult[] at = await bot.ReadChainBlocksAsync([new(addresses.PlayerLocation, [], 2)], ct: ct);
+                return await TrainerStopAsync(state, at[0].Bytes[0], at[0].Bytes[1], $"battle type 0x{flags:X4}, {s}", notifyTrainer);
+            }
+            if ((flags & WildBattle) == 0 || (flags & SafariBattle) != 0)
             {
                 return Stop(state, NotWild, $"battle type 0x{flags:X4}, {s}");
             }
@@ -237,6 +267,44 @@ namespace ShinyBotHunter.BotEvents
             bot.RunMacroString(macro);
             await bot.WaitForMacroAsync(ct);
             return macro.Split(';').Length;
+        }
+
+        // An unbeaten trainer's challenge, on one frame (docs/research/rs-navigation-and-training.md, "A trainer's intro
+        // speech", the rule): the field locked, no battle, a script running or waiting, a trainer id, and that trainer's flag
+        // clear. The flags are read whole so the flag the id names is from the same frame. Null when it is not one.
+        internal static async Task<(byte Group, byte Number, ushort Trainer)?> ReadTrainerChallengeAsync(IBot bot, RsPointerService addresses, CancellationToken ct)
+        {
+            ChainBlockResult[] read = await bot.ReadChainBlocksAsync(
+            [
+                new(addresses.FieldControlsLock, [], 1),
+                new(addresses.InBattle, [], 1),
+                new(addresses.ScriptContextStatus, [], 1),
+                new(addresses.TrainerBattleOpponent, [], 2),
+                new(addresses.EventFlags, [], addresses.EventFlagBytes),
+                new(addresses.PlayerLocation, [], 2),
+            ], ct: ct);
+            ushort trainer = BitConverter.ToUInt16(read[3].Bytes, 0);
+            int flag = TrainerFlagBase + trainer;
+            // An id whose flag lies past the flags read (1024 and up) is not a trainer the game has a flag for.
+            bool challenge = read[0].Bytes[0] != 0
+                && (read[1].Bytes[0] & InBattleBit) == 0
+                && read[2].Bytes[0] != NoScript
+                && trainer != 0
+                && (flag >> 3) < read[4].Bytes.Length
+                && (read[4].Bytes[flag >> 3] & (1 << (flag & 7))) == 0;
+            return challenge ? (read[5].Bytes[0], read[5].Bytes[1], trainer) : null;
+        }
+
+        // The trainer stop's sentence; the map is group.number until the navigator has names.
+        internal static string TrainerSentence(byte group, byte number) => $"A trainer battle started on map {group}.{number}.";
+
+        // Parks the bot with the trainer's sentence, marks the stop as a trainer's for Resume, then sends the sentence.
+        private static async Task<string> TrainerStopAsync(GameState state, byte group, byte number, string seen, Func<string, Task> notifyTrainer)
+        {
+            string sentence = Stop(state, TrainerSentence(group, number), seen);
+            state.StoppedForTrainer = true;
+            await notifyTrainer(sentence);
+            return sentence;
         }
 
         // Logs the sentence with what was read and parks the bot for the operator.
