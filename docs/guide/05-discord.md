@@ -155,7 +155,7 @@ Each message below appears in the backend's window.
 
 ### A new-move question never appears
 
-- **You see:** a new-move question never appears in Discord, while the backend's window shows `[LevelUp] asking Discord whether <name> learns <move>` (HeartGold and SoulSilver) or `[RsBattle] asking Discord: slot <n> <name> learning <move> (<move number>); nothing is pressed until the answer` (Ruby and Sapphire).
+- **You see:** a new-move question never appears in Discord, while the backend's window shows `[LevelUp] asking Discord whether <name> learns <move>` (HeartGold and SoulSilver) or `[RsBattle] asking Discord: slot <n> <name> learning <move> (<move number>); nothing is pressed until the answer` (Ruby and Sapphire). In the Ruby and Sapphire line, the slot counts from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1.
 - **It means:** the bot asked, but posted somewhere you are not looking.
 - **Do:** check the new-move channel id, and that the bot can see and post in that channel.
 

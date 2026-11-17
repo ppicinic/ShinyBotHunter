@@ -210,9 +210,10 @@ A `<place>` is the game's name for the map and a tile, for example `Route101 (14
 |---|---|---|
 | `[Navigator] stopped: No route to a Pokémon Center on foot from <place>.` | The bot found no way from where your character stands to a Pokémon Center. It uses no HM, so a Pokémon Center behind a Cut tree, water or a rock is out of reach, and so is one behind a person who still blocks the path at this point in the story. | Heal yourself, walk back to the start tile and press **Resume**. The same stop comes back at the next heal, so to train, start the hunt from a tile with a Pokémon Center you can walk to without HMs. |
 | `[Navigator] stopped: No route back to the start tile <place> from <place>.` | The bot found no way from where your character stands back to the tile the hunt started on, under the same rules. | Walk back to the start tile yourself and press **Resume**. |
-| `[Navigator] stopped: Stuck walking to <place>.` | One straight stretch of the walk did not end on the tile it was heading for within 20 s. Something was in the way, such as a person walking into the path, or a message came up. | Close any message, walk back to the start tile and press **Resume**. |
+| `[Navigator] stopped: Stuck walking to <place>.` | One straight stretch of the walk did not end on the tile it was heading for within 20 s. Something was in the way, such as a person walking into the path. A message or a script does not end this way: it locks the field, and see the next row. | Walk back to the start tile and press **Resume**. |
 | `[Navigator] stopped: The last step to <place> did not end (running state <n>, tile transition <n>).` | Your character reached the last tile of the walk, but the game did not show it standing still within 20 s. | Look at the emulator, walk back to the start tile and press **Resume**. |
 | `[Navigator] stopped: Waited for the overworld ready; the game state stayed <state>` | Before planning a walk, the bot waited for your character to be free to walk, and for 10 s nothing changed. | Close what the game shows, walk back to the start tile and press **Resume**. |
+| `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, on a walk | The field locked on the walk (a message, a script) and stayed locked for 4 s with your character on the same tile. The walk handed it to the battle event, which found no trainer, and no battle started within about 15 s of the lock. | Close what the game shows and press **Resume**: the bot plans the walk again from where your character stands. |
 | `[RsBattle] stopped: A trainer battle started on <map>.` on a walk | A trainer who has not been beaten challenged your character on the way. | As for the same line in the table above: press through the speech, win, and press **Resume**. The bot plans the walk again from where your character stands, so you need not walk back first. |
 
 ### At the nurse
@@ -245,6 +246,7 @@ The `<what>` of those stops, as the bot writes them. Party slots and move slots 
 | `the party list to take keys (the switch to slot <n>)`, `the party cursor leaving <n> after Down on the party list from <n>`, `the SHIFT submenu after BattleConfirm on party slot <n>`, `the submenu closing after BattleConfirm on SHIFT at <state>` | choosing the Battler and SHIFT |
 | `the next action menu after SHIFT (the switch to slot <n>)` | waiting for the Battler to come out; the game refusing the switch ends here |
 | `the battle window to leave <n>` | pressing A at a battle message or an evolution text |
+| `the cursor on RUN`, `the cursor on RUN after the missing press`, `the screen to leave the action menu` | running from the battle: when training, because the Pokémon fighting is too hurt or out of damaging PP, the calculator found no move, or the switch failed |
 
 The two refusals training can meet when you press **Run**, `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).` and `Pickup is not available on Ruby and Sapphire.`, are under [A Ruby or Sapphire wild hunt is not ready](#a-ruby-or-sapphire-wild-hunt-is-not-ready).
 
@@ -252,7 +254,7 @@ The two refusals training can meet when you press **Run**, `Training needs a US 
 
 This is a stale timeout.
 
-- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]`, `[Spin]`, `[Run]` or `[RsBattle]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
+- **You see:** in the backend's window, a line that starts with `[Battle]`, `[Navigator]`, `[Spin]`, `[Run]`, `[RsBattle]` or `[Orchestrator]` and contains `Waited for <what>; the game state stayed <state>`. On the dashboard, the bot shows as waiting, with **Resume**.
 - **It means:** the game did not reach the screen the bot expected, and nothing in the game changed for the time limit. The bot stops and waits for you rather than pressing on. This happens in wild and chained encounters in HeartGold and SoulSilver, and in wild encounters in Ruby and Sapphire, training and walking included. The Ruby and Sapphire training and walk stops are listed one by one under [A Ruby or Sapphire hunt stops while training or walking](#a-ruby-or-sapphire-hunt-stops-while-training-or-walking).
 
 The time limits are:

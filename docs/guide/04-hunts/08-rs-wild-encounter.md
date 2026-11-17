@@ -89,7 +89,7 @@ A trainer stops the bot before its battle (see below). A Safari Zone battle, or 
 
 In a battle, the bot runs instead of fighting when the Pokémon fighting is down to a quarter of its HP or less, has no PP left on damaging moves, or the calculator finds no move.
 
-Every press is checked against the game's memory. If the game still shows exactly what it showed before the press a second later, the bot sends that one press once more, never a third time. So a line in the backend's window can end in `dropped, sent again`.
+Every press is checked against the game's memory. For the presses that change something the bot can read (FIGHT, the move, a level-up box, the answers to a new move, the forget-a-move screen, and the switch's presses), if the game still shows exactly what it showed before the press a second later, the bot sends that one press once more, never a third time. So such a line in the backend's window can end in `dropped, sent again`. The A at a message and the presses at the nurse are never sent twice.
 
 ### Level-ups, new moves and evolution
 
@@ -100,7 +100,7 @@ Every press is checked against the game's memory. If the game still shows exactl
 
 ### When it heals
 
-Before each encounter the bot checks the Pokémon that fights: your first Pokémon in Standard, the Battler in Switch. If it has a quarter of its HP or less, or fewer than 3 PP across its damaging moves, the bot goes to heal. In Switch it also goes when your first Pokémon has fainted or the Battler's slot is empty. The backend's window shows `[Orchestrator] heal trip: <name> HP <hp>/<max>, damaging PP <pp>`, or `[Orchestrator] heal trip: switch slot <n> is empty`.
+Before each encounter the bot checks the Pokémon that fights: your first Pokémon in Standard, the Battler in Switch. If it has a quarter of its HP or less, or fewer than 3 PP across its damaging moves, the bot goes to heal. In Switch it also goes when your first Pokémon has fainted or the Battler's slot is empty. The backend's window shows `[Orchestrator] heal trip: <name> HP <hp>/<max>, damaging PP <pp>`, or `[Orchestrator] heal trip: switch slot <n> is empty`, where `<n>` is the Battler slot as the dashboard numbers it, from 2 to 6.
 
 1. **The walk there.** The bot plans a route to the nearest Pokémon Center from where your character stands, over Hoenn's maps, through doors and across the edges between maps, and runs it with B held. It reads your save's story progress, so it does not plan through a person who still blocks a path, and it keeps off tiles that would start a story event when a way round is not much longer. It runs from any wild battle on the way and plans again from where your character stands. Those Pokémon are still written to the encounter log, and a Pokémon you are hunting for still stops the bot.
 2. **The nurse.** On the tile in front of the counter the bot turns to face her if it has to, and talks to her. It presses A at each of her lines, Yes at her question, and A at her last line. Then it checks that every Pokémon in the party has full HP.
@@ -184,8 +184,8 @@ The backend's window also shows:
 - `[RsBattle] legality OK` or `[RsBattle] legality FAIL` for each shiny, with PKHeX's report after a FAIL.
 - `[Spin] seek:` or `[Run] seek:`: how long it took to find the battle.
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
-- When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves.
-- `[Orchestrator] heal trip: …` when the bot goes to heal.
+- When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves. Party slots and move slots in these lines count from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1, and a Pokémon's first move is move 0.
+- `[Orchestrator] heal trip: …` when the bot goes to heal. Its `switch slot <n>` is the dashboard's number, from 2 to 6.
 - `[Navigator]` lines for each walk: `plan to <place> from <place>` with its cost and number of segments, one line per segment, `arrived on <place>`, and at the Pokémon Center the nurse's presses and `nurse: party HP … (full)`.
 
 ## How does it stop?
