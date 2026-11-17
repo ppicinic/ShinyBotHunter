@@ -175,6 +175,7 @@ Extends "Memory addresses are keyed by ROM revision". RS navigation and training
 - A non-English RS ROM gets no per-game part; whatever needs it decides what to do there.
 - The box check at profile construction passes a null code: the RAM-only table.
 - 2026-11-17, as the feature ended (epic #424): the per-game part has four members, not one. `WaitForAorBPress` and `PartyMenuMainCallback2` are ROM functions four bytes lower on Ruby; `DeleteMoveYesNo` and `StopLearningYesNo` are positions in the battle script data, 0x70 higher on Ruby, so "everything else is the same in both games" in the context above was too strong. The rule stands: an address that differs by game goes in the per-game part and is null for any other code. A train mode is refused at Run when that part is null (`GameProfile.TrainingRefusal`); the flee-only hunt reads none of it.
+- 2026-11-17 (#475): five members. `UseNextPokemonYesNo`, the battle script's yes/no at "Use next POKéMON?", is battle script data like the two move-prompt yes/nos, 0x70 higher on Ruby. The rule stands.
 
 ---
 

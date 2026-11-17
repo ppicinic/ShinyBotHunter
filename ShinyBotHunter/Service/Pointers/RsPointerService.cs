@@ -7,9 +7,10 @@ namespace ShinyBotHunter.Service.Pointers
     ///
     /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and four
-    /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/>, <see cref="StopLearningYesNo"/> and
-    /// <see cref="PartyMenuMainCallback2"/>, differ between the games: that is the per-game part, chosen by
+    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and five
+    /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/>, <see cref="StopLearningYesNo"/>,
+    /// <see cref="UseNextPokemonYesNo"/> and <see cref="PartyMenuMainCallback2"/>, differ between the games: that is the
+    /// per-game part, chosen by
     /// <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
@@ -23,12 +24,12 @@ namespace ShinyBotHunter.Service.Pointers
         private static readonly RsPointerService Sapphire = new()
         {
             WaitForAorBPress = 0x080670E5, DeleteMoveYesNo = 0x081D8ED2, StopLearningYesNo = 0x081D8EE1,
-            PartyMenuMainCallback2 = 0x0806AF01,
+            UseNextPokemonYesNo = 0x081D8C56, PartyMenuMainCallback2 = 0x0806AF01,
         };
         private static readonly RsPointerService Ruby = new()
         {
             WaitForAorBPress = 0x080670E1, DeleteMoveYesNo = 0x081D8F42, StopLearningYesNo = 0x081D8F51,
-            PartyMenuMainCallback2 = 0x0806AEFD,
+            UseNextPokemonYesNo = 0x081D8CC6, PartyMenuMainCallback2 = 0x0806AEFD,
         };
 
         /// <summary>
@@ -60,6 +61,13 @@ namespace ShinyBotHunter.Service.Pointers
         // game; observed on Sapphire 1.2 and Ruby 1.2 (research R1), both 1.1 values decomp only; QA: none yet:
         // rs-train-learn-refuse (Ruby: none yet)
         public uint? StopLearningYesNo { get; private init; }
+
+        // BattleScript_FaintedMonTryChooseAnother - 0x14, the battle script's yes/no at "Use next POKéMON?" after the active
+        // Pokémon faints in a wild battle; ROM data, the script address as gBattlescriptCurrInstr holds it, no Thumb bit
+        // (pret symbols line 24425: Sapphire 081d8c6a, Ruby 081d8cda, rev 1 equal to rev 2); constant, per game; observed
+        // on Sapphire 1.2 (6) and Ruby 1.2 (2) (research "A battler faints: the readings", F1, F4), both 1.1 values decomp
+        // only; QA: none yet: rs-train-switch-battler-spent fainted (Ruby: none yet)
+        public uint? UseNextPokemonYesNo { get; private init; }
 
         // CB2_PartyMenuMain, callback 2 while the party menu runs: the battle party list takes keys only with it set and the
         // palette fade off; ROM code, stored with the Thumb bit as RAM holds it (pret symbols line 4647: Sapphire 0806af00,
@@ -110,7 +118,11 @@ namespace ShinyBotHunter.Service.Pointers
         // gPlayerParty; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
         public uint BattlePartyPokemon => 0x03004360;
 
-        // gBattleCommunication; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
+        // gBattleCommunication; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt. [0] is a battle yes/no's
+        // state: 0 while "Use next POKéMON?" draws its box, 1 once it reads keys; the training reader reads from here through
+        // BattleOutcome, 8 bytes on, in one block (pret symbols lines 80 and 82); observed on
+        // Sapphire 1.2 and Ruby 1.2 (research "A battler faints: the readings", round six, A); QA: none yet:
+        // rs-train-switch-battler-spent fainted
         public uint BattleCommunication => 0x02024D1E;
 
         // gActionSelectionCursor; root (absolute; same at rev 0-2); QA: none yet: RS starter hunt
@@ -335,5 +347,17 @@ namespace ShinyBotHunter.Service.Pointers
         // screen ignores keys while it is set; root (absolute; pret symbols line 177); observed (R4); QA: none yet:
         // rs-train-learn-slot1
         public uint PaletteFadeActive => 0x0202F38F;
+
+        // A battler faints, docs/research/rs-navigation-and-training.md "A battler faints: the readings" (F1 to F9).
+
+        // gBattlePartyCurrentOrder, 3 bytes: the battle party menu's row p shows the party slot in nibble p, byte p / 2, the
+        // high nibble for even p (0x01, 0x23 is the identity); the party menu's case byte follows at + 3, 1 in the menu a
+        // faint forces; root (absolute; pret symbols line 231); observed (F4, F7); QA: none yet:
+        // rs-train-switch-battler-spent fainted-run
+        public uint BattlePartyCurrentOrder => 0x02038470;
+
+        // gBattleStruct->runTries (u8): gSharedMem + 0x16078 (include/battle.h:362), + 1 at each Run the game takes; root
+        // (absolute; pret symbols line 1); observed (F4, F6); QA: none yet: rs-train-switch-battler-spent fainted-stop
+        public uint RunTries => 0x02016078;
     }
 }

@@ -80,6 +80,14 @@ namespace ShinyBotHunter.Games.Rs
         // place in it.
         private readonly int scriptPointerOffset;
 
+        // With trainingReads the outcome's block starts at gBattleCommunication (9 bytes), whose [0] is the yes/no's state;
+        // the outcome's place in it. 0 for the flee reader, whose block is the outcome alone.
+        private readonly int outcomeOffset;
+
+        // gBattleCommunication[0] once "Use next POKéMON?" takes keys: 0 draws the box, 1 reads the keys (research "A battler
+        // faints: the readings", round six, A).
+        private const byte YesNoTakesKeys = 1;
+
         public RsStateReader(IMemoryClient memory, RsPointerService addresses, bool trainingReads = false)
         {
             this.memory = memory;
@@ -88,6 +96,7 @@ namespace ShinyBotHunter.Games.Rs
             moveLearnPromptOffset = (int)(addresses.MoveLearnPromptState - addresses.ExpGetterMonId);
             levelUpBoxOffset = (int)(addresses.LevelUpBoxState - addresses.ExpGetterMonId);
             scriptPointerOffset = (int)(addresses.BattlescriptCurrInstr - addresses.ActiveBattlerPartyIndex);
+            outcomeOffset = trainingReads ? (int)(addresses.BattleOutcome - addresses.BattleCommunication) : 0;
             int[] direct = [];
             blocks =
             [
@@ -96,7 +105,7 @@ namespace ShinyBotHunter.Games.Rs
                 new(addresses.InBattle, direct, 1),
                 new(addresses.PlayerControllerFunction, direct, 4),
                 new(addresses.BattleWindowState, direct, 2),
-                new(addresses.BattleOutcome, direct, 1),
+                trainingReads ? new(addresses.BattleCommunication, direct, outcomeOffset + 1) : new(addresses.BattleOutcome, direct, 1),
                 new(addresses.ActionSelectionCursor, direct, 1),
             ];
             if (trainingReads)
@@ -174,7 +183,7 @@ namespace ShinyBotHunter.Games.Rs
                     TextPrinter: BitConverter.ToUInt16(read[FieldWindowBlock].Bytes, 0));
             }
 
-            BattleOutcome? outcome = Map(read[OutcomeBlock].Bytes[0]);
+            BattleOutcome? outcome = Map(read[OutcomeBlock].Bytes[outcomeOffset]);
             uint controller = BitConverter.ToUInt32(read[ControllerBlock].Bytes, 0);
             int window = BitConverter.ToUInt16(read[WindowBlock].Bytes, 0);
             byte[] battleStruct = trainingReads ? read[BattleStructBlock].Bytes : [];
@@ -186,6 +195,18 @@ namespace ShinyBotHunter.Games.Rs
                 && BitConverter.ToUInt32(read[Callback2Block].Bytes, 0) != addresses.BattleMainCallback2)
             {
                 return await ReadForgetScreenAsync(read, tasks, outcome, ct);
+            }
+            // "Use next POKéMON?" after a faint: only the script pointer tells it apart, and the tracker can be a stale 3
+            // there, so it comes before the trackers (research "A battler faints: the readings", F1). trainingReads is
+            // needed: the flee reader's script and an unknown game's address are both null. The box takes B only once
+            // gBattleCommunication[0] reads 1: on the frame the pointer arrives it reads 0 and a B is dropped, so until
+            // then it is a turn (round six, A).
+            if (trainingReads && script == addresses.UseNextPokemonYesNo)
+            {
+                return read[OutcomeBlock].Bytes[0] == YesNoTakesKeys
+                    ? new GameSnapshot(GameScreen.BattleScript, outcome, null, null, null,
+                        PartyMonIndex: BitConverter.ToUInt16(read[PartyIndexBlock].Bytes, 0))
+                    : new GameSnapshot(GameScreen.BattleTurn, outcome, null, null, null);
             }
             if (controller == addresses.HandleInputChooseAction)
             {
