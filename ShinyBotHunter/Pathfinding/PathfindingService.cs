@@ -95,7 +95,8 @@ namespace ShinyBotHunter.Pathfinding
         Waterfall,
         Whirlpool,
         Strength,
-        Portal
+        Portal,
+        Dive
     }
 
     
@@ -188,6 +189,7 @@ namespace ShinyBotHunter.Pathfinding
         Whirlpool = 0x10,
         Strength = 0x20,
         RockClimb = 0x40,
+        Dive = 0x80,
     }
 
     public class NodePoint
@@ -239,6 +241,12 @@ namespace ShinyBotHunter.Pathfinding
         {
             get => (CapabilityMask & 0x40) == 0x40;
             set => CapabilityMask = value ? (CapabilityMask | 0x40) : (CapabilityMask & ~0x40);
+        }
+
+        public bool CanDive
+        {
+            get => (CapabilityMask & 0x80) == 0x80;
+            set => CapabilityMask = value ? (CapabilityMask | 0x80) : (CapabilityMask & ~0x80);
         }
 
         public int CapabilityMask { get; set; }
