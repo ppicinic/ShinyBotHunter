@@ -1,6 +1,6 @@
 # Spec: navigation and training in Ruby and Sapphire
 
-Status: Draft, from the spike of 2026-11-15. Not started. Builds on the [wild encounter hunt](rs-wild-encounter.md), which is on `main` (epic #380, PR #412); checked against it as built on 2026-11-16 ("Checked against main" below).
+Status: Implemented on `feature/rs-navigation-and-training` (2026-11-17, epic #424). See "As built", "What diverged" and "Evidence". Builds on the [wild encounter hunt](rs-wild-encounter.md), which is on `main` (epic #380, PR #412); checked against it as built on 2026-11-16 ("Checked against main" below).
 Last updated: 2026-11-17
 Owner: Phil
 Related: [research: the spike](../research/rs-navigation-and-training.md) (the source for every address, kind, cost and rule here), [RS wild encounter spec](rs-wild-encounter.md) and [its research](../research/rs-wild-encounter.md), [HGSS pathfinder spec](pathfinder-maps-flags-hms.md) (the flag-gated design this builds first), the HGSS guide page [Wild and chained encounters](../guide/04-hunts/01-wild-encounter.md), [feature workflow](feature-workflow.md), the decision [Hunts act as a human would](../decisions/global.md), AGENTS rule 16.
@@ -131,7 +131,7 @@ Until now one table has served Ruby and Sapphire, because the bot read RAM and b
 - `ShinyBotHunter/Data/RS/`: `maps.bin`, the side file, the lookup.
 - `ShinyBotHunter/Pathfinding/MapService.cs`, `PathfindingService.cs`, `Util/Constants.cs`: the second plane, the three kinds, flags and variables in the search, elevation, connections, the two warps. As built (#426), the search across maps is its own class, `Pathfinding/RouteSearch.cs`.
 - `ShinyBotHunter/BotEvents/NavigatorEvent.cs`: the walk by segments for RS, the nurse rule, the trainer stop; what is HGSS-only moves behind the profile. As built (#429, #447), RS has its own `BotEvents/RsNavigatorEvent.cs` beside the HGSS one, chosen by the profile's `CreateNavigatorEvent`; the trainer is read in `RsBattleEvent`.
-- `ShinyBotHunter/BotEvents/RsBattleEvent.cs`, `LevelUpFlow.cs`: FR-13 to FR-17. As built, `LevelUpFlow.cs` is not changed (the open question below).
+- `ShinyBotHunter/BotEvents/RsBattleEvent.cs`, `LevelUpFlow.cs`: FR-13 to FR-17. As built, `LevelUpFlow.cs` is not changed ("What diverged" 8).
 - `ShinyBotHunter/Service/Pointers/RsPointerService.cs`, `Games/Rs/RsProfile.cs`, `RsStateReader.cs`, `RsOverworldReader.cs`: the new reads, the per-game addresses, the capabilities.
 - `ShinyBotHunter/Service/ShinyAlertService.cs` (which `RsBattleEvent` already holds) or `DiscordBotService.cs`: the trainer ping.
 - `ShinyBotHunter/Service/BotService.cs`, `Games/GameCapabilities.cs`, `Games/GameProfile.cs`, `Games/EventRegistry.cs`, `Bot/BotFactory.cs`: FR-18a, FR-18b and FR-12's game code.
@@ -195,11 +195,99 @@ N1 and N3 can start at once. The wild-encounter feature this builds on is on `ma
 - Owner, 2026-11-15: all the HMs are in the data and the search now; the addresses that say what the party can use, and using an HM in the field, come later.
 - Spike: no special floors (ice, slides, currents, rails) in this feature.
 
+## As built
+
+Implemented on `feature/rs-navigation-and-training`, epic #424, 2026-11-17, in 24 PRs: N1 #437, N1b #441, N2 #444, N3a #436, N3b #438, N4a #449, N4b #450, N4c #469, N5 #439, T1r #445, T1a #446, T1b #448, T2 #459, T3a #458, T3b #465, Q1a #460, Q1b #461, Q1c #464, Q1d #462, Q1e #463, Q1f #466, Q1g #471, Q1h #470, D1 #472. The requirement rows above stand except where "What diverged" says otherwise; the changelog has each change as it was made.
+
+- `RsMapProcessor` (`Scripts/Maps/`) and the setup command `--generatemapdatars <pokerubyDir> <outputDir>`. `Data/RS`: `maps.bin` (394 maps, a kind plane and an elevation plane, 53 KB), `events.json.gz` (12 KB), `boulders.json` (60 on nine maps), `mapreverselookup.json`. `MAP_FlaggedNpc` 0x12 and `MAP_ScriptTrigger` 0x14 in `Constants`.
+- `MapService(directory, withElevationAndEvents)`: the elevation plane (`ElevationAt`, 0 for HGSS) and each map's `MapEvents` (objects, triggers, warps with their landing tile, connections, the Dive tile). `Capability.CanDive` is bit 0x80.
+- `Pathfinding/RouteSearch.cs`: Dijkstra tile by tile across maps over `MapService`, with HGSS's kinds and costs, the flags and variables, elevation, connections, warps and Dive. Its `Route` has the steps, one `M` macro per segment with `RunHold` joined, the cost and the live triggers crossed.
+- `RsPointerService.For(gameCode)`: the per-game part (`WaitForAorBPress`, `DeleteMoveYesNo`, `StopLearningYesNo`, `PartyMenuMainCallback2`) for `AXPE` and `AXVE`, null for any other code. `GameProfile.Addresses` takes the game code and the revision; `BotFactory` passes the ROM's game code (decision "Memory addresses are keyed by game code as well as revision"). The table gains the navigation and training addresses, each with its comment.
+- `RsOverworldReader.ReadScriptStateAsync`: the flags and the variables in one request on one frame. `RsStateReader` built with `trainingReads` classifies the move list, the level-up box, the move prompt, the forget-a-move screen, the evolution scene, the party screen and the field script's waits on the snapshot.
+- `BotEvents/RsNavigatorEvent.cs`: the walk by segments to the nearest Pokémon Center's counter tile and back to the start tile, a re-plan after a battle, the lock hand-off; the nurse by rule with the new `FieldAdvance` macro (and `SpinUp` to face her); the HP check after.
+- `RsBattleEvent`'s training: FIGHT and the move chosen by `SmogonDamageService.PickBestMove(state, 3)`, the level-up box, the move prompts in battle and in the evolution scene with the Discord question (`SendNewMoveDecisionAndWaitAsync`), the forget-a-move screen, the evolution scene, the switch (three tries), every confirmable press through `PressConfirmedAsync`. `Gen3PokemonParser` reads PP.
+- The trainer stop: `RsBattleEvent.ReadTrainerChallengeAsync` (one read), the sentence from the profile's maps, `ShinyAlertService.NotifyTrainerBattleAsync`, `GameState.StoppedForTrainer`; Spin, Run and the navigator hand a long lock over by `GameProfile.SeekLockHandOff` (4 s on RS); `OrchestratorEvent.ResumeAsync` waits for the free field after a trainer stop.
+- Capabilities: RS declares `HasTraining` and `HasOverworldNavigation`. Five new members (`HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees`, `HasPickup`, `HasWildRunChecks`) carry what the two gated before. `GameProfile` gains `SeekLockHandOff`, `CreateNavigatorEvent` and `TrainingRefusal` ("Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).", refused by `BotService` at Run).
+- `OrchestratorEvent`: the navigator made from the profile at the first navigation state, the existing heal trip and target-level decisions for RS, a `[Orchestrator] heal trip:` line naming why, and the walk back to the start tile before Complete.
+- QA: `rs-training.ts` (the training helpers and the party codec, with `rs-training-codec.spec.ts`), fourteen `rs-nav-*` and `rs-train-*` scenario files with their variants, additions to `rs-wild.ts` and `driver.ts`; `docs/specs/qa-automation.md`.
+- The guide: [Ruby and Sapphire wild encounters](../guide/04-hunts/08-rs-wild-encounter.md) gains Training and the trainer stop; [When something goes wrong](../guide/07-when-something-goes-wrong.md), [Discord](../guide/05-discord.md), [the dashboard](../guide/03-dashboard.md), the HGSS wild encounter page and the guide's index updated.
+- No ApiHawk change, no dashboard change, no package, no project, no interface.
+
+## What diverged
+
+1. **FR-10, the trainer stop** (owner, 2026-11-17: "Detect the speech"). The game sets no battle type until A is pressed at the trainer's intro speech, so a bot that presses nothing never sees 0x0008. The stop is read while the speech is up, in one read: the field locked, the battle bit clear, the script status not 2, `gTrainerBattleOpponent` (0x0202FF5E) not 0, and that trainer's flag (0x500 + id) clear. The navigator hands a lock over once the field has stayed locked on the same map and tile for `GameProfile.SeekLockHandOff` (4 s); Spin and Run hand it over once the field has been away from free for 4 s and is locked at that moment. The sentence names the map ("A trainer battle started on Route102."). Resume after a trainer stop waits for the free field and parks again if it does not come (10 s), with no second message. The 0x0008 check stays as a backstop. Known limit, not read on the emulator: after a lost trainer battle the id stays and the flag stays clear, so the next script met while seeking or walking reads as a challenge.
+2. **FR-12, addresses per game.** "Ruby four bytes lower" and "they also move between revisions" were wrong as rules. From pret's symbol tables (symbols branch, 78b1990), four members differ by game: `WaitForAorBPress` and `PartyMenuMainCallback2` (Ruby four bytes lower) and the two yes/no script addresses `DeleteMoveYesNo` and `StopLearningYesNo` (Ruby 0x70 higher), which are battle-side. Everything else used is the same on Ruby and Sapphire, and revision 1 (1.1) equals revision 2 (1.2) for every address used. So revision 1 is not refused; a train mode is refused only on an unknown game code, where the per-game part is null. The 1.1 values are decomp only.
+3. **FR-1 to FR-4, the data.** 394 maps, not 370: the Secret Base interiors are built, though nothing routes into them. Puddles and shallow water are free ground, not Surf. The side file is `events.json.gz` (NFR-1). A warp is written only where the tile's behaviour in the layout fires one (118 dropped as non-warp tiles, plus 41 to unknown maps, 7 off their own map, 2 landing off their destination), and it carries the tile the player ends on after the game's arrival step, not the warp index. Recorded gaps: the 42 warps a script opens with `setmetatile` (Petalburg Gym's rooms, the Trick House exits, the Elite Four doors, the Abandoned Ship, one Lilycove door) are plain ground in the data; Rusturf Tunnel's two rocks stay 0x10 after the story removes them; a warp's or trigger's elevation is not carried (they fire at any elevation). The nurse is not in the side file; the counter tile (7, 4) facing her at (7, 2) is the same in all 15 Pokémon Centers.
+4. **FR-7.** Tile-level Dijkstra across maps in `RouteSearch`; no graph and no `PathfindingService` for RS. Plan times on the committed data: 1 to 5 ms to a Pokémon Center, 9 ms for every reachable tile with an empty mask. With Strength the full-region search takes about 24 s, since every boulder arrangement is a state: a recorded limit for the field-move feature, not reached now because the navigator passes an empty mask. The search uses HGSS's waterfall rule, but on RS a waterfall tile is a forced current south: also for that feature.
+5. **FR-8.** `RunHold` is joined to every segment's own first step, not the first segment's only: B does not stay held across macros (observed 2026-11-17). New rule R3: a run that crosses a warp or connection onto a coordinate the player already shows is cut at the landing and waits on the other axis, or, when neither axis is new, ends on the warp tile's own coordinate, with the next run starting from the landing.
+6. **FR-9.** A segment ends when its macro has ended and the player is free on its tile (callback 1 reads 0 with the lock 0 for a few frames after a warp, which is not free). The last segment also needs the running state and the tile transition both 0. The first QA run of `rs-train-heal` found this: the hunt's first turn was sent as the walk's last step was finishing and became a step ("The player moved while turning."). Fixed in N4c (#469) and run five times since. The hand-off clock counts only a lock with the map and tile unchanged: a door locks for at most 70 frames, a wild battle's start 93, a trainer indefinitely.
+7. **FR-11, the nurse.** The Yes is pressed only with `Task_HandleYesNoInput` active and its counter (task `data[2]`) at 5: an A sent earlier is dropped (seen on both games; the spike's dropped press). The talk needs the tile transition 0 and the facing up. The last wait is the script's own `WaitForAorBPress` with status 0 and mode 2, after the Yes; the native alone is stale. Six presses, each sent once, by a rule loop, so a Pokérus page would be pressed as a page break.
+8. **FR-13 to FR-15.** HGSS's `LevelUpFlow` is not called on RS (it reads HGSS's battle parser and presses touch macros); the game's own state decides (`expGetterMonId`, `gMoveToLearn`), and the one decision reused is the Discord new-move question. A move prompt is recognised only when the tracker and the battle script pointer agree, because the tracker is stale after use. The forget-a-move screen takes a press only with its input task running and the palette fade off; the cursor cannot gate input. Every press with a confirming value goes through `PressConfirmedAsync`: once, and once more only when the snapshot never moved within the repair wait (1 s). `Gen3PokemonParser` now sets PP (it never did); the damage picker takes the generation (3 for RS).
+9. **FR-16.** B is pressed in the evolution scene only as the No at its "Delete a move?". The scene's text waits are the battle window at a button wait; its first text does not wait.
+10. **FR-17.** The party list takes keys only once callback 2 is `CB2_PartyMenuMain` and the fade is off (the task alone is up four or five frames too early); SHIFT only once the popup task shows. Nothing is pressed and no party record is read from SHIFT to the next action menu (13.3 s; the two party records are swapped in memory for about 22 frames). The switch is read at that menu from `gBattlerPartyIndexes`.
+11. **FR-18a.** Five capability members (`HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees`, `HasPickup`, `HasWildRunChecks`) carry what the two capabilities used to gate; the "no training" greying and its sentences are deleted. A finished RS hunt walks back to its start tile before Complete, as HGSS does, a flee-only hunt included (Spin: no walk; Run: back along the line).
+12. **FR-18b.** No Gen 3 battle parser: the party record carries HP and PP every turn (observed). The constructor's rules are narrowed to match, and a navigator part (`CreateNavigatorEvent`) is on the profile.
+13. **QA.** States are reached by RAM writes; the second party member is a copy of the lead built in RAM, not caught. The Discord new-move question is answered by the operator's click: the QA backend is logged in, so every prompt is posted, and a bot cannot click its own buttons. `rs-nav-trainer` has no Spin variant (none of the trainer's sight tiles is grass), and its "walk toward Petalburg" is the walk back after the win. `rs-train-switch-battler-spent`'s "fainted in battle" asserts the bot's stale stop at "Use next POKéMON?", the default while the owner's question is open (one constant, `FAINTED_END`), not the flee and heal its row describes.
+14. **The task split.** The suggested nine tasks became 24: N1b (warp data), N3a and N3b, N4a to N4c, N5 (the trainer stop, split from N4 so it did not share a file with T1), T1r, T1a and T1b, T3a and T3b, and Q1a to Q1h were split out or found by planners, reviews and the first QA runs. Five emulator research rounds (the trainer speech, training R1 to R8, the navigator W1 to W9 and N1 to N6, the switch S0 to S11) ran before the plans that depended on them were approved; each is a section of the research doc.
+15. **Limits recorded, not fixed.** One frame after arriving by stairs reads free with both movement bytes 0 while a scripted step runs (harmless unless a route ends on a stair landing's walk-off tile). "Use next POKéMON?" is not recognised and ends in the 30 s stale stop. Log lines count slots and moves from 0 while the dashboard counts from 1. `RsBattleEventTests` takes about 85 s (a fixed poll interval over scripted battles).
+
+## Evidence
+
+Emulator runs on the dev PC, QA BizHawk, English Sapphire 1.2 (`SA-Wild`) unless marked Ruby 1.2 (`RU-Wild`), 2026-11-17. Run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/` and are not committed. The bot code of the runs marked (a) is 5e5f361, the switch-on, before the arrival fix; those marked (b) are on 486bbaa or later, with N4c (the later commits are QA and docs only). A run listed as "again" was made without its folder name being recorded here.
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `rs-train` | `20261117-100543` (a), `20261117-110828` (b) | passed: one battle fought in 8 presses, one level-up box, Lv 8 to 9, Complete |
+| `rs-train-double-levelup` plain | `20261117-100853` (a) | passed |
+| `rs-train-evolve` free | `20261117-101002` (a) | passed: Marshtomp, Mud Shot into the free slot |
+| `rs-train-two-levelup` plain | `20261117-101133` (a), again from the QA-fixes branch (b) | passed |
+| `rs-train-switch` | `20261117-101257` (a), again (b) with the per-battle experience check | passed: three battles, three switches |
+| `rs-train-switch` on Ruby | `20261117-112508` (b) | passed |
+| `rs-train-switch-levelup` one, two | `20261117-101527`, `20261117-101706` (a); one again (b) | passed |
+| `rs-train-switch-evolve` | `20261117-101819` (a), again (b) | passed |
+| `rs-train-switch-target` | `20261117-102008` (a), again (b) | passed |
+| `rs-train-switch-battler-spent` hp, pp, fainted | `20261117-102118`, `20261117-102231`, `20261117-102355` (a); hp again (b) | passed (fainted: the default stop, "What diverged" 13) |
+| `rs-nav-heal-return` route101 | `20261117-100659` (a), again from the QA-fixes branch (b), `20261117-112216` (b) | passed three times: the five macros in, the nurse in six presses (589 frames), HP full, five segments back with the exit run `M.Down.19`, the next battle fought |
+| `rs-nav-heal-return` house | `20261117-102531` (a) failed in the scenario: Run clicked during the game's locked step after a door, fixed in #470; then passed (b) | the walk back goes through the house door with the cut run that waits on the other axis (R3) |
+| `rs-train-heal` | `20261117-102640` (a) failed on a bot bug ("The player moved while turning. At (14, 3), started on (14, 4).", fixed in #469); then `20261117-111237`, `20261117-111405`, `20261117-111533`, `20261117-111704`, `20261117-111844` (b) | five passes in a row after the fix; the last segment home takes 30 to 33 frames where it took 24 and 26 |
+| `rs-train-heal` on Ruby | `20261117-112028` (b) | passed: the nurse's last press on Ruby's own `WaitForAorBPress`, 0x080670E1 |
+| `rs-nav-trainer` run | `20261117-103758` (a) | passed: the stop on Route102 (33, 15), one Discord message, Resume during the speech parks again, the scenario wins in 18 presses, Resume carries on |
+| `rs-nav-trainer` walk | `20261117-104159` (a), again (b) | passed: "field locked 236 frames on Route102 (33, 15) with no battle; handing the lock to the battle event"; after the win the navigator plans again (172 flags set against 171) and the walk back crosses his sight without a stop |
+
+Regression, the same day:
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `rs-wild-sapphire` | `20261117-100239` (a) | passed, with the new greyed choices |
+| `rs-wild-refusals`, `rs-wild-ruby`, `rs-wild-run`, `rs-wild-failed-escape`, `rs-wild-catch-resume`, `rs-wild-catch-box`, `rs-wild-shiny` | `20261117-112744`, `20261117-112822`, `20261117-113011`, `20261117-113319`, `20261117-113446`, `20261117-113649`, `20261117-113903` (b) | passed |
+| `rs-wild-speed` | `20261117-120326` (b), twenty minutes a mode, no recorder | passed: Spin 270.7 an hour over 89, Run 270.3 over 89; roll to free field mean 685 frames; a fled battle mean 592 frames |
+| `hgss-route33`, `hgss-pickup` | `20261117-114023`, `20261117-114232` (b) | passed |
+
+Earlier smokes on the feature branch, the flee hunt after each event task: `rs-wild-sapphire` `20261117-062646`, `20261117-074726`, `20261117-082101`, `20261117-093321`; `rs-wild-run` `20261117-063002`; `rs-wild-failed-escape` `20261117-075023`; `hgss-route33` `20261117-091011`; `hgss-pickup` `20261117-091226`: all passed.
+
+Not run:
+
+- Every variant that asks Discord. Each needs the operator's click on the new-move question (14 prompts, 28 clicks, plus 2 for the Ruby runs), and a bot cannot click its own buttons: `rs-train-learn` slot1 to slot4 and refuse; `rs-train-double-levelup` learn; `rs-train-evolve` keep and learn; `rs-train-switch-learn` replace and refuse; `rs-train-two-levelup` learn-free and learn-both; the Ruby runs of `rs-train-learn`. So the in-battle and in-scene move prompts, the forget-a-move screen and "Stop learning?" have NOT run under the bot on the emulator. They rest on unit tests, review and the research readings R1 to R8.
+- `hgss-route33-train`, `hgss-navigate-heal-return`, `hgss-heal-variants`: their saves (`Pokemon HeartGold2`, `6`, `7`, `8`) are not on the dev PC. `hgss-pickup` covers the HGSS train path; HGSS's navigator, now created through the profile, has not walked to a Pokémon Center on the emulator since.
+- Versions 1.0 and 1.1; a Pokémon Center other than Oldale's; the nurse with more than two Pokémon; the two warp forms of R3 other than the house door (a ladder landing on the same tile numbers; an escalator); any HM; a lost trainer battle; a caught Pokémon as the battler; a party of more than two in a switch.
+
+What the emulator found: two failures in 40-odd runs. One was in a scenario (`rs-nav-heal-return` house clicked Run during the game's locked step after a door; #470), one in the bot (the walk's last step still ending when the hunt's first turn was sent; #469). Both were fixed and run again, five times in a row for the bot's. Everything else passed at its first run.
+
 ## Open questions
 
-- HGSS graph or tile-level search across maps (FR-7). Not blocking; the planner measures. Answered (N2, #426): tile-level, `RouteSearch` over `MapService`, with no graph for RS.
-- Answered (T1 plan, #430, read from the code): HGSS's `LevelUpFlow` cannot be called with Gen 3 data, and nothing moves behind the profile. Its reads need a battle parser, its presses are HGSS touch macros, and its decisions use learnsets and evolutions keyed by the HGSS flavor only. On RS the game's own state decides; the one part reused is the Discord question it asks, `SendNewMoveDecisionAndWaitAsync`. The damage picker can be called with a state built from two Gen 3 party records once the parser reads PP and generation 3 is passed (T1a).
-- Answered for T3 (T1 plan, #430): no Gen 3 battle parser over `gBattleMons`. The party record carries HP and PP live through the battle (research, "Training: the readings behind …" R8), so the `HasTraining` rule is narrowed to the party record (FR-18b).
+Asked of the owner on 2026-11-17, not answered. None blocks the merge; each has a default as built.
+
+1. How QA answers the Discord new-move question. As built: the operator's clicks. Another way needs new bot code.
+2. A battler that faints in battle in Switch training. As built, and as FR-18 says: Waiting, through the 30 s stale stop at "Use next POKéMON?". The QA row says flee and heal. `rs-train-switch-battler-spent` asserts the stop, in one constant.
+3. A finished flee-only RS hunt now walks back to its start tile before Complete, HGSS's rule ("What diverged" 11). Told on 2026-11-17, with the offer to keep it completing in place through a profile setting.
+
+Follow-ups proposed, none done:
+
+- A poll-interval parameter on `GameStateWait`, for test time (`RsBattleEventTests` about 85 s).
+- The wording of stops for the operator: 0-based slots, the nurse's internals, macro names, "The first Pokémon fainted.".
+- The roughly 60 "QA: none yet" notes in `RsPointerService`, against today's runs.
+- `MapLookup` defined twice; `Startup.cs` building the Discord and damage services eagerly; the dashboard test fixture using two deleted sentences.
+- The four HGSS QA saves.
 
 ## Checked against main
 
@@ -218,6 +306,7 @@ N1 and N3 can start at once. The wild-encounter feature this builds on is on `ma
 
 ## Changelog
 
+- 2026-11-17: closed out (D1, #434). Status Implemented; "As built", "What diverged" and "Evidence" added; the open questions replaced by the three asked of the owner, with the defaults as built, and the follow-ups.
 - 2026-11-17: false statements outside the QA section corrected to the merged code (D1, #434): "Training by rule" lists six waits, not five; FR-13 gains the one-re-press repair rule as built; FR-3's warps carry the landing tile, in `events.json.gz`; FR-4a's water leaves out puddles and shallow water; FR-11's counter tile is a constant, the nurse not being in the side file; "Where it lives" names `RouteSearch.cs` and `RsNavigatorEvent.cs` and leaves `LevelUpFlow.cs` unchanged; FR-7's open question answered.
 - 2026-11-17: the QA table's rows corrected to the merged scenarios: `rs-nav-trainer`'s stop tile and flow (no Spin half; the walk toward Petalburg is the walk back), Marshtomp's national number 259 in the log, the free-slot scene's text waits, and the battler built in RAM (Q1g, #457).
 - 2026-11-17: FR-9's arrival waits for the last step to end (running state and tile transition 0; the running state added on review of PR #469, since a step's first frame from rest reads transition 0): on the first QA run of `rs-train-heal` the Spin's first turn, sent as the walk's last step was ending, walked the player one tile off the start (research, "The navigator: the walk and the nurse, read frame by frame"; N4c, #467).
