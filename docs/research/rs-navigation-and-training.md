@@ -628,6 +628,128 @@ After one Tackle, at the next action menu, in the party record (decrypted) and i
 
 Not committed, kept in the orchestrator's session: the request and its drivers (Python, over ApiHawk's chain read), the change log (2,571 lines: every change of the request through both games, and every poll through the forget screens) and screenshots. Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
 
+## A battler faints: the readings
+
+Added 2026-11-17 (#475), from a fifth spike on the QA emulator: the active Pokémon faints in a wild battle with another alive. These are the readings the owner's rule for a fainted battler is built on (the spec's FR-18 and its open question 2, answered on 2026-11-17). The QA install's path is left out, as in the rest of this doc.
+
+Date: 2026-11-17. Emulator: the QA install (sound off), `SA-Wild` (Sapphire 1.2, six battles) then `RU-Wild` (Ruby 1.2, two battles), one at a time, each on the `qa-route101` save in the Route 101 grass, ports 20000/20001. Every reading is one cmd 0x05 request of 16 blocks (one frame), plus the party cursor read while a party task is up; the snapshot was logged on every change. Everything below is observed unless it says otherwise. No rule is proposed here.
+
+**The party** was built in party RAM in the free field: the lead's 100 bytes copied to slots 1, 2 and 3, the count written 4, the Speed stat (record + 0x5E) written 2, 3 and 50 for slots 1 to 3 (the lead's is 12), and slot 3's HP written 0 so that the fastest member is fainted. **Faints were forced** by writing the active Pokémon's battle HP (`gBattleMons[0].hp`, `0x02024AA8`) to 1 at the action menu and using Growl until the wild Pokémon hit it. **A failed escape was forced** by writing the wild Pokémon's battle Speed (`gBattleMons[1].speed`, `0x02024ADE`) to 999 at the first action menu; written back to 1 to let a Run succeed. Party HP was written back to full between battles.
+
+### The request
+
+`gMain` (callbacks, the frame counter, held and new keys), the battle bit, the field lock, the player's controller function `0x03004330`, the battle window state `0x03004226`, the action cursor `0x02024E60`, `gBattleCommunication` with `gBattleOutcome` (`0x02024D1E`, 9), `gBattlerPartyIndexes` to `gBattlescriptCurrInstr` (`0x02024A6A`, 0x1AA), `gTasks`, `gPaletteFade`, `0x0202E8F4` (3), `gBattlePartyCurrentOrder` and the party menu's case byte (`0x02038470`, 4), `gMenu`, the party count and four records (`0x03004350`, 0x1A0), `gBattleMons[0..1]` (`0x02024A80`, 0xB0), `runTries` (`0x02016078`, 1).
+
+### F1: the state at "Use next POKéMON?"
+
+| What | Address | At the prompt | Seen |
+|---|---|---|---|
+| Script pointer | `0x02024C10` | Sapphire **`0x081D8C56`**, Ruby **`0x081D8CC6`** (+ 0x70) | Sapphire 6 times, Ruby 2 |
+| Yes/no cursor | `gBattleCommunication[1]` `0x02024D1F` | 0 (Yes) | 8 of 8 |
+| `gBattleCommunication[0]` | `0x02024D1E` | 1 | 8 of 8 |
+| Battle window | `0x03004226` | 0 | 8 of 8 |
+| Controller | `0x03004330` | `PlayerBufferRunCommand` `0x0802C015` | 8 of 8 |
+| Callback 2 | `0x03001774` | the battle's `0x0800F809` | 8 of 8 |
+| The active Pokémon's battle HP | `0x02024AA8` | 0; the party record's HP is 0 too | 8 of 8 |
+| Outcome, `runTries` | `0x02024D26`, `0x02016078` | 0; the tries so far in this battle | |
+
+Before it, "… fainted!" waits at window 8 and takes one A. The prompt then sits unchanged for as long as it is left (watched for 1.5 to 60 s).
+
+What sets it apart from the two yes/nos the training rule answers: the script pointer. Those are `0x081D8ED2` / `0x081D8EE1` (Ruby `0x081D8F42` / `0x081D8F51`). The move-prompt tracker is not reliable here: it read a stale 3 at this prompt in the switch round. The window state is 0 at all three.
+
+### F2: answering No
+
+| Way | Press | Byte before → after | Frames | Seen |
+|---|---|---|---|---|
+| B alone | B | cursor `0x02024D1F` 0 → 1 **and** the script pointer leaves `0x081D8C56` (Ruby `0x081D8CC6`) | on the frame B is new (pointer `…C57` with B in `newKeys`), at most 6 frames after the read before the press | 6 (Sapphire 4, Ruby 2) |
+| Down, then A | Down | cursor 0 → 1, the pointer unchanged | 5 to 7 frames after the read before | 2 |
+| | A | the pointer leaves `0x081D8C56` | within 1 to 3 reads | 2 |
+
+B alone is the same as No (the outcome was the same every time: the escape roll). It is one press, confirmed by the pointer leaving the prompt's value, with the cursor byte reading 1 as a second witness. Down then A is two presses with a byte each.
+
+### F3: the flee succeeds
+
+| Frame from the answer | What |
+|---|---|
+| 1 to 2 | the pointer `0x081D8C62`, then `gBattleOutcome` 0 → **4** and `runTries` + 1 |
+| about 5 | "Got away safely!" prints (pointer `0x081D8DD4`, Ruby `0x081D8E44`) |
+| about 22 | the window at **8**: one A |
+| about 130 | the battle bit clears |
+| about 165 | the field free, the outcome still 4 |
+
+One press. Seen 3 times at the prompt (Sapphire 2, Ruby 1). The fainted Pokémon stays at 0 HP in its slot; in the field the script pointer, the cursor byte, the order bytes and `0x02024A6A` are all stale.
+
+### F4: the flee fails
+
+Forced with the wild Pokémon's Speed at 999 (the roll is `speed × 128 / foe speed + 30 × tries` against a random byte, `src/battle_main.c`).
+
+| Step | What was read | Seen |
+|---|---|---|
+| The answer | pointer `0x081D8C62`, then `0x081D8C67` with `runTries` + 1, the outcome stays 0 | 5 (Sapphire 4, Ruby 1) |
+| "Can't escape!" | prints at pointer `0x081D8C6A` (`BattleScript_FaintedMonTryChooseAnother`; Ruby `0x081D8CDA`) and **waits at window 8: one A** | 5 |
+| The party menu opens | controller `OpenPartyMenuToChooseMon` with the fade on; pointer `0x081D8C70` (Ruby `0x081D8CE0`) and it stays there while the menu is up | 5 |
+| The menu | the same task and callbacks as the voluntary switch: task `HandleBattlePartyMenu` `0x08095139`, callback 2 `CB2_InitPartyMenu` (fade off) then `CB2_PartyMenuMain` (fade on, then off about 21 frames later), controller `WaitForMonSelection`. It takes keys about 50 frames after the A at "Can't escape!" | 5 |
+| What marks it as forced | **`0x02038473` reads 1** (0 in the voluntary menu), from the first read with the task | 5, against 0 in the one voluntary menu of this round |
+| The cursor | the party cursor read (sprite `data[0]`) starts at **0**, the fainted Pokémon's row | 5 |
+| B on the list | refused: B seen in `newKeys`, nothing in the snapshot changes in the next 60 reads | 2 (Sapphire 1, Ruby 1) |
+
+### F5: sending out a member
+
+| Press | Gate read | Byte before → after | Frames | Seen |
+|---|---|---|---|---|
+| Down (once per row) | task `HandleBattlePartyMenu`, callback 2 `CB2_PartyMenuMain`, fade off | the party cursor + 1 | 2 to 4 after the read before | 9 presses |
+| A on the member | the same, the cursor on the row | the task function → `Task_HandlePopupMenuInput` `0x08095429`; `gMenu.cursorPos` 0 | 4 to 6 | 5 forced, 1 voluntary |
+| A on the first item (it reads **SEND OUT**; SUMMARY and CANCEL below) | the popup function | the function → `Task_809527C` / `Task_80952B4`; `0x0202E8F4` 1; **`0x0202E8F5` = the party slot chosen**; the order bytes rewritten | not timed (a screenshot was taken between the read and the press) | 5 forced |
+| (nothing) | | `0x02024A6A` → the new slot, 102 to 106 frames after the popup read, pointer `0x081D8D12` (Ruby `0x081D8D82`) | | 5 |
+| (nothing) | | the action menu: controller `HandleInputChooseAction` `0x0802C099`, the action cursor 0, 292 to 295 frames (4.9 s) after the popup read | | 5 |
+
+- "Go! …" prints and clears by itself: no press between SEND OUT and the action menu.
+- **The wild Pokémon gets no free attack**: the new Pokémon's battle HP was full at the menu all five times, and the menu comes 4.9 s after SEND OUT against 9 to 13 s after a voluntary switch.
+- **If the sent-out member faints, the same question comes again** with the same bytes (pointer `0x081D8C56`, cursor 0), `0x02024A6A` naming the new fainted slot, `runTries` carried over (1). B again, "Can't escape!" again, the forced menu again with the cursor at 0. Seen once.
+- A fainted row was never chosen, so the refusal message in the forced menu was not read here.
+
+### F6: Run from the action menu after the send-out
+
+The gate is the flee hunt's: the controller `HandleInputChooseAction`; Right, Down confirmed by the action cursor `0x02024E60` reading 3; A confirmed by the controller leaving `HandleInputChooseAction`, 1 to 3 frames after the read before the press (10 of 10).
+
+| | Failed | Succeeded |
+|---|---|---|
+| `runTries` `0x02016078` | + 1, 4 to 6 frames after the A | + 1 |
+| `gBattleOutcome` `0x02024D26` | stays 0 | **4**, 6 or 7 frames after the A |
+| Text | "Can't escape!" at pointer `0x081D8DE8` (`BattleScript_PrintFailedToRunString + 5`; Ruby `0x081D8E58`), **waits at 8: one A** | "Got away safely!" at `0x081D8DD4` (Ruby `0x081D8E44`), waits at 8: one A |
+| Then | the wild Pokémon's turn (its texts go by themselves), and the action menu again with the cursor **still 3**, 232 or 536 frames after the A (the length of the wild Pokémon's move) | the field free 168 frames after the A |
+| Seen | 6 (Sapphire 4, Ruby 2) | 4 (Sapphire 3, Ruby 1) |
+
+So a Run that was not registered leaves the controller on `HandleInputChooseAction` with `runTries` unchanged; a Run that failed moves `runTries` up by one, shows "Can't escape!" and comes back to the menu with the outcome 0; a Run that worked sets the outcome 4. With the wild Pokémon's Speed at 999 the third and the second try still got away in two battles: 30 is added per try.
+
+### F7: where "fastest alive" is read, and the menu's order
+
+- HP is the u16 at record + 0x56 and Speed the u16 at record + 0x5E of each 100-byte record from `gPlayerParty` `0x03004360`. `Gen3PokemonParser` already reads both (`HpOffset` 0x56, `SpeedOffset` 0x5E): yes. The values written there were the ones the battle used (battle Speed 3 for slot 2, 2 for slot 1, 12 for the lead).
+- **The menu's rows are not `gPlayerParty` order after a switch or a send-out.** Row p shows party slot `gBattlePartyCurrentOrder[p]`, packed a nibble per row from `0x02038470`: 0x01, 0x23 is the identity; after slot 2 came in for slot 0 it read 0x21, 0x03 (rows: slot 2, slot 1, slot 0, slot 3). The active Pokémon is always row 0.
+- Proved: after a voluntary switch to slot 2 and its faint, the cursor on **row 2** with the order 0x21, 0x03 sent out **party slot 0** (`0x0202E8F5` 0, then `0x02024A6A` 0), and the order went back to 0x01, 0x23. With the identity order, row 2 sent out slot 2 (3 times) and after 0x21, 0x03 row 1 sent out slot 1 (once).
+- The order bytes are valid from the first read with the party task; in the field after the battle they are stale and they are reset at the next battle's start.
+
+### F8: the last alive faints
+
+Sapphire, once, slots 1 to 3 at 0 HP: "… fainted!" at window 8 (one A); the outcome `0x02024D26` 0 → **2**; "… is out of usable POKéMON!" at window 8 (pointer `0x081D8DA0`, one A); "… whited out!" at window **5** (pointer `0x081D8DA6`, one A); the fade; the battle bit clears with callback 2 `CB2_WhiteOut` `0x0805448D` for about 120 frames; then the field, free, on Oldale Town (6, 17), outside the Pokémon Center door, with every party member at full HP (the fainted ones too), no script running, the field message window idle. Money 3,300 → 1,650. About 400 frames (6.7 s) from the faint text to the free field. Window state 5 was not seen anywhere else in these rounds.
+
+### F9: with and without a switch earlier
+
+The same question with the same bytes in both: lead faints with no switch earlier (Sapphire 4 battles, Ruby 2), a Pokémon sent out by a voluntary switch faints (once here, once in the switch round), a Pokémon sent out by the forced menu faints (once). The only difference is `0x02024A6A` (the fainted slot) and the order bytes.
+
+### Not read
+
+- Yes at the prompt (it goes to `BattleScript_FaintedMonTryChooseAnother` by the script; not pressed).
+- A fainted row chosen in the forced menu; CANCEL in the popup; the SEND OUT press timed to the frame.
+- A trainer battle (the script skips the question there), a double battle, a wild Pokémon that traps.
+- F8 on Ruby, and from a save whose last heal was somewhere else.
+- More than four in the party; a real caught Pokémon (the members are copies of the lead).
+- Versions 1.0 and 1.1.
+
+### Evidence
+
+Not committed. In the session scratch folder `rsnav/`: `t5.py` (the request and the drivers; it builds on `t4.py`), `log5.txt` (2,549 lines), `shots5/` (the prompt, the cursor on No, the forced menu, the SEND OUT popup, the whiteout's end). Both SaveRAM files and their `.bak` were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
+
 ## Not proved
 
 - Any HM on the emulator, and the field script each one runs: the save has no HMs or badges. Waterfall, Strength and Dive routes even offline. Ledges, ice and the other special floors on the emulator. Currents are written as plain surf.

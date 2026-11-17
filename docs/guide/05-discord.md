@@ -7,10 +7,11 @@ Part of the [ShinyBotHunter guide](README.md)
 
 Discord is optional. The bot hunts the same way without it; see "How do I run without Discord?" below.
 
-When Discord is set up, the bot posts three kinds of message:
+When Discord is set up, the bot posts four kinds of message:
 
 - A **shiny alert**, in one channel, mentioning a role, when a hunt finds its shiny.
 - A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on <map>.`, with the game's name for the map, for example `Route102`. See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
+- A **run-failed stop**, in the same channel and mentioning the same role, when a Pokémon faints while training in Ruby or Sapphire and the bot cannot run from the battle: the role mention and `A Pokémon fainted, and running from the battle failed after the fastest Pokémon left was sent out.` See [When a Pokémon faints](04-hunts/08-rs-wild-encounter.md#when-a-pokémon-faints).
 - A **new-move question**, in a second channel, when a Pokémon in training wants to learn a fifth move. You answer it with buttons.
 
 The two channels are separate settings. You can use one channel for both.
@@ -46,7 +47,7 @@ The bot asks Discord for every intent when it connects, so all three switches mu
 
 In your server, make:
 
-1. A text channel for shiny alerts (Ruby and Sapphire trainer stops go there too).
+1. A text channel for shiny alerts (Ruby and Sapphire trainer and run-failed stops go there too).
 2. A text channel for new-move questions, or use the shiny-alert channel for both.
 3. A role for the bot to mention in each shiny alert. Give it to everyone who wants to be pinged. The mention is a role mention, so it has to be a role, not a person.
 
@@ -128,7 +129,7 @@ When the backend starts, its window shows `Discord bot token is not configured. 
 From then on:
 
 - Shiny alerts are dropped. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>>`, where the number is the id of the role to mention. The line does not name the Pokémon.
-- Trainer stops are dropped too; the bot still stops and waits. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>> A trainer battle started on <map>.`
+- Trainer stops and run-failed stops are dropped too; the bot still stops and waits. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>> A trainer battle started on <map>.`, or the same with the run-failed sentence.
 - New-move questions are answered **Do Not Learn** for you. The backend's window shows `Discord is not logged in; <name> will not learn <move>.`, and the bot walks the game through declining the move.
 
 ## What if Discord does not work?
