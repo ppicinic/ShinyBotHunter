@@ -228,7 +228,7 @@ Implemented on `feature/rs-navigation-and-training`, epic #424, 2026-11-17, in 2
 10. **FR-17.** The party list takes keys only once callback 2 is `CB2_PartyMenuMain` and the fade is off (the task alone is up four or five frames too early); SHIFT only once the popup task shows. Nothing is pressed and no party record is read from SHIFT to the next action menu (13.3 s; the two party records are swapped in memory for about 22 frames). The switch is read at that menu from `gBattlerPartyIndexes`.
 11. **FR-18a.** Five capability members (`HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees`, `HasPickup`, `HasWildRunChecks`) carry what the two capabilities used to gate; the "no training" greying and its sentences are deleted. A finished RS hunt walks back to its start tile before Complete, as HGSS does, a flee-only hunt included (Spin: no walk; Run: back along the line).
 12. **FR-18b.** No Gen 3 battle parser: the party record carries HP and PP every turn (observed). The constructor's rules are narrowed to match, and a navigator part (`CreateNavigatorEvent`) is on the profile.
-13. **QA.** States are reached by RAM writes; the second party member is a copy of the lead built in RAM, not caught. The Discord new-move question is answered by the operator's click: the QA backend is logged in, so every prompt is posted, and a bot cannot click its own buttons. `rs-nav-trainer` has no Spin variant (none of the trainer's sight tiles is grass), and its "walk toward Petalburg" is the walk back after the win. `rs-train-switch-battler-spent`'s "fainted in battle" asserted the bot's stale stop at "Use next POKéMON?" while the owner's question was open; since #475 `fainted` asserts the flee and the heal its row describes, and `fainted-run` and `fainted-stop` force the flee to fail by the wild Pokémon's battle Speed, as the readings did. `fainted-stop` needs the Run after the send-out to fail, which about 1 in 8 runs it does not (30 is added to the escape roll per try); such a run is run again.
+13. **QA.** States are reached by RAM writes; the second party member is a copy of the lead built in RAM, not caught. The Discord new-move question is answered by a click in Discord (the operator's, or the orchestrator's in a browser signed in as the owner): the QA backend is logged in, so every prompt is posted, and a bot cannot click its own buttons. `rs-nav-trainer` has no Spin variant (none of the trainer's sight tiles is grass), and its "walk toward Petalburg" is the walk back after the win. `rs-train-switch-battler-spent`'s "fainted in battle" asserted the bot's stale stop at "Use next POKéMON?" while the owner's question was open; since #475 `fainted` asserts the flee and the heal its row describes, and `fainted-run` and `fainted-stop` force the flee to fail by the wild Pokémon's battle Speed, as the readings did. `fainted-stop` needs the Run after the send-out to fail, which about 1 in 8 runs it does not (30 is added to the escape roll per try); such a run is run again.
 14. **The task split.** The suggested nine tasks became 24: N1b (warp data), N3a and N3b, N4a to N4c, N5 (the trainer stop, split from N4 so it did not share a file with T1), T1r, T1a and T1b, T3a and T3b, and Q1a to Q1h were split out or found by planners, reviews and the first QA runs. Five emulator research rounds (the trainer speech, training R1 to R8, the navigator W1 to W9 and N1 to N6, the switch S0 to S11) ran before the plans that depended on them were approved; each is a section of the research doc.
 15. **Limits recorded, not fixed.** One frame after arriving by stairs reads free with both movement bytes 0 while a scripted step runs (harmless unless a route ends on a stair landing's walk-off tile). In the flee-only hunt (Flee mode) "Use next POKéMON?" is not recognised and ends in the 30 s stale stop; training answers it (#475, FR-18). Log lines count slots and moves from 0 while the dashboard counts from 1. `RsBattleEventTests` takes about 85 s (a fixed poll interval over scripted battles).
 
@@ -266,9 +266,25 @@ Regression, the same day:
 
 Earlier smokes on the feature branch, the flee hunt after each event task: `rs-wild-sapphire` `20261117-062646`, `20261117-074726`, `20261117-082101`, `20261117-093321`; `rs-wild-run` `20261117-063002`; `rs-wild-failed-escape` `20261117-075023`; `hgss-route33` `20261117-091011`; `hgss-pickup` `20261117-091226`: all passed.
 
+After the owner's answers of 2026-11-17 (the fainted battler, #475; the Discord question answered by the orchestrator clicking in Discord), the same day:
+
+| Scenario | Run folder | Result |
+|---|---|---|
+| `rs-train-switch-battler-spent` fainted, fainted-run, fainted-stop (first version of #475) | `20261117-151130`, `20261117-151342`, `20261117-151443`; Ruby `20261117-151636`, `20261117-151947`, `20261117-152121` | fainted passed on both games; fainted-run and fainted-stop failed on both: the B at "Use next POKéMON?" sent a second time in 4 of 6 runs, the Pokémon that had just fainted chosen as the fastest alive, and one crash with nobody found alive. Causes read in round six of the research; fixed in the same PR |
+| `rs-train-switch-battler-spent` fainted, fainted-run, fainted-stop (after the fix) | `20261117-160256`, `20261117-160450`, `20261117-161302`, `20261117-161503`; Ruby `20261117-160815`, `20261117-161007`, `20261117-161153` | passed: the flee by one B, the rows line with the fainted battler on row 0 and the trainee sent out from row 1, the one Run, the heal trip; fainted-stop ends in Waiting with one Discord message. One fainted-stop run (`20261117-160703`) got away at the Run, the flake the variant names, and passed when run again |
+| `rs-train-switch-battler-spent` hp, pp; `rs-train-switch`; `rs-train`; `rs-train-evolve` free; `rs-train-heal`; `rs-wild-sapphire` (after the fix) | `20261117-161723`, `20261117-161836`, `20261117-162001`, `20261117-162254`, `20261117-162415`, `20261117-162541`, `20261117-162707` | passed |
+| `rs-train-learn` slot1, slot2, slot3, slot4, refuse | `20261117-163033`, `20261117-163218`, `20261117-163413`, `20261117-163558`, `20261117-163752` | passed: Bide learned over each slot through the forget-a-move screen; refused through "Stop learning?" |
+| `rs-train-double-levelup` learn | `20261117-163940` | passed: two prompts in one battle, Water Gun over Growl, then Bide refused |
+| `rs-train-evolve` keep, learn | `20261117-164215`, `20261117-164418` | passed: the scene's Mud Shot prompt refused, and learned over Growl |
+| `rs-train-switch-learn` replace, refuse | `20261117-164636`, `20261117-164854` | passed: the benched trainee's prompt in a switch battle |
+| `rs-train-two-levelup` learn-free, learn-both | `20261117-165111`, `20261117-165341` | passed: a move into a free slot with text presses only beside a prompt; two prompts for two Pokémon of one name |
+| `rs-train-learn` slot1, refuse on Ruby | `20261117-165628`, `20261117-165816` | passed: Ruby's own `DeleteMoveYesNo` and `StopLearningYesNo` |
+
+The Discord answers were clicked by the orchestrator in a browser signed in as the owner, on the button the scenario's `OPERATOR:` line named: 16 prompts, 32 clicks, none wrong. Side-by-side videos of the day's runs (dashboard left, emulator right; a failed run has the emulator alone) are in `qa-runs/complete-for-review/` on the dev PC, with an `index.txt`; not committed.
+
+
 Not run:
 
-- Every variant that asks Discord. Each needs the operator's click on the new-move question (14 prompts, 28 clicks, plus 2 for the Ruby runs), and a bot cannot click its own buttons: `rs-train-learn` slot1 to slot4 and refuse; `rs-train-double-levelup` learn; `rs-train-evolve` keep and learn; `rs-train-switch-learn` replace and refuse; `rs-train-two-levelup` learn-free and learn-both; the Ruby runs of `rs-train-learn`. So the in-battle and in-scene move prompts, the forget-a-move screen and "Stop learning?" have NOT run under the bot on the emulator. They rest on unit tests, review and the research readings R1 to R8.
 - `hgss-route33-train`, `hgss-navigate-heal-return`, `hgss-heal-variants`: their saves (`Pokemon HeartGold2`, `6`, `7`, `8`) are not on the dev PC. `hgss-pickup` covers the HGSS train path; HGSS's navigator, now created through the profile, has not walked to a Pokémon Center on the emulator since.
 - Versions 1.0 and 1.1; a Pokémon Center other than Oldale's; the nurse with more than two Pokémon; the two warp forms of R3 other than the house door (a ladder landing on the same tile numbers; an escalator); any HM; a lost trainer battle; a caught Pokémon as the battler; a party of more than two in a switch.
 
@@ -276,11 +292,11 @@ What the emulator found: two failures in 40-odd runs. One was in a scenario (`rs
 
 ## Open questions
 
-Asked of the owner on 2026-11-17; the second was answered the same day, the others not. None blocks the merge; each has a default as built.
+Asked of the owner on 2026-11-17 and all three answered the same day.
 
-1. How QA answers the Discord new-move question. As built: the operator's clicks. Another way needs new bot code.
+1. How QA answers the Discord new-move question. Answered 2026-11-17: the orchestrator clicks the button in Discord. No bot code; every prompt variant ran that way (Evidence).
 2. A battler that faints in battle in Switch training. Answered 2026-11-17: "Flee and heal. If flee fails, we switch to the fastest alive mon then flee. If this fails we put into Waiting State and ping bot." Built in #475 for Standard and Switch alike (FR-18).
-3. A finished flee-only RS hunt now walks back to its start tile before Complete, HGSS's rule ("What diverged" 11). Told on 2026-11-17, with the offer to keep it completing in place through a profile setting.
+3. A finished flee-only RS hunt now walks back to its start tile before Complete, HGSS's rule ("What diverged" 11). Answered 2026-11-17: kept, as HGSS does.
 
 Follow-ups proposed, none done:
 
@@ -289,6 +305,8 @@ Follow-ups proposed, none done:
 - The roughly 60 "QA: none yet" notes in `RsPointerService`, against today's runs.
 - `MapLookup` defined twice; `Startup.cs` building the Discord and damage services eagerly; the dashboard test fixture using two deleted sentences.
 - The four HGSS QA saves.
+- A blackout need not stop the hunt (owner, 2026-11-17, for a later epic): the game leaves the player outside a Pokémon Center with the party healed, so the bot can pathfind back to the start anchor and carry on. Today it is the "The first Pokémon fainted." stop.
+- The fainted-battler rule in a flee-only hunt: its reader cannot see "Use next POKéMON?", so a faint there with another Pokémon alive still ends in the 30 s stale stop.
 
 ## Checked against main
 
@@ -332,3 +350,4 @@ Follow-ups proposed, none done:
 - 2026-11-15: Dive is an edge between maps with a capability bit, not a tile kind, with one unit test; one access tile on each side per pair of maps (owner).
 - 2026-11-15: the owner asked for every HM in the data and the search, with the capability reads left for later; FR-4a and FR-4b added, checked offline with the prototype.
 - 2026-11-15: the owner removed trainer sight tiles from the data and the search; FR-2 to FR-5, the design's script-state section and two QA scenarios follow.
+- 2026-11-17: the owner's three answers recorded; the evidence for #475 and for every Discord prompt variant added; two follow-ups added (a blackout that carries on; the fainted-battler rule in a flee-only hunt).
