@@ -65,10 +65,12 @@ test(`RS training ${NAME}: Mudkip to Lv 16 evolves into Marshtomp in the scene, 
 
   const answer = presses.filter((p) => /Delete a move\?|Stop learning\?|forget/.test(p.what))
   if (VARIANT === 'free') {
-    // "with text presses only, no prompt": the scene's texts at 14 (evolved), 19 (learned) and 20 only.
+    // "with text presses only, no prompt": the scene's texts at 14 (evolved) and 20 (learned) only. With a free slot case 14
+    // goes to 19 with no text, and 19 prints "… learned …!" and moves to 20 in the same frame, so that text waits at 20
+    // (pokeruby src/evolution_scene.c, Task_EvolutionScene); 19 waits only at "And…", on the Yes path.
     expect([at(MOVE_PROMPT).length, at(ASKING).length, answer.length], '"no prompt": move prompt, asking and answer lines').toEqual([0, 0, 0])
     expect(presses.filter((p) => p.i > boxes[1].i).map((p) => p.what), '"text presses only": gated presses after the box').toEqual([])
-    expect([...new Set(scene.map((s) => s.step))], '"text presses only": the scene\'s text waits, by data[0]').toEqual(['14', '19', '20'])
+    expect([...new Set(scene.map((s) => s.step))], '"text presses only": the scene\'s text waits, by data[0]').toEqual(['14', '20'])
   } else {
     // "the scene's prompt is seen waiting (task state 21, sub-state 4, question 5)": the bot's snapshot at it (the plan's
     // L2, logged by T2). Question is read only at data[8] 4, so its 5 is the sub-state too. answerPrompt checked the
