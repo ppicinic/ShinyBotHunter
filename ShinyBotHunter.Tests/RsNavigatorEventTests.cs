@@ -105,7 +105,7 @@ namespace ShinyBotHunter.Tests
                 (state.StartMapId, state.StartX, state.StartY) = s;
             }
             state.State.Push(top);
-            walk = new Walk { Bot = bot, State = state, Event = new RsNavigatorEvent { SegmentStale = stale ?? TimeSpan.FromSeconds(20) } };
+            walk = new Walk { Bot = bot, State = state, Event = new RsNavigatorEvent(new PokemonStateReader()) { SegmentStale = stale ?? TimeSpan.FromSeconds(20) } };
             return walk;
         }
 
@@ -321,6 +321,246 @@ namespace ShinyBotHunter.Tests
 
             Assert.Empty(walk.Bot.Macros);
             Assert.Equal(EventState.Complete, walk.State.State.Peek());
+        }
+
+        // The nurse (FR-11) over scripted nurse reads, the values from research "The nurse" (Sapphire run 1 unless named).
+        private const uint FieldMessageWindowState = 0x0202E892;
+        private const uint ScriptContextStatus = 0x030005B0;
+        private const uint ScriptContextMode = 0x030005B9;
+        private const uint ScriptNative = 0x030005BC;
+        private const uint Tasks = 0x03004B20;
+        private const uint PlayerFacing = 0x030048B8;
+        private const uint PlayerTileTransition = 0x0202E85B;
+        private const uint TaskHandleYesNoInput = 0x080B5505;
+        private const uint SapphireWaitForAorBPress = 0x080670E5;
+        private const uint RubyWaitForAorBPress = 0x080670E1;
+
+        // The natives read while the nurse speaks (0x08064DD9), heals (0x08067B6D) and bows (0x08066B2D).
+        private const uint Speaking = 0x08064DD9, Healing = 0x08067B6D, Bowing = 0x08066B2D;
+
+        // One nurse read; the defaults are the player at rest facing up with no script.
+        private sealed record Nurse(byte Lock = 0, ushort Window = 0, byte Status = 2, byte Mode = 0, uint Native = 0,
+            short? YesNo = null, byte Facing = 0x22, byte Transition = 0);
+
+        private static Nurse Talking(ushort window) => new(Lock: 1, Window: window, Status: 0, Mode: 2, Native: Speaking);
+
+        private static Nurse YesNo(short counter) => new(Lock: 1, Status: 1, Mode: 1, Native: Speaking, YesNo: counter);
+
+        private static Nurse LastWait(uint native, byte mode = 2) => new(Lock: 1, Status: 0, Mode: mode, Native: native);
+
+        // The nurse's reads, one stage per press sent so far, each repeating its last read: the talk, two page breaks, the
+        // Yes once data[2] reads 5, the heal and "Thank you for waiting.", the bow and the last line printing by itself, then
+        // the script's button wait and the field free. The first stage is the counter tile before the talk.
+        private static Nurse[][] Visit(uint native, Nurse[] first) =>
+        [
+            first,
+            [new Nurse(Native: native), Talking(0), Talking(1), Talking(3), Talking(8)],
+            [Talking(2), Talking(3), Talking(8)],
+            [Talking(2), Talking(0), YesNo(1), YesNo(2), YesNo(3), YesNo(4), YesNo(5)],
+            [new(Lock: 1, Status: 0, Mode: 2, Native: Healing), new(Lock: 1, Status: 0, Mode: 2, Native: Healing), Talking(1), Talking(3), Talking(8)],
+            [Talking(2), new(Lock: 1, Status: 0, Mode: 2, Native: Bowing), Talking(1), Talking(3), Talking(0), LastWait(native)],
+            [new(Lock: 1, Status: 0, Mode: 1, Native: native), new(Native: native)],
+        ];
+
+        // The walk's last step still ending (tile transition 1), then at rest; the native stale from an earlier script.
+        private static Nurse[] Arrived(uint native) => [new(Native: native, Transition: 1), new(Native: native)];
+
+        private sealed class NurseVisit
+        {
+            public required FakeBot Bot { get; init; }
+            public required GameState State { get; init; }
+            public required RsNavigatorEvent Event { get; init; }
+
+            // The read each press was sent on. Written and read by the test's one async flow.
+            public List<Nurse> PressedOn { get; } = [];
+            public Nurse? Last { get; set; }
+
+            public Task<string?> RunAsync() => Event.RunAsync(State, CancellationToken.None);
+        }
+
+        private static NurseVisit AtTheCounter(Nurse[][] stages, string gameCode = "AXPE", ushort hp = 25, TimeSpan? stale = null)
+        {
+            Queue<Nurse>[] queues = stages.Select(s => new Queue<Nurse>(s)).ToArray();
+            uint frame = 8000;
+            NurseVisit? visit = null;
+            FakeBot bot = null!;
+            bot = new FakeBot(Task.CompletedTask, new GameProfile(GameFlavor.RS,
+                new GameCapabilities(false, false, false, false, false, false, false, false), [], (_, _) => RsPointerService.For(gameCode),
+                new Gen3PokemonParser(new PokemonMetadataService(null!)), null, maps: Rs, seekLockHandOff: TimeSpan.FromSeconds(4)))
+            {
+                Pressed = macro =>
+                {
+                    bot.Macros.Add(macro);
+                    visit!.PressedOn.Add(visit.Last!);
+                },
+                ChainBlocks = blocks =>
+                {
+                    Queue<Nurse> queue = queues[bot.Macros.Count];
+                    Nurse read = queue.Count > 1 ? queue.Dequeue() : queue.Peek();
+                    visit!.Last = read;
+                    frame++;
+                    return blocks.Select(b => new ChainBlockResult(ChainBlockStatus.Ok, 0, NurseBytes(b.Anchor, read, frame))).ToArray();
+                },
+                PartyBlocks = [PartyRecord(hp, 25)],
+            };
+            GameState state = new() { Bot = bot, Profile = bot.Profile };
+            state.State.Push(EventState.HealAtPokemonCenter);
+            visit = new NurseVisit { Bot = bot, State = state, Event = new RsNavigatorEvent(new PokemonStateReader()) { NurseStale = stale ?? TimeSpan.FromSeconds(10) } };
+            return visit;
+        }
+
+        private static byte[] NurseBytes(uint address, Nurse read, uint frame)
+        {
+            switch (address)
+            {
+                case FieldControlsLock: return [read.Lock];
+                case Callback1: return BitConverter.GetBytes(Overworld);
+                case FieldMessageWindowState: return BitConverter.GetBytes(read.Window);
+                case ScriptContextStatus: return [read.Status];
+                case ScriptContextMode: return [read.Mode];
+                case ScriptNative: return BitConverter.GetBytes(read.Native);
+                case VBlankCounter: return BitConverter.GetBytes(frame);
+                case PlayerFacing: return [read.Facing];
+                case PlayerTileTransition: return [read.Transition];
+                case Tasks:
+                    // The Yes/No task in slot 4, as read; data[2] at task + 0x0C.
+                    byte[] tasks = new byte[16 * 0x28];
+                    if (read.YesNo is { } counter)
+                    {
+                        BitConverter.GetBytes(TaskHandleYesNoInput).CopyTo(tasks, 4 * 0x28);
+                        tasks[4 * 0x28 + 4] = 1;
+                        BitConverter.GetBytes(counter).CopyTo(tasks, 4 * 0x28 + 0x0C);
+                    }
+                    return tasks;
+                default: throw new InvalidOperationException($"unexpected read at 0x{address:X8}");
+            }
+        }
+
+        // A party-sized Gen 3 record of a level 10 Mudkip with the HP given. pid % 24 == 0 keeps the substructures in order;
+        // otId 0 makes the key the pid.
+        private static byte[] PartyRecord(ushort hp, ushort maxHp)
+        {
+            const uint pid = 0x60;
+            byte[] plain = new byte[48];
+            BitConverter.GetBytes((ushort)283).CopyTo(plain, 0);
+            ushort checksum = 0;
+            for (int i = 0; i < 48; i += 2)
+            {
+                checksum += BitConverter.ToUInt16(plain, i);
+            }
+            byte[] block = new byte[Gen3PokemonParser.PartyBlockSize];
+            BitConverter.GetBytes(pid).CopyTo(block, 0x00);
+            BitConverter.GetBytes(checksum).CopyTo(block, 0x1C);
+            for (int i = 0; i < 48; i += 4)
+            {
+                BitConverter.GetBytes(BitConverter.ToUInt32(plain, i) ^ pid).CopyTo(block, 0x20 + i);
+            }
+            block[0x54] = 10;
+            BitConverter.GetBytes(hp).CopyTo(block, 0x56);
+            BitConverter.GetBytes(maxHp).CopyTo(block, 0x58);
+            return block;
+        }
+
+        private static string FieldAdvance => MacroRegistry.Instance.GetMacro(GameFlavor.RS, "FieldAdvance");
+
+        // FR-11: six FieldAdvances, each sent once on the read its gate names: the talk at rest (not mid-step), the two page
+        // breaks at window 8, the Yes at data[2] 5 (not 1 to 4), "Thank you for waiting." at 8, and the last line on the
+        // script's own button wait after the Yes (not on the stale native before the talk). HP full: ReturnToStart.
+        [Fact]
+        public async Task Nurse_SixPresses_EachOnItsGate()
+        {
+            NurseVisit visit = AtTheCounter(Visit(SapphireWaitForAorBPress, Arrived(SapphireWaitForAorBPress)));
+
+            Assert.Null(await visit.RunAsync());
+
+            Assert.Equal(Enumerable.Repeat(FieldAdvance, 6), visit.Bot.Macros);
+            Assert.Equal([new Nurse(Native: SapphireWaitForAorBPress), Talking(8), Talking(8), YesNo(5), Talking(8), LastWait(SapphireWaitForAorBPress)],
+                visit.PressedOn);
+            Assert.Equal(EventState.ReturnToStart, visit.State.State.Peek());
+        }
+
+        // N6: on Ruby the last wait is Ruby's WaitForAorBPress, from the per-game table.
+        [Fact]
+        public async Task Nurse_RubyNative_IsPressedOnRuby()
+        {
+            NurseVisit visit = AtTheCounter(Visit(RubyWaitForAorBPress, Arrived(RubyWaitForAorBPress)), gameCode: "AXVE");
+
+            Assert.Null(await visit.RunAsync());
+
+            Assert.Equal(6, visit.Bot.Macros.Count);
+            Assert.Equal(LastWait(RubyWaitForAorBPress), visit.PressedOn[^1]);
+        }
+
+        // The native stays WaitForAorBPress after any script ends: with mode 1 it is not the script's button wait, and before
+        // the Yes it is not the last line, so neither is pressed; the wait stops naming what it saw.
+        [Fact]
+        public async Task Nurse_StaleNativeWithoutModeTwo_IsNotPressed()
+        {
+            Nurse[][] modeOne = Visit(SapphireWaitForAorBPress, Arrived(SapphireWaitForAorBPress))[..6];
+            modeOne[5] = [Talking(2), Talking(0), LastWait(SapphireWaitForAorBPress, mode: 1)];
+            NurseVisit visit = AtTheCounter(modeOne, stale: Short);
+
+            Assert.StartsWith("Waited for a page break or the script's last button wait; the game state stayed (f ", await visit.RunAsync());
+
+            Assert.Equal(5, visit.Bot.Macros.Count);
+            Assert.Equal(EventState.Waiting, visit.State.State.Peek());
+
+            NurseVisit beforeYes = AtTheCounter([Arrived(SapphireWaitForAorBPress), [LastWait(SapphireWaitForAorBPress)]], stale: Short);
+
+            Assert.StartsWith("Waited for a page break or the Yes/No with its counter at 5; the game state stayed (f ", await beforeYes.RunAsync());
+
+            Assert.Equal([FieldAdvance], beforeYes.Bot.Macros);
+        }
+
+        // W8: facing left at the counter, SpinUp turns the player; the talk follows on the first read facing up at rest.
+        [Fact]
+        public async Task Nurse_FacingLeft_TurnsThenTalks()
+        {
+            Nurse[][] stages = [[new(Facing: 0x33)], .. Visit(SapphireWaitForAorBPress, [new()])];
+            NurseVisit visit = AtTheCounter(stages);
+
+            Assert.Null(await visit.RunAsync());
+
+            Assert.Equal([MacroRegistry.Instance.GetMacro(GameFlavor.RS, "SpinUp"), .. Enumerable.Repeat(FieldAdvance, 6)], visit.Bot.Macros);
+            Assert.Equal([new Nurse(Facing: 0x33), new Nurse()], visit.PressedOn[..2]);
+        }
+
+        // A talk whose lock never comes: the read stays the same, and the stop names the wait and the read.
+        [Fact]
+        public async Task Nurse_ReadUnchanged_StopsNamingIt()
+        {
+            NurseVisit visit = AtTheCounter([[new()], [new()]], stale: Short);
+
+            string? stopped = await visit.RunAsync();
+
+            Assert.StartsWith("Waited for the field locked after the talk; the game state stayed (f ", stopped);
+            Assert.EndsWith("lock 0, callback 1 0x08054375, window 0, status 2, mode 0, native 0x00000000, yes/no none, facing 0x22, tile transition 0).", stopped);
+            Assert.Equal([FieldAdvance], visit.Bot.Macros);
+            Assert.Equal(EventState.Waiting, visit.State.State.Peek());
+        }
+
+        // FR-11: HP not full after the nurse stops the bot with the member's HP.
+        [Fact]
+        public async Task Nurse_HpNotFull_Stops()
+        {
+            NurseVisit visit = AtTheCounter(Visit(SapphireWaitForAorBPress, Arrived(SapphireWaitForAorBPress)), hp: 5);
+
+            string? stopped = await visit.RunAsync();
+
+            Assert.StartsWith("The party's HP was not full after the nurse: ", stopped);
+            Assert.EndsWith(" 5/25.", stopped);
+            Assert.Equal(EventState.Waiting, visit.State.State.Peek());
+        }
+
+        [Fact]
+        public async Task Nurse_HpFull_GoesToReturnToStart()
+        {
+            NurseVisit visit = AtTheCounter(Visit(SapphireWaitForAorBPress, Arrived(SapphireWaitForAorBPress)));
+
+            Assert.Null(await visit.RunAsync());
+
+            Assert.Equal(1, visit.Bot.PartyReads);
+            Assert.Equal(EventState.ReturnToStart, visit.State.State.Peek());
         }
     }
 }
