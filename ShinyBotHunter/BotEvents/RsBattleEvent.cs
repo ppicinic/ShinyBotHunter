@@ -28,6 +28,7 @@ namespace ShinyBotHunter.BotEvents
         internal const string Trapped = "Could not run from this battle.";
         internal const string Corrupt = "The wild Pokémon's record failed its checksum for 2 s.";
         internal const string RunFailed = "A Pokémon fainted, and running from the battle failed after the fastest Pokémon left was sent out.";
+        internal const string NoneAlive = "A Pokémon fainted, and the party menu read showed none able to battle.";
 
         // The battle bit after the field leaves free; how long the snapshot may stay the same in battle; how long a record
         // that fails its checksum is read again; how long the cursor may take to read RUN before the missing press is sent.
@@ -186,8 +187,8 @@ namespace ShinyBotHunter.BotEvents
                     // Before this battle's first menu the outcome can still be the last battle's: it stays until the next
                     // battle starts.
                     // The level-up box, the move prompt, the evolution scene, "Use next POKéMON?" and the forced party menu
-                    // come only from the training reader. A
-                    // forget-a-move screen met here, outside a Yes, is not waited for: it ends in the stale stop that names it.
+                    // come only from the training reader. A forget-a-move screen met here, outside a Yes, is not waited for:
+                    // it ends in the stale stop that names it.
                     // In the scene only its text waits and its yes/no are taken (FR-16): its animation, its first text
                     // (data[0] 2) and the window's holds at 4 and 10 get nothing.
                     s = await GameStateWait.UntilAsync(reader,
@@ -240,15 +241,12 @@ namespace ShinyBotHunter.BotEvents
                         // The party menu after "Can't escape!" (F4): only that leads here, since SwitchAsync takes the menu
                         // it opens. The fastest alive is sent out (F5: "Go!" clears by itself, with no free attack), and
                         // the next action menu runs RUN once.
-                        ChainBlockResult[] read = await bot.ReadChainBlocksAsync(
-                            [new(addresses.Anchor, [], 1), new(addresses.BattlePartyPokemon, [], 6 * Gen3PokemonParser.PartyBlockSize)], ct: ct);
-                        PokemonData[] party = [.. Enumerable.Range(0, read[0].Bytes[0]).Select(slot => bot.Profile.Parser.Parse(
-                            read[1].Bytes[(slot * Gen3PokemonParser.PartyBlockSize)..((slot + 1) * Gen3PokemonParser.PartyBlockSize)])!)];
-                        int fastest = FastestAlive(party);
-                        Console.WriteLine($"[RsBattle] the party menu after a faint: sending out the fastest alive, slot {fastest} "
-                            + $"{party[fastest].Name} Speed {party[fastest].Speed}");
-                        presses += await PartySendAsync(bot, reader, addresses, fastest, "the send-out", "send-out of the fastest alive",
-                            "the party menu", "SEND OUT", since, cursorWait, stale, ct);
+                        (int sent, string? noneAlive) = await SendOutFastestAsync(bot, reader, addresses, since, cursorWait, stale, ct);
+                        presses += sent;
+                        if (noneAlive is not null)
+                        {
+                            return Stop(state, NoneAlive, noneAlive);
+                        }
                         sentOut = true;
                         continue;
                     }
@@ -464,10 +462,11 @@ namespace ShinyBotHunter.BotEvents
                         : new(addresses.BattlePartyPokemon + LeadHpOffset, [], 2),
                 ], ct: ct);
 
-        // The send-out after a faint (the owner's rule of 2026-11-17): the highest Speed among the members alive and not eggs,
-        // the lowest slot on a tie. The game asks "Use next POKéMON?" only with one alive.
-        internal static int FastestAlive(IReadOnlyList<PokemonData> party)
-            => Enumerable.Range(0, party.Count).Where(i => party[i].HP > 0 && !party[i].IsEgg).OrderByDescending(i => party[i].Speed).First();
+        // The send-out after a faint (the owner's rule of 2026-11-17), over the menu's rows and the party slot each shows: the
+        // row of the highest Speed among the members alive and not eggs, the lowest party slot on a tie; null with none.
+        internal static int? FastestAlive(IReadOnlyList<PokemonData> rows, IReadOnlyList<int> slots)
+            => Enumerable.Range(0, rows.Count).Where(r => rows[r].HP > 0 && !rows[r].IsEgg)
+                .OrderByDescending(r => rows[r].Speed).ThenBy(r => slots[r]).Cast<int?>().FirstOrDefault();
 
         private static uint PartyRecord(RsPointerService addresses, int slot)
             => (uint)(addresses.BattlePartyPokemon + slot * Gen3PokemonParser.PartyBlockSize);
@@ -505,7 +504,7 @@ namespace ShinyBotHunter.BotEvents
 
         // One switch try from the action menu at, to the battler's 0-based slot (FR-17; research "The in-battle switch, read
         // frame by frame"). Every press is gated on its snapshot and confirmed by the byte it changes: the action cursor to
-        // POKéMON, A (the screen leaving the action menu), then the party list's walk to the slot and SHIFT (PartySendAsync).
+        // POKéMON, A (the screen leaving the action menu), then the party list's walk to the slot and SHIFT (PartyWalkAsync).
         private static async Task<int> SwitchAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, GameSnapshot at,
             int slot, int attempt, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
         {
@@ -522,31 +521,71 @@ namespace ShinyBotHunter.BotEvents
             Stopwatch since = Stopwatch.StartNew();
             (_, int pokemon) = await PressConfirmedAsync(bot, reader, Macro("BattleConfirm"), $"BattleConfirm on POKéMON (switch try {attempt} of {MaxSwitchTries})",
                 "the screen leaving the action menu", menu, x => x.Screen != GameScreen.BattleMenu, cursorWait, stale, ct);
-            return presses + pokemon + await PartySendAsync(bot, reader, addresses, slot, "the switch", $"switch try {attempt} of {MaxSwitchTries}", "POKéMON",
-                "SHIFT", since, cursorWait, stale, ct);
+            // On the list only once it takes keys. The party is not read while the menu is up, so the slot's row comes from
+            // gBattlePartyCurrentOrder, read once (F7); in the voluntary menu the order is still the identity (round six, B).
+            GameSnapshot list = await GameStateWait.UntilAsync(reader, $"the party list to take keys (the switch to slot {slot})",
+                x => PartyListTakesKeys(x, addresses), stale, ct);
+            Console.WriteLine($"[RsBattle] switch try {attempt} of {MaxSwitchTries} to slot {slot}: the party list takes keys, "
+                + $"{since.ElapsedMilliseconds} ms after POKéMON: {list}");
+            byte[] order = (await bot.ReadChainBlocksAsync([new(addresses.BattlePartyCurrentOrder, [], 4)], ct: ct))[0].Bytes;
+            int row = Enumerable.Range(0, 6).First(p => SlotOnRow(order, p) == slot);
+            LogOrder(order, slot, row);
+            return presses + pokemon + await PartyWalkAsync(bot, reader, addresses, list, slot, row, "the switch", "SHIFT", cursorWait, stale, ct);
         }
 
-        // The battle party list's walk to a party slot and its popup's first item: SHIFT in a switch, SEND OUT in the menu a
-        // faint forces (research "A battler faints: the readings", F4, F5). On the list, only once it takes keys (the task,
-        // callback 2 CB2_PartyMenuMain and the fade off): the slot's row from gBattlePartyCurrentOrder, read once, since the
-        // rows are not the party's order after a switch (F7); Down until the cursor is on the row (each confirmed by the
-        // cursor leaving its value; Down alone reaches any row, last -> 7 -> 0), A (the popup's task function), then A on the
-        // item with the popup up and the fade off (the function leaving the popup). Then nothing is pressed and no party
-        // record is read until the next screen the main loop acts on: "Come back", "Go!" and the wild Pokémon's move go by
-        // themselves, and for about 22 frames after SHIFT the party records are swapped. A refused item ends in this wait's
-        // stale stop. what, heading and after name the walk in its waits and its first line.
-        private static async Task<int> PartySendAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, int slot, string what,
-            string heading, string after, string item, Stopwatch since, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
+        // The menu a faint forces after "Can't escape!" (F4, F5). Once the list takes keys, the order and the party in one
+        // read: while a party task is up the game keeps gPlayerParty in the menu's row order, record r being the Pokémon on
+        // row r, which is party slot order[r] (research "A battler faints: the readings", round six, B), so the fastest alive
+        // is chosen as a row. Every row read is logged. Returns the presses, or with nobody alive in that read the rows
+        // read, and nothing is pressed: the emulator produced that once, cause not found (round six, "Not read").
+        private static async Task<(int Presses, string? NoneAlive)> SendOutFastestAsync(IBot bot, IGameStateReader reader, RsPointerService addresses,
+            Stopwatch since, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
+        {
+            GameSnapshot list = await GameStateWait.UntilAsync(reader, "the party list to take keys (the send-out)",
+                x => PartyListTakesKeys(x, addresses), stale, ct);
+            Console.WriteLine($"[RsBattle] send-out of the fastest alive: the party list takes keys, {since.ElapsedMilliseconds} ms after the party menu: {list}");
+            ChainBlockResult[] read = await bot.ReadChainBlocksAsync(
+            [
+                new(addresses.BattlePartyCurrentOrder, [], 4), new(addresses.Anchor, [], 1),
+                new(addresses.BattlePartyPokemon, [], 6 * Gen3PokemonParser.PartyBlockSize),
+            ], ct: ct);
+            byte[] order = read[0].Bytes;
+            PokemonData[] rows = [.. Enumerable.Range(0, read[1].Bytes[0]).Select(r => bot.Profile.Parser.Parse(
+                read[2].Bytes[(r * Gen3PokemonParser.PartyBlockSize)..((r + 1) * Gen3PokemonParser.PartyBlockSize)])!)];
+            int[] slots = [.. Enumerable.Range(0, rows.Length).Select(r => SlotOnRow(order, r))];
+            string table = string.Join("; ", Enumerable.Range(0, rows.Length)
+                .Select(r => $"row {r} slot {slots[r]} {rows[r].Name} HP {rows[r].HP} Speed {rows[r].Speed}"));
+            Console.WriteLine($"[RsBattle] the party menu after a faint, by row: {table}");
+            if (FastestAlive(rows, slots) is not int row)
+            {
+                return (0, table);
+            }
+            LogOrder(order, slots[row], row);
+            return (await PartyWalkAsync(bot, reader, addresses, list, slots[row], row, "the send-out", "SEND OUT", cursorWait, stale, ct), null);
+        }
+
+        // The battle party list taking keys: the list's task, callback 2 CB2_PartyMenuMain and the fade off.
+        private static bool PartyListTakesKeys(GameSnapshot x, RsPointerService addresses)
+            => x.Screen == GameScreen.OtherApp && x.AppState == 0 && x.TaskFunction == addresses.BattlePartyMenuTask;
+
+        // Row p of the battle party menu shows the party slot in nibble p of gBattlePartyCurrentOrder: byte p / 2, the high
+        // nibble for even p; the menu's case byte follows the three bytes.
+        private static int SlotOnRow(byte[] order, int row) => (order[row / 2] >> (row % 2 == 0 ? 4 : 0)) & 0xF;
+
+        private static void LogOrder(byte[] order, int slot, int row)
+            => Console.WriteLine($"[RsBattle] party menu order {order[0]:X2} {order[1]:X2} {order[2]:X2}, case byte {order[3]}: slot {slot} is on row {row}");
+
+        // The battle party list's walk from list, taking keys, to the row of the party slot, and its popup's first item:
+        // SHIFT in a switch, SEND OUT in the menu a faint forces (research "A battler faints: the readings", F4, F5). Down
+        // until the cursor is on the row (each confirmed by the cursor leaving its value; Down alone reaches any row, last
+        // -> 7 -> 0), A (the popup's task function), then A on the item with the popup up and the fade off (the function
+        // leaving the popup). Then nothing is pressed and no party record is read until the next screen the main loop acts
+        // on: "Come back", "Go!" and the wild Pokémon's move go by themselves, and for about 22 frames after SHIFT the party
+        // records are swapped. A refused item ends in this wait's stale stop. what names the walk in its waits.
+        private static async Task<int> PartyWalkAsync(IBot bot, IGameStateReader reader, RsPointerService addresses, GameSnapshot list,
+            int slot, int row, string what, string item, TimeSpan cursorWait, TimeSpan stale, CancellationToken ct)
         {
             bool TakesKeys(GameSnapshot x) => x.Screen == GameScreen.OtherApp && x.AppState == 0;
-            GameSnapshot list = await GameStateWait.UntilAsync(reader, $"the party list to take keys ({what} to slot {slot})",
-                x => TakesKeys(x) && x.TaskFunction == addresses.BattlePartyMenuTask, stale, ct);
-            Console.WriteLine($"[RsBattle] {heading} to slot {slot}: the party list takes keys, "
-                + $"{since.ElapsedMilliseconds} ms after {after}: {list}");
-            // Row p shows the party slot in nibble p: byte p / 2, the high nibble for even p; the case byte follows.
-            byte[] order = (await bot.ReadChainBlocksAsync([new(addresses.BattlePartyCurrentOrder, [], 4)], ct: ct))[0].Bytes;
-            int row = Enumerable.Range(0, 6).First(p => ((order[p / 2] >> (p % 2 == 0 ? 4 : 0)) & 0xF) == slot);
-            Console.WriteLine($"[RsBattle] party menu order {order[0]:X2} {order[1]:X2} {order[2]:X2}, case byte {order[3]}: slot {slot} is on row {row}");
             int presses = 0;
             while (list.PartyMonIndex != row)
             {

@@ -276,7 +276,19 @@ namespace ShinyBotHunter.Tests
             Queue<uint> frames = new(counter ?? [1000]);
             TrainerBytes read = trainer ?? NoScriptRunning;
             Battle? battle = null;
-            byte[][] Party() => battle!.PartyFrom is { } from && reader.Stage >= from.Stage ? from.Records : partyRecords;
+            // The records in party order; while a party task is up, in the menu's row order, record r being the Pokémon on row
+            // r (party slot nibble r of the order), as the game keeps them (research "A battler faints: the readings", round
+            // six, B).
+            byte[][] Party()
+            {
+                byte[][] slots = battle!.PartyFrom is { } from && reader.Stage >= from.Stage ? from.Records : partyRecords;
+                if (!(reader.Last.Screen == GameScreen.OtherApp && reader.Last.TaskFunction is PartyListTask or PartyPopupTask))
+                {
+                    return slots;
+                }
+                byte[] order = battle.Order(reader.Stage);
+                return [.. Enumerable.Range(0, slots.Length).Select(r => slots[(order[r / 2] >> (r % 2 == 0 ? 4 : 0)) & 0xF])];
+            }
             ChainBlockResult Answer(ChainBlockRequest block)
             {
                 byte[] bytes;
@@ -1809,45 +1821,86 @@ namespace ShinyBotHunter.Tests
             Assert.Contains("confirmed by the script leaving Use next POKéMON?", log);
         }
 
-        // F4, F5, F6: the flee fails, the forced menu sends out the fastest alive (slot 2, row 2 in the identity order), and
-        // the one RUN gets away.
+        // F4 to F7 and round six, B: Switch training to slot 2; the battler faints, the flee fails, and the forced menu (the
+        // order 21 03 after the switch, case byte 1) shows the records in row order: row 0 the fainted battler (slot 2), row 1
+        // slot 1, row 2 the lead (slot 0, the fastest alive), row 3 fainted. Row 2 is sent out and the one RUN gets away.
         [Fact]
         public async Task Faint_FleeFails_SendsTheFastestAliveAndRunsOnce()
         {
-            Battle battle = Train(FaintFlee(2, 2, Escaped(2)), party: AliveParty());
-            battle.PartyFrom = (3, FaintedParty());
+            GameSnapshot[][] stages =
+            [
+                [Turn, Message()],
+                [Message(), Turn, TMenu(0)],
+                .. SwitchTry(2, TMenu(0, battler: 2)),
+                [TMenu(0, battler: 2), Turn, MoveList(0)],
+                [MoveList(0), Turn, Message()],
+                [Message(), Turn, UseNext(2)],
+                [UseNext(2), Turn, Message()],
+                [Message(), Turn, PartyInit(), Party(0, fade: 1), Party(0)],
+                [Party(0), Party(1)],
+                [Party(1), Party(2)],
+                [Party(2), Popup(2)],
+                [Popup(2), Turn, Turn, TMenu(0, battler: 0)],
+                [TMenu(0, battler: 0), TMenu(3, battler: 0)],
+                .. Escaped(0),
+            ];
+            Battle battle = Start(new PressedReader(stages), mode: BattleMode.Battle, trainType: TrainType.Switch, switchSlot: 3,
+                party: [Fighter(speed: 12), Fighter(pid: 0x78, speed: 2), Fighter(pid: 0x90, speed: 3), Fighter(hp: 0, pid: 0xA8, speed: 50)]);
+            battle.MoveMetadata = Damaging;
+            battle.PickMove = _ => 0;
+            // The battler faints in the turn after the switch (stage 8 on); the order is the identity until SHIFT.
+            battle.PartyFrom = (8, [Fighter(speed: 12), Fighter(pid: 0x78, speed: 2), Fighter(hp: 0, pid: 0x90, speed: 3), Fighter(hp: 0, pid: 0xA8, speed: 50)]);
+            battle.Order = stage => stage < 7 ? [0x01, 0x23, 0x45, 0x00] : [0x21, 0x03, 0x45, 0x01];
 
             string log = await CaptureAsync(async () => Assert.Null(await battle.RunAsync()));
 
-            Assert.Equal(["Advance", "Fight", "Move0", "Advance", "FleeNo", "Advance", "PartyDown", "PartyDown", "Slot2", "Shift", "ToRun", "Confirm", "Advance"],
-                battle.Presses);
+            Assert.Equal(["Advance", "Down", "ToPokemon", "PartyDown", "PartyDown", "Slot2", "Shift", "Fight", "Move0", "Advance", "FleeNo", "Advance",
+                "PartyDown", "PartyDown", "Slot2", "Shift", "ToRun", "Confirm", "Advance"], battle.Presses);
             Assert.Equal([EventState.BattleComplete], battle.State.State);
             Assert.Empty(battle.StopMessages);
-            // One order read, once the list takes keys; one party read on the forced menu, before the one after the battle.
-            int order = Assert.Single(Enumerable.Range(0, battle.Requests.Count), i => battle.Requests[i].Any(b => b.Anchor == PartyOrder));
-            Assert.Equal([(PartyOrder, 4)], battle.Requests[order].Select(b => (b.Anchor, b.Length)));
-            Assert.Equal(Party(0), battle.RequestsAt[order]);
-            int[] party = [.. Enumerable.Range(0, battle.Requests.Count).Where(i => battle.Requests[i].Any(b => b.Anchor == PartyCount))];
-            Assert.Equal(2, party.Length);
-            Assert.Equal([(PartyCount, 1), (PlayerParty, 600)], battle.Requests[party[0]].Select(b => (b.Anchor, b.Length)));
-            Assert.Equal(PartyListTask, battle.RequestsAt[party[0]].TaskFunction);
-            Assert.InRange(party[0], 0, order - 1);
-            Assert.Contains("[RsBattle] the party menu after a faint: sending out the fastest alive, slot 2  Speed 3", log);
-            Assert.Contains("[RsBattle] send-out of the fastest alive to slot 2: the party list takes keys", log);
-            Assert.Contains("[RsBattle] party menu order 01 23 45, case byte 0: slot 2 is on row 2", log);
+            // The order and the party in one read, once the forced list takes keys.
+            int read = Assert.Single(Enumerable.Range(0, battle.Requests.Count), i => battle.Requests[i].Any(b => b.Anchor == PartyOrder)
+                && battle.Requests[i].Any(b => b.Anchor == PartyCount));
+            Assert.Equal([(PartyOrder, 4), (PartyCount, 1), (PlayerParty, 600)], battle.Requests[read].Select(b => (b.Anchor, b.Length)));
+            Assert.Equal(Party(0), battle.RequestsAt[read]);
+            Assert.Contains("[RsBattle] send-out of the fastest alive: the party list takes keys", log);
+            Assert.Contains("[RsBattle] the party menu after a faint, by row: row 0 slot 2  HP 0 Speed 3; row 1 slot 1  HP 25 Speed 2; "
+                + "row 2 slot 0  HP 25 Speed 12; row 3 slot 3  HP 0 Speed 50", log);
+            Assert.Contains("[RsBattle] party menu order 21 03 45, case byte 1: slot 0 is on row 2", log);
             Assert.Contains("confirmed by the SEND OUT submenu", log);
             Assert.Contains($"[RsBattle] BattleConfirm on SEND OUT at {Popup(2)}", log);
             Assert.Contains("[RsBattle] after SEND OUT", log);
         }
 
-        // F7: the row of a slot after a switch is the order byte's nibble, not the slot.
+        // Round six, "Not read": once on the emulator the forced menu's read found nobody alive. Nothing is pressed and the
+        // stop names every row read.
+        [Fact]
+        public async Task Faint_ForcedMenuReadsNobodyAlive_StopsNamingTheRows()
+        {
+            Battle battle = Train(Won([Message(), Turn, UseNext(0)], [UseNext(0), Turn, Message()],
+                [Message(), Turn, PartyInit(), Party(0, fade: 1), Party(0)]), party: [Fighter(speed: 12), Fighter(pid: 0x78, speed: 2)]);
+            battle.PartyFrom = (3, [Fighter(hp: 0, speed: 12), Fighter(hp: 0, pid: 0x78, speed: 2)]);
+
+            string? stop = null;
+            string log = await CaptureAsync(async () => stop = await battle.RunAsync());
+
+            Assert.Equal(RsBattleEvent.NoneAlive, stop);
+            Assert.Equal([EventState.Waiting], battle.State.State);
+            Assert.Equal(["Advance", "Fight", "Move0", "Advance", "FleeNo", "Advance"], battle.Presses);
+            Assert.Empty(battle.StopMessages);
+            Assert.Contains($"[RsBattle] stopped: {RsBattleEvent.NoneAlive} row 0 slot 0  HP 0 Speed 12; row 1 slot 1  HP 0 Speed 2", log);
+        }
+
+        // F7 and round six, B: in the forced menu the records are in row order, record r the Pokémon on row r, party slot
+        // nibble r; the row of the fastest alive is chosen, and a Speed tie goes to the lowest party slot, not row.
         [Theory]
         [InlineData(0x21, 0x03, new[] { 12, 2, 0, 3 }, 0, 2)]
         [InlineData(0x01, 0x23, new[] { 0, 2, 3, 1 }, 2, 2)]
         [InlineData(0x21, 0x03, new[] { 0, 2, 0, 1 }, 1, 1)]
+        [InlineData(0x21, 0x03, new[] { 5, 5, 0, 0 }, 0, 2)]
         public async Task Faint_SendOut_RowFromTheMenuOrder(byte first, byte second, int[] speeds, int slot, int row)
         {
-            // A speed of 0 is a fainted member.
+            // Speeds by party slot; a speed of 0 is a fainted member.
             byte[][] party = [.. speeds.Select((speed, i) => Fighter(hp: (ushort)(speed == 0 ? 0 : 25), pid: (uint)(0x60 + 0x18 * i), speed: (ushort)speed))];
             Battle battle = Train(FaintFlee(row, slot, Escaped(slot)), party: AliveParty());
             battle.PartyFrom = (3, party);
@@ -1931,16 +1984,18 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(battle.StopMessages);
         }
 
-        // The owner's rule: the highest Speed alive and not an egg, the lowest slot on a tie.
+        // The owner's rule over the menu's rows: the highest Speed alive and not an egg, the lowest party slot on a tie (row
+        // 2, slot 1, over row 1, slot 2); none alive is null.
         [Theory]
-        [InlineData(new[] { 10, 10, 10 }, new[] { 50, 20, 30 }, new[] { true, false, false }, 2)]
-        [InlineData(new[] { 0, 10, 10 }, new[] { 50, 20, 30 }, new[] { false, false, false }, 2)]
-        [InlineData(new[] { 0, 10, 10 }, new[] { 50, 30, 30 }, new[] { false, false, false }, 1)]
-        public void FastestAlive_HighestSpeedAliveNotEggLowestSlotOnTie(int[] hp, int[] speed, bool[] egg, int expected)
+        [InlineData(new[] { 10, 10, 10 }, new[] { 50, 20, 30 }, new[] { true, false, false }, new[] { 0, 1, 2 }, 2)]
+        [InlineData(new[] { 0, 10, 10 }, new[] { 50, 20, 30 }, new[] { false, false, false }, new[] { 0, 1, 2 }, 2)]
+        [InlineData(new[] { 0, 10, 10 }, new[] { 50, 30, 30 }, new[] { false, false, false }, new[] { 0, 2, 1 }, 2)]
+        [InlineData(new[] { 0, 0 }, new[] { 50, 30 }, new[] { false, false }, new[] { 1, 0 }, null)]
+        public void FastestAlive_HighestSpeedAliveNotEggLowestSlotOnTie(int[] hp, int[] speed, bool[] egg, int[] slots, int? expected)
         {
-            PokemonData[] party = [.. hp.Select((h, i) => new PokemonData { HP = (ushort)h, Speed = (ushort)speed[i], IVs = egg[i] ? 1u << 30 : 0 })];
+            PokemonData[] rows = [.. hp.Select((h, i) => new PokemonData { HP = (ushort)h, Speed = (ushort)speed[i], IVs = egg[i] ? 1u << 30 : 0 })];
 
-            Assert.Equal(expected, RsBattleEvent.FastestAlive(party));
+            Assert.Equal(expected, RsBattleEvent.FastestAlive(rows, slots));
         }
 
         private sealed class LoggedReader(IGameStateReader inner, Action log) : IGameStateReader
