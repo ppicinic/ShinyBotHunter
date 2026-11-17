@@ -20,8 +20,11 @@ namespace ShinyBotHunter.Games
 
         public GameCapabilities Capabilities { get; }
 
-        /// <summary>Address table for a ROM revision. Throws NotSupportedException for a revision without one.</summary>
-        public Func<int, IPointerService> Addresses { get; }
+        /// <summary>
+        /// Address table for a ROM's game code and revision. Throws NotSupportedException for a revision without one. A null
+        /// game code gives the RAM-only table, with no per-game part.
+        /// </summary>
+        public Func<string?, int, IPointerService> Addresses { get; }
 
         public IPokemonParser Parser { get; }
 
@@ -51,7 +54,7 @@ namespace ShinyBotHunter.Games
             GameFlavor flavor,
             GameCapabilities capabilities,
             IReadOnlyList<int> revisions,
-            Func<int, IPointerService> addresses,
+            Func<string?, int, IPointerService> addresses,
             IPokemonParser parser,
             IBattlePokemonParser? battleParser,
             Func<IMemoryClient, IPointerService, IOverworldReader>? createOverworldReader = null,
@@ -107,7 +110,8 @@ namespace ShinyBotHunter.Games
             {
                 foreach (int revision in revisions)
                 {
-                    if (addresses(revision).BoxLayout is null)
+                    // A null game code means the RAM-only table, with no per-game part; the box layout is in RAM.
+                    if (addresses(null, revision).BoxLayout is null)
                     {
                         throw new ArgumentException($"{flavor} declares CanReadBoxes but revision {revision} has no box layout.");
                     }

@@ -47,7 +47,7 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false),
             [1],
-            _ => new RsPointerService(),
+            (_, _) => new RsPointerService(),
             new PidSpeciesParser(),
             battleParser: null,
             createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),

@@ -10,8 +10,8 @@ namespace ShinyBotHunter.Games.Rs
     {
         private static readonly RsPointerService Table = new();
 
-        private static IPointerService Addresses(int revision) => revision is 1 or 2
-            ? Table
+        private static IPointerService Addresses(string? gameCode, int revision) => revision is 1 or 2
+            ? RsPointerService.For(gameCode)
             : throw new NotSupportedException($"RS revision {revision}: no address table. Hunts run on revisions 1 and 2.");
 
         public static GameProfile Create(PokemonMetadataService metadata) => new(

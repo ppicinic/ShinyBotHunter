@@ -91,7 +91,7 @@ namespace ShinyBotHunter.Tests
                 GameFlavor.HGSS,
                 new GameCapabilities(false, false, false, false, true, false, false, false),
                 [0],
-                _ => Table,
+                (_, _) => Table,
                 new BlockParser(onParse ?? (() => { })),
                 battleParser: null);
             FakeBot bot = new(Task.CompletedTask, profile)

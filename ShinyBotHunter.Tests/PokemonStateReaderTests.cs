@@ -35,7 +35,7 @@ namespace ShinyBotHunter.Tests
             GameFlavor.HGSS,
             new GameCapabilities(false, false, false, false, true, false, false, false),
             [0],
-            _ => Addresses,
+            (_, _) => Addresses,
             new StubParser(),
             battleParser: new StubBattleParser());
 
@@ -120,7 +120,7 @@ namespace ShinyBotHunter.Tests
                 GameFlavor.HGSS,
                 new GameCapabilities(false, false, false, false, false, false, false, false),
                 [0],
-                _ => Addresses,
+                (_, _) => Addresses,
                 new StubParser(),
                 battleParser: new StubBattleParser());
             FakeMemoryClient memory = new(partySize: 0);
