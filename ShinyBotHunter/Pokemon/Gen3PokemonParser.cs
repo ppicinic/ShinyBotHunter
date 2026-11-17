@@ -166,6 +166,10 @@ namespace ShinyBotHunter.Pokemon
                 Move2 = BitConverter.ToUInt16(decrypted, SubstructSize + 2),
                 Move3 = BitConverter.ToUInt16(decrypted, SubstructSize + 4),
                 Move4 = BitConverter.ToUInt16(decrypted, SubstructSize + 6),
+                Move1PP = decrypted[SubstructSize + 8],
+                Move2PP = decrypted[SubstructSize + 9],
+                Move3PP = decrypted[SubstructSize + 10],
+                Move4PP = decrypted[SubstructSize + 11],
 
                 // EVs block.
                 EVHP = decrypted[(SubstructSize * 2) + 0],
