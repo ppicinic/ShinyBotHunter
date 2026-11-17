@@ -955,7 +955,6 @@ namespace ShinyBotHunter.Tests
         public static TheoryData<string> RepairCases => new()
         {
             "FIGHT", "move A", "direction", "box page 1", "box page 2", "Yes", "B", "Stop learning", "Down", "forget A",
-            "scene Yes", "scene B", "scene Stop learning",
         };
 
         private static (GameSnapshot[][] Stages, int After, GameSnapshot Changed, Action<Battle> Setup) RepairCase(string name) => name switch
@@ -970,19 +969,8 @@ namespace ShinyBotHunter.Tests
             "forget A" => (ReplaceSlotOne(), 7, Forget(1, fade: 1), b => b.DecideMove = Answer(1)),
             "B" => (Refuse(), 5, Prompt(5) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
             "Stop learning" => (Refuse(), 6, Prompt(10) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
-            "scene Yes" => (SceneReplaceSlotOne(), 5, SceneAsk(5) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(1)),
-            "scene B" => (SceneRefuse(), 5, SceneAsk(5) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
-            "scene Stop learning" => (SceneRefuse(), 6, SceneAsk(10) with { Outcome = BattleOutcome.Won }, b => b.DecideMove = Answer(-1)),
             _ => throw new ArgumentException(name),
         };
-
-        // The scene's "Delete a move?" answered Yes over slot 1, and No then "Stop learning?", each from the yes/no on.
-        private static GameSnapshot[][] SceneReplaceSlotOne() => Won(
-            [Message(), Turn, SceneAsk(5)], [SceneAsk(5), Scene(21, 0), Forget(0)], [Forget(0), Forget(1)],
-            [Forget(1), Forget(1, DestroyTask), Scene(21, 4), Scene(21, 8)], [Scene(21, 8), Free]);
-
-        private static GameSnapshot[][] SceneRefuse() => Won(
-            [Message(), Turn, SceneAsk(5)], [SceneAsk(5), Scene(21, 4), SceneAsk(10)], [SceneAsk(10), Scene(14, 8)], [Scene(14, 8), Free]);
 
         private static Func<PokemonData, PokemonLevelUpMoveMetadata, Task<int>> Answer(int slot) => (_, _) => Task.FromResult(slot);
 

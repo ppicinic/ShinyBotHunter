@@ -16,7 +16,7 @@ namespace ShinyBotHunter.Games.Rs
         private const byte InBattleBit = 0x02;
 
         // The battle window's states that wait for a button (research doc, "Memory read by the spike"); 5 and 9 decomp only.
-        private static readonly int[] ButtonWaits = [5, 8, 9];
+        internal static readonly int[] ButtonWaits = [5, 8, 9];
 
         // Positions in blocks.
         private const int LockBlock = 0;
@@ -61,8 +61,8 @@ namespace ShinyBotHunter.Games.Rs
         private const int DeleteMovePrompt = 1;
 
         // Question on the move prompt, the evolution scene's data[9] values: 5 "Delete a move?", 10 "Stop learning?".
-        private const int DeleteMoveQuestion = 5;
-        private const int StopLearningQuestion = 10;
+        internal const int DeleteMoveQuestion = 5;
+        internal const int StopLearningQuestion = 10;
 
         // gPaletteFade.active is the top bit of its byte (struct PaletteFadeControl, include/palette.h:37).
         private const int FadeActiveShift = 7;

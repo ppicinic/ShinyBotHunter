@@ -4,7 +4,8 @@
 # Training sends it as every A its rules press, each gated and confirmed as RsBattleEvent's log line names: FIGHT (cursor
 # 0, confirmed by the move list), the move (confirmed by leaving the move list), the level-up box's two pages (confirmed
 # by its counter), Yes at "Delete a move?" and at "Stop learning?" (confirmed by the prompt leaving), and the slot on the
-# forget-a-move screen (confirmed by the summary's destroy task). docs/specs/rs-navigation-and-training.md FR-13 to FR-15.
+# forget-a-move screen (confirmed by the summary's destroy task), the same at the evolution scene's own move prompt.
+# docs/specs/rs-navigation-and-training.md FR-13 to FR-16.
 name: BattleConfirm
 flavor: RS
 steps:
