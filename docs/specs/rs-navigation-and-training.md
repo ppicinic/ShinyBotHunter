@@ -166,6 +166,7 @@ The scenarios use what the wild hunt's QA put on `main`: the ROM handles `SA-Wil
 | `rs-train-switch-battler-spent` | the battler's HP written to 1, or its PP to 0, before Run; or its HP and max HP 1 so it faints in battle, with the wild Pokémon's battle Speed written at each battle's first action menu | the orchestrator's rule: the Pokémon Center trip, then Switch training resumes; and with the battler fainted in battle, the battle is fled and the bot heals; if that flee fails, the fastest alive is sent out and RUN chosen, then the heal; if that Run fails too, Waiting with one Discord message (FR-18) |
 | `rs-train-switch-ruby` | `rs-train-switch` on the Ruby 1.2 ROM | the same checks; proves the per-game party-screen addresses (FR-12) |
 | `rs-train-heal` | Train Standard, the lead's PP written to 0 | the Pokémon Center trip, then training resumes |
+| `rs-train-heal` battles-first | Train Standard, the lead left 5 damaging PP (Tackle) | it battles until fewer than 3 damaging PP are left, then the Pokémon Center trip, then training resumes |
 | Regression | the nine `rs-wild-*` scenarios (`rs-wild-speed` still at 265 an hour or better: the flee path gains no read or wait); `hgss-route33`, `hgss-route33-train`, `hgss-navigate-heal-return`, `hgss-heal-variants`, `hgss-pickup` | still pass |
 
 ## Suggested task split
@@ -252,6 +253,7 @@ Emulator runs on the dev PC, QA BizHawk, English Sapphire 1.2 (`SA-Wild`) unless
 | `rs-nav-heal-return` house | `20261117-102531` (a) failed in the scenario: Run clicked during the game's locked step after a door, fixed in #470; then passed (b) | the walk back goes through the house door with the cut run that waits on the other axis (R3) |
 | `rs-train-heal` | `20261117-102640` (a) failed on a bot bug ("The player moved while turning. At (14, 3), started on (14, 4).", fixed in #469); then `20261117-111237`, `20261117-111405`, `20261117-111533`, `20261117-111704`, `20261117-111844` (b) | five passes in a row after the fix; the last segment home takes 30 to 33 frames where it took 24 and 26 |
 | `rs-train-heal` on Ruby | `20261117-112028` (b) | passed: the nurse's last press on Ruby's own `WaitForAorBPress`, 0x080670E1 |
+| `rs-train-heal` battles-first | `20261117-222641` | passed: three Tackles in one battle (PP 5, 4, 3), `heal trip: Mudkip HP 17/25, damaging PP 2`, the Oldale Center and back, then Tackle at PP 35 |
 | `rs-nav-trainer` run | `20261117-103758` (a) | passed: the stop on Route102 (33, 15), one Discord message, Resume during the speech parks again, the scenario wins in 18 presses, Resume carries on |
 | `rs-nav-trainer` walk | `20261117-104159` (a), again (b) | passed: "field locked 236 frames on Route102 (33, 15) with no battle; handing the lock to the battle event"; after the win the navigator plans again (172 flags set against 171) and the walk back crosses his sight without a stop |
 
@@ -358,3 +360,4 @@ Follow-ups proposed, none done:
 - 2026-11-15: the owner removed trainer sight tiles from the data and the search; FR-2 to FR-5, the design's script-state section and two QA scenarios follow.
 - 2026-11-17: the owner's three answers recorded; the evidence for #475 and for every Discord prompt variant added; two follow-ups added (a blackout that carries on; the fainted-battler rule in a flee-only hunt).
 - 2026-11-17: the four HGSS saves rebuilt and the HGSS regression scenarios run (Evidence).
+- 2026-11-17 (owner): `rs-train-heal` gains the variant `battles-first`, which battles before the heal trip; run on Sapphire (Evidence).
