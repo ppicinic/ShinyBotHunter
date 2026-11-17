@@ -8,6 +8,7 @@ using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -364,6 +365,65 @@ namespace ShinyBotHunter.Tests
             await LogWildAsync(state, 50);
 
             Assert.Null(state.SpeedLines);
+        }
+
+        // Tackle and Ember damage; Growl does not.
+        private const ushort Tackle = 33, Ember = 52, Growl = 45;
+
+        private static PokemonMetadataService Moves()
+        {
+            PokemonMetadataService metadata = new(null!);
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Tackle, Name = "Tackle", DamageClass = "physical" });
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Ember, Name = "Ember", DamageClass = "special" });
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Growl, Name = "Growl", DamageClass = "status" });
+            return metadata;
+        }
+
+        // An HGSS party member as its parser fills it, MaxHP 40.
+        private static PokemonData HgssMon(ushort hp, byte tacklePp = 35, byte emberPp = 0, byte growlPp = 0) => new()
+        {
+            HP = hp, MaxHP = 40, Move1 = Tackle, Move1PP = tacklePp, Move2 = Ember, Move2PP = emberPp, Move3 = Growl, Move3PP = growlPp,
+        };
+
+        private static bool CanFight(TrainType trainType, int? switchSlot, params PokemonData[] party)
+        {
+            GameState state = new() { TrainType = trainType, SwitchSlot = switchSlot };
+            PokemonState pokeState = new() { PartySize = party.Length };
+            party.CopyTo(pokeState.PartyPokemon, 0);
+            object orchestrator = System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(OrchestratorEvent));
+            typeof(OrchestratorEvent).GetField("metadataService", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .SetValue(orchestrator, Moves());
+            return (bool)typeof(OrchestratorEvent).GetMethod("CanFightNextEncounter", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(orchestrator, [state, pokeState, party[0]])!;
+        }
+
+        // What HGSS decides today before every encounter of a Standard hunt: HP above a quarter, and three damaging PP.
+        [Theory]
+        [InlineData((ushort)40, (byte)35, (byte)0, (byte)0, true)]
+        [InlineData((ushort)11, (byte)35, (byte)0, (byte)0, true)]
+        [InlineData((ushort)10, (byte)35, (byte)0, (byte)0, false)]
+        [InlineData((ushort)0, (byte)35, (byte)0, (byte)0, false)]
+        [InlineData((ushort)40, (byte)2, (byte)0, (byte)40, false)]
+        [InlineData((ushort)40, (byte)2, (byte)1, (byte)0, true)]
+        [InlineData((ushort)40, (byte)0, (byte)0, (byte)40, false)]
+        public void CanFight_HgssStandard_IsTodays(ushort hp, byte tacklePp, byte emberPp, byte growlPp, bool expected)
+        {
+            Assert.Equal(expected, CanFight(TrainType.Standard, null, HgssMon(hp, tacklePp, emberPp, growlPp)));
+        }
+
+        // And of a Switch hunt: the lead only needs HP; the battler in the 1-based slot needs HP and PP, and must be there.
+        [Theory]
+        [InlineData((ushort)5, (ushort)40, (byte)35, 2, 2, true)]
+        [InlineData((ushort)0, (ushort)40, (byte)35, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)10, (byte)35, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)2, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)35, 2, 3, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)35, 3, 3, true)]
+        public void CanFight_HgssSwitch_IsTodays(ushort leadHp, ushort battlerHp, byte battlerTacklePp, int partySize, int switchSlot, bool expected)
+        {
+            PokemonData[] party = [HgssMon(leadHp, tacklePp: 0), .. Enumerable.Repeat(HgssMon(battlerHp, battlerTacklePp), partySize - 1)];
+
+            Assert.Equal(expected, CanFight(TrainType.Switch, switchSlot, party));
         }
     }
 }
