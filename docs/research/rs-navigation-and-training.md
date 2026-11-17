@@ -118,6 +118,16 @@ Segments: one `M` macro per straight run, `M.<dir>.<coordinate>.<address>:H.B.1`
 - An arrow warp is `M.Down.<y outside>`: the player presses Down on the mat and the coordinate is only reached after the warp.
 - After each segment the bot waits for the macro to end, the field free, and the map and tile it expected. A segment that does not get there in 20 s is "stuck", and a battle bit during a segment ends it.
 
+The five macros of the walk from Route 101 (14, 4) to the Oldale Pokémon Center counter (7, 4), route cost 45, from the spike's `rsmaps.py` on pokeruby 5784633 and from `RouteSearch` on the committed `Data/RS` (#426, the unit test `Route101ToOldaleCenter_GivesTheFiveMacros`), with the map and tile each ends on:
+
+| Macro | Ends on |
+|---|---|
+| `M.Left.8.33707826:H.B.1` | Route 101 (8, 4) |
+| `M.Up.0.33707828` | Route 101 (8, 0) |
+| `M.Up.17.33707828` | Oldale Town (8, 17) |
+| `M.Left.6.33707826` | Oldale Town (6, 17) |
+| `M.Up.4.33707828` | Oldale Pokémon Center 1F (7, 4) |
+
 | Walk | Segments | Result |
 |---|---|---|
 | Route 101 (14, 4) to Oldale Pokémon Center (7, 4) | 5 | arrived; 33, 41, 26, 48, 181 frames |
