@@ -125,6 +125,8 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(0x081D8ED2u, table.DeleteMoveYesNo);
             Assert.Equal(0x081D8EE1u, table.StopLearningYesNo);
+            // pret symbols line 24425: BattleScript_FaintedMonTryChooseAnother - 0x14.
+            Assert.Equal(0x081D8C56u, table.UseNextPokemonYesNo);
         }
 
         [Theory]
@@ -136,6 +138,7 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(0x081D8F42u, table.DeleteMoveYesNo);
             Assert.Equal(0x081D8F51u, table.StopLearningYesNo);
+            Assert.Equal(0x081D8CC6u, table.UseNextPokemonYesNo);
         }
 
         // pret symbols, commit 78b1990, line 4437: WaitForAorBPress, + 1 for the Thumb bit.
@@ -169,6 +172,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(table.WaitForAorBPress);
             Assert.Null(table.DeleteMoveYesNo);
             Assert.Null(table.StopLearningYesNo);
+            Assert.Null(table.UseNextPokemonYesNo);
             Assert.Null(table.PartyMenuMainCallback2);
         }
 
@@ -254,6 +258,8 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x08095139u, table.BattlePartyMenuTask);
             Assert.Equal(0x08095429u, table.BattlePartyPopupTask);
             Assert.Equal(0x02020004u, table.Sprites);
+            Assert.Equal(0x02038470u, table.BattlePartyCurrentOrder);
+            Assert.Equal(0x02016078u, table.RunTries);
         }
 
         [Fact]
