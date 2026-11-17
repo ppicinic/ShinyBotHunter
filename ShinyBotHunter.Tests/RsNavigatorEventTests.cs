@@ -24,6 +24,7 @@ namespace ShinyBotHunter.Tests
         private const uint PlayerPosition = 0x02025734;
         private const uint PlayerLocation = 0x02025738;
         private const uint EventFlags = 0x02026954;
+        private const uint PlayerRunningState = 0x0202E85A;
 
         // Callback 1 in the free field (CB1_Overworld, Sapphire 1.2, from the readings' log).
         private const uint Overworld = 0x08054375;
@@ -50,13 +51,14 @@ namespace ShinyBotHunter.Tests
             Directory.SetCurrentDirectory(RepoPaths.AppProject);
         }
 
-        // One walk read: where the player stands, the lock, callback 1, the battle bit and the tile transition.
-        private sealed record Read(int Map, int X, int Y, byte Lock = 0, uint Callback = Overworld, bool Battle = false, byte Transition = 0);
+        // One walk read: where the player stands, the lock, callback 1, the battle bit, the running state and the tile
+        // transition.
+        private sealed record Read(int Map, int X, int Y, byte Lock = 0, uint Callback = Overworld, bool Battle = false, byte Running = 0, byte Transition = 0);
 
         private static Read Free(int map, int x, int y) => new(map, x, y);
 
         // W9: free on the tile with its step still running.
-        private static Read Stepping(int map, int x, int y) => new(map, x, y, Transition: 1);
+        private static Read Stepping(int map, int x, int y) => new(map, x, y, Running: 2, Transition: 1);
 
         private static Read Locked(int map, int x, int y) => new(map, x, y, Lock: 1);
 
@@ -120,7 +122,7 @@ namespace ShinyBotHunter.Tests
             VBlankCounter => BitConverter.GetBytes(frame),
             PlayerPosition => [.. BitConverter.GetBytes((short)read.X), .. BitConverter.GetBytes((short)read.Y)],
             PlayerLocation => [(byte)(read.Map >> 8), (byte)read.Map],
-            PlayerTileTransition => [read.Transition],
+            PlayerRunningState => [read.Running, read.Transition],
             _ => throw new InvalidOperationException($"unexpected read at 0x{address:X8}"),
         };
 
@@ -208,6 +210,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(EventState.DecideOverworldAction, walk.State.State.Peek());
         }
 
+        // #467 review: the first frame of a step taken from rest already shows the new tile with tile transition 0 and the
+        // running state 2 (research log, toHouse f 18071). For a one-tile last segment that frame is not an arrival; the
+        // step's 1 and 2 follow, and it ends on transition 0 with the running state 0.
+        [Fact]
+        public async Task OneTileLastSegment_FirstFrameOfTheStep_IsNotArrival()
+        {
+            Walk walk = Start(EventState.ReturnToStart,
+                [[Free(OldaleTown, 6, 18)],
+                    [new(OldaleTown, 6, 17, Running: 2), Stepping(OldaleTown, 6, 17), new(OldaleTown, 6, 17, Transition: 2), Free(OldaleTown, 6, 17)]],
+                start: (OldaleTown, 6, 17));
+
+            Assert.Null(await walk.RunAsync());
+
+            Assert.Equal(2, walk.Bot.Macros.Count);
+            Assert.Equal(4, walk.ReadsInStage[1]);
+            Assert.Equal(EventState.DecideOverworldAction, walk.State.State.Peek());
+        }
+
         // W9 (#467): the last segment on its tile with the transition never back to 0 is not an arrival; the segment's stale
         // time stops the walk, naming the transition it read, the macro cleared.
         [Fact]
@@ -216,7 +236,7 @@ namespace ShinyBotHunter.Tests
             Walk walk = Start(EventState.ReturnToStart, [[Free(OldaleCenter, 7, 8)], [Stepping(OldaleTown, 6, 17)]],
                 start: (OldaleTown, 6, 17), stale: Short);
 
-            Assert.Equal("The last step to OldaleTown (6, 17) did not end (tile transition 1).", await walk.RunAsync());
+            Assert.Equal("The last step to OldaleTown (6, 17) did not end (running state 2, tile transition 1).", await walk.RunAsync());
 
             Assert.Equal(["M.Down.17.33707828:H.B.1", "clear"], walk.Bot.Macros);
             Assert.Equal(EventState.Waiting, walk.State.State.Peek());

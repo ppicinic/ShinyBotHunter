@@ -238,6 +238,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x0202E892u, table.FieldMessageWindowState);
             Assert.Equal(0x030005BCu, table.ScriptNative);
             Assert.Equal(0x030005B9u, table.ScriptContextMode);
+            Assert.Equal(0x0202E85Au, table.PlayerRunningState);
             Assert.Equal(0x0202E85Bu, table.PlayerTileTransition);
             Assert.Equal(0x080B5505u, table.TaskHandleYesNoInput);
             Assert.Equal(0x03004B20u, table.Tasks);

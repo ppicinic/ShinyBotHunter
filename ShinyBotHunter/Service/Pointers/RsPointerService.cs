@@ -240,6 +240,12 @@ namespace ShinyBotHunter.Service.Pointers
         // rs-nav-heal-return
         public uint ScriptContextMode => 0x030005B9;
 
+        // gPlayerAvatar (0x0202E858) + 2, runningState (u8, include/global.fieldmap.h): 2 while moving, 1 through a turn in
+        // place, 0 at rest; tileTransitionState is the next byte; root (absolute; pret symbols line 130, pret/pokeruby
+        // symbols branch, commit 78b1990); observed on Sapphire 1.2 (the research's navigator log, `run=`); QA: none yet:
+        // rs-train-heal
+        public uint PlayerRunningState => 0x0202E85A;
+
         // gPlayerAvatar (0x0202E858) + 3, tileTransitionState (u8, include/global.fieldmap.h): 1 through a step, 2 for one
         // frame, 0 at rest, and 0 through a turn in place; root (absolute; pret symbols line 130); observed on Sapphire 1.2;
         // QA: none yet: rs-nav-heal-return
