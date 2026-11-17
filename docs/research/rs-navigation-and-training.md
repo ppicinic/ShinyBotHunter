@@ -116,6 +116,7 @@ Segments: one `M` macro per straight run, `M.<dir>.<coordinate>.<address>:H.B.1`
 
 - A run can cross a connection or go through a door inside one macro, because the coordinate it waits for is the destination map's. `M.Up.17` from Route 101 row 0 ends on Oldale row 17; `M.Up.4` from outside the Pokémon Center door ends at the counter, held through the fade.
 - An arrow warp is `M.Down.<y outside>`: the player presses Down on the mat and the coordinate is only reached after the warp.
+- B is held only while a macro carries the hold: the next macro replaces the last one's held B, so every segment carries its own `:H.B.1` ("The navigator: the walk and the nurse, read frame by frame").
 - After each segment the bot waits for the macro to end, the field free, and the map and tile it expected. A segment that does not get there in 20 s is "stuck", and a battle bit during a segment ends it.
 
 The five macros of the walk from Route 101 (14, 4) to the Oldale Pokémon Center counter (7, 4), route cost 45, from the spike's `rsmaps.py` on pokeruby 5784633 and from `RouteSearch` on the committed `Data/RS` (#426, the unit test `Route101ToOldaleCenter_GivesTheFiveMacros`), with the map and tile each ends on:
@@ -123,10 +124,10 @@ The five macros of the walk from Route 101 (14, 4) to the Oldale Pokémon Center
 | Macro | Ends on |
 |---|---|
 | `M.Left.8.33707826:H.B.1` | Route 101 (8, 4) |
-| `M.Up.0.33707828` | Route 101 (8, 0) |
-| `M.Up.17.33707828` | Oldale Town (8, 17) |
-| `M.Left.6.33707826` | Oldale Town (6, 17) |
-| `M.Up.4.33707828` | Oldale Pokémon Center 1F (7, 4) |
+| `M.Up.0.33707828:H.B.1` | Route 101 (8, 0) |
+| `M.Up.17.33707828:H.B.1` | Oldale Town (8, 17) |
+| `M.Left.6.33707826:H.B.1` | Oldale Town (6, 17) |
+| `M.Up.4.33707828:H.B.1` | Oldale Pokémon Center 1F (7, 4) |
 
 | Walk | Segments | Result |
 |---|---|---|
@@ -268,6 +269,90 @@ Nothing differs in RAM: the same addresses, the same values, the same order of s
 ### Evidence
 
 Not committed, kept in the orchestrator's session scratch folder: `t.py` (the one-frame snapshot), `walk.py`, `talk.py`, `fight.py`, `log.txt` (every change of the snapshot through both runs, 529 lines), `shots/` (the speech on both games, Rick's speech). Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash (first 131,072 bytes) of each was unchanged before the restore.
+
+## The navigator: the walk and the nurse, read frame by frame
+
+Added 2026-11-17 (N4a, #429), from a third spike on the QA emulator (sound off): `SA-Wild` (Sapphire 1.2) then `RU-Wild` (Ruby 1.2), one at a time, each on the `qa-route101` save. These are the readings W1 to W9, N1 to N6, R3a and R3b of the navigator plan (#429). Every reading is one request of 16 blocks, so all its values are from one frame; the snapshot was logged on every change with its frame (`gMain.vblankCounter1`), and reads came on about four frames in five. Values marked observed were read on the emulator; values marked not read are from the decomp (`pret/pokeruby`) or from the data only. HP was lowered by writing the party record's HP in the free field; nothing else was written.
+
+### What the readings change
+
+1. **B does not stay held across segments** (observed). `RunHold` (`H.B.1`) on the first segment keeps B down after that macro ends, but the next `macro_string` replaces it: on the frame the second segment starts `heldKeys` reads the direction only, and the player walks (16 frames a tile) for the rest of the route. With `:H.B.1` on every segment, B is down on every read (`heldKeys` bit 1), `newKeys` shows B only on the first frame of the first segment, and the player runs at 8 frames a tile, also straight after a door's fade with no new B press. FR-8 joins `RunHold` to every segment for this.
+2. **The tile transition reads 0 during a turn in place** (observed). During `SpinUp`'s turn `tileTransitionState` (`gPlayerAvatar + 3`, `0x0202E85B`) reads 0 the whole time while `runningState` is 1 for 8 frames. An A sent on the turn's second frame was taken, because the facing byte already reads up from the turn's first frame. An A sent mid-step (tile transition 1) was dropped. So a talk gated on the free field, tile transition 0 and the facing up is safe, though tile transition 0 does not mean the turn has ended.
+
+### The walk
+
+The segments, each its own macro, none cleared between: `M.Left.8.33707826:H.B.1`, `M.Up.0.33707828`, `M.Up.17.33707828`, `M.Left.6.33707826`, `M.Up.4.33707828` (Sapphire, the macros as `RouteSearch` gave them before FR-8 changed), and the same with `:H.B.1` on each (Ruby). Every value in this table is observed.
+
+| Reading | What was seen | Against the plan |
+|---|---|---|
+| W1, the door into the Center (`M.Up.4`, Sapphire) | Up pressed f 4632; the lock sets f 4646 with the player still on (6, 17) (the door opens); the tile reads the door (6, 16) from f 4667; the fade f 4703 to 4724; map (2, 2) tile (7, 8) from f 4737; **callback 1 reads 0 with the lock 0 on f 4738 to 4742** (the next read, f 4745, is locked again with callback 1 back); fade in to f 4766; the lock clears f 4769 with the player already on (7, 7), walking on; (7, 4) at f 4817. Longest locked run with the map and tile unchanged: **69 frames** (on the door tile). Ruby: 67 | as expected: far under 240 |
+| W2 and R3a, the exit mat (`M.Down.8.33707828:H.B.1`, `M.Down.17.33707828`) | y 5, 6, 7, 8 at 16 frames a tile (no running indoors, B held); the first macro ends on the mat, y 8, free. The second: the lock and the fade from about f 14165 with y still 8; map (0, 10) tile (6, 16) first read f 14242 with callback 1 0 and the lock 0 (to f 14246); locked again f 14249 through the fade in; **the game's exit step is locked**: tile (6, 17) from f 14272; the macro ends there (first read after: f 14274, locked, tile transition 1); the step ends f 14289; the lock clears f 14310. The macro stopped only at 17; the player ended on Oldale (6, 17). Longest locked run unchanged: 65 frames (on the mat) | as expected |
+| W3, the connection (`M.Up.0`, `M.Up.17`) | the lock, callback 1 and the fade do not change at all. The location changes on one read to map (0, 10) with **y 20** (f 4564), and y is 19 on the next (f 4565). Ruby the same (f 1130: y 20; then 19) | different in one detail: one read with a y one past the new map's last row |
+| W4, a macro that ends on a door tile's own coordinate (the Oldale Mart, `M.Up.6.33707828` from (14, 7)) | the lock sets on the first frame (f 17013), before the step; tile (14, 6) from f 17033; the macro ends there (f 17034, Up let go) **locked**, on the old map, mid-step; the step ends, the fade, map (2, 4) tile (3, 7) at f 17105 (callback 1 0), free f 17135 on the mat, nothing pressed since f 17034. Longest locked run unchanged: 70 frames | different: the tile is the door on the old map as expected, but the field is locked, not free, on that frame. The rest as expected: the step finishes and the warp fires with nothing held |
+| W5, B across the fade | the macros without the hold on each: B gone from the second segment on (above). With `:H.B.1` on every segment: `heldKeys` has B on every read through the door, the fade, the mat and the arrival step; the next outdoor segment runs at 8 frames a tile with no new B | different: B is held only with the hold on every segment |
+| W6, a wild battle mid-run with B held | the lock f 1186 (tile (13, 4)), the battle bit f 1279: 93 frames locked with no battle bit and the tile unchanged. `newKeys` never has B from the lock on (`heldKeys` 0x22 throughout). The battle window reaches 8 at f 1488 and was still 8 at f 1639, 2.5 s later; the macro was never cleared | as expected |
+| W7, Calvin seen mid-run, B and Left held, never cleared | the lock f 19855 on (33, 16) with the opponent 318 on that read; the speech prints f 19946; the window reads 9 at f 20020 and still 9 at f 20321 (5 s), `heldKeys` 0x22 on every read, `newKeys` never A or B, the tile unchanged. Locked run unchanged: 466 frames and still going | as expected |
+| W8, `SpinUp` at the counter facing left | sent after f 10072; f 10073: facing byte 0x22, `runningState` 1, tile transition 0, Up in `newKeys`; f 10081: `runningState` 0, tile transition 2; f 10082: both 0. The tile unchanged | as expected, and see point 2 above |
+| W9, the end of a step | on `M.Up.4` the tile reads (7, 4) from f 4817 and the macro ends there, with tile transition 1 until f 4833 (2) and f 4834 (**0**): 17 frames after y read 4. An A sent on the frame after y read 4 (tile transition 1) was **dropped**: no lock. An A sent at 0 was taken every time (4 times) | as expected: `0x0202E85B` is 1 through a step, 2 for a frame, 0 at rest |
+
+Other things the walk showed (observed):
+
+- A segment's coordinate is reached 16 frames (walking) or 8 (running) before the step ends, so the macro's end is not the player standing still. The next segment's macro, sent mid-step, takes over cleanly (no stop, no extra step).
+- After every warp the game reads callback 1 as 0 with the lock 0 for 4 to 7 frames. That is not the free field: the free-field test needs callback 1 not 0, as the wild hunt's has.
+- Crossing a connection, one read shows the coordinate one row past the new map's edge (W3).
+- Locked runs with the map and tile unchanged, all warps: 69, 67 and 70 (doors), 65 (mats), 59 (a house door), 43 and 36 (arrival steps). A wild battle's is 93 before its bit. A trainer's never ends. So a clock of 240 frames (4 s, `SeekLockHandOff`) that counts only a lock with the map and tile unchanged separates them.
+- A trainer or a wild battle met mid-run with B and the d-pad held got no A or B (W6, W7).
+- Indoors B does nothing: 16 frames a tile with it held.
+
+### R3: the search's cut segments
+
+Every value in this table is observed.
+
+| Case | Macro | What was seen |
+|---|---|---|
+| R3a, an arrow warp (the Center's mat) | `M.Down.8…:H.B.1`, `M.Down.17…` | above (W2): the macro ends only on 17, after the game's own exit step |
+| The same from a mat whose outside row equals the mat's (the Mart: mat y 7, door (14, 6), outside (14, 7)) | `M.Down.6.33707828:H.B.1` | Down pressed f 17221, locked f 17222; map (0, 10) tile (14, 6) at f 17288; the macro ends there (y 6, the landing); the exit step to (14, 7) is the game's, locked; free f 17356 on (14, 7) |
+| R3b, a door whose landing row is one already shown, so the run waits on the other axis (Oldale House 1: door (5, 7) from (5, 8), landing (3, 8)) | `M.Up.3.33707826:H.B.1` (x is watched) | Up held through the door and the fade; x reads 3 on the first read of the new map (f 18305); the macro ends there; the player stays on the mat (3, 8); free f 18337. Out by `M.Down.7.33707828:H.B.1`: ends at (5, 7), the game steps to (5, 8), free f 18511 |
+| The same on the Center's escalator (Ruby: (1, 6) entered from (2, 6), landing 2F (1, 5)) | `M.Left.5.33707828:H.B.1` (y is watched) | the step onto (1, 6) f 7646, locked f 7662, the fade, map (2, 3) tile (1, 5) at f 7695, the macro ends; the game's arrival step to (2, 5) is locked; free f 7748 on (2, 5) |
+| A run that stops on the warp tile's own coordinate (neither axis new) | by hand at the Mart door, W4 above | the step finishes and the warp fires with nothing held |
+
+No crossing near Oldale or Petalburg makes the search emit the "own coordinate" form by itself. Offline (not read), 162 of the 686 step-on warps in the prototype data have a landing that shares the door's coordinates; the only ones reachable on this save are the Pokémon Center escalators, and those would need the escalator entered from the tile above it. On the emulator that step is refused (observed): `M.Down.6.33707828` from (1, 5) held Down for 9 s with the player still on (1, 5) (Ruby). The prototype's tile plane shows (1, 5) to (1, 6) as open; the committed `Data/RS` does not (checked offline, not read): on `OldaleTown_PokemonCenter_1F` (514), (1, 5) is at elevation 3 and the escalator (1, 6) at 4, so `RouteSearch` refuses the step under FR-6 as the game's `IsZCoordMismatchAt` does, and takes the escalator from (2, 6) at 0, as the emulator did (the unit test `CenterEscalator_RefusedFromAbove_TakenFromTheSide`).
+
+### The nurse
+
+At (7, 4) facing up, each press `H.A.2`, sent once on its gate. Sapphire run 1, with the lead at 5 of 25 HP. Every value in this table is observed.
+
+| # | Press | The read it was sent on | Confirmed | Against the plan |
+|---|---|---|---|---|
+| 1 | talk | f 8290: free, tile transition 0, facing 2; native 0 (no script had run yet; on later runs the stale `WaitForAorBPress`) | locked on f 8293, 3 frames later (3 to 5 over four runs): status 0, mode 2, native `0x08064DD9` (Ruby `0x08064DD5`) | N1 as expected |
+| 2 | first page break | f 8339: window **8** (states before it: 1, 3, 6, 2, 3) | window 2 on f 8340 | N2 as expected; no 5 or 9 |
+| 3 | second page break | f 8388: window 8 | f 8389 | as expected |
+| 4 | Yes | `Task_HandleYesNoInput` (`0x080B5505`) active in **slot 4**, `data[2]` read 1, 2, 3, (4), **5** on f 8428 to 8432; status 1, mode 1, window 0, message box mode 0, `gSpecialVar_Result` 0xFF. A sent on the read with 5 (f 8432) | f 8435: the task gone, the result 1, status 0. On Ruby run 2: sent after f 2840, gone on f 2841 | N3 as expected. `data[2]` 0 was never read: the first read with the task active shows 1 |
+| 5 | "Thank you for waiting." | f 8719: window 8 | f 8722 | N4 as expected |
+| 6 | "We hope to see you again!" | f 8855: window 0, status 0, mode 2, native `0x080670E5`, script pointer `0x08152ED3` | f 8857 mode 1; **f 8858 the lock 0, status 2, mode 0**, the native still `0x080670E5` (stale) | N5 as expected |
+
+What else the nurse showed (observed):
+
+- **Six presses, 569 frames (9.5 s)** from the first A to the lock clearing; HP 5 to 25. Run 3, from an already open dialog: 5 presses, 522 frames.
+- N4, the heal itself: the read does not change for **161 frames** (f 8525 to 8686, 2.7 s) while `Task_PokecenterHeal` (`0x08085DE5`) is in the task list; the native through it is `0x08067B6D`, never `WaitForAorBPress`. After "Thank you for waiting." there is a 55-frame movement wait (the bow, native `0x08066B2D`), and the last message prints and closes by itself (window 1, 3, then 0) before the button wait.
+- **The early A at the Yes is dropped** (run on both games): an A sent on the first read with the task active (`data[2]` 1) showed in `newKeys` on the frame `data[2]` read 2, and the task was still active with `data[2]` 5 and the result 0xFF 61 frames later. A second A then was taken on the next frame. So the gate is the task with `data[2]` (task + 0x0C) at 5.
+- N6, Ruby: the same six presses on the same gates, 569 frames; the Yes/No task in slot 4 with `data[2]` 1, 2, 3, 4, 5 on consecutive frames; the final wait's native `0x080670E1`; the lock 0 and status 2 two frames after the last A (f 2618 to 2620). HP 6 to 25, and 9 to 25 on the run with the early A.
+- The Yes/No task's function is `0x080B5505` on both games; `WaitForAorBPress` and the other natives differ by 4 between the games, as before.
+
+### Not read
+
+- An A or B press at the script's final button wait while B is held from a run (the walk clears its macro before the nurse).
+- A trainer's last line (the script's own button wait) with B and the d-pad held: W7 held them through the `\l` wait only.
+- The stairs entered from below, and the way back down the escalator.
+- A Pokémon Center other than Oldale's: its counter is assumed at (7, 4) with the nurse at (7, 2), from the data.
+- A party of more than one Pokémon at the nurse: the heal's unchanged stretch will be longer than the 161 frames read with one. The Switch QA scenarios, with two Pokémon, are its first run.
+- The Pokérus message at the nurse.
+- W1, W2 and R3a on Ruby beyond the walk in (the door, 67 frames); the Mart and house doors on Ruby.
+- Versions 1.0 and 1.1.
+
+### Evidence
+
+Not committed, kept in the orchestrator's session scratch folder: `t3.py` (the request, the segment runner), `run3.py`, `nurse.py`, `w6.py`, `log3.txt` (2,232 lines: every change of the snapshot through both games), `shots3/`. Both SaveRAM files and their backups were restored from the pristine copy afterwards; the flash of each was unchanged before the restore.
 
 ## Healing
 
