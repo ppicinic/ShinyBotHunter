@@ -170,7 +170,7 @@ All RAM, the same on both games.
 | Script context mode | `sGlobalScriptContext.mode` | `0x030005B9` | u8 | observed: 2 while a native function is polled, 1 bytecode, 0 no script |
 | Script native | `sGlobalScriptContext.nativePtr` | `0x030005BC` | u32 | observed; stale after the script ends: it still read `WaitForAorBPress` in the free field and through a whole battle |
 | Script pointer | `sGlobalScriptContext.scriptPtr` | `0x030005C0` | u32 | observed; 0 when no script |
-| Field message window state | `gFieldMessageBoxWindow + 0x16` | `0x0202E892` | u16 | observed: 0 idle, 1 and 3 printing, 2 and 6 for a frame between lines, 9 waiting at a `\l`; 5 and 8 not read in the field here |
+| Field message window state | `gFieldMessageBoxWindow + 0x16` | `0x0202E892` | u16 | observed: 0 idle, 1 and 3 printing, 2 and 6 for a frame between lines, 9 waiting at a `\l`; 5 and 8 not read in the field here, though the nurse readings later saw 8 at each of her page breaks ("The navigator: the walk and the nurse, read frame by frame") |
 | Message box mode | `sMessageBoxMode` | `0x030005A8` | u8 | observed: 2 while the window prints or waits, 0 once the text has finished, though it is still on screen |
 | Trainer flag | flag `0x500 + id` in `0x02026954` | Calvin 1598: `0x02026A1B` bit 6; Rick 1895: `0x02026A40` bit 7 | bit | observed |
 
@@ -356,15 +356,16 @@ Not committed, kept in the orchestrator's session scratch folder: `t3.py` (the r
 
 ## Healing
 
-At (7, 4), facing the nurse at (7, 2) over the counter: A, then by rule until the field is free.
+At (7, 4), facing the nurse at (7, 2) over the counter, with nothing held: A, then by rule until the field is free. Corrected 2026-11-17 (N4b, #447) to the readings of "The navigator: the walk and the nurse, read frame by frame", on Sapphire 1.2 and Ruby 1.2; every gate below is observed.
 
 | Wait | Read | Press |
 |---|---|---|
-| A field message waits | the field message window's state, `0x0202E87C + 0x16`, is 8 (5 and 9 are the other waits) | A, confirmed by the state changing |
-| The Yes/No menu | the field script's status byte `0x030005B0` is 1 (stopped) with the message window idle | A (Yes is under the cursor), confirmed by the status leaving 1 |
-| "We hope to see you again!" | the script's native at `0x030005BC` is `WaitForAorBPress` | A, confirmed by the native changing or the lock clearing |
+| The talk | the field free, the tile transition (`gPlayerAvatar + 3`, `0x0202E85B`) 0 and the facing up; an A mid-step (transition 1) was dropped, and one on a turn's second frame was taken | A, confirmed by the lock, 3 to 5 frames later |
+| A field message waits | the field message window's state, `0x0202E87C + 0x16`, is 8 (5 and 9 were not seen at the nurse) | A, confirmed by the state leaving 8 on the next frame |
+| The Yes/No menu | `Task_HandleYesNoInput` active with its `data[2]` (task + 0x0C) at 5; it counts 1 to 5 on consecutive frames | A (Yes is under the cursor), confirmed by the task gone within 3 frames |
+| "We hope to see you again!" | status 0, mode 2 (`0x030005B9`) and the native at `0x030005BC` `WaitForAorBPress`, only after the Yes: the native alone is stale after any script ends | A, confirmed by the lock 0 and status 2 within 3 frames |
 
-Six presses, 10.6 s. One A at the Yes/No was dropped and sent again: the status byte turns 1 a moment before the menu takes input. The state that takes the input is the menu's own task (`Task_HandleYesNoInput`); the spec gates on that.
+Six presses, each sent once, 569 frames (9.5 s) from the talk to the lock clearing. The first spike's A at the Yes/No was dropped and sent again because it was gated on the status byte, which turns 1 a moment before the menu takes input; an A sent while `data[2]` counts (read at 1) was dropped the same way on both games, and one at 5 was taken at once.
 
 **Field script functions differ by game**, unlike the battle ones: `WaitForAorBPress` is `0x080670E5` on Sapphire 1.2 and `0x080670E1` on Ruby 1.2 (and `0x080670C1` on Ruby 1.0). They sit above `0x0803FBDC`, where the ROMs diverge. Anything gated on a field-script or menu function needs one value per game.
 
@@ -554,7 +555,7 @@ Not committed, kept in the orchestrator's session: the request and its drivers (
 - 144 trainer sight entries and 32 triggers whose flag or variable the prototype did not resolve (scripts that reach the battle through a `call`, special variables).
 - NPCs that walk a fixed path (only wander and walk ranges are marked), and objects a script moves.
 - The lead fainting in training, running out of PP, EXP for a switched-out lead (the two-getter reading used an Exp. Share holder, never sent out). The "No" answer to the in-battle move prompt and a Pokémon that evolves while it is not the lead were read since ("Training: the readings behind the move prompt, the forget screen and the evolution scene", R1, R6 and R7), and that section lists what it did not read.
-- The Yes/No menu gated on its task, and the party submenu gated at all.
+- The party submenu gated at all.
 - Ruby, for the first spike: the maps, the walks, healing, the switch and the first training run ran on Sapphire 1.2 only; the battle-side addresses are shared, the field-side functions are not. The trainer speech and the training readings were read on Ruby 1.2 as well (their sections say what was not).
 
 ## What this means for the bot

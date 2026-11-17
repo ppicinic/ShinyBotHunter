@@ -1,7 +1,8 @@
 # Holds B for the whole Run walk (the save has the Running Shoes). H.B.1 is a sticky hold: ApiHawk sets
 # it when the macro is parsed and keeps it until macro_clear.
 #
-# Joined to the first move's step with ":" and never run as a step of its own. As a leading step it is
+# Joined with ":" and never run as a step of its own: to the first move's step in the Run macro, and to every segment's
+# step in the navigator's routes (RouteSearch), since the next macro replaces the held B. As a leading step it is
 # popped on the first frame and the joypad then takes the move before that move's coordinate was ever
 # checked, which steps the player off the line. docs/research/rs-wild-encounter.md, "The Run macro's
 # first frame".
