@@ -229,6 +229,7 @@ namespace ShinyBotHunter.Tests
         private const uint SummaryInput = 0x0809E281;     // sub_809E260, the forget screen's input task
         private const uint SummaryDestroy = 0x0809E15D;   // SummaryScreen_DestroyTask
         private const uint SummaryCallback = 0x0809D865;  // callback 2 on the forget screen (research R1 e)
+        private const uint EvolutionCallback = 0x08112291; // callback 2 in the evolution scene (research R5)
 
         // The battle script on the move prompt (BattleScript_AskToLearnMove + 0x11, + 0x20; research R1).
         private const uint SapphireDelete = 0x081D8ED2;
@@ -468,6 +469,72 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(GameScreen.Evolution, snapshot.Screen);
             Assert.Equal(21, snapshot.Prompt);
             Assert.Null(snapshot.Question);
+            Assert.Equal(0, snapshot.TextPrinter);
+            Assert.Equal(0, snapshot.PartyMonIndex);
+        }
+
+        // Research R5 and R6: the scene's texts wait at battle window state 8, and data[12] is the evolving slot.
+        [Fact]
+        public async Task Evolution_CarriesTheBattleWindowAndTheSlot()
+        {
+            FakeMemoryClient memory = BattleMemory(window: 8, callback2: EvolutionCallback);
+            PlaceTask(memory, 2, EvolutionScene, data: [14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(14, snapshot.Prompt);
+            Assert.Equal(8, snapshot.TextPrinter);
+            Assert.Equal(1, snapshot.PartyMonIndex);
+        }
+
+        // Research R7: data[8] 6 is the forget screen with the scene task still in the list; 5 is the scene fading out.
+        [Fact]
+        public async Task EvolutionForgetScreen_IsOtherApp()
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: SummaryCallback);
+            PlaceTask(memory, 2, EvolutionScene, data: [21, 0, 0, 0, 0, 0, 0, 0, 6, 5]);
+            PlaceTask(memory, 3, SummaryInput);
+            memory.Place(ForgetCursor, [2]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(2, snapshot.Prompt);
+            Assert.Equal(SummaryInput, snapshot.TaskFunction);
+            Assert.Equal(0, snapshot.AppState);
+            Assert.Equal(2, memory.ChainReads.Count);
+        }
+
+        [Fact]
+        public async Task EvolutionFadeOut_IsEvolution()
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: EvolutionCallback);
+            PlaceTask(memory, 2, EvolutionScene, data: [21, 0, 0, 0, 0, 0, 0, 0, 5, 5]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(21, snapshot.Prompt);
+            Assert.Null(snapshot.Question);
+            Assert.Single(memory.ChainReads);
+        }
+
+        // Research R7: in the scene the battle script is a stale 0x081D8D78 and the tracker a stale 3; even a tracker and
+        // script that would be the battle's prompt or forget screen read as the scene.
+        [Theory]
+        [InlineData(1, SapphireDelete, EvolutionCallback)]
+        [InlineData(3, SapphireDelete, SummaryCallback)]
+        [InlineData(3, StaleScript, SummaryCallback)]
+        public async Task Evolution_StaleBattleTrackerAndPointerAreIgnored(byte tracker, uint script, uint callback2)
+        {
+            FakeMemoryClient memory = BattleMemory(callback2: callback2, moveLearn: tracker, script: script);
+            PlaceTask(memory, 2, EvolutionScene, data: [21, 0, 0, 0, 0, 0, 0, 0, 4, 5]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.Evolution, snapshot.Screen);
+            Assert.Equal(5, snapshot.Question);
         }
 
         [Theory]

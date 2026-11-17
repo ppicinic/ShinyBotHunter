@@ -49,6 +49,11 @@ namespace ShinyBotHunter.Games.Rs
         private const int EvolutionMovePromptState = 21;
         private const int EvolutionMovePromptStep = 4;
 
+        // data[8] 6 is the scene's forget-a-move screen, under the still active scene task; data[12] (tPartyID) is the
+        // evolving Pokémon's party slot ("Training: the readings behind …" R6, R7).
+        private const int EvolutionForgetScreenStep = 6;
+        private const int EvolutionPartySlot = 12;
+
         // atk5A_StateTracker on the forget-a-move screen and at either yes/no (research R130, R131; "Training: the
         // readings behind …" R1).
         private const int ForgetMoveScreen = 3;
@@ -122,11 +127,21 @@ namespace ShinyBotHunter.Games.Rs
             byte[] tasks = trainingReads ? read[TasksBlock].Bytes : [];
             if (FindTask(tasks, addresses.TaskEvolutionScene) is int evolution)
             {
+                // First, so the battle's prompt and forget rules never see the scene: there the battle script and the
+                // tracker are stale (R7).
                 int state = TaskDatum(tasks, evolution, 0);
-                int? question = state == EvolutionMovePromptState && TaskDatum(tasks, evolution, 8) == EvolutionMovePromptStep
+                int step = TaskDatum(tasks, evolution, 8);
+                if (state == EvolutionMovePromptState && step == EvolutionForgetScreenStep)
+                {
+                    return await ReadForgetScreenAsync(read, tasks, null, ct);
+                }
+                int? question = state == EvolutionMovePromptState && step == EvolutionMovePromptStep
                     ? TaskDatum(tasks, evolution, 9)
                     : null;
-                return new GameSnapshot(GameScreen.Evolution, null, null, state, null, Question: question);
+                // The scene prints in the battle window, so its text waits are the battle window's state (R5).
+                return new GameSnapshot(GameScreen.Evolution, null, null, state, null, Question: question,
+                    TextPrinter: BitConverter.ToUInt16(read[WindowBlock].Bytes, 0),
+                    PartyMonIndex: TaskDatum(tasks, evolution, EvolutionPartySlot));
             }
             if ((FindTask(tasks, addresses.BattlePartyMenuTask) ?? FindTask(tasks, addresses.BattlePartyPopupTask)) is int party)
             {
