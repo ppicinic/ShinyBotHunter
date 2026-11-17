@@ -19,7 +19,8 @@ test('rs-training codec: the save\'s lead decodes as the shiny Lv 7 Mudkip, re-e
   const shinyValue = (lead.otId & 0xffff) ^ (lead.otId >>> 16) ^ (lead.pid >>> 16) ^ (lead.pid & 0xffff)
   step(`${SAVE}: party count ${partyCount(save)}, lead ${JSON.stringify(lead)}, shiny value ${shinyValue}`)
   expect([lead.checksumOk, lead.species, lead.level], 'the lead: checksum, internal species, level').toEqual([true, MUDKIP, 7])
-  expect(shinyValue, 'the lead is not shiny').toBeLessThan(8)
+  // Shiny when TID ^ SID ^ PID high ^ PID low is under 8; the message is the failure's.
+  expect(shinyValue, 'the lead should be shiny, and its shiny value is 8 or more').toBeLessThan(8)
   expect(lead.moves, 'the lead\'s moves').toEqual([33, 45, 189, 0])
   expect(lead.exp >= expAt(7) && lead.exp < expAt(8), `the lead's experience ${lead.exp} is not in Lv 7`).toBe(true)
 

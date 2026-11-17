@@ -6,7 +6,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { expect, type Locator, type Page } from '@playwright/test'
-import { readMemory, repoDir, runMacro, shotAll, step } from './driver'
+import { clearMacro, readMemory, repoDir, runMacro, shotAll, step } from './driver'
 import {
   ADVANCE, cancelBot, cancelEventAndBot, CONFIRM, dashboardState, ENCOUNTER, flashUnchanged, installPristine, launchRs, LOCK,
   OVER, PARTY, PARTY_COUNT, parseEncounter, psqlRows, readBattleBit, readTile, readU8, removeCheats, ROMS, SLOT_SIZE, startWild,
@@ -175,21 +175,20 @@ export const ASKING = /\[RsBattle\] asking Discord: slot (\d) (.+?) learning (.+
 export const ANSWER = /\[RsBattle\] Delete a move\? slot (\d) (.+?) learning (.+) \((\d+)\): (No|Yes over slot (\d) (.+?))\s*$/
 export const FORGET_CLOSED = /\[RsBattle\] forget-a-move screen closed: (.*)$/
 export const FLEEING = /\[RsBattle\] fleeing: (.*?)\s*$/
-// T1a (#446): one line per member after a training battle. The trailing ` exp E` is T2's (#431, the QA plan's L3), not
-// merged: optional here, checked when T2 merges.
+// T1a (#446): one line per member after a training battle. The QA plan's L3 (` exp E` at the end) was not added by T2
+// (#459): the line has no experience, which the scenarios read from memory with the bot idle. The optional group stays.
 export const PARTY_AFTER = /\[RsBattle\] party after the battle: slot (\d) (.+?) \((\d+)\) Lv (\d+) moves ([\d,]+)(?: exp (\d+))?\s*$/
 // T1b (#448): a text wait in the evolution scene; data[0] is the scene's step.
 export const SCENE = /\[RsBattle\] BattleAdvance in the evolution scene of slot (\d) at data\[0\] (\d+) at window (\d*), (\d+) ms: (.*)$/
 // RsBattleEvent's sending line after BattleCursorToRun: the press it sends, or nothing.
 const SENT = /\[RsBattle\] cursor \d* after BattleCursorToRun; sending (.+?)\s*$/
 
-// T2 (#431), not merged: the switch, as T2's plan words it. The é of POKéMON is any one or two characters (backend.log is
-// in the console's code page).
+// T2 (#459): the switch. The é of POKéMON is any one or two characters (backend.log is in the console's code page).
 export const SWITCH_TRY = /\[RsBattle\] switch try (\d) of 3 to slot (\d): the party list takes keys, (\d+) ms after POK.{1,2}MON: (.*)$/
 export const AFTER_SHIFT = /\[RsBattle\] after SHIFT, (\d+) ms: (.*)$/
 export const SWITCH_CONFIRMED = /\[RsBattle\] switch confirmed: 0x02024A6A reads (\d) at the action menu, try (\d)/
 export const SWITCH_MISSED = /\[RsBattle\] switch try (\d) did not land: 0x02024A6A reads (\d)/
-// T2 (#431), not merged: the QA plan's L2 (the move prompt's gate) and L10 (a lock that is not a trainer's).
+// T2 (#459): the QA plan's L2 (the move prompt's gate) and L10 (a lock that is not a trainer's).
 export const MOVE_PROMPT = /\[RsBattle\] move prompt at (.*)$/
 export const LOCK_HANDED = /\[RsBattle\] lock handed over: not a trainer \((.*)\)\s*$/
 // T3b (#451), not merged: the trainer stop's sentence with the map's internal name (today `on map 0.17.`).
@@ -320,10 +319,9 @@ async function waitComplete(expectedStop: RegExp | undefined, ms: number): Promi
 
 // --- Discord: the operator answers the new-move prompts, as in the HGSS scenarios -----------------------------------
 
-/** One GET of Discord's REST API with the bot token, which is never logged. */
-async function discordGet(route: string): Promise<any> {
-  const { discordToken } = settings()
-  const res = await fetch(`https://discord.com/api/v10/${route}`, { headers: { Authorization: `Bot ${discordToken}` } })
+/** One GET of Discord's REST API with the bot token, read once by the caller and never logged. */
+async function discordGet(token: string, route: string): Promise<any> {
+  const res = await fetch(`https://discord.com/api/v10/${route}`, { headers: { Authorization: `Bot ${token}` } })
   if (!res.ok) throw new Error(`Discord GET ${route.split('?')[0]}: HTTP ${res.status}`)
   return res.json()
 }
@@ -348,29 +346,33 @@ export async function discordMode(): Promise<boolean> {
 
 /** The messages in ShinyLogChannel since `sinceIso` whose text contains `text` (the trainer stop's message). */
 export async function discordMessages(sinceIso: string, text: string): Promise<string[]> {
-  const messages = (await discordGet(`channels/${settings().channel}/messages?limit=50`)) as DiscordMessage[]
+  const { discordToken, channel } = settings()
+  const messages = (await discordGet(discordToken, `channels/${channel}/messages?limit=50`)) as DiscordMessage[]
   const found = messages.filter((m) => Date.parse(m.timestamp) > Date.parse(sinceIso)).map((m) => m.content ?? '').filter((c) => c.includes(text))
   step(`Discord: ${found.length} messages since ${sinceIso} containing "${text}": ${JSON.stringify(found)}`)
   return found
 }
 
-/** A move prompt: the learner's party slot and the forgotten move's slot as the log counts them, from 0; null for No. */
-export type Prompt = { learner: number; move: number; forget: number | null }
+/**
+ * A move prompt: `n`, which prompt of the run it is (from 1, in the order the bot asks); the learner's party slot and the
+ * forgotten move's slot as the log counts them, from 0; null for No.
+ */
+export type Prompt = { n: number; learner: number; move: number; forget: number | null }
 const NTH = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth']
 
 /**
- * The next move prompt, answered: the one place a prompt's answer comes from. It waits for the next `asking Discord` line
- * and checks the learner and the move. Logged in, it finds the prompt's message in the new-move channel, writes one
- * OPERATOR: line naming the message, its place among this battle's prompts, the button and Confirm Choice, waits 10
- * minutes for the bot's answer line (a wrong click or no click is a rerun), then reads the edited message back. Not
- * logged in, the bot declines on its own: the "not logged in" line and No. Returns the answer line.
+ * The run's n-th move prompt, answered: the one place a prompt's answer comes from. It waits for the n-th `asking Discord`
+ * line and checks the learner and the move. Logged in, it finds the prompt's message in the new-move channel, newer than
+ * the Run click, writes one OPERATOR: line naming the message, its place among this battle's prompts, the button and
+ * Confirm Choice, waits 10 minutes for the bot's answer line (a wrong click or no click is a rerun), then reads the edited
+ * message back. Not logged in, the bot declines on its own: the "not logged in" line and No. Returns the answer line.
  */
-export async function answerPrompt(loggedIn: boolean, expected: Prompt): Promise<string> {
-  const n = backendLog().filter((l) => ANSWER.test(l)).length + 1
+export async function answerPrompt(run: Run, expected: Prompt): Promise<string> {
+  const { n } = expected
   const criterion = `"the move prompt answered": prompt ${n}`
   const [, learner, name, move, moveId] = ASKING.exec(await waitLine(ASKING, n, 10 * MINUTE, `${criterion}: no asking line`))!
   expect([Number(learner), Number(moveId)], `${criterion}: the learner slot and the move offered`).toEqual([expected.learner, expected.move])
-  if (!loggedIn) {
+  if (!run.loggedIn) {
     expect(expected.forget, `${criterion}: a Yes needs Discord logged in and an operator`).toBeNull()
     await waitLine(DISCORD_OUT, n, MINUTE, `${criterion}: no "Discord is not logged in" line`)
     const line = await waitLine(ANSWER, n, MINUTE, `${criterion}: no answer line`)
@@ -386,15 +388,18 @@ export async function answerPrompt(loggedIn: boolean, expected: Prompt): Promise
     if (ASKING.test(l)) [nth, asks] = [nth + 1, asks + 1]
     if (asks === n) break
   }
-  // The prompt's message: the newest in the channel with its title and the buttons still on it (an answered one has none).
+  // The prompt's message: newer than the Run click (an earlier run's missed prompt keeps its buttons), with its title and
+  // the buttons still on it (an answered one has none). The bot logs the asking line before it posts the message.
   const channel = newMoveChannel()
+  const { discordToken } = settings()
   const title = `${name} - New Move`
   let message: DiscordMessage | undefined
   const deadline = Date.now() + MINUTE
   while (!message) {
     if (Date.now() > deadline) throw new Error(`${criterion}: no "${title}" message with its buttons in the new-move channel within 60 s`)
-    const messages = (await discordGet(`channels/${channel}/messages?limit=10`)) as DiscordMessage[]
-    message = messages.find((m) => m.embeds?.[0]?.title === title && (m.components ?? []).some((r) => r.components.some((b) => b.custom_id === 'do_not_learn')))
+    const messages = (await discordGet(discordToken, `channels/${channel}/messages?limit=10`)) as DiscordMessage[]
+    message = messages.find((m) => Date.parse(m.timestamp) > Date.parse(run.runStart) && m.embeds?.[0]?.title === title &&
+      (m.components ?? []).some((r) => r.components.some((b) => b.custom_id === 'do_not_learn')))
     if (!message) await sleep(2000)
   }
   const buttons = message.components!.flatMap((r) => r.components)
@@ -414,7 +419,7 @@ export async function answerPrompt(loggedIn: boolean, expected: Prompt): Promise
   let read = ''
   const readDeadline = Date.now() + MINUTE
   while (read !== description && Date.now() < readDeadline) {
-    read = ((await discordGet(`channels/${channel}/messages/${message.id}`)) as DiscordMessage).embeds?.[0]?.description ?? ''
+    read = ((await discordGet(discordToken, `channels/${channel}/messages/${message.id}`)) as DiscordMessage).embeds?.[0]?.description ?? ''
     if (read !== description) await sleep(2000)
   }
   step(`Discord: the "${title}" message reads "${read}"`)
@@ -468,7 +473,7 @@ export type IdleRead = { lock: number; battleBit: number; boxCounter: number; ti
 export type TrainingResult = { runStart: string; lead: Mon; idle: IdleRead; log: string[] }
 
 // The level-up box counter (research, "The level-up box counter"): a stale 3 stays in the free field after the last box.
-export const BOX_COUNTER = 0x0201609c
+const BOX_COUNTER = 0x0201609c
 
 /** With the event over and the bot idle: the lock, the battle bit, the box counter, the tile and the party. */
 export async function idleRead(): Promise<IdleRead> {
@@ -538,7 +543,7 @@ export async function trainingRun(setup: () => Promise<void>, form: TrainForm, b
 const VARS = 0x02026a74
 const FLAGS = 0x02026954
 // VAR_REPEL_STEP_COUNT, 0x4021 (pret include/constants/vars.h:48): 0x02026AB6. Decomp only: a battle during a walk fails it.
-export const REPEL_STEPS = VARS + (0x4021 - 0x4000) * 2
+const REPEL_STEPS =VARS + (0x4021 - 0x4000) * 2
 
 /** VAR_REPEL_STEP_COUNT: 250 before a scenario walk, 0 before Run. */
 export async function repel(steps: number): Promise<void> {
@@ -578,6 +583,6 @@ export async function walkTo(segments: Segment[]): Promise<void> {
     }
     step(`walk: ${macro} on ${JSON.stringify(target)}`)
   }
-  await fetch('http://127.0.0.1:20000/command', { method: 'POST', body: 'macro_clear' })
+  await clearMacro()
   step('walk: macro cleared')
 }
