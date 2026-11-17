@@ -304,7 +304,7 @@ namespace ShinyBotHunter.BotEvents
         /// than at the point the condition was noticed, so the next event always begins from the
         /// same tile.
         /// </summary>
-        private static void FinishReturn(GameState state, string reason)
+        internal static void FinishReturn(GameState state, string reason)
         {
             ClearNavigation(state, reason);
             if (state.CompleteAfterReturn)

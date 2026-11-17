@@ -232,10 +232,10 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(
                 [
                     ("M.Left.8.33707826:H.B.1", Route101, 8, 4),
-                    ("M.Up.0.33707828", Route101, 8, 0),
-                    ("M.Up.17.33707828", OldaleTown, 8, 17),
-                    ("M.Left.6.33707826", OldaleTown, 6, 17),
-                    ("M.Up.4.33707828", OldaleCenter, 7, 4),
+                    ("M.Up.0.33707828:H.B.1", Route101, 8, 0),
+                    ("M.Up.17.33707828:H.B.1", OldaleTown, 8, 17),
+                    ("M.Left.6.33707826:H.B.1", OldaleTown, 6, 17),
+                    ("M.Up.4.33707828:H.B.1", OldaleCenter, 7, 4),
                 ],
                 route.Segments);
         }
@@ -248,7 +248,7 @@ namespace ShinyBotHunter.Tests
             Route? route = Find(Rs, OldaleCenter, 7, 4, OldaleTown, 6, 17, new Capability());
 
             Assert.NotNull(route);
-            Assert.Equal([("M.Down.8.33707828:H.B.1", OldaleCenter, 7, 8), ("M.Down.17.33707828", OldaleTown, 6, 17)], route.Segments);
+            Assert.Equal([("M.Down.8.33707828:H.B.1", OldaleCenter, 7, 8), ("M.Down.17.33707828:H.B.1", OldaleTown, 6, 17)], route.Segments);
         }
 
         // R3 on two inline maps: the player at (1, 1) of map 1 steps Up onto the door (1, 0), so y 1 and y 0 are shown
@@ -268,7 +268,7 @@ namespace ShinyBotHunter.Tests
             Route? route = Find(maps, 1, 1, 1, 2, landingX, 0, new Capability());
 
             Assert.NotNull(route);
-            Assert.Equal([(cut, 2, landingX, 1), ("M.Up.0.33707828", 2, landingX, 0)], route.Segments);
+            Assert.Equal([(cut, 2, landingX, 1), ("M.Up.0.33707828:H.B.1", 2, landingX, 0)], route.Segments);
         }
 
         // R3 on the committed data: Granite Cave B2F's ladder (29, 13), pressed Up from (29, 14), lands on B1F (29, 13),
@@ -279,7 +279,7 @@ namespace ShinyBotHunter.Tests
             Route? route = Find(Rs, GraniteCaveB2F, 29, 14, GraniteCaveB1F, 28, 13, new Capability());
 
             Assert.NotNull(route);
-            Assert.Equal([("M.Up.13.33707828:H.B.1", GraniteCaveB1F, 29, 13), ("M.Left.28.33707826", GraniteCaveB1F, 28, 13)], route.Segments);
+            Assert.Equal([("M.Up.13.33707828:H.B.1", GraniteCaveB1F, 29, 13), ("M.Left.28.33707826:H.B.1", GraniteCaveB1F, 28, 13)], route.Segments);
         }
 
         // The reviewer's fixture of B1: on map 1 the cheapest way to map 2 is the ladder (2, 2), which lands on (2, 2)
@@ -298,7 +298,7 @@ namespace ShinyBotHunter.Tests
             Route? route = Find(maps, 1, 2, 3, 2, 0, 2, new Capability());
 
             Assert.NotNull(route);
-            Assert.Equal([("M.Up.2.33707828:H.B.1", 2, 2, 2), ("M.Left.0.33707826", 2, 0, 2)], route.Segments);
+            Assert.Equal([("M.Up.2.33707828:H.B.1", 2, 2, 2), ("M.Left.0.33707826:H.B.1", 2, 0, 2)], route.Segments);
         }
 
         // R2 and R3 for a warp to the same map: Aqua Hideout B1F's pad (31, 4), stepped onto Right from (30, 4), lands
@@ -313,7 +313,7 @@ namespace ShinyBotHunter.Tests
             Route? route = Find(Rs, AquaHideoutB1F, 30, 4, AquaHideoutB1F, 30, 12, new Capability(), flags);
 
             Assert.NotNull(route);
-            Assert.Equal([("M.Right.27.33707826:H.B.1", AquaHideoutB1F, 27, 12), ("M.Right.30.33707826", AquaHideoutB1F, 30, 12)], route.Segments);
+            Assert.Equal([("M.Right.27.33707826:H.B.1", AquaHideoutB1F, 27, 12), ("M.Right.30.33707826:H.B.1", AquaHideoutB1F, 30, 12)], route.Segments);
         }
 
         // S1: a Pokémon Center's stairs (1, 6) are at elevation 4 between tiles at 3, so they are entered from (2, 6)
@@ -326,6 +326,23 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(route);
             int warp = route.Steps.ToList().FindIndex(s => s.Action == MoveAction.Portal);
             Assert.Equal((OldaleCenter, 2, 6, Direction.Left), (route.Steps[warp - 1].Map, route.Steps[warp - 1].X, route.Steps[warp - 1].Y, route.Steps[warp].Direction));
+        }
+
+        // The escalator the emulator refused from above (research, "The navigator: the walk and the nurse, read frame by
+        // frame", R3): Down from (1, 5) at elevation 3 onto (1, 6) at 4 is a mismatch, so the route from (1, 5) goes round
+        // by (2, 6), at 0, and takes the escalator Left from there, as the emulator did, to the warp's landing on 2F (2, 5).
+        [Fact]
+        public void CenterEscalator_RefusedFromAbove_TakenFromTheSide()
+        {
+            Route? fromAbove = Find(Rs, OldaleCenter, 1, 5, OldaleCenter + 1, 2, 5, new Capability());
+            Route? fromTheSide = Find(Rs, OldaleCenter, 2, 6, OldaleCenter + 1, 2, 5, new Capability());
+
+            Assert.NotNull(fromAbove);
+            Assert.DoesNotContain(fromAbove.Steps, s => s.Action == MoveAction.Portal && s.Direction == Direction.Down);
+            int warp = fromAbove.Steps.ToList().FindIndex(s => s.Action == MoveAction.Portal);
+            Assert.Equal((OldaleCenter, 2, 6), (fromAbove.Steps[warp - 1].Map, fromAbove.Steps[warp - 1].X, fromAbove.Steps[warp - 1].Y));
+            Assert.NotNull(fromTheSide);
+            Assert.Equal([(OldaleCenter + 1, 2, 5, Direction.Left, MoveAction.Portal)], fromTheSide.Steps);
         }
     }
 }
