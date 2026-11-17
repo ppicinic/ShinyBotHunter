@@ -9,8 +9,8 @@ import { backendLog, MINUTE } from './static'
 // rs-train-switch-target (#433, Q1c; spec QA table, FR-17 and FR-18). The battler as in rs-train-switch: the lead copied
 // to slot 2 at Lv 20; the benched Lv 7 trainee one short of Lv 8, the target. After the battle the orchestrator walks
 // home (Spin never left the start tile, so `already at start`) and the event is Complete.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges. Complete with No Target is approval answer 9.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
+// Complete with No Target is approval answer 9.
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 // The battle's switch: its try and the action menu that confirmed it.

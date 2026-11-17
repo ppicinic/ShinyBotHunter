@@ -16,8 +16,7 @@ import { backendLog, hex8, MINUTE } from './static'
 //   fled and the bot heals"; the approval's default, written here, is that the bot ends in its stale stop at "Use next
 //   POKéMON?" with nothing pressed after the faint text (research S11: the battle window is 0 there, so no text rule
 //   presses). A different decision changes FAINTED_END, and the asserts after it.
-// The Train Switch and No Target choices are enabled by T3b (#451): until it merges the form refuses them, and the run
-// fails at startTraining.
+// The Train Switch and No Target choices are enabled by T3b (#451).
 const VARIANT = variant(['hp', 'pp', 'fainted'])
 
 // The fainted variant's expected end, the one place the owner's answer goes: RsBattleEvent's stale stop (30 s) on the
@@ -36,7 +35,7 @@ const indexOf = (log: string[], pattern: RegExp, from = 0): number => log.findIn
 /** hp and pp: the trip, the nurse, the walk back and the next battle's switch, in that order, from backend.log. */
 function checkHealTrip(log: string[]): void {
   // "the orchestrator's rule: the Pokémon Center trip" before any encounter. HEAL_TRIP is the QA plan's L7, which T3b
-  // (#451) adds: check its wording against the merged line once T3b is in.
+  // (#451) adds.
   const firstEncounter = indexOf(log, ENCOUNTER)
   const before = (i: number): boolean => i >= 0 && (firstEncounter === -1 || i < firstEncounter)
   const toCenter = log.findIndex((l) => STATE.exec(l)?.[1] === 'GoToPokemonCenter')

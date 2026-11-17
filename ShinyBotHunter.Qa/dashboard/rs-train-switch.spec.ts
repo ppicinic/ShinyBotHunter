@@ -10,8 +10,7 @@ import { MINUTE } from './static'
 // rs-train-switch (#433, Q1c; spec QA table, FR-17), and rs-train-switch-ruby with QA_RS_ROM=RU-Wild: the same checks,
 // which prove the per-game CB2_PartyMenuMain (FR-12). The battler is built in RAM (approval answer 5): the lead copied
 // to slot 2 and raised to Lv 20, which the damage formula makes stronger. Three battles, then a cancel.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
 const ROM = rsRom()
 // Task_HandlePopupMenuInput, the party task's function once SHIFT is up, and HandleBattlePartyMenu, the list's: the same
 // in both games (RsPointerService; research S10). The snapshot prints a uint in decimal.

@@ -9,8 +9,8 @@ import { MINUTE } from './static'
 // rs-train-switch-double-levelup as `two`. The battler as in rs-train-switch: the lead copied to slot 2 at Lv 20; the
 // benched trainee one short of Lv 8 (`one`, target 101: a cancel once battle 2 has switched), or at Lv 11 one short of
 // Lv 13, which teaches Mudkip no move at 12 or 13 (`two`, target 13: Complete).
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges. `two`'s Complete with No Target is approval answer 9.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
+// `two`'s Complete with No Target is approval answer 9.
 const VARIANT = variant(['one', 'two'] as const)
 const LEVELS = { one: { from: 7, to: 8, target: 101 }, two: { from: 11, to: 13, target: 13 } }[VARIANT]
 

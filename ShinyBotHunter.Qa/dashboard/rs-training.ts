@@ -158,8 +158,7 @@ export async function readParty(): Promise<Mon[]> {
   return Array.from({ length: count }, (_, i) => decodeRecord(raw.subarray(i * SLOT_SIZE, (i + 1) * SLOT_SIZE)))
 }
 
-// --- log patterns: each matches one Console.WriteLine; the comment names the PR or, for a line not merged yet, the task
-// whose plan words it, so the pattern is checked when that task merges ------------------------------------------------
+// --- log patterns: each matches one Console.WriteLine; the comment names the PR or the task that added it ------------
 
 // RsBattleEvent.PressConfirmedAsync (T1a, #446): every gated press of the training rules, T2's switch presses included.
 // Its `what` is e.g. `BattleConfirm on FIGHT`, `Down on the move list 0 -> 2`, `BattleConfirm on move 1`,
@@ -191,7 +190,7 @@ export const SWITCH_MISSED = /\[RsBattle\] switch try (\d) did not land: 0x02024
 // T2 (#459): the QA plan's L2 (the move prompt's gate) and L10 (a lock that is not a trainer's).
 export const MOVE_PROMPT = /\[RsBattle\] move prompt at (.*)$/
 export const LOCK_HANDED = /\[RsBattle\] lock handed over: not a trainer \((.*)\)\s*$/
-// T3b (#451), not merged: the trainer stop's sentence with the map's internal name (today `on map 0.17.`).
+// T3b (#451): the trainer stop's sentence with the map's internal name, then what was read.
 export const TRAINER_STOP = /\[RsBattle\] stopped: A trainer battle started on (\w+)\. (.*)$/
 
 // N4a (#449): RsNavigatorEvent's walk. Tiles are `<internal map name> (x, y)`.
@@ -214,7 +213,7 @@ export const STATE = /\[Orchestrator\] State: (\w+)\s*$/
 export const RESUME = /\[Orchestrator\] Resume: (.*)$/
 // OrchestratorEvent.SlowTransitionLine (N5, #439); the é as above.
 export const SLOW_TRANSITION = /\[Orchestrator\] A first Pok.{1,2}mon at or below the wild level gets the long battle transition\.\s*$/
-// T3b (#451), not merged: the QA plan's L7, why a heal trip was taken.
+// T3b (#451): the QA plan's L7, why a heal trip was taken.
 export const HEAL_TRIP = /\[Orchestrator\] heal trip: (.+?) HP (\d+)\/(\d+), damaging PP (\d+)\s*$/
 
 // DiscordBotService: the login at start-up, or no token; and a move prompt declined with no login.

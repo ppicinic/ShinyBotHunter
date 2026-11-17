@@ -9,8 +9,7 @@ import { MINUTE } from './static'
 // rs-train-switch-learn (docs/specs/rs-navigation-and-training.md, QA table; FR-15, FR-17, FR-19; #433's plan, part Q1d):
 // Switch training with a Lv 20 copy of the lead in slot 2, and the trainee one short of Lv 15 with four moves, so the
 // benched trainee's Bide prompt comes in a switch battle. QA_RS_VARIANT: `replace` (the default: Yes over slot 1, Growl, one
-// Down) or `refuse` (No, then Stop learning). The Train Switch and No Target choices are enabled by T3b (#451): until it
-// merges the form refuses them, and the run fails at startTraining.
+// Down) or `refuse` (No, then Stop learning). The Train Switch and No Target choices are enabled by T3b (#451).
 const VARIANT = variant(['replace', 'refuse'])
 const FORGET = VARIANT === 'replace' ? 1 : null
 const BIDE = 117

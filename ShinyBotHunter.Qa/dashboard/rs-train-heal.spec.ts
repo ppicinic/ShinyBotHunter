@@ -41,7 +41,7 @@ test('RS heal trip for PP: the lead\'s PP 0, Train Standard to 101, the Pokémon
   const center = indexOf(log, GO_TO_CENTER)
   const firstEncounter = indexOf(log, ENCOUNTER)
   expect(firstEncounter === -1 || center < firstEncounter, '"the Pokémon Center trip": GoToPokemonCenter after an encounter').toBe(true)
-  // T3b (#451), not merged: the plan's L7 line, as the plan words it. The orchestrator checks it once T3b merges.
+  // The plan's L7 line (T3b, #451).
   const trip = log.map((l) => HEAL_TRIP.exec(l)).find((m) => m !== null)
   expect(trip, '"the Pokémon Center trip": no "[Orchestrator] heal trip:" line (T3b)').toBeTruthy()
   expect([Number(trip![2]), trip![4]], `"the Pokémon Center trip" for PP, with the lead's HP as launched (${lead.hp}): ${trip![0]}`).toEqual([lead.hp, '0'])

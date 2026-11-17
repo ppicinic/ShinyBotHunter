@@ -15,8 +15,7 @@ import { MINUTE } from './static'
 //   free slot, text only), the battler one short of Lv 15 with four (Bide: Yes over slot 2, Mud-Slap, two Downs); target 10;
 // - `learn-both`, the second run: both one short of Lv 15 with four moves, two prompts in the one battle for two different
 //   Pokémon, both named Mudkip: the trainee's Yes over slot 0 (Tackle, no Down), the battler's No; target 15.
-// The Train Switch and No Target choices are enabled by T3b (#451): until it merges the form refuses them, and the run
-// fails at startTraining.
+// The Train Switch and No Target choices are enabled by T3b (#451).
 const VARIANT = variant(['plain', 'learn-free', 'learn-both'])
 const BIDE = 117
 const FOUR = movesOf(33, 45, 189, 55)

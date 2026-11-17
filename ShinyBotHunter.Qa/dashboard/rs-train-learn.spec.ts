@@ -5,9 +5,8 @@
 // Discord login only refuse runs, and the bot declines at once. QA_RS_ROM=RU-Wild runs it on Ruby (slot1 and refuse are
 // the plan's recommended Ruby runs).
 //
-// Depends on T3b (#451), not merged when this was written: Train Type Standard and No Target in the form (rs-training.ts's
-// startTraining), and HasOverworldNavigation for RS, without which Complete comes with no `already at start` line. Check
-// both after T3b merges.
+// Depends on T3b (#451): Train Type Standard and No Target in the form (rs-training.ts's startTraining), and
+// HasOverworldNavigation for RS, without which Complete comes with no `already at start` line.
 import { expect, test } from '@playwright/test'
 import { snapshotField, OVER } from './rs-wild'
 import { MINUTE } from './static'

@@ -9,8 +9,8 @@ import { MINUTE } from './static'
 // to slot 2 at Lv 20, which does not level up from a Lv 2 or 3 wild, so it does not evolve. The benched trainee one short
 // of Lv 16 with the save's three moves: it evolves after the switch battle and learns Mud Shot into the free slot. Target
 // 16, so the event ends in Complete.
-// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining;
-// check that the form's wording matches once T3b merges. Complete with No Target is approval answer 9.
+// T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
+// Complete with No Target is approval answer 9.
 
 // The battle's switch: its try and the action menu that confirmed it.
 const switchLines = (b: string[]): string[] => b.flatMap((l) => {
