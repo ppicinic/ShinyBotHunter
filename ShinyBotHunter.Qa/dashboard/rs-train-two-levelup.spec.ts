@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import {
-  answerPrompt, ASKING, type Changes, copyLeadToSlot2, expAt, FORGET_CLOSED, MOVE_PROMPT, movesOf, oneShort, PARTY_AFTER, PRESS,
-  type Prompt, trainingRun, variant, writeSlot
+  answerPresses, answerPrompt, type Changes, copyLeadToSlot2, events, expAt, movesOf, oneShort, PARTY_AFTER, pressOf, type Prompt,
+  trainingRun, variant, writeSlot
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { MINUTE } from './static'
@@ -42,29 +42,7 @@ const X = EXPECTED[VARIANT]
 // The levels after the battle: one up each, from the level byte the writes leave.
 const LEVELS = [X.target, VARIANT === 'learn-free' ? 15 : X.target]
 
-const pressOf = (line: string): string | null => {
-  const m = PRESS.exec(line)
-  return m ? `${m[1]} | ${m[3]}` : null
-}
 const isBox = (line: string): boolean => /^level-up box page/.test(pressOf(line) ?? '')
-
-/** The level-up boxes (`box <slot> <page>`) and the move prompts (`ask <slot>`), in log order. */
-const events = (log: string[]): string[] => log.flatMap((l) => {
-  const box = /^level-up box page (\d) for slot (\d): BattleConfirm \|/.exec(pressOf(l) ?? '')
-  const ask = ASKING.exec(l)
-  return box ? [`box ${box[2]} ${box[1]}`] : ask ? [`ask ${ask[1]}`] : []
-})
-
-/** The n-th prompt's answer presses, from its asking line to the next prompt or the battle's end. */
-function answerPresses(log: string[], n: number): { presses: string[]; closed: number } {
-  const ask = log.flatMap((l, i) => (ASKING.test(l) ? [i] : []))[n - 1]
-  const end = log.findIndex((l, i) => i > ask && (MOVE_PROMPT.test(l) || OVER.test(l)))
-  const lines = log.slice(ask, end)
-  return {
-    presses: lines.map(pressOf).filter((p): p is string => p !== null && /Delete a move\?|Stop learning\?|forget/.test(p)),
-    closed: lines.filter((l) => FORGET_CLOSED.test(l)).length
-  }
-}
 
 /** The rule's presses for a Yes over slot k (A, k Downs, A on k) or a No (B, Yes at Stop learning). */
 const answerOf = (forget: number | null): string[] => forget === null

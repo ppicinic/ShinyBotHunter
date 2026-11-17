@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  ASKING, copyLeadToSlot2, expAt, MARSHTOMP, movesOf, oneShort, PARTY_AFTER, PRESS, SCENE, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, writeSlot
+  ASKING, boxes, copyLeadToSlot2, expAt, MARSHTOMP, movesOf, oneShort, PARTY_AFTER, PRESS, SCENE, switchLines, trainingRun, writeSlot
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { MINUTE } from './static'
@@ -11,19 +11,6 @@ import { MINUTE } from './static'
 // 16, so the event ends in Complete.
 // T3b (#451): Train Type Switch, its SwitchSlot option 2 and No Target are chosen by rs-training.ts's startTraining.
 // Complete with No Target is approval answer 9.
-
-// The battle's switch: its try and the action menu that confirmed it.
-const switchLines = (b: string[]): string[] => b.flatMap((l) => {
-  const t = SWITCH_TRY.exec(l)
-  const c = SWITCH_CONFIRMED.exec(l)
-  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
-})
-// The level-up box presses: page, slot and what confirmed each.
-const boxes = (b: string[]): string[] => b.flatMap((l) => {
-  const m = PRESS.exec(l)
-  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
-  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
-})
 
 test('rs-train-switch-evolve: the benched trainee evolves into Marshtomp after a Switch battle, with no B during the scene', async () => {
   test.setTimeout(25 * MINUTE)

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { step } from './driver'
 import {
-  AFTER_SHIFT, ARRIVED, CLEARING, copyLeadToSlot2, expAt, failOnStops, FLEEING, HEAL_TRIP, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, pressCount, readSlot,
-  rsRom, STATE, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, variant, waitLine, writeSlot
+  AFTER_SHIFT, ARRIVED, CLEARING, copyLeadToSlot2, expAt, failOnStops, FLEEING, HEAL_TRIP, indexOf, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, pressCount,
+  readSlot, rsRom, STATE, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, variant, waitLine, writeSlot
 } from './rs-training'
 import { ADVANCE, CONTROLLER, dashboardState, ENCOUNTER, MENU_FN, OVER, readBattleBit, readU32, snapshotField } from './rs-wild'
 import { backendLog, hex8, MINUTE } from './static'
@@ -30,7 +30,6 @@ const USE_NEXT = 0x081d8c56
 const CENTER = 'OldaleTown_PokemonCenter_1F (7, 4)'
 const START = 'Route101 (14, 4)'
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-const indexOf = (log: string[], pattern: RegExp, from = 0): number => log.findIndex((l, i) => i >= from && pattern.test(l))
 
 /** hp and pp: the trip, the nurse, the walk back and the next battle's switch, in that order, from backend.log. */
 function checkHealTrip(log: string[]): void {

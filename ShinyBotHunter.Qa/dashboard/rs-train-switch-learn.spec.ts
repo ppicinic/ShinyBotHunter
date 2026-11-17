@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  answerPrompt, ASKING, copyLeadToSlot2, expAt, FORGET_CLOSED, MOVE_PROMPT, movesOf, oneShort, PARTY_AFTER, PRESS, trainingRun,
-  variant, writeSlot
+  answerPresses, answerPrompt, copyLeadToSlot2, events, expAt, movesOf, oneShort, PARTY_AFTER, pressOf, trainingRun, variant, writeSlot
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { MINUTE } from './static'
@@ -26,18 +25,6 @@ const SWITCH_LINES = [
   /\[RsBattle\] BattleConfirm on SHIFT at GameSnapshot \{.*\}, \d+ ms: confirmed by the submenu closing \(/,
   /\[RsBattle\] switch confirmed: 0x02024A6A reads 1 at the action menu, try 1/
 ]
-
-const pressOf = (line: string): string | null => {
-  const m = PRESS.exec(line)
-  return m ? `${m[1]} | ${m[3]}` : null
-}
-
-/** The level-up boxes (`box <slot> <page>`) and the move prompts (`ask <slot>`), in log order. */
-const events = (log: string[]): string[] => log.flatMap((l) => {
-  const box = /^level-up box page (\d) for slot (\d): BattleConfirm \|/.exec(pressOf(l) ?? '')
-  const ask = ASKING.exec(l)
-  return box ? [`box ${box[2]} ${box[1]}`] : ask ? [`ask ${ask[1]}`] : []
-})
 
 test(`rs-train-switch-learn ${VARIANT}: the benched trainee's Bide prompt in a switch battle, ${VARIANT === 'replace' ? 'Growl replaced' : 'refused'}`, async () => {
   test.setTimeout(30 * MINUTE)
@@ -67,15 +54,12 @@ test(`rs-train-switch-learn ${VARIANT}: the benched trainee's Bide prompt in a s
   }
 
   // The answer's presses, from the asking line to the battle's end: Yes, one Down and A on slot 1; or B and Yes at Stop learning.
-  const ask = log.findIndex((l) => ASKING.test(l))
-  const end = log.findIndex((l, i) => i > ask && (MOVE_PROMPT.test(l) || OVER.test(l)))
-  const answer = log.slice(ask, end)
-  const answerPresses = answer.map(pressOf).filter((p): p is string => p !== null && /Delete a move\?|Stop learning\?|forget/.test(p))
-  expect(answerPresses, `"the move prompt answered by the rule": ${VARIANT}`).toEqual(FORGET === null
+  const { presses, closed } = answerPresses(log, 1)
+  expect(presses, `"the move prompt answered by the rule": ${VARIANT}`).toEqual(FORGET === null
     ? ['B at Delete a move? | the prompt leaving Delete a move?', 'BattleConfirm (Yes) at Stop learning? | the prompt leaving Stop learning?']
     : ['BattleConfirm (Yes) at Delete a move? | the prompt leaving Delete a move?', 'Down on the forget-a-move screen 0 -> 1 | the cursor',
       'BattleConfirm on forget slot 1 | the summary task closing'])
-  expect(answer.filter((l) => FORGET_CLOSED.test(l)).length, '"the forget-a-move screen closed" lines').toBe(FORGET === null ? 0 : 1)
+  expect(closed, '"the forget-a-move screen closed" lines').toBe(FORGET === null ? 0 : 1)
 
   // "the trainee's moves as decided": the last battle's party line, then the read with the bot idle.
   const lastOver = log.flatMap((l, i) => (OVER.test(l) ? [i] : [])).at(-1)!

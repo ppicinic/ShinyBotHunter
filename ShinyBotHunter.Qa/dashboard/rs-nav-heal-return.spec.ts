@@ -8,8 +8,8 @@
 import { expect, test } from '@playwright/test'
 import { step } from './driver'
 import {
-  ARRIVED, CHOSEN, CLEARING, HEAL_TRIP, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, PRESS, readSlot, repel, rsRom,
-  SEGMENT, SEGMENT_ON, trainingRun, variant, waitLine, walkTo, writeSlot, type Segment
+  ARRIVED, checkHome, CHOSEN, CLEARING, HEAL_TRIP, indexOf, NAV_BATTLE, NURSE_DONE, NURSE_HP, NURSE_PRESS, PLAN, PRESS, readSlot, repel,
+  rsRom, SEGMENT, SEGMENT_ON, tileOf, trainingRun, variant, waitLine, walkTo, writeSlot, type Segment
 } from './rs-training'
 import { checkFlee, ENCOUNTER, OVER, START, type Tile } from './rs-wild'
 import { backendLog, MINUTE } from './static'
@@ -71,9 +71,6 @@ function nurseRead(read: string): NurseRead {
   }
 }
 
-const tileOf = (m: RegExpExecArray, at: number): string => `${m[at]} (${m[at + 1]}, ${m[at + 2]})`
-const indexOf = (log: string[], pattern: RegExp, from = 0): number => log.findIndex((l, i) => i >= from && pattern.test(l))
-
 /**
  * FR-8 and FR-9 on every walk of the run: each segment's macro holds B; each segment ends on its tile with frames, or in a
  * battle bit, never stale; each battle bit is followed by a fled battle and a new plan; and NFR-2 on every plan line.
@@ -112,31 +109,6 @@ function checkWalks(log: string[]): void {
       step(`walk battle ${battle}: fled, then planned again: ${log[next].trim()}`)
     }
   })
-}
-
-/**
- * "Back on the start tile", after the nurse: the last arrival on the start tile, then `arrived back at start`; or, when a
- * wild battle starts on the last step onto the start tile, that battle bit on it, a plan from it with 0 segments, and
- * `already at start` (no arrival line).
- */
-function checkHome(log: string[], healed: number, start: string): void {
-  const criterion = '"back on the start tile"'
-  const cleared = indexOf(log, CLEARING, healed)
-  expect(cleared, `${criterion}: no "Clearing navigation path" after the nurse`).toBeGreaterThan(healed)
-  const reason = CLEARING.exec(log[cleared])![1]
-  const before = log.slice(healed, cleared)
-  step(`back on the start tile: ${reason}`)
-  if (reason === 'arrived back at start') {
-    const home = before.filter((l) => ARRIVED.test(l)).pop()
-    expect(home, `${criterion}: no arrival line before the clear`).toBeDefined()
-    expect(tileOf(ARRIVED.exec(home!)!, 1), `${criterion}: ${home}`).toBe(start)
-    return
-  }
-  const bit = before.map((l) => NAV_BATTLE.exec(l)).filter((m) => m !== null).pop()
-  expect(bit && tileOf(bit, 3), `${criterion}: "already at start" with no battle bit on the start tile before it`).toBe(start)
-  const zero = before.slice(before.indexOf(bit!.input)).map((l) => PLAN.exec(l)).find((m) => m !== null)
-  expect(zero && [tileOf(zero, 1), tileOf(zero, 4), zero[10]], `${criterion}: no plan from the start tile with 0 segments after ${bit!.input.trim()}`)
-    .toEqual([start, start, '0'])
 }
 
 /** FR-11: from the arrival at the counter, six presses, each sent on its gate and confirmed by the value it changes. */
@@ -229,7 +201,7 @@ test(`RS heal trip (${VARIANT}): lead HP ${HP}, Train Standard to 101, the walk 
   const back = PLAN.exec(log[indexOf(log, PLAN, healed)])!
   step(`the return plan: ${back[0].trim()}`)
   expect([tileOf(back, 1), tileOf(back, 4)], `${criterion('back on the start tile')}: the return plan`).toEqual([START_TILE, CENTER])
-  checkHome(log, healed, START_TILE)
+  checkHome(log, healed, START_TILE, '"back on the start tile"')
   const walkBack = log.slice(healed).filter((l) => SEGMENT.test(l)).map((l) => SEGMENT.exec(l)!)
   // The exit mat's arrow warp: Down to the mat (7, 8), then Down on it, the run waiting for a y outside.
   expect([walkBack[0][3], tileOf(walkBack[0], 4)], `${criterion('back on the start tile')}: the return's first segment`).toEqual(['M.Down.8.33707828:H.B.1', 'OldaleTown_PokemonCenter_1F (7, 8)'])

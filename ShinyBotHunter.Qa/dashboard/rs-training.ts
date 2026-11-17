@@ -270,6 +270,73 @@ export function checkPresses(log: string[]): void {
   })
 }
 
+// --- the log extractors the scenarios share ------------------------------------------------------------------------
+
+/** A gated press as `<what> | <confirmed by>`, or null for any other line. */
+export const pressOf = (line: string): string | null => {
+  const m = PRESS.exec(line)
+  return m ? `${m[1]} | ${m[3]}` : null
+}
+
+/** The level-up boxes (`box <slot> <page>`) and the move prompts (`ask <slot>`), in log order. */
+export const events = (log: string[]): string[] => log.flatMap((l) => {
+  const box = /^level-up box page (\d) for slot (\d): BattleConfirm \|/.exec(pressOf(l) ?? '')
+  const ask = ASKING.exec(l)
+  return box ? [`box ${box[2]} ${box[1]}`] : ask ? [`ask ${ask[1]}`] : []
+})
+
+/** The n-th prompt's answer presses, from its asking line to the next prompt or the battle's end. */
+export function answerPresses(log: string[], n: number): { presses: string[]; closed: number } {
+  const ask = log.flatMap((l, i) => (ASKING.test(l) ? [i] : []))[n - 1]
+  const end = log.findIndex((l, i) => i > ask && (MOVE_PROMPT.test(l) || OVER.test(l)))
+  const lines = log.slice(ask, end)
+  return {
+    presses: lines.map(pressOf).filter((p): p is string => p !== null && /Delete a move\?|Stop learning\?|forget/.test(p)),
+    closed: lines.filter((l) => FORGET_CLOSED.test(l)).length
+  }
+}
+
+// The battle's switch: its try and the action menu that confirmed it.
+export const switchLines = (b: string[]): string[] => b.flatMap((l) => {
+  const t = SWITCH_TRY.exec(l)
+  const c = SWITCH_CONFIRMED.exec(l)
+  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
+})
+// The level-up box presses: page, slot and what confirmed each.
+export const boxes = (b: string[]): string[] => b.flatMap((l) => {
+  const m = PRESS.exec(l)
+  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
+  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
+})
+
+/** A [Navigator] line's tile from its groups at, at + 1 and at + 2, as the line prints it: `<internal map name> (x, y)`. */
+export const tileOf = (m: RegExpExecArray, at: number): string => `${m[at]} (${m[at + 1]}, ${m[at + 2]})`
+export const indexOf = (log: string[], pattern: RegExp, from = 0): number => log.findIndex((l, i) => i >= from && pattern.test(l))
+
+/**
+ * "Back on the start tile", after the nurse (`healed`, the line of its party HP): the last arrival on the start tile, then
+ * `arrived back at start`; or, when a wild battle starts on the last step onto the start tile, that battle bit on it, a
+ * plan from it with 0 segments, and `already at start` (no arrival line). `criterion` begins each failure.
+ */
+export function checkHome(log: string[], healed: number, start: string, criterion: string): void {
+  const cleared = indexOf(log, CLEARING, healed)
+  expect(cleared, `${criterion}: no "Clearing navigation path" after the nurse`).toBeGreaterThan(healed)
+  const reason = CLEARING.exec(log[cleared])![1]
+  const before = log.slice(healed, cleared)
+  step(`back on the start tile: ${reason}`)
+  if (reason === 'arrived back at start') {
+    const home = before.filter((l) => ARRIVED.test(l)).pop()
+    expect(home, `${criterion}: no arrival line before the clear`).toBeDefined()
+    expect(tileOf(ARRIVED.exec(home!)!, 1), `${criterion}: ${home}`).toBe(start)
+    return
+  }
+  const bit = before.map((l) => NAV_BATTLE.exec(l)).filter((m) => m !== null).pop()
+  expect(bit && tileOf(bit, 3), `${criterion}: "already at start" with no battle bit on the start tile before it`).toBe(start)
+  const zero = before.slice(before.indexOf(bit!.input)).map((l) => PLAN.exec(l)).find((m) => m !== null)
+  expect(zero && [tileOf(zero, 1), tileOf(zero, 4), zero[10]], `${criterion}: no plan from the start tile with 0 segments after ${bit!.input.trim()}`)
+    .toEqual([start, start, '0'])
+}
+
 // --- waits ------------------------------------------------------------------------------------------------------
 
 /**

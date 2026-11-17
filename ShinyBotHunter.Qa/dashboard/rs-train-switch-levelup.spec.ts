@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
-  copyLeadToSlot2, expAt, oneShort, PARTY_AFTER, PRESS, SWITCH_CONFIRMED, SWITCH_TRY, trainingRun, variant, waitLine, writeSlot
+  boxes, copyLeadToSlot2, expAt, oneShort, PARTY_AFTER, SWITCH_CONFIRMED, switchLines, trainingRun, variant, waitLine, writeSlot
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { MINUTE } from './static'
@@ -14,18 +14,6 @@ import { MINUTE } from './static'
 const VARIANT = variant(['one', 'two'] as const)
 const LEVELS = { one: { from: 7, to: 8, target: 101 }, two: { from: 11, to: 13, target: 13 } }[VARIANT]
 
-// The battle's switch: its try and the action menu that confirmed it.
-const switchLines = (b: string[]): string[] => b.flatMap((l) => {
-  const t = SWITCH_TRY.exec(l)
-  const c = SWITCH_CONFIRMED.exec(l)
-  return t ? [`try ${t[1]} to slot ${t[2]}`] : c ? [`confirmed: reads ${c[1]}, try ${c[2]}`] : []
-})
-// The level-up box presses: page, slot and what confirmed each.
-const boxes = (b: string[]): string[] => b.flatMap((l) => {
-  const m = PRESS.exec(l)
-  const box = m && /^level-up box page (\d) for slot (\d): BattleConfirm$/.exec(m[1])
-  return box ? [`page ${box[1]} for slot ${box[2]}, confirmed by ${m![3]}`] : []
-})
 const PAIR = ['page 1 for slot 0, confirmed by page 2', 'page 2 for slot 0, confirmed by the box leaving page 2']
 
 test(`rs-train-switch-${VARIANT === 'one' ? 'levelup' : 'double-levelup'}: the benched trainee from Lv ${LEVELS.from} to ${LEVELS.to} in one Switch battle`, async () => {
