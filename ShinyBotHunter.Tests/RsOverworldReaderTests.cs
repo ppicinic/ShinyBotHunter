@@ -73,5 +73,29 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(id, await Reader(memory).GetPlayerObjectIdAsync(CancellationToken.None));
         }
+
+        [Fact]
+        public async Task ScriptStateIsOneReadOfFlagsAndVars()
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(0x02026954, [0xA5]);         // the first event flag byte
+            memory.Place(0x02026954 + 0x11F, [0x5A]); // the last
+            memory.Place(0x02026A74, [0x34, 0x12]);   // var 0x4000
+            memory.Place(0x02026A74 + 0x1FE, [0x78, 0x56]);
+
+            (byte[] flags, byte[] vars) = await Reader(memory).ReadScriptStateAsync(CancellationToken.None);
+
+            var request = Assert.Single(memory.ChainReads);
+            Assert.Equal(0, request.RetryFrames);
+            Assert.Equal(
+                [(0x02026954u, 0, 0x120), (0x02026A74u, 0, 0x200)],
+                request.Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+            Assert.Equal(0x120, flags.Length);
+            Assert.Equal(0xA5, flags[0]);
+            Assert.Equal(0x5A, flags[0x11F]);
+            Assert.Equal(0x200, vars.Length);
+            Assert.Equal(0x1234, BitConverter.ToUInt16(vars, 0));
+            Assert.Equal(0x5678, BitConverter.ToUInt16(vars, 0x1FE));
+        }
     }
 }

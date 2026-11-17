@@ -4,7 +4,7 @@ namespace ShinyBotHunter.Games
         GameScreen Screen,
         BattleOutcome? Outcome, int? Script, int? Prompt, uint? TaskFunction, uint? Native = null, int? SummaryState = null,
         int? TextPrinter = null, int? AppState = null, int? PartyMonIndex = null, uint? AppInit = null,
-        int? StartMenuState = null, uint? TextCursor = null)
+        int? StartMenuState = null, uint? TextCursor = null, int? Question = null)
     {
         // RenderText's waits for A or B at the arrow (pointer-discovery.md, "Text printer state (2026-10-24)"); 3, 7 and 8
         // are decomp only.
@@ -22,5 +22,12 @@ namespace ShinyBotHunter.Games
     // printer's current character): different for every box, and it does not change while the printer waits at an arrow.
     // That list is HGSS's (HgssFieldSystemStateReader). On RS (RsStateReader): Outcome on every battle screen when
     // gBattleOutcome has a shared value; Prompt on BattleMenu, the action cursor; TextPrinter on BattleMessage, the battle
-    // window's state.
+    // window's state. With trainingReads, also: Prompt on Evolution, the scene task's data[0]; Question on Evolution while
+    // its move prompt waits (data[0] 21, data[8] 4), data[9]: 5 "Delete a move?", 10 "Stop learning?"; on OtherApp for
+    // the battle party screen, TaskFunction (the list's or the popup's) and PartyMonIndex (the party cursor); on OtherApp
+    // for the forget-a-move screen, Prompt (its cursor); on FieldTask, TextPrinter (the field message window's state),
+    // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active);
+    // PartyMonIndex on BattleMenu (the battler's party slot); Prompt on BattleMoveList (the move cursor); Prompt (the
+    // level-up box page, 1 or 2) and PartyMonIndex (the getter's slot) on BattleExpPrompt; Prompt (1) and PartyMonIndex
+    // (the getter's slot) on BattleMoveLearnPrompt.
 }
