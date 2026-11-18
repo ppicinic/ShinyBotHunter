@@ -160,6 +160,25 @@ The game profile (plan 5.3) keys address tables by `(flavor, revision)` where a 
 
 ---
 
+## Memory addresses are keyed by game code as well as revision
+
+Status: Accepted
+Date: 2026-11-17 (orchestrator, #427)
+
+### Context
+Extends "Memory addresses are keyed by ROM revision". RS navigation and training compare the field script's native against `WaitForAorBPress`, a ROM function whose address differs between Ruby and Sapphire (pret/pokeruby symbols branch, commit 78b1990). Everything else the bot reads is the same in both games, and the same at revisions 1 and 2.
+
+### Decision
+`GameProfile.Addresses` takes the ROM's game code and its revision. The revision still decides whether there is a table at all; RS picks its per-game part by the full four-character code (`RsPointerService.For`: `AXPE` Sapphire, `AXVE` Ruby). Any other code, or none, gets the shared table with the per-game part null.
+
+### Consequences
+- A non-English RS ROM gets no per-game part; whatever needs it decides what to do there.
+- The box check at profile construction passes a null code: the RAM-only table.
+- 2026-11-17, as the feature ended (epic #424): the per-game part has four members, not one. `WaitForAorBPress` and `PartyMenuMainCallback2` are ROM functions four bytes lower on Ruby; `DeleteMoveYesNo` and `StopLearningYesNo` are positions in the battle script data, 0x70 higher on Ruby, so "everything else is the same in both games" in the context above was too strong. The rule stands: an address that differs by game goes in the per-game part and is null for any other code. A train mode is refused at Run when that part is null (`GameProfile.TrainingRefusal`); the flee-only hunt reads none of it.
+- 2026-11-17 (#475): five members. `UseNextPokemonYesNo`, the battle script's yes/no at "Use next POKéMON?", is battle script data like the two move-prompt yes/nos, 0x70 higher on Ruby. The rule stands.
+
+---
+
 ## Default branch is `main`; first tag is `v0.1.0`
 
 Status: Accepted

@@ -3,6 +3,7 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -28,13 +29,17 @@ namespace ShinyBotHunter.BotEvents
         private const int CatchReadAttempts = 5;
         private const int CatchReadRetryDelayMs = 1000;
 
+        // As Overworld.WaitForReadyAsync: the snapshot may stay unchanged this long before Resume parks again.
+        private static readonly TimeSpan TrainerResumeStale = TimeSpan.FromSeconds(10);
+
         internal const string SlowTransitionLine = "A first Pokémon at or below the wild level gets the long battle transition.";
 
         private EncounterParams encounterParams;
         private IServiceProvider provider;
         // Made at the first BattleStart from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
         private IBotEvent<GameState>? battleEvent;
-        private NavigatorEvent navigatorEvent;
+        // Made at the first navigation state from the bot profile; one orchestrator runs one bot loop in sequence, no lock.
+        private IBotEvent<GameState>? navigatorEvent;
         private PokemonStateReader reader;
         private PokemonMetadataService metadataService;
         private PokemonPersistenceService persistenceService;
@@ -45,7 +50,6 @@ namespace ShinyBotHunter.BotEvents
         {
             this.encounterParams = encounterParams;
             this.provider = provider;
-            navigatorEvent = provider.GetRequiredService<NavigatorEvent>();
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
@@ -61,20 +65,8 @@ namespace ShinyBotHunter.BotEvents
             // back to it lets that leg carry on instead of spinning on a state nothing handles.
             if(state.State.Count > 0 && state.State.Peek() == EventState.Resume)
             {
-                if (await CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState))
-                {
-                    state.State.Pop();
-                    if (state.State.Count == 0)
-                    {
-                        state.State.Push(EventState.DecideOverworldAction);
-                    }
-                }
-                else
-                {
-                    // Back to Waiting rather than onwards: the event stays alive on the dashboard and
-                    // another Resume can record the catch.
-                    state.SwapState(EventState.Waiting);
-                }
+                await ResumeAsync(state, () => CheckForCatchAsync(state, reader, provider, persistenceService.AddCaughtPokemonAsync, UpdateMilestoneState),
+                    TrainerResumeStale, cancellationToken);
             }
             if(state.State.Count > 0 && state.State.Peek() == EventState.Init)
             {
@@ -93,7 +85,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state, cancellationToken);
+                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken);
                 }
                 else if(topState == EventState.Encountering)
                 {
@@ -117,19 +109,55 @@ namespace ShinyBotHunter.BotEvents
                      || topState == EventState.HealAtPokemonCenter
                      || topState == EventState.ReturnToStart)
                 {
-                    await navigatorEvent.ExecuteWithResultAsync(state, cancellationToken);
+                    await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
+        }
+
+        // Resume: after a trainer stop, the free field first; then the catch check, then on to the state underneath. A
+        // separate method so a test can drive it, with fieldFreeStale short.
+        internal static async Task ResumeAsync(GameState state, Func<Task<bool>> checkForCatch, TimeSpan fieldFreeStale, CancellationToken ct)
+        {
+            if (state.StoppedForTrainer)
+            {
+                // The speech or the battle may still be on: nothing is pressed or started until the field is free (FR-10).
+                try
+                {
+                    await GameStateWait.UntilAsync(state.Bot.State, "the free field after the trainer stop",
+                        s => s.Screen == GameScreen.FieldFree, fieldFreeStale, ct);
+                }
+                catch (GameStateTimeoutException ex)
+                {
+                    Console.WriteLine($"[Orchestrator] Resume: {ex.Message}");
+                    state.SwapState(EventState.Waiting);
+                    return;
+                }
+                state.StoppedForTrainer = false;
+            }
+            if (await checkForCatch())
+            {
+                state.State.Pop();
+                if (state.State.Count == 0)
+                {
+                    state.State.Push(EventState.DecideOverworldAction);
+                }
+            }
+            else
+            {
+                // Back to Waiting rather than onwards: the event stays alive on the dashboard and
+                // another Resume can record the catch.
+                state.SwapState(EventState.Waiting);
+            }
         }
 
         // Dispatch on the configured type. The events report different result types, so they only
         // meet at the non-generic IBotEvent -- which is fine, the result is discarded.
         internal static IBotEvent BuildEncounter(IBot bot, EncounterParams encounterParams) => encounterParams.type switch
         {
-            EncounterType.Spin => new SpinEncounterEvent(bot),
+            EncounterType.Spin => new SpinEncounterEvent(bot) { LockedHandOff = bot.Profile.SeekLockHandOff },
             EncounterType.Headbutt => new HeadbuttEncounterEvent(bot),
-            _ => new RunEncounterEvent(bot, encounterParams),
+            _ => new RunEncounterEvent(bot, encounterParams) { LockedHandOff = bot.Profile.SeekLockHandOff },
         };
 
         internal static async Task CaptureStartAsync(GameState state, IOverworldReader overworld, CancellationToken cancellationToken)
@@ -298,7 +326,9 @@ namespace ShinyBotHunter.BotEvents
             return false;
         }
 
-        private async Task DecideOverworldAction(GameState state, CancellationToken cancellationToken)
+        // Static with its services passed in, so a test can drive the decisions without the services that open a database.
+        internal static async Task DecideOverworldAction(GameState state, PokemonStateReader reader, Func<int, PokemonMoveMetadata> moveMetadata,
+            PickupTally pickupTally, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -328,7 +358,7 @@ namespace ShinyBotHunter.BotEvents
                 await FinishAsync(state);
                 return;
             }
-            if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead))
+            if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead, moveMetadata))
             {
                 if (state.Pickup)
                 {
@@ -345,6 +375,7 @@ namespace ShinyBotHunter.BotEvents
             }
             else
             {
+                Console.WriteLine($"[Orchestrator] {HealTripLine(state, pokeState, lead, moveMetadata)}");
                 state.BattleMode = BattleMode.Flee;
                 state.SwapState(EventState.GoToPokemonCenter);
             }
@@ -355,38 +386,58 @@ namespace ShinyBotHunter.BotEvents
         /// the configured slot is the one that needs HP and PP. A fainted lead is still fatal though:
         /// the game would send out someone else and the trainee would stop banking EXP entirely.
         /// </summary>
-        private bool CanFightNextEncounter(GameState state, PokemonState pokeState, PokemonData lead)
+        internal static bool CanFightNextEncounter(GameState state, PokemonState pokeState, PokemonData lead, Func<int, PokemonMoveMetadata> moveMetadata)
         {
             if (state.TrainType != TrainType.Switch)
             {
-                return CanBattle(lead);
+                return CanBattle(lead, moveMetadata);
             }
-            int battlerIndex = state.SwitchSlot!.Value - 1;
-            var battler = battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+            var battler = Battler(state, pokeState);
             if (battler is null)
             {
                 // The configured slot is empty -- nothing to switch to, so treat it like a spent party.
                 return false;
             }
-            return lead.HP > 0 && CanBattle(battler);
+            return lead.HP > 0 && CanBattle(battler, moveMetadata);
         }
 
-        private bool CanBattle(PokemonData pokemon)
+        // Why the heal trip was taken: the member the check above read (the lead, or a living lead's battler) with its HP and
+        // damaging PP, or the empty slot.
+        internal static string HealTripLine(GameState state, PokemonState pokeState, PokemonData lead, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
+            PokemonData? member = state.TrainType == TrainType.Switch && lead.HP > 0 ? Battler(state, pokeState) : lead;
+            return member is null
+                ? $"heal trip: switch slot {state.SwitchSlot} is empty"
+                : $"heal trip: {member.Name} HP {member.HP}/{member.MaxHP}, damaging PP {DamagingPp(member, moveMetadata)}";
+        }
+
+        private static PokemonData? Battler(GameState state, PokemonState pokeState)
+        {
+            int battlerIndex = state.SwitchSlot!.Value - 1;
+            return battlerIndex < pokeState.PartySize ? pokeState.PartyPokemon[battlerIndex] : null;
+        }
+
+        private static bool CanBattle(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
         {
             // Same boundary the battle loop flees on -- see BattleReadiness.
             if(BattleReadiness.IsTooHurtToFight(pokemon.HP, pokemon.MaxHP))
             {
                 return false;
             }
+            return DamagingPp(pokemon, moveMetadata) >= 3;
+        }
+
+        private static int DamagingPp(PokemonData pokemon, Func<int, PokemonMoveMetadata> moveMetadata)
+        {
             int moveCount = 0;
             foreach(var move in pokemon.Moves)
             {
-                if(move.Id > 0 && metadataService.GetPokemonMoveMetadata(move.Id).IsDamageMove) // TODO check for bad moves like False Swipe or recoil
+                if(move.Id > 0 && moveMetadata(move.Id).IsDamageMove) // TODO check for bad moves like False Swipe or recoil
                 {
                     moveCount += move.PP;
                 }
             }
-            return moveCount >= 3;
+            return moveCount;
         }
     }
 }

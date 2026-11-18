@@ -25,6 +25,8 @@
         public const byte MAP_Cut = 0x0F;
         public const byte MAP_RockSmash = 0x10;
         public const byte MAP_WalkingTrainer = 0x11;
+        public const byte MAP_FlaggedNpc = 0x12;
+        public const byte MAP_ScriptTrigger = 0x14;
         public const byte MAP_Blocked = 0x80;
 
         public static readonly Dictionary<byte, string> NATURE_NAMES = new Dictionary<byte, string>() {

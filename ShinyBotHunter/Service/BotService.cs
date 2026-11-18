@@ -299,12 +299,17 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException(reason);
                 }
             }
+            // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
+            if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
+            {
+                throw new ArgumentException(refusal);
+            }
             if (args.Pickup == true && (args.TrainType ?? TrainType.None) == TrainType.None)
             {
                 throw new ArgumentException(PickupNeedsTrainMode);
             }
             PokemonData? lead = null;
-            if (!caps.HasTraining)
+            if (caps.HasWildRunChecks)
             {
                 lead = await WildRefusalAsync(bot);
             }
@@ -663,23 +668,20 @@ namespace ShinyBotHunter.Service
         private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
         private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
         internal const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
-        internal const string NoTargetNeedsTraining = "No Target needs a train mode, which Ruby and Sapphire do not have yet.";
-        internal const string NoTraining = "Training is not available on Ruby and Sapphire yet.";
+        internal const string NoPickup = "Pickup is not available on Ruby and Sapphire.";
 
         // The choices a profile's capabilities rule out, with the reason the dashboard shows and Run refuses with.
         // Empty for HGSS, so its list and its start are unchanged.
         internal static Dictionary<string, Dictionary<string, string>> DisabledByCapabilities(GameCapabilities c)
         {
             var disabled = new Dictionary<string, Dictionary<string, string>>();
-            if (!c.HasOverworldNavigation)
+            if (!c.HasHeadbuttTrees)
             {
                 disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = NoHeadbuttTrees };
             }
-            if (!c.HasTraining)
+            if (!c.HasPickup)
             {
-                disabled["TargetType"] = new() { [nameof(TargetType.NoTarget)] = NoTargetNeedsTraining };
-                disabled["TrainType"] = new() { [nameof(TrainType.Standard)] = NoTraining, [nameof(TrainType.Switch)] = NoTraining };
-                disabled["Pickup"] = new() { ["true"] = NoTraining };
+                disabled["Pickup"] = new() { ["true"] = NoPickup };
             }
             return disabled;
         }
@@ -823,7 +825,7 @@ namespace ShinyBotHunter.Service
                 }
             }
             // Only an idle bot is offered these (Wild Encounter needs HasWildEncounters, Chained Encounter
-            // HasOverworldNavigation), so the entry has a bot. It can still be closed between the two reads.
+            // HasChainedEncounter), so the entry has a bot. It can still be closed between the two reads.
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
             {
                 return actions;

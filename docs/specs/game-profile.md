@@ -1,7 +1,7 @@
 # Spec: game profile
 
 Status: Implemented (epic #118, 2026-10-22); divergences are recorded in the [plan's implementation notes](../plans/2026-10-cleanup-and-hardening.md#implementation-notes-game-profile-2026-10-22) and marked below
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 Owner: Phil
 Related: [plan rows 5.3 to 5.3e](../plans/2026-10-cleanup-and-hardening.md#phase-5-structural-splits-after-1-3-one-file-per-pr), [architecture, extension axes](../architecture/system-overview.md#axis-1-game-flavors), [pointer discovery](../research/pointer-discovery.md), [HGSS state reader spec](hgss-state-reader.md) (the follow-up), [QA automation](qa-automation.md), [decisions](../decisions/game-profile.md)
 
@@ -17,7 +17,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 
 ## Goals
 
-- G1: every game-specific address, offset, magic value and struct size is defined once, in a type whose only job is to hold it, and is looked up by `(flavor, ROM revision)`.
+- G1: every game-specific address, offset, magic value and struct size is defined once, in a type whose only job is to hold it, and is looked up by `(flavor, game code, ROM revision)`.
 - G2: pointers, parsing, state reading, capabilities and map data are separate types with one responsibility each; the profile only composes them. No type in this spec has more than one reason to change.
 - G3: a flavor says what it supports with declared flags. `BotService` refuses an unsupported action with a 400 before any event starts; the dashboard never offers it.
 - G4: each event type is one registry entry (name, parameters, required capabilities, factory). Adding an event type adds an entry, not a branch.
@@ -40,7 +40,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 |---|---|---|---|
 | FR-1 | A `GameProfile` exists per flavor and is the only way code reaches a flavor's addresses, parsers, capabilities, map data or state reader. `GameServices` and the keyed `IPointerService` / `IPokemonParser` / `IBattlePokemonParser` registrations are deleted. | Must | `grep -rn "FromKeyedServices\|GetKeyedService" ShinyBotHunter/` is empty; `GameServices.cs` is gone. |
 | FR-2 | No literal memory address or battle magic value exists outside the address tables and the state readers. | Must | `grep -rnE "0x0?2[0-9A-F]{6}\b" ShinyBotHunter --include=*.cs` matches only `Service/Pointers/`, `Games/Hgss/`, `RomInfoService.cs` (console header addresses) and `Gen3SaveFile.cs` (save format). |
-| FR-3 | Addresses are looked up by `(flavor, revision)`. Launching a ROM whose revision has no table fails at launch with a message naming the flavor and revision. | Must | Unit test: `HgssProfile.Addresses(1)` throws `NotSupportedException` with "HGSS revision 1"; `Addresses(0)` returns the table. |
+| FR-3 | Addresses are looked up by `(flavor, game code, revision)`. Launching a ROM whose revision has no table fails at launch with a message naming the flavor and revision. | Must | Unit test: `HgssProfile.Addresses(null, 1)` throws `NotSupportedException` with "HGSS revision 1"; `Addresses(null, 0)` returns the table. |
 | FR-4 | `GameCapabilities` is a record of booleans declared by each profile. `GetAvailableActions` returns only actions whose required capabilities the bot's profile has; `ExecuteEvent` returns 400 for any other. | Must | Unit test: an RS bot's action list is empty of `Wild Encounter`, `Chained Encounter`, `HGSS Togepi Egg`; starting one returns 400 with the missing capability named. |
 | FR-5 | `RsDataReader` and `HgssDataReader` are deleted. `IDataReader` is replaced by `IOverworldReader` (map, position, facing) and `IGameStateReader` (where the game is). A profile without overworld support has no overworld reader and declares `HasOverworldNavigation = false`. | Must | No reader stub throws `NotSupportedException` in `Bot/` or `Games/`; the FR-3 revision throw is the one that remains. |
 | FR-6 | Map and graph data are instances owned by the HGSS profile, loaded from `Data/HGSS`. `MapService.Instance` and `GraphService.Instance` are deleted. `PathfindingService` is built per profile. | Must | A test constructs an `HgssProfile` with the internal test constructor and no files on disk. |
@@ -57,7 +57,7 @@ Line references are to `main` at the merge of the phases 3 to 5 feature (PR #106
 flowchart LR
   subgraph Profile["GameProfile (data only)"]
     CAP[GameCapabilities]
-    ADDR["Addresses(revision) : IPointerService"]
+    ADDR["Addresses(gameCode, revision) : IPointerService"]
     PARSE[IPokemonParser]
     BPARSE[IBattlePokemonParser]
     MAPS["MapService + GraphService (nullable)"]
@@ -110,12 +110,12 @@ public sealed record GameProfile
     public required GameCapabilities Capabilities { get; init; }
 
     /// Address table for a ROM revision. Throws NotSupportedException for a revision without one.
-    public required Func<int, IPointerService> Addresses { get; init; }
+    public required Func<string?, int, IPointerService> Addresses { get; init; }
 
     public required IPokemonParser Parser { get; init; }
     public IBattlePokemonParser? BattleParser { get; init; }          // null when the flavor has no battle reads
 
-    public MapService? Maps { get; init; }                            // null when !Capabilities.HasOverworldNavigation
+    public MapService? Maps { get; init; }                            // required by Capabilities.HasOverworldNavigation; HGSS and RS both have maps
     public GraphService? Graph { get; init; }
     public PathfindingService? Pathfinding { get; init; }
 
@@ -125,6 +125,8 @@ public sealed record GameProfile
 ```
 
 Added 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md): `CreateBattleEvent` (`Func<IServiceProvider, IBotEvent<GameState>>?`, the battle a wild encounter hands to, made once per orchestrator) and `SaveGame` (`Func<IServiceProvider, IBot, Task>?`, the save after a catch), both required by `HasWildEncounters`.
+
+Added 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-training.md) (#428, #432): `SeekLockHandOff` (`TimeSpan?`, how long a seek or an RS walk lets the field stay locked before it hands the lock to the battle event, which reads whether a trainer locked it; 4 s on RS, null on HGSS), `CreateNavigatorEvent` (`Func<IServiceProvider, IBotEvent<GameState>>?`, the walk to a Pokémon Center, the heal and the walk back, made at the orchestrator's first navigation state; required by `HasOverworldNavigation`) and `TrainingRefusal` (`Func<IPointerService, string?>?`, the sentence a train mode is refused with for a table that cannot train; null on HGSS). `Pathfinding` and `Graph` are HGSS's only: RS plans over `Maps` with `RouteSearch`.
 
 `GameProfiles` is a class with a dictionary built in `Startup` and one method, `Get(GameFlavor)`, which throws `InvalidOperationException` naming the flavor when nothing is registered (this is the one message `GameServices.Resolve` gives today, kept). It is a singleton in DI. `GameServices` is deleted; its three callers in `PokemonStateReader` and the one in `StarterHuntEvent` take the profile instead.
 
@@ -148,8 +150,8 @@ IOverworldReader Overworld { get; }          // same
   - **offsets from a dereferenced root**, which depend on the struct layout and not the revision: `MapIdOffset` (`-0x22DA4`), `FacingOffset` (`0x1DC4`), `BattleMenuStateOffset` (`0x230EC`, legacy), `BattleStateOffset` (`0x692C`, legacy), `EnemySetupOffset` (`0x6930`, legacy; the real pointer is `app.setup`, see the follow-up), `EnemyCountOffset` (`0xC14`), `EnemyOffset` (`0xC18`), `StarterPreviewOffset` (`0x1BC00`), and the party, box and battle-mirror offsets already there.
   The members marked legacy are the ones the [state reader spec](hgss-state-reader.md) deletes; keeping them in the table now is what makes that deletion a table edit. Deleted on 2026-10-23 by that spec's S2a-0 (#145) and S2a (#138): `EnemyAnchor` from all three tables, `BattleMenuState` from `IPointerService` and RS, and `BattleIndicator`, `BattleStateOffset` and `BattleMenuState` from `HgssPointerService`; the foe reads now walk `app.setup` (`AppSlotsOffset`, `SubAppOffset`, `AppSetupOffset`) through opcode `0x05`.
 - `HgssDataReader.cs:9-24` (nine duplicates, one with the wrong sign) are deleted with the file.
-- The HGSS table is selected by `HgssProfile.Addresses(revision)`: revision 0 returns the instance; any other throws `NotSupportedException("HGSS revision {n}: no address table. Hunts run on revision 0.")`. `RomInfo.Revision` is already read from the header at launch.
-- The RS table is selected the same way for revisions 1 and 2 (today's hunts) and returns the one existing instance for both; 0 throws. This matches today's `TestedRevisions` (`RomInfoService.cs:80-84`), which stays as the "known to work" list for the ROM scan.
+- The HGSS table is selected by `HgssProfile.Addresses(gameCode, revision)`, with the code ignored: revision 0 returns the instance; any other throws `NotSupportedException("HGSS revision {n}: no address table. Hunts run on revision 0.")`. `RomInfo.Revision` is already read from the header at launch.
+- The RS table is selected the same way for revisions 1 and 2 (today's hunts) and returns the one existing instance for both; 0 throws. This matches today's `TestedRevisions` (`RomInfoService.cs:80-84`), which stays as the "known to work" list for the ROM scan. Changed 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-training.md), FR-12 (#427, #431): the game code now picks the table, `RsPointerService.For(gameCode)`: `AXPE` (Sapphire) and `AXVE` (Ruby) get the shared RAM table plus a per-game part (`WaitForAorBPress`, `DeleteMoveYesNo`, `StopLearningYesNo`, `PartyMenuMainCallback2`, and from #475 `UseNextPokemonYesNo`), the same at revisions 1 and 2; any other code, and the null code the box check passes, get the shared table with that part null, which `TrainingRefusal` refuses to train with.
 - `RsDataReader.cs:22`, `StarterHuntEvent.cs:48-49` and `RsStartMenuService.cs:21-23` move into `RsPointerService` unchanged, with the same root/offset comment.
 
 A second HGSS revision is the moment to split roots from offsets into two types, not before; the comment kind is what makes that split mechanical when it comes.
@@ -160,11 +162,32 @@ Any PR that adds a memory read, for any feature, adds the address to the flavor'
 
 ### Capabilities
 
+As built on 2026-11-17 (`Games/GameCapabilities.cs`; the paragraphs below give the history):
+
+```csharp
+public sealed record GameCapabilities(
+    bool HasOverworldNavigation,   // map, position, facing, and a navigator part that walks to a Pokémon Center and back
+    bool HasWildEncounters,        // the spin and run loops and a battle that can be fled
+    bool HasTraining,              // overworld navigation: train modes and healing
+    bool HasEggs,                  // Togepi and Primo egg events
+    bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
+    bool HasSoftResetStarterHunt,  // RS wave hunt
+    bool HasShinyStarterHunt,      // HGSS starter hunt
+    bool HasWishmakerJirachi,      // RS Wishmaker Jirachi hunt over the Colosseum Bonus Disc
+    bool HasChainedEncounter = false,  // Chained Encounter
+    bool HasStaticEncounter = false,   // HGSS Static Encounter: the graph and pathfinding walk to the spot
+    bool HasHeadbuttTrees = false,     // the Headbutt encounter type
+    bool HasPickup = false,            // Pickup, which takes the items through HGSS's bag
+    bool HasWildRunChecks = false);    // the RS checks and speed lines at a Wild Encounter's Run
+```
+
+HGSS declares all but `HasSoftResetStarterHunt`, `HasWishmakerJirachi` and `HasWildRunChecks`; RS declares `HasOverworldNavigation`, `HasWildEncounters`, `HasTraining`, `CanReadBoxes`, `HasSoftResetStarterHunt`, `HasWishmakerJirachi` and `HasWildRunChecks`. The constructor's rules as built: `HasOverworldNavigation ⇒ CreateOverworldReader, Maps, CreateNavigatorEvent present`; `HasStaticEncounter ⇒ Graph, Pathfinding present`; `HasWildEncounters ⇒ CreateStateReader, CreateOverworldReader, CreateBattleEvent, SaveGame present`; `HasTraining ⇒ HasOverworldNavigation`; `HasChainedEncounter ⇒ HasTraining`; `CanReadBoxes ⇒ Addresses(null, r).BoxLayout` is not null for every listed revision. The first draft follows.
+
 ```csharp
 public sealed record GameCapabilities(
     bool HasOverworldNavigation,   // map, position, facing, pathfinding
     bool HasWildEncounters,        // the spin and run loops and a battle that can be fled
-    bool HasTraining,              // a battle parser and overworld navigation: train modes, Pickup, healing
+    bool HasTraining,              // a battle parser and overworld navigation: train modes, Pickup, healing (rule dropped 2026-11-17, below)
     bool HasEggs,                  // Togepi egg event
     bool CanReadBoxes,             // PokemonStateReader.GetPokemonState
     bool HasSoftResetStarterHunt,  // RS wave hunt
@@ -172,11 +195,15 @@ public sealed record GameCapabilities(
     bool HasWishmakerJirachi);     // RS Wishmaker Jirachi hunt
 ```
 
-HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
+HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares only `HasSoftResetStarterHunt` and `HasWishmakerJirachi` (added by the [Wishmaker Jirachi spec](wishmaker-jirachi.md), FR-3). The profile constructor asserts: `HasOverworldNavigation ⇒ Maps, Graph, Pathfinding, CreateOverworldReader present`; `HasWildEncounters ⇒ CreateStateReader, BattleParser present, HasOverworldNavigation`; `HasEggs ⇒ HasOverworldNavigation`; `CanReadBoxes ⇒ Addresses(null, r).BoxLayout` is not null. The RS pointer service's four throwing box members (`RsPointerService.cs:58-64`) are then unreachable and are deleted; the four interface members move to a `BoxLayout?` record on `IPointerService` (null for RS). That is the only interface change.
 
 Changed 2026-11-15 by the [RS wild encounter spec](rs-wild-encounter.md), FR-1: `HasTraining` is added. HGSS declares everything but `HasSoftResetStarterHunt` and `HasWishmakerJirachi`; RS declares `HasWildEncounters`, `HasSoftResetStarterHunt` and `HasWishmakerJirachi`. The constructor checks `HasWildEncounters ⇒ CreateStateReader, CreateOverworldReader, CreateBattleEvent, SaveGame present` and `HasTraining ⇒ BattleParser present, HasOverworldNavigation`; `HasWildEncounters` no longer requires the battle parser or `HasOverworldNavigation`.
 
 Changed 2026-11-16 by the [RS wild encounter spec](rs-wild-encounter.md) (#413): RS declares `CanReadBoxes`, so both profiles do. RS's `BoxLayout` is `gPokemonStorage`'s boxes: 14 boxes of 30 80-byte slots, 2,400 bytes a box. `BoxLayout.Storage` is an offset from the base the party read uses: the dereferenced anchor on HGSS, the anchor itself on RS (`PartyAddressing.Absolute`), so RS's is `0x020300A4 - 0x03004350`.
+
+Changed 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-training.md), FR-18a and FR-18b (#432, T3a): five capabilities are appended, each defaulting to false: `HasChainedEncounter`, `HasStaticEncounter`, `HasHeadbuttTrees` and `HasPickup` (HGSS declares them; Chained Encounter, HGSS Static Encounter, the Headbutt choice and Pickup require them) and `HasWildRunChecks` (RS declares it; the RS checks and speed lines at a Wild Encounter's Run). Two parts are added: `CreateNavigatorEvent` (HGSS's `NavigatorEvent`, RS's `RsNavigatorEvent`; the orchestrator's navigation states go through it) and `TrainingRefusal` (RS: a table without the per-game part cannot train). RS now has `Maps`, from `data/RS` with elevation and events. The constructor's rules are narrowed: `HasOverworldNavigation ⇒ CreateOverworldReader, Maps, CreateNavigatorEvent present`, since RS plans over the maps with `RouteSearch` and has no graph or pathfinding; `HasStaticEncounter ⇒ Graph, Pathfinding present`, as the static start is the one caller of `Pathfinding` outside HGSS's navigator; `HasTraining ⇒ HasOverworldNavigation` only, since training reads HP and PP from the party record, which carries them through the battle. RS still declares neither `HasOverworldNavigation` nor `HasTraining`.
+
+Changed 2026-11-17 by the same spec, FR-18 (#451, T3b): RS declares `HasOverworldNavigation` and `HasTraining`. The constructor adds `HasChainedEncounter ⇒ HasTraining`, since a chained leg may train and needs the navigator part. Without `HasTraining` nothing is greyed any more; a train mode is refused at Run when `TrainingRefusal` gives a sentence for the bot's table.
 
 `PokemonStateReader.GetPokemonState` checks `CanReadBoxes` and throws `InvalidOperationException` otherwise, replacing today's `NotSupportedException` from the pointer service. `PokemonState`'s hard-coded 18x30 (`PokemonStateReader.cs:17-20`) reads `BoxLayout` instead.
 
@@ -229,6 +256,8 @@ This is an interface with one implementation in this spec. The second implementa
 
 `MapService` and `GraphService` keep their code and lose their static `Instance` members and private constructors. `HgssProfile.Create` constructs them from `Data/HGSS` (as built, the directory is `HgssProfile.DataDirectory` and the file names stay in the two services, which take the directory), then a `PathfindingService` over them. `Startup.cs:111-113` registers nothing for them; `NavigatorEvent`, `HgssTogepiEggEvent` and `LocationService` take `bot.Profile.Pathfinding` / `.Maps`. `PathfindingService.cs:256-261` reads the coordinate and map-guard addresses from the profile's revision-0 table, passed in at construction. The map generator under `Scripts/Maps/` is a setup command and keeps reading files directly.
 
+Added 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-training.md) (#425, #426, #451): `RsProfile.Create` constructs a `MapService` from `data/RS` with `withElevationAndEvents`, which also loads each map's elevation plane and its side file (`events.json.gz`: connections, warps, flagged objects, script triggers). RS has no `GraphService` or `PathfindingService`: `RsNavigatorEvent` searches across maps tile by tile with `RouteSearch` over that `MapService`. `Data/RS` is generated by `--generatemapdatars <pokerubyDir> <outputDir>` and committed.
+
 ### Event registry
 
 ```csharp
@@ -250,7 +279,7 @@ public static class EventRegistry
 }
 ```
 
-Entries: `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS, `OwnsEmulators`, requires `HasSoftResetStarterHunt`), `HGSS Shiny Starter Hunt` (`OwnsEmulators`, requires `HasShinyStarterHunt`; the `Mode == HGSS` alias in `BotService.cs` goes), `Wild Encounter`, `Chained Encounter` (both require `HasWildEncounters`; since 2026-11-15 `Chained Encounter` requires `HasOverworldNavigation`), `HGSS Togepi Egg` (requires `HasEggs`), `Resume`. The `Create` delegates are the bodies of today's branches, moved verbatim; `ValidateAndBuildLeg` and `EnsurePartyHasRoomForEggAsync` stay as private helpers called from the delegates.
+Entries: `Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt` (RS, `OwnsEmulators`, requires `HasSoftResetStarterHunt`), `HGSS Shiny Starter Hunt` (`OwnsEmulators`, requires `HasShinyStarterHunt`; the `Mode == HGSS` alias in `BotService.cs` goes), `Wild Encounter`, `Chained Encounter` (both require `HasWildEncounters`; since 2026-11-15 `Chained Encounter` requires `HasOverworldNavigation`; as built since 2026-11-17, `Chained Encounter` requires `HasChainedEncounter` and nothing else (`Games/EventRegistry.cs`), and `HGSS Static Encounter` requires `HasStaticEncounter`), `HGSS Togepi Egg` (requires `HasEggs`), `Resume`. The `Create` delegates are the bodies of today's branches, moved verbatim; `ValidateAndBuildLeg` and `EnsurePartyHasRoomForEggAsync` stay as private helpers called from the delegates.
 
 `BotService` keeps slot allocation, the gate and the runner. `ExecuteEventUnderGate` becomes: look up the entry (unknown name → 400), check `entry.Requires(bot.Profile.Capabilities)` (false → 400 naming the capability), check the bot's state as today, build, start. `ExecuteNewBotOrSpecialEventUnderGate` becomes the same over the `OwnsEmulators` entries, with the capability checked against the profile of the first ROM's flavor. `GetAvailableActions` filters `EventRegistry.All` by the bot's state as today and then by `Requires`. `GetTopLevelOptions` returns the three options the dashboard showed before (`Launch Bot`, `Launch Bot + Continue`, `Shiny Starter Hunt`); `HGSS Shiny Starter Hunt` is reachable by name only, as it was. `SpecialEvents.json` and `BotService.Init` are deleted; the `Shiny Starter Hunt` conditional parameters move into code as an `EventArgumentOptions` literal.
 
@@ -366,3 +395,5 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-10-22: implemented under epic #118 (PRs #126 to #132). "As built" notes mark where the code differs from the draft: get-only profile members, existing address names kept, flavor-only members on the concrete tables, the data directory in `HgssProfile`, the `EventRegistration` shape, the top-level options, and the FR-5 wording. The full list is in the plan's implementation notes.
 - 2026-11-15: Ruby and Sapphire wild encounters (epic #380): `HasTraining`, the as-built declarations and constructor checks, `CreateBattleEvent` and `SaveGame` on the profile, a second overworld reader (`RsOverworldReader`), and `Chained Encounter` requiring `HasOverworldNavigation`.
 - 2026-11-16 (#413): RS declares `CanReadBoxes` with `gPokemonStorage`'s boxes as its `BoxLayout`, whose `Storage` is an offset from the party read's base (the anchor itself on RS).
+- 2026-11-17 (#451): RS declares `HasOverworldNavigation` and `HasTraining`; `HasChainedEncounter ⇒ HasTraining`; `Maps` is required by navigation.
+- 2026-11-17 (#434): made true for the merged RS feature: the capabilities record and the constructor's rules as built (the first draft's `HasTraining` comment no longer holds), `SeekLockHandOff`, `CreateNavigatorEvent` and `TrainingRefusal` on the profile, the RS table chosen by game code, RS's maps with elevation and events under `RouteSearch`, and the registry's requirements.

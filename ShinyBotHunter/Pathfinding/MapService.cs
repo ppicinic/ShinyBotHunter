@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Scripts.Maps;
 using System.IO.Compression;
 
@@ -10,6 +11,9 @@ namespace ShinyBotHunter.Pathfinding
         public int Height { get; set; }
         public int Width { get; set; }
         public BoulderData[] Boulders { get; set; } = [];
+        // Null when the container has no elevation plane (HGSS); every tile then reads elevation 0.
+        public byte[][]? Elevation { get; set; }
+        public MapEvents Events { get; set; } = new();
         public Map(int height, int width)
         {
             Height = height;
@@ -27,7 +31,36 @@ namespace ShinyBotHunter.Pathfinding
             set => Tiles[y][x] = value;
         }
 
+        public byte ElevationAt(int y, int x) => Elevation is null ? (byte)0 : Elevation[y][x];
     }
+
+    // A map's script state and exits, from the side file (events.json.gz).
+    public class MapEvents
+    {
+        public List<MapObject> Objects { get; set; } = [];
+        public List<MapTrigger> Triggers { get; set; } = [];
+        public List<MapWarp> Warps { get; set; } = [];
+        public List<MapConnection> Connections { get; set; } = [];
+        public List<MapDive> Dive { get; set; } = [];
+    }
+
+    // An object that stands while its flag is clear; a null Flag did not resolve and the object is always there.
+    public record MapObject(int X, int Y, int? Flag);
+
+    // A trigger that fires while its variable holds Value; a null Var did not resolve (or is "0") and the trigger is
+    // always live. The game compares the variable with Value cut to a byte (VarGet(var) == (u8)value).
+    public record MapTrigger(int X, int Y, int? Var, int Value);
+
+    // ToX, ToY is the tile the player stands on when control returns: the destination warp event's tile, moved by the
+    // game's arrival step (one tile Down off a door or stairs, East off an escalator). Arrow: None is a step-on warp
+    // (door, stairs, ladder, escalator, hole), entered by stepping onto the tile, or for an animated door by pressing Up
+    // from the tile below; otherwise it is the direction to press while standing on the tile.
+    public record MapWarp(int X, int Y, int Map, int ToX, int ToY, Direction Arrow);
+
+    public record MapConnection(Direction Direction, int Offset, int Map);
+
+    // The Dive access tile: the same (X, Y) on the surface map and on the underwater map, one entry on each.
+    public record MapDive(int X, int Y, int Map);
 
     public class MapLookup
     {
@@ -36,9 +69,9 @@ namespace ShinyBotHunter.Pathfinding
     }
     public class MapService
     {
-        public MapService(string directory)
+        public MapService(string directory, bool withElevationAndEvents = false)
         {
-            LoadMaps(directory);
+            LoadMaps(directory, withElevationAndEvents);
         }
         internal MapService(Dictionary<int, Map> maps)
         {
@@ -48,7 +81,7 @@ namespace ShinyBotHunter.Pathfinding
         private Dictionary<int, List<MapLookup>> botMapLookup = new Dictionary<int, List<MapLookup>>();
         private Dictionary<int, List<int>> botMapGameIds = new Dictionary<int, List<int>>();
         private Dictionary<int, Map> Maps { get; set; } = new Dictionary<int, Map>();
-        public void LoadMaps(string directory)
+        public void LoadMaps(string directory, bool withElevationAndEvents)
         {
             Console.WriteLine("Load maps");
             using (FileStream compressedFileStream = new FileStream(Path.Combine(directory, "maps.bin"), FileMode.Open))
@@ -71,6 +104,14 @@ namespace ShinyBotHunter.Pathfinding
                             byteCount++;
                         }
                     }
+                    if (withElevationAndEvents)
+                    {
+                        map.Elevation = new byte[height][];
+                        for (int y = 0; y < height; y++)
+                        {
+                            map.Elevation[y] = reader.ReadBytes(width);
+                        }
+                    }
                     Maps.Add(id, map);
                 }
                 Console.WriteLine($"Loaded {Maps.Keys.Count()} into memory. Total memory size: {byteCount} bytes.");
@@ -90,6 +131,17 @@ namespace ShinyBotHunter.Pathfinding
             foreach(var (boulderKey, boulderData) in boulders)
             {
                 Maps[boulderKey].Boulders = boulderData;
+            }
+            if (withElevationAndEvents)
+            {
+                using FileStream eventsFile = new FileStream(Path.Combine(directory, "events.json.gz"), FileMode.Open, FileAccess.Read);
+                using GZipStream eventsStream = new GZipStream(eventsFile, CompressionMode.Decompress);
+                using StreamReader eventsReader = new StreamReader(eventsStream);
+                var events = JsonConvert.DeserializeObject<Dictionary<int, MapEvents>>(eventsReader.ReadToEnd())!;
+                foreach (var (eventsKey, mapEvents) in events)
+                {
+                    Maps[eventsKey].Events = mapEvents;
+                }
             }
         }
 

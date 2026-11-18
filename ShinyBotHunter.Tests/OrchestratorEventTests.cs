@@ -8,6 +8,7 @@ using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -47,7 +48,7 @@ namespace ShinyBotHunter.Tests
                 HasShinyStarterHunt: false,
                 HasWishmakerJirachi: false),
             [1],
-            _ => new RsPointerService(),
+            (_, _) => new RsPointerService(),
             new PidSpeciesParser(),
             battleParser: null,
             createOverworldReader: (memory, t) => new RsOverworldReader(memory, (RsPointerService)t),
@@ -181,7 +182,7 @@ namespace ShinyBotHunter.Tests
             // HGSS with the stub parser and a recording save. FakeBot reads zeros, so every box slot is empty.
             GameProfile profile = new(hgss.Flavor, hgss.Capabilities, [0], hgss.Addresses, new PidSpeciesParser(), hgss.BattleParser,
                 hgss.CreateOverworldReader, hgss.Maps, hgss.Graph, hgss.Pathfinding, hgss.CreateStateReader, hgss.CreateBattleEvent,
-                (_, _) => { calls.Add("save"); return Task.CompletedTask; });
+                (_, _) => { calls.Add("save"); return Task.CompletedTask; }, createNavigatorEvent: hgss.CreateNavigatorEvent);
             FakeBot bot = new(Task.CompletedTask, profile) { PartyBlocks = [Block(TargetPid, TargetSpecies)] };
             GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
             state.TargetPokemon = Caught();
@@ -192,6 +193,118 @@ namespace ShinyBotHunter.Tests
 
             Assert.True(checkedCatch);
             Assert.Equal(["save", "caught", "milestone"], calls);
+        }
+
+        private static readonly GameSnapshot FieldFree = new(GameScreen.FieldFree, null, null, null, null);
+        private static readonly GameSnapshot Speech = new(GameScreen.FieldTask, null, null, null, null);
+        private static readonly GameSnapshot TrainerBattle = new(GameScreen.BattleMessage, null, null, null, null, TextPrinter: 8);
+
+        // Each read takes the next snapshot; the last one repeats. Counts the reads.
+        private sealed class ScriptedReader(params GameSnapshot[] snapshots) : IGameStateReader
+        {
+            private readonly Queue<GameSnapshot> queue = new(snapshots);
+
+            public int Reads { get; private set; }
+
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct)
+            {
+                Reads++;
+                return Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
+            }
+        }
+
+        // The Resume block with the real catch check; calls records the catch, the milestone, the save and every press.
+        private static Task ResumeAsync(GameState state, List<string> calls) => OrchestratorEvent.ResumeAsync(state,
+            () => OrchestratorEvent.CheckForCatchAsync(state, new PokemonStateReader(), new ServiceCollection().BuildServiceProvider(),
+                _ => { calls.Add("caught"); return Task.CompletedTask; },
+                _ => { calls.Add("milestone"); return Task.CompletedTask; }),
+            TimeSpan.FromMilliseconds(50), CancellationToken.None);
+
+        private static FakeBot RsBot(List<string> calls, IGameStateReader game) =>
+            new(Task.CompletedTask, NoNavigationProfile(calls)) { State = game, Pressed = m => calls.Add("press " + m) };
+
+        // After a trainer stop there is no target: with the field free, Resume reads no party and goes on to the state
+        // underneath. Resume runs before any encounter is built, so this holds for Spin and Run alike.
+        [Theory]
+        [InlineData(new EventState[0], EventState.DecideOverworldAction)]
+        [InlineData(new[] { EventState.GoToPokemonCenter }, EventState.GoToPokemonCenter)]
+        public async Task Resume_AfterATrainerStop_FieldFree_SkipsTheCatchAndCarriesOn(EventState[] under, EventState next)
+        {
+            List<string> calls = [];
+            FakeBot bot = RsBot(calls, new ScriptedReader(FieldFree));
+            GameState state = StateFor(bot, new ShinyTarget(), [.. under, EventState.Resume]);
+            state.StoppedForTrainer = true;
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Equal(["milestone"], calls);
+            Assert.Empty(bot.Macros);
+            Assert.False(state.StoppedForTrainer);
+            Assert.Equal([next], state.State);
+        }
+
+        // Resume pressed during the speech or a battle screen that does not change: it parks again, logging the snapshot,
+        // with no catch check, no press and no macro, so no spin or run starts.
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task Resume_AfterATrainerStop_FieldNotFree_ParksAgainAndStartsNothing(bool inBattle)
+        {
+            List<string> calls = [];
+            GameSnapshot seen = inBattle ? TrainerBattle : Speech;
+            FakeBot bot = RsBot(calls, new ScriptedReader(seen));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+            state.StoppedForTrainer = true;
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await ResumeAsync(state, calls);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.Equal([EventState.Waiting], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Empty(calls);
+            Assert.Empty(bot.Macros);
+            Assert.Equal(0, bot.PartyReads);
+            Assert.Contains($"[Orchestrator] Resume: Waited for the free field after the trainer stop; the game state stayed {seen}", log.ToString());
+        }
+
+        // The operator fights on after pressing Resume: each change restarts the stale clock, and the free field carries on.
+        [Fact]
+        public async Task Resume_AfterATrainerStop_BattleThenFreeField_CarriesOn()
+        {
+            List<string> calls = [];
+            FakeBot bot = RsBot(calls, new ScriptedReader(TrainerBattle, TrainerBattle with { TextPrinter = null }, Speech, FieldFree));
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+            state.StoppedForTrainer = true;
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(["milestone"], calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
+        // Not after a trainer stop (HGSS always): Resume reads no game state, as before.
+        [Fact]
+        public async Task Resume_NotAfterATrainerStop_ReadsNoGameState()
+        {
+            List<string> calls = [];
+            ScriptedReader game = new(Speech);
+            FakeBot bot = RsBot(calls, game);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.Resume);
+
+            await ResumeAsync(state, calls);
+
+            Assert.Equal(0, game.Reads);
+            Assert.Equal(["milestone"], calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
 
         [Fact]
@@ -252,6 +365,189 @@ namespace ShinyBotHunter.Tests
             await LogWildAsync(state, 50);
 
             Assert.Null(state.SpeedLines);
+        }
+
+        // Tackle and Ember damage; Growl does not.
+        private const ushort Tackle = 33, Ember = 52, Growl = 45;
+
+        private static PokemonMetadataService Moves()
+        {
+            PokemonMetadataService metadata = new(null!);
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Tackle, Name = "Tackle", DamageClass = "physical" });
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Ember, Name = "Ember", DamageClass = "special" });
+            metadata.SeedMove(new PokemonMoveMetadata { Id = Growl, Name = "Growl", DamageClass = "status" });
+            return metadata;
+        }
+
+        // An HGSS party member as its parser fills it, MaxHP 40.
+        private static PokemonData HgssMon(ushort hp, byte tacklePp = 35, byte emberPp = 0, byte growlPp = 0) => new()
+        {
+            HP = hp, MaxHP = 40, Move1 = Tackle, Move1PP = tacklePp, Move2 = Ember, Move2PP = emberPp, Move3 = Growl, Move3PP = growlPp,
+        };
+
+        private static bool CanFight(TrainType trainType, int? switchSlot, params PokemonData[] party)
+        {
+            GameState state = new() { TrainType = trainType, SwitchSlot = switchSlot };
+            PokemonState pokeState = new() { PartySize = party.Length };
+            party.CopyTo(pokeState.PartyPokemon, 0);
+            return OrchestratorEvent.CanFightNextEncounter(state, pokeState, party[0], Moves().GetPokemonMoveMetadata);
+        }
+
+        // What HGSS decides today before every encounter of a Standard hunt: HP above a quarter, and three damaging PP.
+        [Theory]
+        [InlineData((ushort)40, (byte)35, (byte)0, (byte)0, true)]
+        [InlineData((ushort)11, (byte)35, (byte)0, (byte)0, true)]
+        [InlineData((ushort)10, (byte)35, (byte)0, (byte)0, false)]
+        [InlineData((ushort)0, (byte)35, (byte)0, (byte)0, false)]
+        [InlineData((ushort)40, (byte)2, (byte)0, (byte)40, false)]
+        [InlineData((ushort)40, (byte)2, (byte)1, (byte)0, true)]
+        [InlineData((ushort)40, (byte)0, (byte)0, (byte)40, false)]
+        public void CanFight_HgssStandard_IsTodays(ushort hp, byte tacklePp, byte emberPp, byte growlPp, bool expected)
+        {
+            Assert.Equal(expected, CanFight(TrainType.Standard, null, HgssMon(hp, tacklePp, emberPp, growlPp)));
+        }
+
+        // And of a Switch hunt: the lead only needs HP; the battler in the 1-based slot needs HP and PP, and must be there.
+        [Theory]
+        [InlineData((ushort)5, (ushort)40, (byte)35, 2, 2, true)]
+        [InlineData((ushort)0, (ushort)40, (byte)35, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)10, (byte)35, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)2, 2, 2, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)35, 2, 3, false)]
+        [InlineData((ushort)40, (ushort)40, (byte)35, 3, 3, true)]
+        public void CanFight_HgssSwitch_IsTodays(ushort leadHp, ushort battlerHp, byte battlerTacklePp, int partySize, int switchSlot, bool expected)
+        {
+            PokemonData[] party = [HgssMon(leadHp, tacklePp: 0), .. Enumerable.Repeat(HgssMon(battlerHp, battlerTacklePp), partySize - 1)];
+
+            Assert.Equal(expected, CanFight(TrainType.Switch, switchSlot, party));
+        }
+
+        // A Gen 3 party record of a Mudkip (internal 283) with MaxHP 40 and Tackle, Ember and Growl, as the game stores it:
+        // pid % 24 == 0 keeps the substructures in order, and otId 0 makes the key the pid.
+        private static byte[] Gen3Mon(ushort hp, byte tacklePp = 35, byte emberPp = 0, byte growlPp = 0, byte level = 10)
+        {
+            const uint pid = 0x60;
+            byte[] plain = new byte[48];
+            BitConverter.GetBytes((ushort)283).CopyTo(plain, 0);
+            BitConverter.GetBytes(Tackle).CopyTo(plain, 12);
+            BitConverter.GetBytes(Ember).CopyTo(plain, 14);
+            BitConverter.GetBytes(Growl).CopyTo(plain, 16);
+            (plain[20], plain[21], plain[22]) = (tacklePp, emberPp, growlPp);
+            ushort checksum = 0;
+            for (int i = 0; i < 48; i += 2)
+            {
+                checksum += BitConverter.ToUInt16(plain, i);
+            }
+            byte[] block = new byte[Gen3PokemonParser.PartyBlockSize];
+            BitConverter.GetBytes(pid).CopyTo(block, 0x00);
+            BitConverter.GetBytes(checksum).CopyTo(block, 0x1C);
+            for (int i = 0; i < 48; i += 4)
+            {
+                BitConverter.GetBytes(BitConverter.ToUInt32(plain, i) ^ pid).CopyTo(block, 0x20 + i);
+            }
+            block[0x54] = level;
+            BitConverter.GetBytes(hp).CopyTo(block, 0x56);
+            BitConverter.GetBytes((ushort)40).CopyTo(block, 0x58);
+            return block;
+        }
+
+        // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip.
+        private static FakeBot RsBot(params byte[][] party)
+        {
+            PokemonMetadataService metadata = Moves();
+            metadata.Seed(new PokemonMetadata { Id = 258, PokemonName = "Mudkip", PokeApiName = "mudkip" });
+            GameProfile rs = RsProfile.Create(metadata, new MapService(new Dictionary<int, Map>()));
+            return new FakeBot(Task.CompletedTask, new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), rs.Parser,
+                rs.BattleParser, rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
+                createNavigatorEvent: rs.CreateNavigatorEvent))
+            {
+                PartyBlocks = party,
+            };
+        }
+
+        // A training hunt's state at DecideOverworldAction, in Flee as after a heal trip.
+        private static GameState Training(FakeBot bot, TrainType trainType, int? switchSlot = null, int targetLevel = 50)
+        {
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            (state.TrainType, state.SwitchSlot, state.TargetLevel) = (trainType, switchSlot, targetLevel);
+            (state.OriginalBattleMode, state.BattleMode) = (BattleMode.Battle, BattleMode.Flee);
+            return state;
+        }
+
+        private static Task DecideAsync(GameState state) =>
+            OrchestratorEvent.DecideOverworldAction(state, new PokemonStateReader(), Moves().GetPokemonMoveMetadata, null!, CancellationToken.None);
+
+        // FR-18 on Gen 3 data: a lead with HP and damaging PP fights the next encounter, back in Battle.
+        [Fact]
+        public async Task Decide_RsStandard_Ready_FightsTheNextEncounter()
+        {
+            GameState state = Training(RsBot(Gen3Mon(40)), TrainType.Standard);
+
+            await DecideAsync(state);
+
+            Assert.Equal([EventState.Encountering], state.State);
+            Assert.Equal(BattleMode.Battle, state.BattleMode);
+        }
+
+        // Too hurt, two damaging PP with a status move's left, or fainted: the Pokémon Center trip, whose wild battles are fled.
+        [Theory]
+        [InlineData((ushort)10, (byte)35, (byte)0)]
+        [InlineData((ushort)40, (byte)2, (byte)40)]
+        [InlineData((ushort)0, (byte)35, (byte)0)]
+        public async Task Decide_RsStandard_HurtSpentOrFainted_GoesToThePokemonCenterFleeing(ushort hp, byte tacklePp, byte growlPp)
+        {
+            GameState state = Training(RsBot(Gen3Mon(hp, tacklePp, growlPp: growlPp)), TrainType.Standard);
+
+            await DecideAsync(state);
+
+            Assert.Equal([EventState.GoToPokemonCenter], state.State);
+            Assert.Equal(BattleMode.Flee, state.BattleMode);
+        }
+
+        // Switch reads the battler from its 1-based slot: slot 2 spent takes the heal trip, slot 3 ready fights, though the
+        // lead has no PP.
+        [Theory]
+        [InlineData(2, EventState.GoToPokemonCenter)]
+        [InlineData(3, EventState.Encountering)]
+        public async Task Decide_RsSwitch_ReadsTheBattlerInItsSlot(int switchSlot, EventState next)
+        {
+            GameState state = Training(RsBot(Gen3Mon(40, tacklePp: 0), Gen3Mon(10), Gen3Mon(40)), TrainType.Switch, switchSlot);
+
+            await DecideAsync(state);
+
+            Assert.Equal([next], state.State);
+        }
+
+        // FR-18: the lead at the target level ends training, and a hunt with no target then walks home before Complete.
+        [Theory]
+        [InlineData((byte)11, false, EventState.Encountering)]
+        [InlineData((byte)12, true, EventState.ReturnToStart)]
+        public async Task Decide_RsTargetLevel_EndsTrainingAndWalksHome(byte level, bool complete, EventState next)
+        {
+            GameState state = Training(RsBot(Gen3Mon(40, level: level)), TrainType.Standard, targetLevel: 12);
+            state.Target = new NoTarget();
+
+            await DecideAsync(state);
+
+            Assert.Equal(complete, state.TrainingComplete);
+            Assert.Equal(complete, state.CompleteAfterReturn);
+            Assert.Equal([next], state.State);
+        }
+
+        // QA L7: the heal trip's line names the member the check read, its HP and its damaging PP, or the empty slot.
+        [Theory]
+        [InlineData(TrainType.Standard, null, (ushort)40, "heal trip: Mudkip HP 40/40, damaging PP 0")]
+        [InlineData(TrainType.Switch, 2, (ushort)40, "heal trip: Mudkip HP 10/40, damaging PP 35")]
+        [InlineData(TrainType.Switch, 2, (ushort)0, "heal trip: Mudkip HP 0/40, damaging PP 0")]
+        [InlineData(TrainType.Switch, 3, (ushort)40, "heal trip: switch slot 3 is empty")]
+        public async Task HealTripLine_NamesWhyTheTripWasTaken(TrainType trainType, int? switchSlot, ushort leadHp, string line)
+        {
+            FakeBot bot = RsBot(Gen3Mon(leadHp, tacklePp: 0), Gen3Mon(10));
+            GameState state = Training(bot, trainType, switchSlot);
+            PokemonState party = await new PokemonStateReader().GetPartyState(bot);
+
+            Assert.False(OrchestratorEvent.CanFightNextEncounter(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
+            Assert.Equal(line, OrchestratorEvent.HealTripLine(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
         }
     }
 }

@@ -75,8 +75,7 @@ export const RUN_MACRO_X = 'M.Right.15.33707826:H.B.1;M.Left.13.33707826'
 
 // BotService and OrchestratorEvent (W6a, #386).
 export const HEADBUTT_SENTENCE = 'Ruby and Sapphire have no Headbutt trees.'
-export const NO_TARGET_SENTENCE = 'No Target needs a train mode, which Ruby and Sapphire do not have yet.'
-export const TRAINING_SENTENCE = 'Training is not available on Ruby and Sapphire yet.'
+export const PICKUP_SENTENCE = 'Pickup is not available on Ruby and Sapphire.'
 export const FIELD_SENTENCE = 'Close any menu or message and stand in the field.'
 export const FAINTED_SENTENCE = 'The first Pokémon in the party has fainted.'
 export const SHINY_LEAD_LINE = 'A shiny first Pokémon adds about 1.2 s to every battle.'
@@ -513,23 +512,37 @@ export async function pollWhileWaiting(read: () => Promise<number>, predicate: (
 
 // --- rs-wild-sapphire and rs-wild-ruby -----------------------------------------------------------------------
 
-/** "Headbutt, No Target and the train types greyed out with their reasons", on the open form before Run. */
+/**
+ * "Headbutt and Pickup greyed out with their reasons, No Target and the train types not" (FR-18a), on the open form
+ * before Run. Pickup shows once a train type is chosen, so Standard is chosen for it and None put back after.
+ */
 async function checkGreyed(card: Locator): Promise<void> {
-  const criterion = '"Headbutt, No Target and the train types greyed out with their reasons"'
-  const greyed: [string, string, string][] = [
-    ['EncounterType', 'Headbutt', HEADBUTT_SENTENCE],
-    ['TargetType', 'NoTarget', NO_TARGET_SENTENCE],
-    ['TrainType', 'Standard', TRAINING_SENTENCE],
-    ['TrainType', 'Switch', TRAINING_SENTENCE]
-  ]
-  for (const [param, value, reason] of greyed) {
+  const criterion = '"Headbutt and Pickup greyed out with their reasons, No Target and the train types not"'
+  const headbutt = card.getByTestId('param-EncounterType').locator('option[value="Headbutt"]')
+  await expect(headbutt, `${criterion}: no EncounterType option Headbutt`).toBeAttached({ timeout: 30_000 })
+  const headbuttLabel = (await headbutt.textContent()) ?? ''
+  step(`EncounterType Headbutt: "${headbuttLabel}", disabled ${await headbutt.isDisabled()}`)
+  expect(headbuttLabel, `${criterion}: the EncounterType Headbutt option's label`).toBe(`Headbutt (${HEADBUTT_SENTENCE})`)
+  expect(await headbutt.isDisabled(), `${criterion}: the EncounterType Headbutt option is enabled`).toBe(true)
+  const offeredChoices: [string, string][] = [['TargetType', 'NoTarget'], ['TrainType', 'Standard'], ['TrainType', 'Switch']]
+  for (const [param, value] of offeredChoices) {
     const option = card.getByTestId(`param-${param}`).locator(`option[value="${value}"]`)
     await expect(option, `${criterion}: no ${param} option ${value}`).toBeAttached({ timeout: 30_000 })
     const label = (await option.textContent()) ?? ''
     step(`${param} ${value}: "${label}", disabled ${await option.isDisabled()}`)
-    expect(label, `${criterion}: the ${param} ${value} option's label`).toBe(`${value} (${reason})`)
-    expect(await option.isDisabled(), `${criterion}: the ${param} ${value} option is enabled`).toBe(true)
+    expect(label, `${criterion}: the ${param} ${value} option's label`).toBe(value)
+    expect(await option.isDisabled(), `${criterion}: the ${param} ${value} option is disabled`).toBe(false)
   }
+  const trainType = card.getByTestId('param-TrainType').locator('select')
+  await trainType.selectOption('Standard')
+  const pickup = card.getByTestId('param-Pickup')
+  const box = pickup.locator('input[type="checkbox"]')
+  await expect(box, `${criterion}: no Pickup checkbox with train Standard`).toBeAttached({ timeout: 30_000 })
+  const pickupLabel = ((await pickup.locator('label').textContent()) ?? '').trim()
+  step(`Pickup: "${pickupLabel}", disabled ${await box.isDisabled()}`)
+  expect(pickupLabel, `${criterion}: the Pickup label`).toBe(`Pickup (${PICKUP_SENTENCE})`)
+  expect(await box.isDisabled(), `${criterion}: the Pickup checkbox is enabled`).toBe(true)
+  await trainType.selectOption('None')
 }
 
 /**
@@ -551,13 +564,12 @@ export async function wildSpin(rom: string, n: number): Promise<void> {
       await shotAll('02-greyed', pages)
     })
 
-    // The shiny-lead speed line at Run: in the log, in the dashboard state and on the card.
+    // The shiny-lead speed line at Run: in the log and in the dashboard state (the card does not show it).
     const speed = '"the shiny-lead speed line at Run"'
     await waitForLine(SPEED_SHINY, 1, MINUTE, `${speed}: not in backend.log`)
     const state = await dashboardState()
     step(`dashboard state: ${JSON.stringify(state)}`)
     expect(state?.speedLines ?? [], `${speed}: not in getDashboardState's speedLines`).toContain(SHINY_LEAD_LINE)
-    await expect(card.getByText(SHINY_LEAD_LINE, { exact: true }), `${speed}: not on the emulator card`).toBeVisible()
 
     await waitForLine(OVER, n, n * MINUTE, `"${n} encounters rows": ${n} fled battles`)
     await shotAll('03-hunting', pages)

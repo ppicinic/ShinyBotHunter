@@ -20,7 +20,7 @@ namespace ShinyBotHunter.Tests
 
         // The DAO is only read by InitAsync; Parse uses the static gender table and an empty
         // metadata lookup, so a null DAO is never touched.
-        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!));
+        private static readonly GameProfile Profile = RsProfile.Create(new PokemonMetadataService(null!), new Pathfinding.MapService(new Dictionary<int, Pathfinding.Map>()));
 
         private static PokemonStateReader BuildReader() => new();
 
@@ -54,7 +54,7 @@ namespace ShinyBotHunter.Tests
         {
             FakeMemoryClient memory = PlaceParty(PartyAddress);
 
-            var state = await BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2));
+            var state = await BuildReader().GetPartyState(memory, Profile, Profile.Addresses("AXPE", 2));
 
             Assert.Equal(2, state.PartySize);
             Assert.Equal(252, state.PartyPokemon[0]!.Species); // Treecko
@@ -76,7 +76,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = PlaceParty(PartyAddress + 4);
 
             await Assert.ThrowsAsync<InvalidOperationException>(
-                () => BuildReader().GetPartyState(memory, Profile, Profile.Addresses(2)));
+                () => BuildReader().GetPartyState(memory, Profile, Profile.Addresses("AXPE", 2)));
         }
 
         [Fact]
@@ -86,7 +86,7 @@ namespace ShinyBotHunter.Tests
             FakeMemoryClient memory = PlaceParty(PartyAddress);
             memory.Place(BoxesAddress + 2 * 2400 + 6 * 80, Encode(0x60, 280, 0)[..80]); // box 3, slot 7
 
-            var state = await BuildReader().GetPokemonState(memory, Profile, Profile.Addresses(2));
+            var state = await BuildReader().GetPokemonState(memory, Profile, Profile.Addresses("AXPE", 2));
 
             // 14 boxes of 30 80-byte slots in one read, and the party count is never read as a pointer.
             Assert.Equal((BoxesAddress, 14 * 2400), Assert.Single(memory.ByteReads));
@@ -107,6 +107,159 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x02025734u, table.RunWatchY);
             Assert.Equal(0x0802C099u, table.HandleInputChooseAction);
             Assert.Equal(0x0802C68Du, table.HandleInputChooseMove);
+            Assert.Equal(0x02024C10u, table.BattlescriptCurrInstr);
+            Assert.Equal(0x02024E82u, table.MoveToLearn);
+            Assert.Equal(0x0809E281u, table.SummaryMoveInputTask);
+            Assert.Equal(0x0809E15Du, table.SummaryDestroyTask);
+            Assert.Equal(0x0202F38Fu, table.PaletteFadeActive);
+        }
+
+        // pret symbols, commit 78b1990, line 24455: BattleScript_AskToLearnMove + 0x11 and + 0x20, script addresses
+        // without a Thumb bit.
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void SapphireHasItsLearnMoveScript(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXPE", revision);
+
+            Assert.Equal(0x081D8ED2u, table.DeleteMoveYesNo);
+            Assert.Equal(0x081D8EE1u, table.StopLearningYesNo);
+            // pret symbols line 24425: BattleScript_FaintedMonTryChooseAnother - 0x14.
+            Assert.Equal(0x081D8C56u, table.UseNextPokemonYesNo);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void RubyHasItsLearnMoveScript(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXVE", revision);
+
+            Assert.Equal(0x081D8F42u, table.DeleteMoveYesNo);
+            Assert.Equal(0x081D8F51u, table.StopLearningYesNo);
+            Assert.Equal(0x081D8CC6u, table.UseNextPokemonYesNo);
+        }
+
+        // pret symbols, commit 78b1990, line 4437: WaitForAorBPress, + 1 for the Thumb bit.
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void SapphireHasItsWaitForButton(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXPE", revision);
+
+            Assert.Equal(0x080670E5u, table.WaitForAorBPress);
+        }
+
+        [Theory]
+        [InlineData(2)]
+        [InlineData(1)]
+        public void RubyHasItsWaitForButton(int revision)
+        {
+            var table = (RsPointerService)Profile.Addresses("AXVE", revision);
+
+            Assert.Equal(0x080670E1u, table.WaitForAorBPress);
+        }
+
+        [Theory]
+        [InlineData("AXVD")]
+        [InlineData(null)]
+        public void OtherCodesHaveNoPerGamePart(string? gameCode)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, 2);
+
+            Assert.Null(table.WaitForAorBPress);
+            Assert.Null(table.DeleteMoveYesNo);
+            Assert.Null(table.StopLearningYesNo);
+            Assert.Null(table.UseNextPokemonYesNo);
+            Assert.Null(table.PartyMenuMainCallback2);
+        }
+
+        // pret symbols, commit 78b1990, line 4647: CB2_PartyMenuMain, + 1 for the Thumb bit.
+        [Theory]
+        [InlineData("AXPE", 2, 0x0806AF01u)]
+        [InlineData("AXPE", 1, 0x0806AF01u)]
+        [InlineData("AXVE", 2, 0x0806AEFDu)]
+        [InlineData("AXVE", 1, 0x0806AEFDu)]
+        public void EachGameHasItsPartyMenuMain(string gameCode, int revision, uint callback2)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, revision);
+
+            Assert.Equal(callback2, table.PartyMenuMainCallback2);
+        }
+
+        [Theory]
+        [InlineData("AXPE")]
+        [InlineData("AXVE")]
+        public void RevisionZeroIsStillRefused(string gameCode)
+        {
+            Assert.Throws<NotSupportedException>(() => Profile.Addresses(gameCode, 0));
+        }
+
+        [Fact]
+        public void EveryGameAndRevisionSharesTheRamTable()
+        {
+            RsPointerService[] tables =
+            [
+                (RsPointerService)Profile.Addresses("AXPE", 2),
+                (RsPointerService)Profile.Addresses("AXPE", 1),
+                (RsPointerService)Profile.Addresses("AXVE", 2),
+                (RsPointerService)Profile.Addresses("AXVE", 1),
+                (RsPointerService)Profile.Addresses("AXVD", 2),
+                (RsPointerService)Profile.Addresses(null, 2),
+            ];
+
+            foreach (RsPointerService table in tables)
+            {
+                Assert.Equal(0x03004350u, table.Anchor);
+                Assert.Equal(new BoxLayout(0x020300A4 - 0x03004350, 14, 30, 30 * 80), table.BoxLayout);
+                AssertSharedMembers(table);
+            }
+        }
+
+        [Fact]
+        public void SharedMembersHaveThePretAddresses()
+        {
+            AssertSharedMembers(new RsPointerService());
+        }
+
+        [Fact]
+        public void EventFlagByteIsTheFlagsByteForTheFlag()
+        {
+            // Calvin's trainer flag, 0x500 + 318 (research "Flags, variables and trainers in memory").
+            Assert.Equal(0x02026954u + 199, new RsPointerService().EventFlagByte(0x500 + 318));
+        }
+
+        // pret symbols, commit 78b1990; functions + 1 for the Thumb bit.
+        private static void AssertSharedMembers(RsPointerService table)
+        {
+            Assert.Equal(0x02026954u, table.EventFlags);
+            Assert.Equal(0x120, table.EventFlagBytes);
+            Assert.Equal(0x02026A74u, table.Vars);
+            Assert.Equal(0x200, table.VarBytes);
+            Assert.Equal(0x0202FF5Eu, table.TrainerBattleOpponent);
+            Assert.Equal(0x0202E892u, table.FieldMessageWindowState);
+            Assert.Equal(0x030005BCu, table.ScriptNative);
+            Assert.Equal(0x030005B9u, table.ScriptContextMode);
+            Assert.Equal(0x0202E85Au, table.PlayerRunningState);
+            Assert.Equal(0x0202E85Bu, table.PlayerTileTransition);
+            Assert.Equal(0x080B5505u, table.TaskHandleYesNoInput);
+            Assert.Equal(0x03004B20u, table.Tasks);
+            Assert.Equal(0x03001774u, table.Callback2);
+            Assert.Equal(0x0800F809u, table.BattleMainCallback2);
+            Assert.Equal(0x02024E64u, table.MoveSelectionCursor);
+            Assert.Equal(0x02016018u, table.ExpGetterMonId);
+            Assert.Equal(0x0201601Au, table.MoveLearnPromptState);
+            Assert.Equal(0x0201609Cu, table.LevelUpBoxState);
+            Assert.Equal(0x02018079u, table.ForgetMoveCursor);
+            Assert.Equal(0x0811242Du, table.TaskEvolutionScene);
+            Assert.Equal(0x02024A6Au, table.ActiveBattlerPartyIndex);
+            Assert.Equal(0x08095139u, table.BattlePartyMenuTask);
+            Assert.Equal(0x08095429u, table.BattlePartyPopupTask);
+            Assert.Equal(0x02020004u, table.Sprites);
+            Assert.Equal(0x02038470u, table.BattlePartyCurrentOrder);
+            Assert.Equal(0x02016078u, table.RunTries);
         }
 
         [Fact]

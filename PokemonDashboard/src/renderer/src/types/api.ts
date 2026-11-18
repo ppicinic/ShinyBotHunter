@@ -326,8 +326,6 @@ export interface EmulatorState {
   // C# EventState name, e.g. 'Waiting'
   eventState: string
   gameFlavor: GameFlavor
-  // What slows this hunt's battles (FR-15); absent or null when the profile reports none (HGSS).
-  speedLines?: string[] | null
 }
 
 // Matches C# GameFlavor enum in Macro/GameFlavor.cs

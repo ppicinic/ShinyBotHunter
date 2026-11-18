@@ -31,7 +31,7 @@ namespace ShinyBotHunter.Tests
 
         public GameFlavor GameFlavor => Profile.Flavor;
         public GameProfile Profile { get; }
-        public IPointerService Addresses => Profile.Addresses(0);
+        public IPointerService Addresses => Profile.Addresses(null, 0);
         public string GameFileName => "fake.nds";
 
         // What a test scripts: the chain reads, the party blocks, and a callback that sees each RunMacroString.

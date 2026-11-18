@@ -28,12 +28,13 @@ namespace ShinyBotHunter.Tests
         /// scrambled by PID % 24 and XORed with PID ^ OTID, with the checksum taken before scrambling.
         /// </summary>
         private static byte[] Build(uint pid, uint otId, ushort internalSpecies, byte level = 5,
-            ushort hp = 20, ushort maxHp = 20, uint ivs = 0, ushort move1 = 33, bool partySized = true)
+            ushort hp = 20, ushort maxHp = 20, uint ivs = 0, ushort move1 = 33, bool partySized = true, byte[]? pp = null)
         {
             byte[] logical = new byte[48];
             BitConverter.GetBytes(internalSpecies).CopyTo(logical, 0);      // Growth: species
             BitConverter.GetBytes((ushort)0).CopyTo(logical, 2);            // Growth: held item
             BitConverter.GetBytes(move1).CopyTo(logical, 12);               // Attacks: first move
+            (pp ?? []).CopyTo(logical, 20);                                 // Attacks: the four PP bytes after the moves
             logical[24] = 4;                                                // EVs: HP
             BitConverter.GetBytes(ivs).CopyTo(logical, 36 + 4);             // Misc: IV word
 
@@ -173,6 +174,16 @@ namespace ShinyBotHunter.Tests
 
             Assert.NotNull(mon);
             Assert.True(mon!.IsCorrupt);
+        }
+
+        [Fact]
+        public void PartyRecordCarriesPp()
+        {
+            // A non-zero key (pid ^ otId) and order 7 (pid % 24), so the Attacks block is neither in place nor in clear.
+            var mon = Gen3PokemonParser.Decode(Build(0x12345607, 0x0BADF00D, 283, pp: [35, 0, 10, 5]))!;
+
+            Assert.False(mon.IsCorrupt);
+            Assert.Equal([35, 0, 10, 5], mon.Moves.Select(m => (int)m.PP));
         }
 
         [Fact]

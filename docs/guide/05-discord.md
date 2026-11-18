@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/HgssPrimoEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/ShinyBotHunter.csproj (Discord.Net 3.19.1), discord-net/Discord.Net@3.19.1:src/Discord.Net.Rest/BaseDiscordClient.cs (LoginInternalAsync), discord-net/Discord.Net@3.19.1:src/Discord.Net.Core/Utils/TokenUtils.cs (ValidateToken), https://docs.discord.com/developers/quick-start/getting-started (Create App, Bot page, Reset Token, privileged intents on the Bot page, Installation page, Default Install Settings, Install Link, Add to server, MANAGE_GUILD), https://docs.discord.com/developers/events/gateway (Privileged Gateway Intents section, close code 4014), https://docs.discord.com/developers/topics/opcodes-and-status-codes (close codes 4004 and 4014), https://docs.discord.com/developers/topics/permissions (MANAGE_GUILD, VIEW_CHANNEL, SEND_MESSAGES, EMBED_LINKS, ATTACH_FILES), https://docs.discord.com/developers/topics/oauth2 (bot authorization flow: says only "proper permissions"), https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID (read through https://support.discord.com/api/v2/help_center/en-us/articles/206346498.json, since the article page refuses automated reads; it does not cover role ids), https://support.discord.com/hc/en-us/articles/214836687-Role-Management-101 (read through https://support.discord.com/api/v2/help_center/en-us/articles/214836687.json; Server Settings > Roles), the owner's answers of 2026-10-27 -->
+<!-- Derived from: ShinyBotHunter/Service/DiscordBotService.cs, ShinyBotHunter/Service/ShinyAlertService.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/ApplicationSettings.cs, ShinyBotHunter/Startup.cs, ShinyBotHunter/Discord/Interactions/PingModule.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, ShinyBotHunter/BotEvents/HgssTogepiEggEvent.cs, ShinyBotHunter/BotEvents/HgssPrimoEggEvent.cs, ShinyBotHunter/BotEvents/WishmakerJirachiEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (TrainerSentence, AskMoveAsync), ShinyBotHunter/ShinyBotHunter.csproj (Discord.Net 3.19.1), discord-net/Discord.Net@3.19.1:src/Discord.Net.Rest/BaseDiscordClient.cs (LoginInternalAsync), discord-net/Discord.Net@3.19.1:src/Discord.Net.Core/Utils/TokenUtils.cs (ValidateToken), https://docs.discord.com/developers/quick-start/getting-started (Create App, Bot page, Reset Token, privileged intents on the Bot page, Installation page, Default Install Settings, Install Link, Add to server, MANAGE_GUILD), https://docs.discord.com/developers/events/gateway (Privileged Gateway Intents section, close code 4014), https://docs.discord.com/developers/topics/opcodes-and-status-codes (close codes 4004 and 4014), https://docs.discord.com/developers/topics/permissions (MANAGE_GUILD, VIEW_CHANNEL, SEND_MESSAGES, EMBED_LINKS, ATTACH_FILES), https://docs.discord.com/developers/topics/oauth2 (bot authorization flow: says only "proper permissions"), https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID (read through https://support.discord.com/api/v2/help_center/en-us/articles/206346498.json, since the article page refuses automated reads; it does not cover role ids), https://support.discord.com/hc/en-us/articles/214836687-Role-Management-101 (read through https://support.discord.com/api/v2/help_center/en-us/articles/214836687.json; Server Settings > Roles), the owner's answers of 2026-10-27 -->
 # Discord
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -7,9 +7,11 @@ Part of the [ShinyBotHunter guide](README.md)
 
 Discord is optional. The bot hunts the same way without it; see "How do I run without Discord?" below.
 
-When Discord is set up, the bot posts two kinds of message:
+When Discord is set up, the bot posts four kinds of message:
 
 - A **shiny alert**, in one channel, mentioning a role, when a hunt finds its shiny.
+- A **trainer stop**, in the same channel and mentioning the same role, when a trainer challenges your character in a Ruby or Sapphire wild hunt: the role mention and `A trainer battle started on <map>.`, with the game's name for the map, for example `Route102`. See [Ruby and Sapphire wild encounters](04-hunts/08-rs-wild-encounter.md#when-a-trainer-stops-you-win-the-battle-and-press-resume).
+- A **run-failed stop**, in the same channel and mentioning the same role, when a Pokémon faints while training in Ruby or Sapphire and the bot cannot run from the battle: the role mention and `A Pokémon fainted, and running from the battle failed after the fastest Pokémon left was sent out.`, or `A Pokémon fainted, and the party menu read showed none able to battle.` when the bot's read of the party menu found no Pokémon able to battle. See [When a Pokémon faints](04-hunts/08-rs-wild-encounter.md#when-a-pokémon-faints).
 - A **new-move question**, in a second channel, when a Pokémon in training wants to learn a fifth move. You answer it with buttons.
 
 The two channels are separate settings. You can use one channel for both.
@@ -45,7 +47,7 @@ The bot asks Discord for every intent when it connects, so all three switches mu
 
 In your server, make:
 
-1. A text channel for shiny alerts.
+1. A text channel for shiny alerts (Ruby and Sapphire trainer stops and the stops after a faint go there too).
 2. A text channel for new-move questions, or use the shiny-alert channel for both.
 3. A role for the bot to mention in each shiny alert. Give it to everyone who wants to be pinged. The mention is a role mention, so it has to be a role, not a person.
 
@@ -101,7 +103,7 @@ The alert mentions your role and shows a gold card:
 
 ## How do I answer a new-move question?
 
-**When it is asked.** Only in HeartGold and SoulSilver battles that train a Pokémon. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
+**When it is asked.** In any battle that trains a Pokémon, in HeartGold and SoulSilver or in Ruby and Sapphire. When a Pokémon that already knows four moves wants a new one, after a level-up or an evolution, the game asks which move to forget, and the bot asks you in Discord. A Pokémon with a free move slot learns the new move without a question.
 
 **What you see.** A card titled `<name> - New Move` with the text `<name> is trying to learn a new move, <move>. Should <name> forget a move to learn <move>`. Below it there is one button per move the Pokémon knows, named after the move, and a **Do Not Learn** button.
 
@@ -127,6 +129,7 @@ When the backend starts, its window shows `Discord bot token is not configured. 
 From then on:
 
 - Shiny alerts are dropped. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>>`, where the number is the id of the role to mention. The line does not name the Pokémon.
+- Trainer stops and run-failed stops are dropped too; the bot still stops and waits. The backend's window shows `Discord is not logged in; dropping message: <@&<role id>> A trainer battle started on <map>.`, or the same with the run-failed or none-able-to-battle sentence.
 - New-move questions are answered **Do Not Learn** for you. The backend's window shows `Discord is not logged in; <name> will not learn <move>.`, and the bot walks the game through declining the move.
 
 ## What if Discord does not work?
@@ -153,7 +156,7 @@ Each message below appears in the backend's window.
 
 ### A new-move question never appears
 
-- **You see:** a new-move question never appears in Discord, while the backend's window shows `[LevelUp] asking Discord whether <name> learns <move>`.
+- **You see:** a new-move question never appears in Discord, while the backend's window shows `[LevelUp] asking Discord whether <name> learns <move>` (HeartGold and SoulSilver) or `[RsBattle] asking Discord: slot <n> <name> learning <move> (<move number>); nothing is pressed until the answer` (Ruby and Sapphire). In the Ruby and Sapphire line, the slot counts from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1.
 - **It means:** the bot asked, but posted somewhere you are not looking.
 - **Do:** check the new-move channel id, and that the bot can see and post in that channel.
 

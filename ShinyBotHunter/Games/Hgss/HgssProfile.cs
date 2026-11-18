@@ -13,7 +13,7 @@ namespace ShinyBotHunter.Games.Hgss
     {
         private static readonly HgssPointerService Table = new();
 
-        private static IPointerService Addresses(int revision) => revision == 0
+        private static IPointerService Addresses(string? gameCode, int revision) => revision == 0
             ? Table
             : throw new NotSupportedException($"HGSS revision {revision}: no address table. Hunts run on revision 0.");
 
@@ -32,7 +32,12 @@ namespace ShinyBotHunter.Games.Hgss
                 CanReadBoxes: true,
                 HasSoftResetStarterHunt: false,
                 HasShinyStarterHunt: true,
-                HasWishmakerJirachi: false),
+                HasWishmakerJirachi: false,
+                HasChainedEncounter: true,
+                HasStaticEncounter: true,
+                HasHeadbuttTrees: true,
+                HasPickup: true,
+                HasWildRunChecks: false),
             revisions: [0],
             Addresses,
             new HgssPokemonParser(metadata),
@@ -47,6 +52,7 @@ namespace ShinyBotHunter.Games.Hgss
             {
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
                 await bot.WaitForMacroAsync();
-            });
+            },
+            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>());
     }
 }
