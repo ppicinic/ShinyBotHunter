@@ -50,12 +50,33 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void SavedDocumentRoundTripsThroughBson()
+        public void SavedDocumentHasNoAppearance()
         {
             var config = new DashboardConfig([
                 new GamePhase(GameFlavor.HGSS, "Johto Starters", "HeartGold"),
                 new GamePhase(GameFlavor.RS, "Hoenn Starters", null),
             ])
+            {
+                RecentEncounterCount = 25,
+                Appearance = new Appearance { Default = new ThemeChoice { Theme = "ruby" } },
+            };
+
+            BsonDocument document = MongoDashboardConfigDao.ToDocument(config);
+            Assert.Equal("dashboard", document["_id"].AsString);
+            Assert.True(document.Contains("GamePhases"));
+            Assert.True(document.Contains("RecentEncounterCount"));
+            Assert.False(document.Contains("Appearance"));
+            (DashboardConfig loaded, Appearance? appearance) = MongoDashboardConfigDao.FromDocument(document);
+
+            Assert.Equal(config.GamePhases, loaded.GamePhases);
+            Assert.Equal(25, loaded.RecentEncounterCount);
+            Assert.Null(appearance);
+        }
+
+        [Fact]
+        public void OldDocumentWithAppearanceStillLoads()
+        {
+            var config = new DashboardConfig([new GamePhase(GameFlavor.HGSS, "Johto Starters", "HeartGold")])
             {
                 RecentEncounterCount = 25,
                 Appearance = new Appearance
@@ -64,50 +85,18 @@ namespace ShinyBotHunter.Tests
                     NightStart = "20:00",
                     Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.low, Stars = AnimationLevel.medium },
                     Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
-                    Windows =
-                    {
-                        ["recent"] = new ThemeChoice { Theme = "midnight" },
-                        ["phase:RS:Hoenn%20Starters:Ruby.v1"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
-                    },
+                    Windows = { ["phase:RS:Hoenn%20Starters:Ruby.v1"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" } },
                 },
             };
-
-            BsonDocument document = MongoDashboardConfigDao.ToDocument(config);
-            Assert.Equal("dashboard", document["_id"].AsString);
+            BsonDocument document = config.ToBsonDocument();
+            document.InsertAt(0, new BsonElement("_id", "dashboard"));
             Assert.Equal("low", document["Appearance"]["Animations"]["Snow"].AsString);
-            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
+
+            (DashboardConfig loaded, Appearance? appearance) = MongoDashboardConfigDao.FromDocument(document);
 
             Assert.Equal(config.GamePhases, loaded.GamePhases);
             Assert.Equal(25, loaded.RecentEncounterCount);
-            AssertSameAppearance(config.Appearance, loaded.Appearance);
-        }
-
-        [Fact]
-        public void SavedDocumentWithoutAnimationsLoadsAsHigh()
-        {
-            var animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.off, Stars = AnimationLevel.off };
-            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = animations } });
-            document["Appearance"].AsBsonDocument.Remove("Animations");
-
-            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
-
-            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Gradients);
-            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Snow);
-            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Stars);
-        }
-
-        [Fact]
-        public void SavedDocumentWithoutAnAnimationMemberLoadsAsHigh()
-        {
-            var animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.low, Stars = AnimationLevel.medium };
-            BsonDocument document = MongoDashboardConfigDao.ToDocument(new DashboardConfig([]) { Appearance = new Appearance { Animations = animations } });
-            document["Appearance"]["Animations"].AsBsonDocument.Remove("Snow");
-
-            DashboardConfig loaded = MongoDashboardConfigDao.FromDocument(document);
-
-            Assert.Equal(AnimationLevel.off, loaded.Appearance.Animations.Gradients);
-            Assert.Equal(AnimationLevel.high, loaded.Appearance.Animations.Snow);
-            Assert.Equal(AnimationLevel.medium, loaded.Appearance.Animations.Stars);
+            AssertSameAppearance(config.Appearance, appearance!);
         }
 
         // The same options as the controllers in Startup.cs; the JsonException is what [ApiController] answers with a 400.

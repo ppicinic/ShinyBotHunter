@@ -28,7 +28,7 @@ namespace ShinyBotHunter.Service
         private readonly SemaphoreSlim saveGate = new(1, 1);
 
         public AdminService(IHubContext<ElectronHub, IElectronClient> hubContext, MongoDashboardConfigDao dao, ILogger<AdminService> logger)
-            : this(config => hubContext.Clients.All.ReceiveDashboardConfig(config), dao.LoadAsync, dao.SaveAsync, logger)
+            : this(config => hubContext.Clients.All.ReceiveDashboardConfig(config), async () => (await dao.LoadAsync())?.Config, dao.SaveAsync, logger)
         {
         }
 
