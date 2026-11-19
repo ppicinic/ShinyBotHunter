@@ -2,9 +2,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Bson;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 using static ShinyBotHunter.Service.PhaseInfoService;
@@ -119,6 +121,113 @@ namespace ShinyBotHunter.Tests
             options.Converters.Add(new JsonStringEnumConverter());
 
             Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<Appearance>($$$"""{"animations":{"{{{kind}}}":"ultra"}}""", options));
+        }
+
+        [Fact]
+        public async Task AppearanceFileRoundTrips()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(folder, "sub", "appearance.json");
+            try
+            {
+                var saved = new Appearance
+                {
+                    DayStart = "06:30",
+                    NightStart = "20:00",
+                    Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.low, Stars = AnimationLevel.medium },
+                    Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
+                    Windows =
+                    {
+                        ["recent"] = new ThemeChoice { Theme = "midnight" },
+                        ["phase:RS:Hoenn%20Starters:Ruby.v1"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
+                    },
+                };
+                var file = new AppearanceFile(path, NullLogger.Instance);
+
+                await file.SaveAsync(saved);
+                Appearance? loaded = await file.LoadAsync();
+
+                Assert.True(Directory.Exists(Path.GetDirectoryName(path)));
+                AssertSameAppearance(saved, loaded!);
+                JsonNode json = JsonNode.Parse(File.ReadAllText(path))!;
+                Assert.Equal("06:30", (string?)json["dayStart"]);
+                Assert.Equal("low", (string?)json["animations"]!["snow"]);
+                Assert.Equal("hgss-dusk", (string?)json["default"]!["night"]);
+                Assert.Equal("sapphire", (string?)json["windows"]!["phase:RS:Hoenn%20Starters:Ruby.v1"]!["night"]);
+                Assert.False(json["windows"]!["recent"]!.AsObject().ContainsKey("night"));
+            }
+            finally
+            {
+                Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public async Task AppearanceFileWithoutAnAnimationMemberLoadsAsHigh()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(folder, "appearance.json");
+            Directory.CreateDirectory(folder);
+            try
+            {
+                var file = new AppearanceFile(path, NullLogger.Instance);
+
+                File.WriteAllText(path, """{"animations":{"gradients":"off"}}""");
+                Appearance oneMember = (await file.LoadAsync())!;
+                File.WriteAllText(path, """{"dayStart":"06:30"}""");
+                Appearance noAnimations = (await file.LoadAsync())!;
+
+                Assert.Equal(AnimationLevel.off, oneMember.Animations.Gradients);
+                Assert.Equal(AnimationLevel.high, oneMember.Animations.Snow);
+                Assert.Equal(AnimationLevel.high, oneMember.Animations.Stars);
+                Assert.Equal(AnimationLevel.high, noAnimations.Animations.Gradients);
+                Assert.Equal(AnimationLevel.high, noAnimations.Animations.Snow);
+                Assert.Equal(AnimationLevel.high, noAnimations.Animations.Stars);
+            }
+            finally
+            {
+                Directory.Delete(folder, true);
+            }
+        }
+
+        [Fact]
+        public async Task MissingAppearanceFileLoadsNull()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(folder, "appearance.json");
+
+            Appearance? loaded = await new AppearanceFile(path, NullLogger.Instance).LoadAsync();
+
+            Assert.Null(loaded);
+            Assert.False(Directory.Exists(folder));
+        }
+
+        [Theory]
+        [InlineData("""{"dayStart":"06:30","defa""")]
+        [InlineData("""{"dayStart":"06:30","default":null}""")]
+        public async Task UnreadableAppearanceFileLoadsDefaultsAndIsLeftAlone(string text)
+        {
+            string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(folder, "appearance.json");
+            Directory.CreateDirectory(folder);
+            try
+            {
+                File.WriteAllText(path, text);
+                var logger = new RecordingLogger();
+
+                Appearance loaded = (await new AppearanceFile(path, logger).LoadAsync())!;
+
+                AssertSameAppearance(new Appearance(), loaded);
+                Assert.Equal(text, File.ReadAllText(path));
+                var entry = Assert.Single(logger.Entries);
+                Assert.Equal(LogLevel.Warning, entry.Level);
+                Assert.Contains(path, entry.Message);
+                Assert.IsAssignableFrom<JsonException>(entry.Exception);
+            }
+            finally
+            {
+                Directory.Delete(folder, true);
+            }
         }
 
         [Fact]
@@ -342,6 +451,20 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Equal(expected.Theme, actual.Theme);
             Assert.Equal(expected.Night, actual.Night);
+        }
+
+        private class RecordingLogger : ILogger
+        {
+            public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = new();
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                Entries.Add((logLevel, formatter(state, exception), exception));
+            }
         }
     }
 }
