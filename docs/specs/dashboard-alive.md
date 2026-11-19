@@ -234,3 +234,4 @@ QA on the feature tip 5824d0b, 2026-11-10. The run folders are under `ShinyBotHu
 - 2026-11-10: approved for build; no further themes; Q5 closed.
 - 2026-11-10: implemented (epic #308); "What diverged" and "Evidence" added.
 - 2026-11-11: dated note under "The moving backgrounds": the Animations settings of the [dashboard animation cost spec](dashboard-animation-cost.md) change these animation rules.
+- 2026-11-18: FR-13's "whole config as one document" is superseded for `appearance` by [appearance-per-pc](appearance-per-pc.md): the appearance is saved in a file on the bot's PC; subscriptions and the recent count stay in the document.
