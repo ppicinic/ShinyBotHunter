@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using Microsoft.AspNetCore.SignalR;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence;
 using ShinyBotHunter.Persistence.MongoDb;
 using static ShinyBotHunter.Service.PhaseInfoService;
 
@@ -14,47 +15,64 @@ namespace ShinyBotHunter.Service
         private readonly object gamePhasesLock = new();
         // Mutated by concurrent dashboard requests (subscribe/unsubscribe) and copied by UpdateDashboardsAsync (requests and every SignalR connect): read and written only under gamePhasesLock.
         private readonly HashSet<GamePhase> gamePhases = new HashSet<GamePhase>();
-        // Set once in the constructor; the hub context and the MongoDB collection behind them are thread-safe.
+        // Set once in the constructor; the hub context and the MongoDB collection behind them are thread-safe,
+        // and the appearance file is touched only inside saveGate and once in InitAsync before the host starts.
         private readonly Func<DashboardConfig, Task> push;
-        private readonly Func<Task<DashboardConfig?>> load;
-        private readonly Func<DashboardConfig, Task> save;
+        private readonly Func<Task<(DashboardConfig Config, Appearance? Appearance)?>> loadShared;
+        private readonly Func<DashboardConfig, Task> saveShared;
+        private readonly Func<Task<Appearance?>> loadAppearance;
+        private readonly Func<Appearance, Task> saveAppearance;
         private readonly ILogger logger;
         // Written by dashboard requests, read by UpdateDashboardsAsync: read and written only under gamePhasesLock so a pushed config is one consistent snapshot.
         private int RecentEncounterCount = 10;
         // Replaced whole by SetAppearanceAsync and InitAsync, never changed in place, so a snapshot may share it; read and written only under gamePhasesLock.
         private Appearance appearance = new();
-        // Orders the saves: held from taking the snapshot to the end of the MongoDB write, so the last write is always the newest snapshot.
+        // Orders the saves: held from taking the snapshot to the end of the write, so the last write is always the newest snapshot.
         // A semaphore, not a lock, because it is held across an await; gamePhasesLock is taken inside it only for the copy.
         private readonly SemaphoreSlim saveGate = new(1, 1);
 
-        public AdminService(IHubContext<ElectronHub, IElectronClient> hubContext, MongoDashboardConfigDao dao, ILogger<AdminService> logger)
-            : this(config => hubContext.Clients.All.ReceiveDashboardConfig(config), async () => (await dao.LoadAsync())?.Config, dao.SaveAsync, logger)
+        public AdminService(IHubContext<ElectronHub, IElectronClient> hubContext, MongoDashboardConfigDao dao, AppearanceFile file, ILogger<AdminService> logger)
+            : this(config => hubContext.Clients.All.ReceiveDashboardConfig(config), dao.LoadAsync, dao.SaveAsync, file.LoadAsync, file.SaveAsync, logger)
         {
         }
 
-        // The test seam for the SignalR and MongoDB boundaries.
-        internal AdminService(Func<DashboardConfig, Task> push, Func<Task<DashboardConfig?>> load, Func<DashboardConfig, Task> save, ILogger logger)
+        // The test seam for the SignalR, MongoDB and appearance file boundaries.
+        internal AdminService(
+            Func<DashboardConfig, Task> push,
+            Func<Task<(DashboardConfig Config, Appearance? Appearance)?>> loadShared,
+            Func<DashboardConfig, Task> saveShared,
+            Func<Task<Appearance?>> loadAppearance,
+            Func<Appearance, Task> saveAppearance,
+            ILogger logger)
         {
             this.push = push;
-            this.load = load;
-            this.save = save;
+            this.loadShared = loadShared;
+            this.saveShared = saveShared;
+            this.loadAppearance = loadAppearance;
+            this.saveAppearance = saveAppearance;
             this.logger = logger;
         }
 
         // Restores the saved config. Runs before the host starts, so no dashboard is connected yet and nothing is pushed.
+        // With no file, an older document's appearance is used and copied to the file once (appearance-per-pc FR-8).
         public async Task InitAsync()
         {
-            DashboardConfig? loaded = await load();
-            if (loaded == null)
-            {
-                return;
-            }
-            Appearance restored = Normalise(loaded.Appearance);
+            var shared = await loadShared();
+            Appearance? fromFile = await loadAppearance();
+            Appearance? copied = fromFile == null ? shared?.Appearance : null;
+            Appearance restored = Normalise(fromFile ?? copied ?? new Appearance());
             lock (gamePhasesLock)
             {
-                gamePhases.UnionWith(loaded.GamePhases);
-                RecentEncounterCount = loaded.RecentEncounterCount;
+                if (shared != null)
+                {
+                    gamePhases.UnionWith(shared.Value.Config.GamePhases);
+                    RecentEncounterCount = shared.Value.Config.RecentEncounterCount;
+                }
                 appearance = restored;
+            }
+            if (copied != null)
+            {
+                await saveAppearance(restored);
             }
         }
 
@@ -66,7 +84,7 @@ namespace ShinyBotHunter.Service
                 gamePhases.Add(gp);
             }
             await UpdateDashboardsAsync();
-            await SaveAsync();
+            await SaveAsync(saveShared);
         }
 
         public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
@@ -80,7 +98,7 @@ namespace ShinyBotHunter.Service
             if (removed)
             {
                 await UpdateDashboardsAsync();
-                await SaveAsync();
+                await SaveAsync(saveShared);
             }
         }
 
@@ -91,7 +109,7 @@ namespace ShinyBotHunter.Service
                 RecentEncounterCount = count;
             }
             await UpdateDashboardsAsync();
-            await SaveAsync();
+            await SaveAsync(saveShared);
         }
 
         public async Task SetAppearanceAsync(Appearance appearance)
@@ -101,7 +119,7 @@ namespace ShinyBotHunter.Service
                 this.appearance = appearance;
             }
             await UpdateDashboardsAsync();
-            await SaveAsync();
+            await SaveAsync(config => saveAppearance(config.Appearance));
         }
 
         // Pushes only; a SignalR connect calls this and never saves.
@@ -110,8 +128,8 @@ namespace ShinyBotHunter.Service
             await push(Snapshot());
         }
 
-        // Runs after the push, so a MongoDB failure still leaves every dashboard showing the state in memory.
-        private async Task SaveAsync()
+        // Runs after the push, so a failed write still leaves every dashboard showing the state in memory.
+        private async Task SaveAsync(Func<DashboardConfig, Task> save)
         {
             await saveGate.WaitAsync();
             try

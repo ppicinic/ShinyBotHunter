@@ -220,11 +220,12 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task EveryChangeSavesTheWholeConfig()
+        public async Task EachChangeSavesOnlyItsStore()
         {
             List<DashboardConfig> pushes = [];
-            List<DashboardConfig> saves = [];
-            AdminService service = Service(pushes, saves);
+            List<DashboardConfig> sharedSaves = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, sharedSaves, appearanceSaves);
             var appearance = new Appearance { Default = new ThemeChoice { Theme = "ruby" } };
 
             await service.SubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
@@ -234,33 +235,30 @@ namespace ShinyBotHunter.Tests
             await service.UnsubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
 
             GamePhase johto = new(GameFlavor.HGSS, "Johto Starters", "HeartGold");
-            Assert.Equal(4, saves.Count);
             Assert.Equal(4, pushes.Count);
-            Assert.Equal([johto], saves[0].GamePhases);
-            Assert.Equal(10, saves[0].RecentEncounterCount);
-            Assert.Equal("midnight", saves[0].Appearance.Default.Theme);
-            Assert.Equal([johto], saves[1].GamePhases);
-            Assert.Equal(25, saves[1].RecentEncounterCount);
-            Assert.Equal("midnight", saves[1].Appearance.Default.Theme);
-            Assert.Equal([johto], saves[2].GamePhases);
-            Assert.Equal(25, saves[2].RecentEncounterCount);
-            Assert.Same(appearance, saves[2].Appearance);
-            Assert.Empty(saves[3].GamePhases);
-            Assert.Equal(25, saves[3].RecentEncounterCount);
-            Assert.Same(appearance, saves[3].Appearance);
+            Assert.Equal(3, sharedSaves.Count);
+            Assert.Equal([johto], sharedSaves[0].GamePhases);
+            Assert.Equal(10, sharedSaves[0].RecentEncounterCount);
+            Assert.Equal([johto], sharedSaves[1].GamePhases);
+            Assert.Equal(25, sharedSaves[1].RecentEncounterCount);
+            Assert.Empty(sharedSaves[2].GamePhases);
+            Assert.Equal(25, sharedSaves[2].RecentEncounterCount);
+            Assert.Same(appearance, Assert.Single(appearanceSaves));
         }
 
         [Fact]
         public async Task ConnectPushDoesNotSave()
         {
             List<DashboardConfig> pushes = [];
-            List<DashboardConfig> saves = [];
-            AdminService service = Service(pushes, saves);
+            List<DashboardConfig> sharedSaves = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, sharedSaves, appearanceSaves);
 
             await service.UpdateDashboardsAsync();
 
             Assert.Single(pushes);
-            Assert.Empty(saves);
+            Assert.Empty(sharedSaves);
+            Assert.Empty(appearanceSaves);
         }
 
         [Fact]
@@ -270,7 +268,7 @@ namespace ShinyBotHunter.Tests
             TaskCompletionSource firstSaveReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
             AdminService service = new(
                 _ => Task.CompletedTask,
-                () => Task.FromResult<DashboardConfig?>(null),
+                () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
                 async config =>
                 {
                     bool isFirst;
@@ -284,6 +282,8 @@ namespace ShinyBotHunter.Tests
                         await firstSaveReleased.Task;
                     }
                 },
+                () => Task.FromResult<Appearance?>(null),
+                _ => Task.CompletedTask,
                 NullLogger.Instance);
 
             Task first = service.SubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
@@ -303,7 +303,9 @@ namespace ShinyBotHunter.Tests
         public async Task DefaultsBeforeAnyChange()
         {
             List<DashboardConfig> pushes = [];
-            AdminService service = Service(pushes, []);
+            List<DashboardConfig> sharedSaves = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, sharedSaves, appearanceSaves);
 
             await service.InitAsync();
             await service.UpdateDashboardsAsync();
@@ -319,6 +321,8 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(AnimationLevel.high, pushed.Appearance.Animations.Snow);
             Assert.Equal(AnimationLevel.high, pushed.Appearance.Animations.Stars);
             Assert.Empty(pushed.Appearance.Windows);
+            Assert.Empty(sharedSaves);
+            Assert.Empty(appearanceSaves);
         }
 
         [Fact]
@@ -326,24 +330,21 @@ namespace ShinyBotHunter.Tests
         {
             GamePhase johto = new(GameFlavor.HGSS, "Johto Starters", "HeartGold");
             GamePhase hoenn = new(GameFlavor.RS, "Hoenn Starters", "Ruby");
-            var saved = new DashboardConfig([johto, hoenn])
+            var shared = new DashboardConfig([johto, hoenn]) { RecentEncounterCount = 25 };
+            var file = new Appearance
             {
-                RecentEncounterCount = 25,
-                Appearance = new Appearance
+                DayStart = "06:30",
+                NightStart = "20:00",
+                Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.medium, Stars = AnimationLevel.low },
+                Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
+                Windows =
                 {
-                    DayStart = "06:30",
-                    NightStart = "20:00",
-                    Animations = new AnimationChoice { Gradients = AnimationLevel.off, Snow = AnimationLevel.medium, Stars = AnimationLevel.low },
-                    Default = new ThemeChoice { Theme = "hgss-drift", Night = "hgss-dusk" },
-                    Windows =
-                    {
-                        ["admin"] = new ThemeChoice { Theme = "christmas" },
-                        ["pickup:Ruby"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
-                    },
+                    ["admin"] = new ThemeChoice { Theme = "christmas" },
+                    ["pickup:Ruby"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" },
                 },
             };
             List<DashboardConfig> pushes = [];
-            AdminService service = Service(pushes, [], saved);
+            AdminService service = Service(pushes, [], [], (shared, null), file);
 
             await service.InitAsync();
             await service.UpdateDashboardsAsync();
@@ -351,22 +352,19 @@ namespace ShinyBotHunter.Tests
             DashboardConfig pushed = Assert.Single(pushes);
             Assert.Equal([johto, hoenn], pushed.GamePhases.OrderBy(p => p.game));
             Assert.Equal(25, pushed.RecentEncounterCount);
-            AssertSameAppearance(saved.Appearance, pushed.Appearance);
+            AssertSameAppearance(file, pushed.Appearance);
         }
 
         [Fact]
         public async Task UnknownThemeIdFallsBackToMidnight()
         {
-            var saved = new DashboardConfig([])
+            var file = new Appearance
             {
-                Appearance = new Appearance
-                {
-                    Default = new ThemeChoice { Theme = "emerald", Night = "hgss-dusk" },
-                    Windows = { ["recent"] = new ThemeChoice { Theme = "ruby", Night = "bogus" } },
-                },
+                Default = new ThemeChoice { Theme = "emerald", Night = "hgss-dusk" },
+                Windows = { ["recent"] = new ThemeChoice { Theme = "ruby", Night = "bogus" } },
             };
             List<DashboardConfig> pushes = [];
-            AdminService service = Service(pushes, [], saved);
+            AdminService service = Service(pushes, [], [], file: file);
 
             await service.InitAsync();
             await service.UpdateDashboardsAsync();
@@ -382,8 +380,8 @@ namespace ShinyBotHunter.Tests
         public async Task MalformedTimeFallsBackToTheDefault()
         {
             List<DashboardConfig> pushes = [];
-            AdminService badDay = Service(pushes, [], new DashboardConfig([]) { Appearance = new Appearance { DayStart = "7pm", NightStart = "20:00" } });
-            AdminService badNight = Service(pushes, [], new DashboardConfig([]) { Appearance = new Appearance { DayStart = "06:00", NightStart = "25:00" } });
+            AdminService badDay = Service(pushes, [], [], file: new Appearance { DayStart = "7pm", NightStart = "20:00" });
+            AdminService badNight = Service(pushes, [], [], file: new Appearance { DayStart = "06:00", NightStart = "25:00" });
 
             await badDay.InitAsync();
             await badDay.UpdateDashboardsAsync();
@@ -399,26 +397,93 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public async Task OverrideForAGoneWindowStaysSaved()
         {
-            var saved = new DashboardConfig([])
-            {
-                Appearance = new Appearance { Windows = { ["pickup:Gone"] = new ThemeChoice { Theme = "ruby" } } },
-            };
+            var file = new Appearance { Windows = { ["pickup:Gone"] = new ThemeChoice { Theme = "ruby" } } };
             List<DashboardConfig> pushes = [];
-            List<DashboardConfig> saves = [];
-            AdminService service = Service(pushes, saves, saved);
+            List<DashboardConfig> sharedSaves = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, sharedSaves, appearanceSaves, file: file);
 
             await service.InitAsync();
             await service.SubscribeGamePhaseAsync("HGSS", "Johto Starters", "HeartGold");
 
             Assert.Equal("ruby", Assert.Single(pushes).Appearance.Windows["pickup:Gone"].Theme);
-            Assert.Equal("ruby", Assert.Single(saves).Appearance.Windows["pickup:Gone"].Theme);
+            Assert.Single(sharedSaves);
+            Assert.Empty(appearanceSaves);
         }
 
-        private static AdminService Service(List<DashboardConfig> pushes, List<DashboardConfig> saves, DashboardConfig? saved = null)
+        [Fact]
+        public async Task DocumentAppearanceIsCopiedToTheFileOnce()
+        {
+            var old = new Appearance
+            {
+                DayStart = "06:30",
+                Animations = new AnimationChoice { Snow = AnimationLevel.off },
+                Default = new ThemeChoice { Theme = "sapphire" },
+                Windows = { ["recent"] = new ThemeChoice { Theme = "ruby", Night = "sapphire" } },
+            };
+            var shared = new DashboardConfig([]) { RecentEncounterCount = 25 };
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> sharedSaves = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService first = Service(pushes, sharedSaves, appearanceSaves, (shared, old));
+
+            await first.InitAsync();
+            await first.UpdateDashboardsAsync();
+            AdminService second = Service([], sharedSaves, appearanceSaves, (shared, old), appearanceSaves[0]);
+            await second.InitAsync();
+
+            AssertSameAppearance(old, Assert.Single(pushes).Appearance);
+            AssertSameAppearance(old, Assert.Single(appearanceSaves));
+            Assert.Empty(sharedSaves);
+        }
+
+        [Fact]
+        public async Task FileWinsOverTheDocumentAppearance()
+        {
+            var shared = new DashboardConfig([]);
+            var old = new Appearance { Default = new ThemeChoice { Theme = "sapphire" } };
+            var file = new Appearance { Default = new ThemeChoice { Theme = "ruby" } };
+            List<DashboardConfig> pushes = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, [], appearanceSaves, (shared, old), file);
+
+            await service.InitAsync();
+            await service.UpdateDashboardsAsync();
+
+            Assert.Equal("ruby", Assert.Single(pushes).Appearance.Default.Theme);
+            Assert.Empty(appearanceSaves);
+        }
+
+        [Fact]
+        public async Task DocumentWithoutAppearanceAndNoFileGivesDefaults()
+        {
+            GamePhase johto = new(GameFlavor.HGSS, "Johto Starters", "HeartGold");
+            var shared = new DashboardConfig([johto]);
+            List<DashboardConfig> pushes = [];
+            List<Appearance> appearanceSaves = [];
+            AdminService service = Service(pushes, [], appearanceSaves, (shared, null));
+
+            await service.InitAsync();
+            await service.UpdateDashboardsAsync();
+
+            DashboardConfig pushed = Assert.Single(pushes);
+            Assert.Equal([johto], pushed.GamePhases);
+            AssertSameAppearance(new Appearance(), pushed.Appearance);
+            Assert.Empty(appearanceSaves);
+        }
+
+        private static AdminService Service(
+            List<DashboardConfig> pushes,
+            List<DashboardConfig> sharedSaves,
+            List<Appearance> appearanceSaves,
+            (DashboardConfig Config, Appearance? Appearance)? shared = null,
+            Appearance? file = null)
             => new(
                 config => { pushes.Add(config); return Task.CompletedTask; },
-                () => Task.FromResult(saved),
-                config => { saves.Add(config); return Task.CompletedTask; },
+                () => Task.FromResult(shared),
+                config => { sharedSaves.Add(config); return Task.CompletedTask; },
+                () => Task.FromResult(file),
+                appearance => { appearanceSaves.Add(appearance); return Task.CompletedTask; },
                 NullLogger.Instance);
 
         private static void AssertSameAppearance(Appearance expected, Appearance actual)
