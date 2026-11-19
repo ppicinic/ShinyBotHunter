@@ -194,6 +194,8 @@ namespace ShinyBotHunter.Tests
         [Theory]
         [InlineData("""{"dayStart":"06:30","defa""")]
         [InlineData("""{"dayStart":"06:30","default":null}""")]
+        [InlineData("null")]
+        [InlineData("""{"windows":{"x":null}}""")]
         public async Task UnreadableAppearanceFileLoadsDefaultsAndIsLeftAlone(string text)
         {
             string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
@@ -211,7 +213,7 @@ namespace ShinyBotHunter.Tests
                 var entry = Assert.Single(logger.Entries);
                 Assert.Equal(LogLevel.Warning, entry.Level);
                 Assert.Contains(path, entry.Message);
-                Assert.IsAssignableFrom<JsonException>(entry.Exception);
+                Assert.True(entry.Exception == null || entry.Exception is JsonException);
             }
             finally
             {

@@ -40,15 +40,23 @@ namespace ShinyBotHunter.Persistence
                 return null;
             }
             string text = await File.ReadAllTextAsync(path);
+            Appearance? loaded;
             try
             {
-                return JsonSerializer.Deserialize<Appearance>(text, Options);
+                loaded = JsonSerializer.Deserialize<Appearance>(text, Options);
             }
             catch (JsonException e)
             {
                 logger.LogWarning(e, "Appearance file {Path} cannot be read; using the defaults", path);
                 return new Appearance();
             }
+            // RespectNullableAnnotations does not reach a top-level null or a dictionary value.
+            if (loaded == null || loaded.Windows.ContainsValue(null!))
+            {
+                logger.LogWarning("Appearance file {Path} cannot be read: it is null or has a null window; using the defaults", path);
+                return new Appearance();
+            }
+            return loaded;
         }
 
         public async Task SaveAsync(Appearance appearance)
