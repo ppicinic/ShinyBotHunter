@@ -211,26 +211,21 @@ namespace ShinyBotHunter.Service
             var stopwatch = Stopwatch.StartNew();
             List<CountRow> counts = await _encounterDao.GetCountsAsync(game);
             List<ProgressRow> progress = await _encounterDao.GetPhaseProgressAsync(game);
-            List<PokemonData> latest = await _encounterDao.GetLatestEncounters(game);
             List<CaughtPokemon> caught = await _caughtPokemonDao.GetAllCaughtShiniesAsync(game);
-            var cache = BuildGameCache(counts, progress, caught, latest);
-            _logger.LogInformation("Loaded {Game} counts from 3 Postgres queries and 1 Mongo find: {CountRows} count rows, {ProgressRows} progress rows, {Caught} caught, in {ElapsedMs} ms",
+            var cache = BuildGameCache(counts, progress, caught);
+            _logger.LogInformation("Loaded {Game} counts from 2 Postgres queries and 1 Mongo find: {CountRows} count rows, {ProgressRows} progress rows, {Caught} caught, in {ElapsedMs} ms",
                 game, counts.Count, progress.Count, caught.Count, stopwatch.ElapsedMilliseconds);
             return cache;
         }
 
         // Builds a game's whole tree from the grouped rows. Every row counts under its form code and its "#species"
         // key, at game and phase level, on the game node and on its ROM copy's node. Single writer on an unpublished tree.
-        internal static GameEncounterCache BuildGameCache(List<CountRow> counts, List<ProgressRow> progress, List<CaughtPokemon> caught, List<PokemonData> latest)
+        internal static GameEncounterCache BuildGameCache(List<CountRow> counts, List<ProgressRow> progress, List<CaughtPokemon> caught)
         {
             var cache = new GameEncounterCache()
             {
                 CaughtPokemon = new ConcurrentBag<CaughtPokemon>(caught)
             };
-            for (int i = latest.Count - 1; i >= 0; i--)
-            {
-                cache.LatestEncounters.Enqueue(latest[i]);
-            }
             foreach (var row in counts)
             {
                 AddCounts(cache, row.Milestone, row.FormCode, row.Species, row.Encounters, row.ShinyEncounters, 0);
