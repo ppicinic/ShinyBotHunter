@@ -154,7 +154,7 @@ Changes on this tab reach every dashboard connected to the bot.
 
 ## See the latest encounters
 
-The **Recent Encounters** window lists the newest encounters first. Each shows the Pokémon, its gender, level and nature, its shiny value (**SV**; below 8 means shiny) and its six IVs. Shinies are highlighted. Before the first encounter it reads "No encounters yet...".
+The **Recent Encounters** window lists the newest encounters first. Each shows the Pokémon, its gender, level and nature, its shiny value (**SV**; below 8 means shiny) and its six IVs. Shinies are highlighted. The list is this PC's own: it holds what this bot has met since it started, so after the bot restarts it reads "No encounters yet..." until the next encounter.
 
 Each Pokémon moves: a moving picture where one exists, otherwise its still picture with a small hop or sway. Each drops in when it appears, and a shiny twinkles.
 

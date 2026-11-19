@@ -1,6 +1,6 @@
 # Spec: dashboard appearance and recent encounters per PC
 
-Status: Approved 2026-11-18 (owner: "Go ahead"). In progress on feature/appearance-per-pc.
+Status: Implemented on feature/appearance-per-pc (epic #478), 2026-11-18. Not yet merged to main. Read "As built" first.
 Last updated: 2026-11-18
 Owner: Phil
 Related: [Livelier dashboard](dashboard-alive.md) (FR-12, FR-13, FR-19: the themes and where they are saved today), [Cheaper dashboard animations](dashboard-animation-cost.md) (the animation levels), [the dashboard guide page](../guide/03-dashboard.md), [storage decision](../decisions/global.md)
@@ -115,6 +115,30 @@ Two tasks with disjoint files, both size S:
 
 `system-overview.md` is touched by both; P2 goes second and takes it. No dashboard file in either.
 
+## As built, 2026-11-18
+
+- **P1 (#479, PR #482).** `AppearanceFile` (`ShinyBotHunter/Persistence/AppearanceFile.cs`) loads and saves `appearance` at `%LOCALAPPDATA%\ShinyBotHunter\appearance.json` with the controllers' JSON options, indented. `AdminService` takes the shared pair (MongoDB) and the appearance pair (the file); each mutator saves only its own store, through the one `saveGate`, after the push. `MongoDashboardConfigDao` removes `Appearance` from the document it saves and hands an old document's copy to `InitAsync`, which uses the file first, then that copy (written to the file once), then the defaults.
+- **P2 (#480, PR #481).** `GetLatestEncounters` is deleted; `BuildGameCache` takes no `latest`; the list is filled in one place, `GameEncounterCache.Increment`, capped at 20. The cache load is two Postgres queries and one Mongo find.
+- New: one class, one folder on disk. No package, interface, project or config key. No file under `PokemonDashboard/` changed.
+
+## What diverged
+
+1. **FR-5 is wider than a parse error.** A file whose whole content is `null`, and a null value under `windows`, are also "cannot be read": the warning, the defaults, the file left alone. `RespectNullableAnnotations` catches a null where the type has none (`"default": null`) but not those two, so `AppearanceFile.LoadAsync` has one condition for them (review of #482).
+2. **Deleting the file does not always reset.** Right after the update the MongoDB document still has its `appearance` until the next save of the shared document, so a deleted file is filled from it once more (FR-8). The guide says so.
+3. **P1 was size M, not S**: 391 added and 119 removed lines over eight files, most of it `AdminServiceTests.cs`.
+4. **The 20 cap moved** from `AddEncounterToCacheAsync` into `Increment`, so the FR-9 test needs no database. Behaviour is the same.
+
+## Evidence
+
+| What | Result |
+|---|---|
+| `Scripts/ci-local.ps1` on the feature tip after both merges | PASS, 8/8 steps; 1108 tests |
+| QA `dashboard-themes`, run `20261119-023358` | passed |
+| QA `dashboard-alive`, run `20261119-023705` | passed: themes and animation levels apply and come back after the backend restarts |
+| The dev PC after the QA runs | `%LOCALAPPDATA%\ShinyBotHunter\appearance.json` exists; the MongoDB `DashboardConfig` document has `GamePhases` and `RecentEncounterCount` and no `Appearance` |
+
+Not run: the by-hand check on two PCs (different themes on each, both bots restarted); the Recent Encounters window after a restart with a hunt running (unit test only); FR-8's one-time copy on a real document (unit tests only: the QA scenarios reset `appearance` before it could be seen). The Updating and Versions guide pages have no line for this yet; that belongs to the version that carries it.
+
 ## Open questions
 
 1. **FR-8, the one-time copy.** Answered 2026-11-18: "Keep the copy". Known limit: a second PC that updates after the first has saved a subscription change finds no copy left and starts on the defaults.
@@ -125,3 +149,4 @@ Two tasks with disjoint files, both size S:
 - 2026-11-18: written at the owner's request ("write the spec, only appearance per-PC").
 - 2026-11-18: the owner kept the one-time copy; FR-8 is a Must.
 - 2026-11-18: recent encounters start empty at bot start (FR-9, G4), at the owner's choice; the task split is now two.
+- 2026-11-18: implemented (epic #478, PRs #481 and #482); As built, What diverged and Evidence added.

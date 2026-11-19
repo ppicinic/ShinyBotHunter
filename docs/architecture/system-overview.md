@@ -98,7 +98,7 @@ All under `/api` (`ApiControllerBase`). Consumers: the dashboard only.
 
 The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it. Every action is one `EventRegistration` in `Games/EventRegistry.cs` (name, options, required capability, owns-emulators flag, and the `BotService` method that starts it), so a new bot action is one registry entry plus one method, with no dashboard code change. Both start routes map `ArgumentException`, `InvalidOperationException` and `FileNotFoundException` to a plain-text 400.
 
-**SignalR** (`ElectronHub`, `IElectronClient`): server pushes `ReceiveDashboardConfig` (subscriptions, recent count and `appearance`; `AdminService` saves the whole of it as one MongoDB document on every change and loads it at start, so it survives a backend restart; each dashboard window picks its own theme from it), `ReceiveDashboardState` (bot positions, states and a wild hunt's speed lines, `EmulatorState.SpeedLines`) `RecieveEncounters` (counts for a subscribed `{game}_{phase}` group) and `ReceivePickupItems` (one game's Pickup tally after each take, from `PickupTally`; memory only, gone on a backend restart). Clients call `SubscribeToGamePhase`.
+**SignalR** (`ElectronHub`, `IElectronClient`): server pushes `ReceiveDashboardConfig` (subscriptions, recent count and `appearance`; `AdminService` saves the subscriptions and the count as one MongoDB document and `appearance` as a JSON file on the bot's PC, `%LOCALAPPDATA%\ShinyBotHunter\appearance.json` through `AppearanceFile`, each on its own change, and loads both at start, so they survive a backend restart and two bots on one database keep their own themes; each dashboard window picks its own theme from it), `ReceiveDashboardState` (bot positions, states and a wild hunt's speed lines, `EmulatorState.SpeedLines`) `RecieveEncounters` (counts for a subscribed `{game}_{phase}` group) and `ReceivePickupItems` (one game's Pickup tally after each take, from `PickupTally`; memory only, gone on a backend restart). Clients call `SubscribeToGamePhase`.
 
 ## 6. Data and persistence
 
@@ -107,7 +107,7 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 | Store | Data | Access |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Three EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
-| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the saved dashboard config) | Three DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
+| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the subscriptions and the recent count; `appearance` is not in it) | Three DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/` | |
 
 ### Write path
@@ -277,3 +277,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-11-15: sections 5, 7 and 11 updated for Ruby and Sapphire wild encounters (epic #380).
 - 2026-11-17: Ruby and Sapphire train, heal and walk home: RS declares navigation and training, the training refusal at Start, the heal trip's log line (#451).
 - 2026-11-17: section 7 and axis 1 made true for the merged RS feature (#434): `RsNavigatorEvent` over `RouteSearch` and the walk's hand-off, `RsBattleEvent`'s training and its one re-press, `FieldAdvance`, the four per-game members, and which reader carries the training reads.
+- 2026-11-18: `appearance` saved per PC in a file, not in the `DashboardConfig` document; the recent-encounters list starts empty (epic #478).
