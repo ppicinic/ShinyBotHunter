@@ -156,12 +156,6 @@ namespace ShinyBotHunter.Service
         private async Task AddEncounterToCacheAsync(PersistPokemonData encounter)
         {
             var cache = await GetOrLoadCacheAsync(new CacheLoadRequest(encounter));
-            PokemonData? remove;
-            if (cache.LatestEncounters.Count() > 19)
-            {
-                cache.LatestEncounters.TryDequeue(out remove);
-            }
-            cache.LatestEncounters.Enqueue(encounter.PokemonData);
             cache.Increment(encounter);
         }
 
@@ -379,11 +373,19 @@ namespace ShinyBotHunter.Service
 
     public class GameEncounterCache : GameEncounterCacheBase
     {
+        // Only the persistence consumer loop writes it, through Increment; readers take a snapshot with ToArray.
         public ConcurrentQueue<PokemonData> LatestEncounters { get; set; } = new();
         public ConcurrentDictionary<string, GameEncounterCacheBase> GameLevelCache { get; set; } = new();
 
         internal override void Increment(PersistPokemonData encounter)
         {
+            // The only place LatestEncounters is filled: it starts empty at load and keeps the last 20 recorded here.
+            PokemonData? remove;
+            if (LatestEncounters.Count() > 19)
+            {
+                LatestEncounters.TryDequeue(out remove);
+            }
+            LatestEncounters.Enqueue(encounter.PokemonData);
             base.Increment(encounter);
             GameLevelCache[encounter.GameFileName].Increment(encounter);
         }

@@ -130,6 +130,28 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void Increment_RecordsTheEncounterInAnEmptyLatestList()
+        {
+            var cache = PokemonPersistenceService.BuildGameCache(
+                new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
+                new List<ProgressRow>(),
+                new List<CaughtPokemon>());
+            Assert.Empty(cache.LatestEncounters);
+            var encounter = new PersistPokemonData()
+            {
+                PokemonData = new PokemonData() { FormCode = "z", Species = 9, TID = 100 },
+                Game = GameFlavor.HGSS,
+                Phase = "P9",
+                GameFileName = "F9"
+            };
+            PokemonPersistenceService.EnsureKeys(cache, new CacheLoadRequest(encounter));
+
+            cache.Increment(encounter);
+
+            Assert.Same(encounter.PokemonData, Assert.Single(cache.LatestEncounters));
+        }
+
+        [Fact]
         public void Increment_IllegalShiny_CountsAsAnEncounterNotAShiny()
         {
             var cache = PokemonPersistenceService.BuildGameCache(
