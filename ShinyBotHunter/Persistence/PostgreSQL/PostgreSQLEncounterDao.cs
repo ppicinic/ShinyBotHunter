@@ -150,31 +150,6 @@ namespace ShinyBotHunter.Persistence.PostgreSQL
             return sum / bins.Count;
         }
 
-        public async Task<List<PokemonData>> GetLatestEncounters(GameFlavor game)
-        {
-            using var context = await _contextFactory.CreateDbContextAsync();
-            var latest = await context.Encounters
-                .Where(x => x.Game == game)
-                .OrderByDescending(x => x.Timestamp)
-                .Take(20)
-                .ToListAsync();
-
-            return latest.Select(p => new PokemonData
-            {
-                Species = (ushort)p.Species,
-                Name = p.Name,
-                Ability = p.Ability,
-                Gender = p.Gender,
-                IVs = (uint)p.IVs,
-                Nature = p.Nature,
-                PID = (uint)p.PID,
-                SID = (ushort)p.SID,
-                TID = (ushort)p.TID,
-                FormCode = p.FormCode,
-                Level = p.Level
-            }).ToList();
-        }
-
         public async Task WriteToQueueAsync(List<PersistPokemonData> pokemonData) => await ProducerQueue.Writer.WriteAsync(pokemonData);
 
         public async ValueTask DisposeAsync()
