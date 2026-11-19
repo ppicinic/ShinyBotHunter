@@ -116,7 +116,7 @@ Bot event detects an encounter and calls `PokemonPersistenceService.AddEncounter
 This single-consumer channel design is the right one for this project and should be kept. The three loops are supervised by `BackgroundLoop.RunSupervisedAsync` (a fault is logged and the loop restarts), and the cold load is the grouped build described next.
 
 ### Read path
-Dashboard reads never hit the database directly; they read the counts cache. A game's cache is loaded whole on first use, under that game's own lock: three Postgres queries (grouped counts, since-last-shiny progress, latest 20) and the caught list from Mongo, from which `PokemonPersistenceService.BuildGameCache` builds the tree in memory. A requested key with no rows gets a zero node for increments to land on. Design in the [count queries spec](../specs/count-queries.md); background in the [review](../reviews/2026-10-code-review.md#1-query-performance-slow-first-load-of-counts).
+Dashboard reads never hit the database directly; they read the counts cache. A game's cache is loaded whole on first use, under that game's own lock: two Postgres queries (grouped counts, since-last-shiny progress) and the caught list from Mongo, from which `PokemonPersistenceService.BuildGameCache` builds the tree in memory. The recent-encounters list starts empty and fills only from encounters this bot records, capped at 20. A requested key with no rows gets a zero node for increments to land on. Design in the [count queries spec](../specs/count-queries.md); background in the [review](../reviews/2026-10-code-review.md#1-query-performance-slow-first-load-of-counts).
 
 ## 7. Bot execution engine
 
