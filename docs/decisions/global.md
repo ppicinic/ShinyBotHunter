@@ -60,6 +60,9 @@ Option B. Postgres is for append-only, fixed-shape, high-volume data. MongoDB is
 - Plan phase 3 drops the Mongo-to-Postgres tasks and adds a single caught-shinies aggregation.
 - The persistence service keeps two DAOs; the counts cache builder consumes both result sets.
 
+### 2026-11-18: a per-PC settings file is configuration, not a store
+The dashboard appearance (themes, day and night times, animation levels) moves out of MongoDB into `%LOCALAPPDATA%\ShinyBotHunter\appearance.json` on the bot's PC ([appearance-per-pc](../specs/appearance-per-pc.md)), so two PCs on one database can each keep their own. The file is a few hundred bytes, read once at start and written on a click: configuration, not a third store. The two-stores rule stands for data; subscriptions and the recent count stay in MongoDB.
+
 ---
 
 ## Lua BizHawk integration is removed

@@ -154,7 +154,7 @@ Changes on this tab reach every dashboard connected to the bot.
 
 ## See the latest encounters
 
-The **Recent Encounters** window lists the newest encounters first. Each shows the Pokémon, its gender, level and nature, its shiny value (**SV**; below 8 means shiny) and its six IVs. Shinies are highlighted. Before the first encounter it reads "No encounters yet...".
+The **Recent Encounters** window lists the newest encounters first. Each shows the Pokémon, its gender, level and nature, its shiny value (**SV**; below 8 means shiny) and its six IVs. Shinies are highlighted. The list is this PC's own: it holds what this bot has met since it started, so after the bot restarts it reads "No encounters yet..." until the next encounter.
 
 Each Pokémon moves: a moving picture where one exists, otherwise its still picture with a small hop or sway. Each drops in when it appears, and a shiny twinkles.
 
@@ -239,7 +239,7 @@ Each setting changes every window at once. The Pokemon pictures keep moving what
 
 If the emulators slow down while the dashboard is open, set all three to **Low** first. If they are still slow, set them to **Off**.
 
-The bot keeps all of this, so every dashboard looks the same, and it is still there after you restart the dashboard or the bot.
+The bot keeps all of this per PC: every dashboard on this PC looks the same, and it is still there after you restart the dashboard or the bot. Each PC running a bot has its own themes and animation levels, saved in `%LOCALAPPDATA%\ShinyBotHunter\appearance.json`. Deleting that file, with the bot stopped, resets them to the defaults, except right after an update, when the bot may copy the themes saved before back once. The first start after updating takes the themes saved before, once.
 
 ## Arrange the windows
 

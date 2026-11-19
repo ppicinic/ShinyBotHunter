@@ -31,7 +31,7 @@ namespace ShinyBotHunter.Tests
             var caughtF1 = new CaughtPokemon() { Pokemon = new PokemonData() { FormCode = "a", Species = 1 }, Game = GameFlavor.HGSS, Phase = "P1", GameFileName = "F1" };
             var caughtF2 = new CaughtPokemon() { Pokemon = new PokemonData() { FormCode = "c", Species = 3 }, Game = GameFlavor.HGSS, Phase = "P2", GameFileName = "F2" };
 
-            var cache = PokemonPersistenceService.BuildGameCache(counts, new List<ProgressRow>(), new List<CaughtPokemon> { caughtF1, caughtF2 }, new List<PokemonData>());
+            var cache = PokemonPersistenceService.BuildGameCache(counts, new List<ProgressRow>(), new List<CaughtPokemon> { caughtF1, caughtF2 });
 
             // game: 10+20+30+40+50+60 = 210, one shiny (row 1), two caught
             AssertCounts(cache.AllPokemonCounts, 210, 1, 2);
@@ -75,8 +75,7 @@ namespace ShinyBotHunter.Tests
             var cache = PokemonPersistenceService.BuildGameCache(
                 new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
                 new List<ProgressRow>(),
-                new List<CaughtPokemon> { legacy, empty, withFile },
-                new List<PokemonData>());
+                new List<CaughtPokemon> { legacy, empty, withFile });
 
             // game and phase: all three catches; file F1: only its own
             AssertCounts(cache.AllPokemonCounts, 10, 0, 3);
@@ -96,8 +95,7 @@ namespace ShinyBotHunter.Tests
             var cache = PokemonPersistenceService.BuildGameCache(
                 new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
                 new List<ProgressRow>(),
-                new List<CaughtPokemon>(),
-                new List<PokemonData>());
+                new List<CaughtPokemon>());
             // TID 100 keeps ShinyValue at 100; a default PokemonData has ShinyValue 0 and reads as shiny.
             var encounter = new PersistPokemonData()
             {
@@ -132,13 +130,34 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void Increment_RecordsTheEncounterInAnEmptyLatestList()
+        {
+            var cache = PokemonPersistenceService.BuildGameCache(
+                new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
+                new List<ProgressRow>(),
+                new List<CaughtPokemon>());
+            Assert.Empty(cache.LatestEncounters);
+            var encounter = new PersistPokemonData()
+            {
+                PokemonData = new PokemonData() { FormCode = "z", Species = 9, TID = 100 },
+                Game = GameFlavor.HGSS,
+                Phase = "P9",
+                GameFileName = "F9"
+            };
+            PokemonPersistenceService.EnsureKeys(cache, new CacheLoadRequest(encounter));
+
+            cache.Increment(encounter);
+
+            Assert.Same(encounter.PokemonData, Assert.Single(cache.LatestEncounters));
+        }
+
+        [Fact]
         public void Increment_IllegalShiny_CountsAsAnEncounterNotAShiny()
         {
             var cache = PokemonPersistenceService.BuildGameCache(
                 new List<CountRow> { new("P1", "F1", "a", 1, 10, 0) },
                 new List<ProgressRow> { new("P1", null, 10), new("P1", "F1", 10) },
-                new List<CaughtPokemon>(),
-                new List<PokemonData>());
+                new List<CaughtPokemon>());
             // A default PokemonData has ShinyValue 0: shiny by its bytes, but it failed the legality check.
             var encounter = new PersistPokemonData()
             {
@@ -179,7 +198,7 @@ namespace ShinyBotHunter.Tests
                 new("P1", "F2", 3),
             };
 
-            var cache = PokemonPersistenceService.BuildGameCache(counts, progress, new List<CaughtPokemon>(), new List<PokemonData>());
+            var cache = PokemonPersistenceService.BuildGameCache(counts, progress, new List<CaughtPokemon>());
 
             Assert.Equal(5, cache.PhaseEncounterCache["P1"].PhaseCount);
             Assert.Equal(2, cache.GameLevelCache["F1"].PhaseEncounterCache["P1"].PhaseCount);
@@ -197,7 +216,7 @@ namespace ShinyBotHunter.Tests
                 new("P1", "F1", "201-b", 201, 7, 0),
             };
 
-            var cache = PokemonPersistenceService.BuildGameCache(counts, new List<ProgressRow>(), new List<CaughtPokemon>(), new List<PokemonData>());
+            var cache = PokemonPersistenceService.BuildGameCache(counts, new List<ProgressRow>(), new List<CaughtPokemon>());
 
             // #201 = 5+7 encounters, 1+0 shinies
             AssertCounts(cache.PokemonEncounterCache["#201"], 12, 1, 0);
