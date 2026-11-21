@@ -30,8 +30,9 @@ namespace ShinyBotHunter.Games
     // cursor), TaskFunction (the summary's input task or its destroy task while one is active, else null) and AppState
     // (gPaletteFade.active, 1 while the screen fades); on FieldTask, TextPrinter (the field message window's state),
     // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active); on FieldTask
-    // while the start menu's input task is up under CB2_Overworld, TaskFunction (that task), Prompt (the start cursor),
-    // MenuEntries (the start menu's action ids) and AppState (gPaletteFade.active); on OtherApp for the field party screen
+    // while the start menu's input task takes keys under CB2_Overworld (its data[0] 1), TaskFunction (that task), Prompt
+    // (the start cursor), MenuEntries (the start menu's action ids) and AppState (gPaletteFade.active); on OtherApp for
+    // the field party screen
     // (callback 2 CB2_PartyMenuMain out of battle), TaskFunction (the list's, the Pokémon submenu's or the ITEM submenu's
     // task function while one is active, else null), TextPrinter (the menu window's state) while
     // gPartyMenuMessage_IsPrinting is 1, and with one of the tasks active PartyMonIndex (the party cursor) and AppState

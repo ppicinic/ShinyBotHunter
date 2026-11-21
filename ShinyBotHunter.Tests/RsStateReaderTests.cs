@@ -195,6 +195,7 @@ namespace ShinyBotHunter.Tests
                 Memory(locked: 1, inBattle: BattleBit, controller: ChooseAction),
                 Memory(locked: 1, inBattle: BattleBit, controller: OtherController, window: 8),
                 FieldPartyMemory(),
+                StartMenuMemory(0x080712D9, 0x080543C9),
             ];
             PlaceTask(memories[3], 0, FieldPartyList, data: [0, 0, 0, 4 << 8]);
 
@@ -844,6 +845,64 @@ namespace ShinyBotHunter.Tests
             GameSnapshot snapshot = await ReadTraining(FieldPartyMemory(locked));
 
             Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+        }
+
+        // The start menu: its input task under CB2_Overworld, past its first frame (data[0] 1).
+        private const uint StartCursor = 0x0202E8FC;      // sStartMenuCursorPos, then the count and the entries
+
+        private static FakeMemoryClient StartMenuMemory(uint task, uint callback2, short state = 1)
+        {
+            FakeMemoryClient memory = Memory(locked: 1);
+            memory.Place(Callback2, BitConverter.GetBytes(callback2));
+            PlaceTask(memory, 0, task, data: [state]);
+            memory.Place(StartCursor, [1, 7, 0, 1, 2, 4, 5, 6, 7]);
+            return memory;
+        }
+
+        [Theory]
+        [InlineData("AXPE", 0x080712D9u, 0x080543C9u)]
+        [InlineData("AXVE", 0x080712D5u, 0x080543C5u)]
+        public async Task StartMenu_CarriesTheTaskCursorEntriesAndFade(string gameCode, uint task, uint overworld)
+        {
+            FakeMemoryClient memory = StartMenuMemory(task, overworld);
+            memory.Place(Fade, [0x80]);
+
+            GameSnapshot snapshot = await ReadTraining(memory, gameCode);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+            Assert.Equal(task, snapshot.TaskFunction);
+            Assert.Equal(1, snapshot.Prompt);
+            Assert.Equal("0,1,2,4,5,6,7", snapshot.MenuEntries);
+            Assert.Equal(1, snapshot.AppState);
+            Assert.Equal(2, memory.ChainReads.Count);
+            (uint, int, int)[] fade = [(0x0202F38F, 0, 1)];
+            Assert.Equal(fade, memory.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+        }
+
+        [Fact]
+        public async Task StartMenu_UnderAnotherCallback2_IsNotTheStartMenu()
+        {
+            FakeMemoryClient memory = StartMenuMemory(0x080712D9, SapphireInitPartyMenu);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Null(snapshot.TaskFunction);
+            Assert.Null(snapshot.Prompt);
+            Assert.Null(snapshot.MenuEntries);
+            Assert.Single(memory.ChainReads);
+        }
+
+        // Emulator round 1, 2026-11-21, issue #485: on the frame the task is listed data[0] reads 0 and a press is dropped.
+        [Fact]
+        public async Task StartMenu_TaskOnItsFirstFrame_IsNotTheStartMenu()
+        {
+            FakeMemoryClient memory = StartMenuMemory(0x080712D9, 0x080543C9, state: 0);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
+            Assert.Null(snapshot.TaskFunction);
+            Assert.Single(memory.ChainReads);
         }
     }
 }

@@ -7,7 +7,7 @@ namespace ShinyBotHunter.Games.Rs
     /// Classifies the RS screen from seven direct reads made on one frame (docs/specs/rs-wild-encounter.md FR-7,
     /// docs/research/rs-wild-encounter.md "What memory shows through one cycle"). Built with trainingReads it reads
     /// sixteen blocks on one frame, plus one sprite and the palette fade on the battle and field party screens and the
-    /// palette fade on the forget-a-move screen, and also classifies the training and field
+    /// palette fade on the forget-a-move screen and the start menu, and also classifies the training and field
     /// script screens (docs/specs/rs-navigation-and-training.md) and the field party screen (docs/specs/rs-pickup.md);
     /// the flee path's reader is built without it.
     /// </summary>
@@ -99,6 +99,15 @@ namespace ShinyBotHunter.Games.Rs
         private readonly int pokemonMenuCountOffset;
         private readonly int pokemonMenuActionsOffset;
 
+        // The start menu's cursor, count and entries, in the field window's block.
+        private readonly int startCursorOffset;
+        private readonly int startCountOffset;
+        private readonly int startActionsOffset;
+
+        // The start menu's input task takes keys once its data[0] reads 1: on the frame the task is listed it reads 0, and a
+        // press landing then or one frame later is dropped (emulator round 1, 2026-11-21, issue #485).
+        private const int StartMenuTakesKeys = 1;
+
         public RsStateReader(IMemoryClient memory, RsPointerService addresses, bool trainingReads = false)
         {
             this.memory = memory;
@@ -112,6 +121,9 @@ namespace ShinyBotHunter.Games.Rs
             menuWindowOffset = (int)(addresses.MenuWindowState - addresses.FieldMessageWindowState);
             pokemonMenuCountOffset = (int)(addresses.PokemonMenuActionCount - addresses.PokemonMenuCursorPos);
             pokemonMenuActionsOffset = (int)(addresses.PokemonMenuActions - addresses.PokemonMenuCursorPos);
+            startCursorOffset = (int)(addresses.StartMenuCursorPos - addresses.FieldMessageWindowState);
+            startCountOffset = (int)(addresses.StartMenuActionCount - addresses.FieldMessageWindowState);
+            startActionsOffset = (int)(addresses.StartMenuActions - addresses.FieldMessageWindowState);
             int[] direct = [];
             blocks =
             [
@@ -199,9 +211,21 @@ namespace ShinyBotHunter.Games.Rs
                     return new GameSnapshot(GameScreen.FieldTask, null, null, null, null);
                 }
                 uint? yesNo = FindTask(tasks, addresses.TaskHandleYesNoInput) is null ? null : addresses.TaskHandleYesNoInput;
+                uint native = BitConverter.ToUInt32(read[NativeBlock].Bytes, 0);
+                byte[] fieldWindow = read[FieldWindowBlock].Bytes;
+                // The start menu takes keys under CB2_Overworld with its input task past its first frame; its fade is one
+                // more request, while it is up only (research rs-pickup.md, "Back in the field with the start menu open").
+                if (yesNo is null && BitConverter.ToUInt32(read[Callback2Block].Bytes, 0) == addresses.OverworldCallback2
+                    && addresses.StartMenuInputTask is uint startMenu && FindTask(tasks, startMenu) is int start
+                    && TaskDatum(tasks, start, 0) == StartMenuTakesKeys)
+                {
+                    ChainBlockResult[] fade = await memory.ReadChainBlocksAsync([new(addresses.PaletteFadeActive, [], 1)], ct: ct);
+                    return new GameSnapshot(GameScreen.FieldTask, null, null, fieldWindow[startCursorOffset], startMenu,
+                        Native: native, TextPrinter: BitConverter.ToUInt16(fieldWindow, 0), AppState: fade[0].Bytes[0] >> FadeActiveShift,
+                        MenuEntries: string.Join(',', fieldWindow[startActionsOffset..(startActionsOffset + fieldWindow[startCountOffset])]));
+                }
                 return new GameSnapshot(GameScreen.FieldTask, null, null, null, yesNo,
-                    Native: BitConverter.ToUInt32(read[NativeBlock].Bytes, 0),
-                    TextPrinter: BitConverter.ToUInt16(read[FieldWindowBlock].Bytes, 0));
+                    Native: native, TextPrinter: BitConverter.ToUInt16(fieldWindow, 0));
             }
 
             BattleOutcome? outcome = Map(read[OutcomeBlock].Bytes[outcomeOffset]);
