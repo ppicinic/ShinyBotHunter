@@ -44,7 +44,6 @@ namespace ShinyBotHunter.BotEvents
         private PokemonMetadataService metadataService;
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
-        private PickupTally pickupTally;
 
         public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams)
         {
@@ -54,7 +53,6 @@ namespace ShinyBotHunter.BotEvents
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
             this.persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
             this.phaseInfoService = provider.GetRequiredService<PhaseInfoService>();
-            this.pickupTally = provider.GetRequiredService<PickupTally>();
         }
 
         public override async Task<EventState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -85,7 +83,7 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken);
+                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, provider, cancellationToken);
                 }
                 else if(topState == EventState.Encountering)
                 {
@@ -328,7 +326,7 @@ namespace ShinyBotHunter.BotEvents
 
         // Static with its services passed in, so a test can drive the decisions without the services that open a database.
         internal static async Task DecideOverworldAction(GameState state, PokemonStateReader reader, Func<int, PokemonMoveMetadata> moveMetadata,
-            PickupTally pickupTally, CancellationToken cancellationToken)
+            IServiceProvider provider, CancellationToken cancellationToken)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -362,10 +360,8 @@ namespace ShinyBotHunter.BotEvents
             {
                 if (state.Pickup)
                 {
-                    // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
-                    PickupConfig config = PickupConfig.Load(PickupConfig.DefaultPath);
                     // The visit is awaited inline; a stop has already parked the stack in Waiting.
-                    if (!await new PickupTakeEvent(state.Bot, reader, config, pickupTally).ExecuteWithResultAsync(state, cancellationToken))
+                    if (!await state.Bot.Profile.CreatePickupVisit!(provider, state.Bot).ExecuteWithResultAsync(state, cancellationToken))
                     {
                         return;
                     }

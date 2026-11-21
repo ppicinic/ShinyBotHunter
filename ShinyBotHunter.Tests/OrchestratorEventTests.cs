@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
@@ -452,14 +453,16 @@ namespace ShinyBotHunter.Tests
         }
 
         // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip.
-        private static FakeBot RsBot(params byte[][] party)
+        private static FakeBot RsBot(params byte[][] party) => RsBot(null, party);
+
+        private static FakeBot RsBot(Func<IServiceProvider, IBot, IBotEvent<bool>>? createPickupVisit, params byte[][] party)
         {
             PokemonMetadataService metadata = Moves();
             metadata.Seed(new PokemonMetadata { Id = 258, PokemonName = "Mudkip", PokeApiName = "mudkip" });
             GameProfile rs = RsProfile.Create(metadata, new MapService(new Dictionary<int, Map>()));
             return new FakeBot(Task.CompletedTask, new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), rs.Parser,
                 rs.BattleParser, rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
-                createNavigatorEvent: rs.CreateNavigatorEvent))
+                createNavigatorEvent: rs.CreateNavigatorEvent, isPickupMember: rs.IsPickupMember, createPickupVisit: createPickupVisit))
             {
                 PartyBlocks = party,
             };
@@ -548,6 +551,107 @@ namespace ShinyBotHunter.Tests
 
             Assert.False(OrchestratorEvent.CanFightNextEncounter(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
             Assert.Equal(line, OrchestratorEvent.HealTripLine(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
+        }
+
+        // A Pickup visit that answers a fixed result; one that stops parks the stack in Waiting, as PickupTakeEvent does.
+        private sealed class FixedVisit(bool done) : IBotEvent<bool>
+        {
+            // Written and read by the test's one async flow; no lock.
+            public int Runs { get; private set; }
+
+            public Task ExecuteAsync(GameState state, CancellationToken cancellationToken) => ExecuteWithResultAsync(state, cancellationToken);
+
+            public Task<bool> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
+            {
+                Runs++;
+                if (!done)
+                {
+                    state.State.Pop();
+                    state.State.Push(EventState.Waiting);
+                }
+                return Task.FromResult(done);
+            }
+        }
+
+        private static readonly Func<IServiceProvider, IBot, IBotEvent<bool>> NoVisit = (_, _) => throw new InvalidOperationException("the visit was made");
+
+        // The flavor's real profile with the stub parser and the given visit; the party is one member holding nothing.
+        private static FakeBot PickupBot(GameFlavor flavor, Func<IServiceProvider, IBot, IBotEvent<bool>> createPickupVisit)
+        {
+            GameProfile p = flavor == GameFlavor.HGSS
+                ? HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService())
+                : RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+            // FakeBot reads revision 0, which only HGSS has a table for.
+            Func<string?, int, IPointerService> addresses = flavor == GameFlavor.HGSS ? p.Addresses : (_, _) => new RsPointerService();
+            return new FakeBot(Task.CompletedTask, new GameProfile(p.Flavor, p.Capabilities, [0], addresses, new PidSpeciesParser(), p.BattleParser,
+                p.CreateOverworldReader, p.Maps, p.Graph, p.Pathfinding, p.CreateStateReader, p.CreateBattleEvent, p.SaveGame,
+                createNavigatorEvent: p.CreateNavigatorEvent, isPickupMember: p.IsPickupMember, createPickupVisit: createPickupVisit))
+            {
+                PartyBlocks = [Block(TargetPid, TargetSpecies)],
+            };
+        }
+
+        private static GameState FleeHunt(FakeBot bot, bool pickup)
+        {
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            // BattleMode differs from the hunt's, so a decision that goes on to encounter shows it set.
+            (state.Pickup, state.OriginalBattleMode, state.BattleMode) = (pickup, BattleMode.Flee, BattleMode.Battle);
+            return state;
+        }
+
+        // FR-3: with Pickup on, the decision runs the profile's visit, made for this bot, then encounters. The party holds
+        // nothing: the visit runs on every decision that goes on to an encounter, decided by no read before the list.
+        [Theory]
+        [InlineData(GameFlavor.HGSS)]
+        [InlineData(GameFlavor.RS)]
+        public async Task Decide_PickupOn_RunsTheProfilesVisitThenEncounters(GameFlavor flavor)
+        {
+            FixedVisit visit = new(true);
+            List<IBot> madeFor = [];
+            FakeBot bot = PickupBot(flavor, (_, b) => { madeFor.Add(b); return visit; });
+            GameState state = FleeHunt(bot, pickup: true);
+
+            await DecideAsync(state);
+
+            Assert.Equal([bot], madeFor);
+            Assert.Equal(1, visit.Runs);
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        [Fact]
+        public async Task Decide_PickupOnAndTheVisitStops_DoesNotEncounter()
+        {
+            FakeBot bot = PickupBot(GameFlavor.RS, (_, _) => new FixedVisit(false));
+            GameState state = FleeHunt(bot, pickup: true);
+
+            await DecideAsync(state);
+
+            Assert.Equal([EventState.Waiting], state.State);
+            Assert.Equal(BattleMode.Battle, state.BattleMode);
+        }
+
+        [Theory]
+        [InlineData(GameFlavor.HGSS)]
+        [InlineData(GameFlavor.RS)]
+        public async Task Decide_PickupOff_NeverMakesTheVisit(GameFlavor flavor)
+        {
+            GameState state = FleeHunt(PickupBot(flavor, NoVisit), pickup: false);
+
+            await DecideAsync(state);
+
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        // The heal trip goes to the Pokémon Center without a visit; the next decision that encounters makes one.
+        [Fact]
+        public async Task Decide_PickupOnAndAHealTrip_NoVisit()
+        {
+            GameState state = Training(RsBot(NoVisit, Gen3Mon(10)), TrainType.Standard);
+            state.Pickup = true;
+
+            await DecideAsync(state);
+
+            Assert.Equal([EventState.GoToPokemonCenter], state.State);
         }
     }
 }
