@@ -28,6 +28,9 @@ const CHEAT_SOURCE = path.join(repoDir, 'ShinyBotHunter.Qa', 'Cheats', 'rs-usa-r
 const MAIN_CHECKOUT = path.dirname(spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: repoDir, encoding: 'utf8' }).stdout.trim())
 export const PRISTINE = path.join(MAIN_CHECKOUT, '..', 'shinybothunterqasaves', 'rs', 'qa-route101.SaveRAM')
 const PRISTINE_SHA_PREFIX = '9196ad2bab1c'
+/** A pristine save beside the checkout and the start of its sha256; `ROUTE101` unless a scenario names another. */
+export type Save = { file: string; sha: string }
+export const ROUTE101: Save = { file: PRISTINE, sha: PRISTINE_SHA_PREFIX }
 
 // The flash; the 16-byte clock footer after it is rewritten by the emulator on close (research doc, "The save file").
 export const FLASH = 131072
@@ -75,7 +78,6 @@ export const RUN_MACRO_X = 'M.Right.15.33707826:H.B.1;M.Left.13.33707826'
 
 // BotService and OrchestratorEvent (W6a, #386).
 export const HEADBUTT_SENTENCE = 'Ruby and Sapphire have no Headbutt trees.'
-export const PICKUP_SENTENCE = 'Pickup is not available on Ruby and Sapphire.'
 export const FIELD_SENTENCE = 'Close any menu or message and stand in the field.'
 export const FAINTED_SENTENCE = 'The first Pokémon in the party has fainted.'
 export const SHINY_LEAD_LINE = 'A shiny first Pokémon adds about 1.2 s to every battle.'
@@ -242,18 +244,18 @@ export function psqlRows(pg: NodeJS.ProcessEnv, runStart: string, rom: string): 
 const flash = (file: string): Buffer => fs.readFileSync(file).subarray(0, FLASH)
 
 /** Copies the pristine save over the ROM's SaveRAM and .bak. Only with no EmuHawk running, which would overwrite them. */
-export function installPristine(rom: string): void {
+export function installPristine(rom: string, save = ROUTE101): void {
   expect(emuHawkRunning(), 'an EmuHawk is already running; close it first').toBe(false)
-  expect(fs.existsSync(PRISTINE), `missing ${PRISTINE}`).toBe(true)
-  expect(sha256(PRISTINE).startsWith(PRISTINE_SHA_PREFIX), `${PRISTINE} is not the pristine qa-route101 save`).toBe(true)
-  fs.copyFileSync(PRISTINE, saveOf(rom))
-  fs.copyFileSync(PRISTINE, saveOf(rom) + '.bak')
+  expect(fs.existsSync(save.file), `missing ${save.file}`).toBe(true)
+  expect(sha256(save.file).startsWith(save.sha), `${save.file} is not the pristine ${path.basename(save.file, '.SaveRAM')} save`).toBe(true)
+  fs.copyFileSync(save.file, saveOf(rom))
+  fs.copyFileSync(save.file, saveOf(rom) + '.bak')
   step(`pristine save installed for ${rom}: sha256 ${sha256(saveOf(rom))}`)
 }
 
 /** "The save's first 131,072 bytes unchanged": the ROM's SaveRAM against the pristine copy, once EmuHawk has closed. */
-export function flashUnchanged(rom: string): boolean {
-  const same = flash(saveOf(rom)).equals(flash(PRISTINE))
+export function flashUnchanged(rom: string, save = ROUTE101): boolean {
+  const same = flash(saveOf(rom)).equals(flash(save.file))
   step(`${rom} SaveRAM flash ${same ? 'equals' : 'differs from'} the pristine copy (sha256 ${sha256(saveOf(rom))})`)
   return same
 }
@@ -512,12 +514,9 @@ export async function pollWhileWaiting(read: () => Promise<number>, predicate: (
 
 // --- rs-wild-sapphire and rs-wild-ruby -----------------------------------------------------------------------
 
-/**
- * "Headbutt and Pickup greyed out with their reasons, No Target and the train types not" (FR-18a), on the open form
- * before Run. Pickup shows once a train type is chosen, so Standard is chosen for it and None put back after.
- */
+/** "Headbutt greyed out with its reason, No Target and the train types not" (FR-18a), on the open form before Run. */
 async function checkGreyed(card: Locator): Promise<void> {
-  const criterion = '"Headbutt and Pickup greyed out with their reasons, No Target and the train types not"'
+  const criterion = '"Headbutt greyed out with its reason, No Target and the train types not"'
   const headbutt = card.getByTestId('param-EncounterType').locator('option[value="Headbutt"]')
   await expect(headbutt, `${criterion}: no EncounterType option Headbutt`).toBeAttached({ timeout: 30_000 })
   const headbuttLabel = (await headbutt.textContent()) ?? ''
@@ -533,16 +532,6 @@ async function checkGreyed(card: Locator): Promise<void> {
     expect(label, `${criterion}: the ${param} ${value} option's label`).toBe(value)
     expect(await option.isDisabled(), `${criterion}: the ${param} ${value} option is disabled`).toBe(false)
   }
-  const trainType = card.getByTestId('param-TrainType').locator('select')
-  await trainType.selectOption('Standard')
-  const pickup = card.getByTestId('param-Pickup')
-  const box = pickup.locator('input[type="checkbox"]')
-  await expect(box, `${criterion}: no Pickup checkbox with train Standard`).toBeAttached({ timeout: 30_000 })
-  const pickupLabel = ((await pickup.locator('label').textContent()) ?? '').trim()
-  step(`Pickup: "${pickupLabel}", disabled ${await box.isDisabled()}`)
-  expect(pickupLabel, `${criterion}: the Pickup label`).toBe(`Pickup (${PICKUP_SENTENCE})`)
-  expect(await box.isDisabled(), `${criterion}: the Pickup checkbox is enabled`).toBe(true)
-  await trainType.selectOption('None')
 }
 
 /**
