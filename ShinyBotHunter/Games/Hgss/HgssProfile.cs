@@ -19,6 +19,9 @@ namespace ShinyBotHunter.Games.Hgss
 
         public const string DataDirectory = ".\\data\\HGSS";
 
+        // ABILITY_PICKUP, include/constants/abilities.h.
+        private const byte AbilityPickup = 53;
+
         public static GameProfile Create(PokemonMetadataService metadata)
             => Create(metadata, new MapService(DataDirectory), new GraphService(DataDirectory));
 
@@ -36,7 +39,6 @@ namespace ShinyBotHunter.Games.Hgss
                 HasChainedEncounter: true,
                 HasStaticEncounter: true,
                 HasHeadbuttTrees: true,
-                HasPickup: true,
                 HasWildRunChecks: false),
             revisions: [0],
             Addresses,
@@ -53,6 +55,10 @@ namespace ShinyBotHunter.Games.Hgss
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
                 await bot.WaitForMacroAsync();
             },
-            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>());
+            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>(),
+            isPickupMember: member => member.Ability == AbilityPickup,
+            // Loaded at the decision, as the Primo config is at its start, so a value can be corrected without a build.
+            createPickupVisit: (provider, bot) => new PickupTakeEvent(bot, provider.GetRequiredService<PokemonStateReader>(),
+                PickupConfig.Load(PickupConfig.DefaultPath), provider.GetRequiredService<PickupTally>()));
     }
 }

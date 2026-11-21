@@ -13,9 +13,6 @@ namespace ShinyBotHunter.BotEvents
     // the reason logged, as HeadbuttEncounterEvent parks.
     public class PickupTakeEvent : AbstractBotEvent<bool>
     {
-        // ABILITY_PICKUP, include/constants/abilities.h.
-        internal const byte AbilityPickup = 53;
-
         private readonly IBot bot;
         private readonly PokemonStateReader reader;
         private readonly PickupConfig config;
@@ -37,7 +34,7 @@ namespace ShinyBotHunter.BotEvents
                 await bot.WaitForMacroAsync(cancellationToken);
             };
             string? park = await TakeAsync(state, bot.State, (HgssPointerService)bot.Addresses, config, run, bot.ClearMacro,
-                () => reader.GetPartyState(bot), tally, bot.GameFileName, cancellationToken);
+                () => reader.GetPartyState(bot), bot.Profile.IsPickupMember!, tally, bot.GameFileName, cancellationToken);
             return park is null;
         }
 
@@ -45,7 +42,7 @@ namespace ShinyBotHunter.BotEvents
         // state stack untouched, otherwise the reason the event parked in Waiting.
         internal static async Task<string?> TakeAsync(
             GameState state, IGameStateReader game, HgssPointerService addresses, PickupConfig config, Func<string, Task> run, Action clear, Func<Task<PokemonState>> readParty,
-            PickupTally tally, string gameFileName, CancellationToken ct)
+            Func<PokemonData, bool> isPickupMember, PickupTally tally, string gameFileName, CancellationToken ct)
         {
             Stopwatch trip = Stopwatch.StartNew();
             try
@@ -69,7 +66,7 @@ namespace ShinyBotHunter.BotEvents
                 for (int i = 0; i < party.PartySize; i++)
                 {
                     PokemonData member = party.PartyPokemon[i]!;
-                    if (member.Ability != AbilityPickup)
+                    if (!isPickupMember(member))
                     {
                         continue;
                     }
@@ -123,7 +120,7 @@ namespace ShinyBotHunter.BotEvents
             for (int i = 0; i < after.PartySize; i++)
             {
                 PokemonData member = after.PartyPokemon[i]!;
-                if (member.Ability == AbilityPickup && member.HeldItem != 0)
+                if (isPickupMember(member) && member.HeldItem != 0)
                 {
                     return Park(state, clear, $"Pickup: {member.Name} still holds item {member.HeldItem} after the take; check the Pokémon menu.");
                 }

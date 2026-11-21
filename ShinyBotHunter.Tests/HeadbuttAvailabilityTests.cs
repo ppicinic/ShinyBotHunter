@@ -61,7 +61,7 @@ namespace ShinyBotHunter.Tests
             var hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService());
             var profile = new GameProfile(hgss.Flavor, hgss.Capabilities, [0], hgss.Addresses, new MovesParser(), hgss.BattleParser,
                 hgss.CreateOverworldReader, hgss.Maps, hgss.Graph, hgss.Pathfinding, hgss.CreateStateReader, hgss.CreateBattleEvent, hgss.SaveGame,
-                createNavigatorEvent: hgss.CreateNavigatorEvent);
+                createNavigatorEvent: hgss.CreateNavigatorEvent, isPickupMember: hgss.IsPickupMember);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();

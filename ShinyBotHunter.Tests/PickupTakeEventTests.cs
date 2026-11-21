@@ -1,6 +1,9 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
@@ -10,6 +13,10 @@ namespace ShinyBotHunter.Tests
     public class PickupTakeEventTests
     {
         private static readonly HgssPointerService Table = new();
+
+        // The HGSS profile's rule, so these tests assert what an HGSS visit counts as a Pickup member.
+        private static readonly Func<PokemonData, bool> HgssPickupMember =
+            HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService()).IsPickupMember!;
 
         private static readonly GameSnapshot Free = new(GameScreen.FieldFree, null, null, null, null);
         private static readonly GameSnapshot StartMenu = new(GameScreen.FieldTask, null, null, null, 0x0203D1C1);
@@ -124,7 +131,7 @@ namespace ShinyBotHunter.Tests
             List<PickupItemsResponse> pushes = [];
             PickupTally tally = Tally(pushes);
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), readParty, tally, "HG-Test", CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), readParty, HgssPickupMember, tally, "HG-Test", CancellationToken.None);
 
             Assert.Null(park);
             PickupItemsResponse took = Assert.Single(tally.Read());
@@ -153,7 +160,7 @@ namespace ShinyBotHunter.Tests
 
             string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(stepStaleMs: 50), game.Run, () => { },
                 Reads(Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17), Member("Aipom", 53, 0), Member("Aipom", 53, 26)), Empty()),
-                tally, "HG-Test", CancellationToken.None);
+                HgssPickupMember, tally, "HG-Test", CancellationToken.None);
 
             Assert.StartsWith("Pickup: Waited for the party list after slot 4's take", park);
             PickupItemsResponse took = Assert.Single(tally.Read());
@@ -168,7 +175,7 @@ namespace ShinyBotHunter.Tests
             MenuGame game = new(Free,
                 [[StartMenu], [App(1, 0)], [App(2, 0)], [App(15, 0)], [App(17, 0, 0), App(17, 0, 0), App(17, 0, 0), App(17, 0, 2)], [App(1, 0)], [Free]]);
             string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(), game.Run, () => { },
-                Reads(Party(Member("Aipom", 53, 17)), Party(Member("Aipom", 53, 0))), Tally([]), "HG-Test", CancellationToken.None);
+                Reads(Party(Member("Aipom", 53, 17)), Party(Member("Aipom", 53, 0))), HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.Null(park);
             Assert.Single(game.Macros, A);
@@ -184,7 +191,7 @@ namespace ShinyBotHunter.Tests
             List<EventState> topAtClear = [];
 
             string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(stepStaleMs: 50), game.Run, () => topAtClear.Add(state.State.Peek()),
-                Reads(Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17)), Empty()), Tally([]), "HG-Test", CancellationToken.None);
+                Reads(Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 17)), Empty()), HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.NotNull(park);
             Assert.StartsWith("Pickup: Waited for slot 2's Item menu", park);
@@ -203,7 +210,7 @@ namespace ShinyBotHunter.Tests
             int reads = 0;
 
             string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(fieldFreeStaleMs: 50), game.Run, () => calls.Add("clear"),
-                () => { reads++; return Task.FromResult(Party(Member("Aipom", 53, 17))); }, Tally([]), "HG-Test", CancellationToken.None);
+                () => { reads++; return Task.FromResult(Party(Member("Aipom", 53, 17))); }, HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.NotNull(park);
             Assert.StartsWith("Pickup: Waited for the field free before the Pickup trip", park);
@@ -221,7 +228,7 @@ namespace ShinyBotHunter.Tests
             List<EventState> topAtClear = [];
 
             string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run,
-                () => topAtClear.Add(state.State.Peek()), Reads(Party(Member("Aipom", 53, 17))), Tally([]), "HG-Test", CancellationToken.None);
+                () => topAtClear.Add(state.State.Peek()), Reads(Party(Member("Aipom", 53, 17))), HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.Equal("Pickup: Aipom still holds item 17 after the take; check the Pokémon menu.", park);
             Assert.Equal([EventState.DecideOverworldAction], topAtClear);
@@ -236,7 +243,7 @@ namespace ShinyBotHunter.Tests
             PokemonState party = Party(Member("Typhlosion", 66, 0), Member("Aipom", 53, 137));
             GameState state = Deciding();
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => { }, Reads(party), Tally([]), "HG-Test", CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => { }, Reads(party), HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.Equal([X, Pokemon, Cancel], game.Macros);
             Assert.Equal("Pickup: Aipom still holds item 137 after the take; check the Pokémon menu.", park);
@@ -250,7 +257,7 @@ namespace ShinyBotHunter.Tests
             GameState state = Deciding();
             List<string> calls = [];
 
-            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), Reads(Empty()), Tally([]), "HG-Test", CancellationToken.None);
+            string? park = await PickupTakeEvent.TakeAsync(state, game, Table, Config(), game.Run, () => calls.Add("clear"), Reads(Empty()), HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.Null(park);
             Assert.Equal([X, Pokemon, Cancel], game.Macros);
@@ -267,7 +274,7 @@ namespace ShinyBotHunter.Tests
 
             string? park = await PickupTakeEvent.TakeAsync(Deciding(), game, Table, Config(), game.Run, () => { },
                 Reads(Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 17)), Party(Member("Typhlosion", 66, 234), Member("Aipom", 53, 0))),
-                Tally([]), "HG-Test", CancellationToken.None);
+                HgssPickupMember, Tally([]), "HG-Test", CancellationToken.None);
 
             Assert.Null(park);
             Assert.Equal([X, Pokemon, Slot[1], Item, Take, A, Cancel], game.Macros);

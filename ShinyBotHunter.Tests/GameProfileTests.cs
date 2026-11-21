@@ -41,7 +41,6 @@ namespace ShinyBotHunter.Tests
                 HasChainedEncounter: true,
                 HasStaticEncounter: true,
                 HasHeadbuttTrees: true,
-                HasPickup: true,
                 HasWildRunChecks: false), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
@@ -55,6 +54,12 @@ namespace ShinyBotHunter.Tests
             NavigatorEvent navigator = new(new PokemonStateReader());
             Assert.Same(navigator, profile.CreateNavigatorEvent!(new ServiceCollection().AddSingleton(navigator).BuildServiceProvider()));
             Assert.Null(profile.TrainingRefusal);
+            Assert.True(profile.IsPickupMember!(new PokemonData { Ability = 53 }));
+            Assert.False(profile.IsPickupMember!(new PokemonData { Ability = 66 }));
+            // The visit loads the shipped Pickup.json.
+            Directory.SetCurrentDirectory(RepoPaths.AppProject);
+            var pickupProvider = new ServiceCollection().AddSingleton<PokemonStateReader>().AddSingleton(new PickupTally(_ => Task.CompletedTask)).BuildServiceProvider();
+            Assert.IsType<PickupTakeEvent>(profile.CreatePickupVisit!(pickupProvider, new FakeBot(Task.CompletedTask)));
         }
 
         [Fact]
@@ -77,7 +82,6 @@ namespace ShinyBotHunter.Tests
                 HasChainedEncounter: false,
                 HasStaticEncounter: false,
                 HasHeadbuttTrees: false,
-                HasPickup: false,
                 HasWildRunChecks: true), profile.Capabilities);
             Assert.Null(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
@@ -97,6 +101,25 @@ namespace ShinyBotHunter.Tests
             Assert.Null(profile.TrainingRefusal!(RsPointerService.For("AXVE")));
             Assert.Equal(RsProfile.NoTrainingAddresses, profile.TrainingRefusal!(RsPointerService.For(null)));
             Assert.Equal(RsProfile.NoTrainingAddresses, profile.TrainingRefusal!(RsPointerService.For("AXPJ")));
+        }
+
+        [Theory]
+        [InlineData(263, 0, false, true)]   // Zigzagoon
+        [InlineData(264, 0, false, true)]   // Linoone
+        [InlineData(52, 0, false, true)]    // Meowth
+        [InlineData(216, 0, false, true)]   // Teddiursa
+        [InlineData(231, 0, false, true)]   // Phanpy
+        [InlineData(190, 1, false, true)]   // Aipom, slot 1
+        [InlineData(190, 0, false, false)]  // Aipom, slot 0 is Run Away
+        [InlineData(263, 0, true, false)]   // a Zigzagoon egg
+        [InlineData(258, 0, false, false)]  // Mudkip
+        public void RsPickupMember_IsTheSpeciesInItsSlot(ushort species, byte slot, bool egg, bool expected)
+        {
+            GameProfile profile = RsProfile.Create(Metadata(), new MapService(new Dictionary<int, Map>()));
+
+            bool member = profile.IsPickupMember!(new PokemonData { Species = species, Ability = slot, IVs = egg ? 1u << 30 : 0 });
+
+            Assert.Equal(expected, member);
         }
 
         [Theory]
