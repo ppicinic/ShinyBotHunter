@@ -194,7 +194,9 @@ namespace ShinyBotHunter.Tests
                 Memory(),
                 Memory(locked: 1, inBattle: BattleBit, controller: ChooseAction),
                 Memory(locked: 1, inBattle: BattleBit, controller: OtherController, window: 8),
+                FieldPartyMemory(),
             ];
+            PlaceTask(memories[3], 0, FieldPartyList, data: [0, 0, 0, 4 << 8]);
 
             foreach (FakeMemoryClient memory in memories)
             {
@@ -748,6 +750,100 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(GameScreen.FieldTask, snapshot.Screen);
             Assert.Equal(WaitForButton, snapshot.Native);
+        }
+
+        // The field party screen (docs/research/rs-pickup.md "The party menu, from the decomp and the probe").
+        private const uint FieldPartyList = 0x08089CF5;   // HandleDefaultPartyMenu
+        private const uint PokemonMenu = 0x08089DB5;      // sub_8089D94
+        private const uint ItemSubmenu = 0x0808A081;      // sub_808A060
+        private const uint PartyMessagePrinting = 0x0202E8F6; // gPartyMenuMessage_IsPrinting
+        private const uint MenuWindow = 0x0202E91E;       // gMenuWindow + 0x16
+        private const uint PokemonMenuCursor = 0x0202FFA8; // sPokeMenuCursorPos, then the count and 8 entries
+
+        // Out of battle under CB2_PartyMenuMain (Sapphire).
+        private static FakeMemoryClient FieldPartyMemory(byte locked = 1)
+        {
+            FakeMemoryClient memory = Memory(locked: locked);
+            memory.Place(Callback2, BitConverter.GetBytes(SapphirePartyMenuMain));
+            return memory;
+        }
+
+        [Fact]
+        public async Task FieldPartyList_CarriesTheCursorAndTheFade()
+        {
+            FakeMemoryClient memory = FieldPartyMemory();
+            PlaceTask(memory, 0, FieldPartyList, data: [0, 0, 0, 4 << 8]);
+            memory.Place(0x02020142, BitConverter.GetBytes((short)3)); // sprite 4's data[0]
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(FieldPartyList, snapshot.TaskFunction);
+            Assert.Equal(3, snapshot.PartyMonIndex);
+            Assert.Equal(0, snapshot.AppState);
+            Assert.Null(snapshot.Prompt);
+            Assert.Equal(2, memory.ChainReads.Count);
+            (uint, int, int)[] spriteAndFade = [(0x02020142, 0, 2), (0x0202F38F, 0, 1)];
+            Assert.Equal(spriteAndFade, memory.ChainReads[1].Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
+        }
+
+        [Fact]
+        public async Task PokemonMenu_CarriesItsCursorAndEntries()
+        {
+            FakeMemoryClient memory = FieldPartyMemory();
+            PlaceTask(memory, 0, PokemonMenu, data: [0, 0, 0, 4 << 8]);
+            memory.Place(PokemonMenuCursor, [1, 5, 10, 0, 1, 2, 3, 0, 0, 0]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(PokemonMenu, snapshot.TaskFunction);
+            Assert.Equal(1, snapshot.Prompt);
+            Assert.Equal("10,0,1,2,3", snapshot.MenuEntries);
+        }
+
+        [Fact]
+        public async Task ItemSubmenu_CarriesTheCursor()
+        {
+            FakeMemoryClient memory = FieldPartyMemory();
+            PlaceTask(memory, 0, ItemSubmenu, data: [0, 0, 0, 4 << 8]);
+            memory.Place(PokemonMenuCursor, [1, 4, 0, 1, 2, 3]);
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Equal(ItemSubmenu, snapshot.TaskFunction);
+            Assert.Equal(1, snapshot.Prompt);
+            Assert.Null(snapshot.MenuEntries);
+        }
+
+        // The take message: the task runs the give/take follow-ups, so no party task is found and nothing more is read.
+        [Theory]
+        [InlineData(1, 5, 5)]
+        [InlineData(1, 3, 3)]
+        [InlineData(0, 5, null)]
+        public async Task TakeMessage_TextPrinterIsTheMenuWindowWhilePrinting(byte printing, ushort state, int? textPrinter)
+        {
+            FakeMemoryClient memory = FieldPartyMemory();
+            memory.Place(PartyMessagePrinting, [printing]);
+            memory.Place(MenuWindow, BitConverter.GetBytes(state));
+
+            GameSnapshot snapshot = await ReadTraining(memory);
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
+            Assert.Null(snapshot.TaskFunction);
+            Assert.Equal(textPrinter, snapshot.TextPrinter);
+            Assert.Single(memory.ChainReads);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1)]
+        public async Task FieldPartyScreen_IsReadBeforeTheLock(byte locked)
+        {
+            GameSnapshot snapshot = await ReadTraining(FieldPartyMemory(locked));
+
+            Assert.Equal(GameScreen.OtherApp, snapshot.Screen);
         }
     }
 }
