@@ -685,11 +685,11 @@ namespace ShinyBotHunter.BotEvents
         // Sends the macro at the snapshot it was gated on and waits for confirmed (AGENTS rule 16). Each confirming byte
         // changes on the frame the game reads the key, so a snapshot still equal to at, same screen and cursor, cursorWait
         // after the press proves the key was dropped: it is sent once more, never a third time. A snapshot that changed but
-        // is not confirmed yet gets no second press. Then the wait for confirmed is bounded by stale. One log line, naming
-        // what confirmed the press.
-        private static async Task<(GameSnapshot Confirmed, int Presses)> PressConfirmedAsync(IBot bot, IGameStateReader reader,
+        // is not confirmed yet gets no second press. Then the wait for confirmed is bounded by stale. One log line under
+        // log's prefix, naming what confirmed the press; the Pickup visit (RsPickupTakeEvent) shares it.
+        internal static async Task<(GameSnapshot Confirmed, int Presses)> PressConfirmedAsync(IBot bot, IGameStateReader reader,
             string macro, string what, string by, GameSnapshot at, Func<GameSnapshot, bool> confirmed, TimeSpan cursorWait,
-            TimeSpan stale, CancellationToken ct)
+            TimeSpan stale, CancellationToken ct, string log = "RsBattle")
         {
             int presses = await PressAsync(bot, macro, ct);
             Stopwatch since = Stopwatch.StartNew();
@@ -706,7 +706,7 @@ namespace ShinyBotHunter.BotEvents
             {
                 s = await GameStateWait.UntilAsync(reader, $"{by} after {what}", confirmed, stale, ct);
             }
-            Console.WriteLine($"[RsBattle] {what}, {since.ElapsedMilliseconds} ms: confirmed by {by} ({s}){dropped}");
+            Console.WriteLine($"[{log}] {what}, {since.ElapsedMilliseconds} ms: confirmed by {by} ({s}){dropped}");
             return (s, presses);
         }
 
