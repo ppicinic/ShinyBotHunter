@@ -69,7 +69,8 @@ namespace ShinyBotHunter.Games.Rs
                 PartyMenuMainCallback2: not null }
                 ? null
                 : NoTrainingAddresses,
-            isPickupMember: HasPickupAbility);
+            isPickupMember: HasPickupAbility,
+            createPickupVisit: (provider, bot) => new RsPickupTakeEvent(bot, provider.GetRequiredService<PokemonStateReader>(), provider.GetRequiredService<PickupTally>()));
 
         // The species with Pickup and the slot that holds it (docs/research/rs-pickup.md); Ability is the Gen 3 ability slot.
         private static bool HasPickupAbility(PokemonData member) => !member.IsEgg && member.Species switch
