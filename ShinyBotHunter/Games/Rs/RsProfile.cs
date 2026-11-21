@@ -37,7 +37,6 @@ namespace ShinyBotHunter.Games.Rs
                 HasChainedEncounter: false,
                 HasStaticEncounter: false,
                 HasHeadbuttTrees: false,
-                HasPickup: false,
                 HasWildRunChecks: true),
             revisions: [1, 2],
             Addresses,

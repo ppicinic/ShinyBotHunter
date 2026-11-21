@@ -661,14 +661,11 @@ namespace ShinyBotHunter.Service
 
         // MOVE_HEADBUTT, include/constants/moves.h:33
         private const ushort MoveHeadbutt = 29;
-        // ABILITY_PICKUP, include/constants/abilities.h
-        private const byte AbilityPickup = 53;
 
         private const string PartyUnreadable = "The party could not be read; try again once the game is in the field.";
         private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
         private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
         internal const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
-        internal const string NoPickup = "Pickup is not available on Ruby and Sapphire.";
 
         // The choices a profile's capabilities rule out, with the reason the dashboard shows and Run refuses with.
         // Empty for HGSS, so its list and its start are unchanged.
@@ -678,10 +675,6 @@ namespace ShinyBotHunter.Service
             if (!c.HasHeadbuttTrees)
             {
                 disabled["EncounterType"] = new() { [nameof(EncounterType.Headbutt)] = NoHeadbuttTrees };
-            }
-            if (!c.HasPickup)
-            {
-                disabled["Pickup"] = new() { ["true"] = NoPickup };
             }
             return disabled;
         }
@@ -725,7 +718,7 @@ namespace ShinyBotHunter.Service
         }
 
         /// <summary>Null when a party member has the Pickup ability, otherwise the reason the dashboard shows.</summary>
-        private static string? PickupRefusal(PokemonState? party)
+        private static string? PickupRefusal(PokemonState? party, Func<PokemonData, bool> isPickupMember)
         {
             if (party is null)
             {
@@ -733,7 +726,7 @@ namespace ShinyBotHunter.Service
             }
             for (int i = 0; i < party.PartySize; i++)
             {
-                if (party.PartyPokemon[i]!.Ability == AbilityPickup)
+                if (isPickupMember(party.PartyPokemon[i]!))
                 {
                     return null;
                 }
@@ -794,7 +787,7 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException(headbuttReason);
             }
-            if (pickup && PickupRefusal(party) is { } pickupReason)
+            if (pickup && PickupRefusal(party, bot.Profile.IsPickupMember!) is { } pickupReason)
             {
                 throw new ArgumentException(pickupReason);
             }
@@ -868,7 +861,7 @@ namespace ShinyBotHunter.Service
                 disabled.TryAdd("EncounterType", new());
                 disabled["EncounterType"].TryAdd(nameof(EncounterType.Headbutt), headbutt);
             }
-            if (PickupRefusal(party) is { } pickup)
+            if (PickupRefusal(party, entry.Bot!.Profile.IsPickupMember!) is { } pickup)
             {
                 disabled.TryAdd("Pickup", new());
                 disabled["Pickup"].TryAdd("true", pickup);

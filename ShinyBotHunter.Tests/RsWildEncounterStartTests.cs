@@ -19,7 +19,8 @@ namespace ShinyBotHunter.Tests
 {
     /// <summary>
     /// What an RS bot is offered for Wild Encounter, and what Run refuses (docs/specs/rs-wild-encounter.md FR-1, FR-12).
-    /// A party block is a little-endian HP, the level, then a little-endian PID, which the stub parser reads back.
+    /// A party block is a little-endian HP, the level, then a little-endian PID, which the stub parser reads back; a longer
+    /// block adds a little-endian species and the ability slot.
     /// </summary>
     public class RsWildEncounterStartTests
     {
@@ -30,6 +31,8 @@ namespace ShinyBotHunter.Tests
                 HP = BitConverter.ToUInt16(raw, 0),
                 Level = raw[2],
                 PID = BitConverter.ToUInt32(raw, 3),
+                Species = raw.Length > 7 ? BitConverter.ToUInt16(raw, 7) : (ushort)0,
+                Ability = raw.Length > 9 ? raw[9] : (byte)0,
             };
         }
 
@@ -42,7 +45,8 @@ namespace ShinyBotHunter.Tests
 
         private const string NoHeadbuttTrees = "Ruby and Sapphire have no Headbutt trees.";
         private const string NoTrainingAddresses = "Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).";
-        private const string NoPickup = "Pickup is not available on Ruby and Sapphire.";
+        private const string NoPickupMember = "No Pokémon in your party has the Pickup ability.";
+        private const string PickupNeedsTrainMode = "Pickup needs a train mode: the Pokémon must be knocked out, not fled from.";
         private const string StandInTheField = "Close any menu or message and stand in the field.";
         private const string NotTheFirstObject = "The player is not the first object on this map, which the bot watches as it turns.";
         private const string LeadFainted = "The first Pokémon in the party has fainted.";
@@ -51,6 +55,9 @@ namespace ShinyBotHunter.Tests
 
         // TID and SID are 0 in the stub, so a PID of 0 is shiny and 0x12345678 is not.
         private static byte[] Mon(ushort hp, byte level, uint pid = 0x12345678) => [.. BitConverter.GetBytes(hp), level, .. BitConverter.GetBytes(pid)];
+
+        // A Zigzagoon (263) in ability slot 0, which is Pickup.
+        private static byte[] Zigzagoon() => [.. Mon(20, 3), .. BitConverter.GetBytes((ushort)263), 0];
 
         private static readonly byte[][] OneHealthy = [Mon(20, 7)];
 
@@ -61,7 +68,7 @@ namespace ShinyBotHunter.Tests
             // The shared table unless a test gives a game's: the shared one has no per-game part, so it cannot train.
             var profile = new GameProfile(rs.Flavor, capabilities ?? rs.Capabilities, [0], (_, _) => table ?? new RsPointerService(), new HpLevelPidParser(),
                 rs.BattleParser, rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
-                createNavigatorEvent: rs.CreateNavigatorEvent, trainingRefusal: rs.TrainingRefusal);
+                createNavigatorEvent: rs.CreateNavigatorEvent, trainingRefusal: rs.TrainingRefusal, isPickupMember: rs.IsPickupMember);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
@@ -103,13 +110,34 @@ namespace ShinyBotHunter.Tests
             var wild = Assert.Single(actions);
             Assert.Equal("Wild Encounter", wild.Name);
             var disabled = wild.DisabledChoices!;
-            // FR-18a: the party knows no Headbutt and has no Pickup member; the capability reasons win. No Target and the train
-            // types are offered.
+            // FR-18a: the party knows no Headbutt and has no Pickup member; Headbutt's capability reason wins, and Pickup has the
+            // party's. No Target and the train types are offered.
             Assert.Equal(["EncounterType", "Pickup"], disabled.Keys);
             Assert.Equal(["Headbutt"], disabled["EncounterType"].Keys);
             Assert.Equal(NoHeadbuttTrees, disabled["EncounterType"]["Headbutt"]);
             Assert.Equal(["true"], disabled["Pickup"].Keys);
-            Assert.Equal(NoPickup, disabled["Pickup"]["true"]);
+            Assert.Equal(NoPickupMember, disabled["Pickup"]["true"]);
+        }
+
+        [Fact]
+        public async Task IdleRsBot_WithAZigzagoon_OffersPickup()
+        {
+            var (service, _, _, _) = await LaunchAsync([Mon(20, 7), Zigzagoon()]);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.DoesNotContain("Pickup", Assert.Single(actions).DisabledChoices!.Keys);
+        }
+
+        [Fact]
+        public void DisabledByCapabilities_Rs_IsHeadbuttOnly()
+        {
+            GameProfile rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+
+            var disabled = BotService.DisabledByCapabilities(rs.Capabilities);
+
+            Assert.Equal(["EncounterType"], disabled.Keys);
+            Assert.Equal(NoHeadbuttTrees, disabled["EncounterType"]["Headbutt"]);
         }
 
         [Fact]
@@ -121,7 +149,7 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void DisabledByCapabilities_NavigatingTrainingProfile_HeadbuttAndPickupOnly()
+        public void DisabledByCapabilities_NavigatingTrainingProfile_HeadbuttOnly()
         {
             // RS as T3b will declare it: navigation, training and the run checks, none of HGSS's own members.
             GameCapabilities caps = new(
@@ -137,11 +165,9 @@ namespace ShinyBotHunter.Tests
 
             var disabled = BotService.DisabledByCapabilities(caps);
 
-            Assert.Equal(["EncounterType", "Pickup"], disabled.Keys);
+            Assert.Equal(["EncounterType"], disabled.Keys);
             Assert.Equal(["Headbutt"], disabled["EncounterType"].Keys);
             Assert.Equal(NoHeadbuttTrees, disabled["EncounterType"]["Headbutt"]);
-            Assert.Equal(["true"], disabled["Pickup"].Keys);
-            Assert.Equal(NoPickup, disabled["Pickup"]["true"]);
         }
 
         [Fact]
@@ -213,11 +239,42 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task StartWithPickup_Is400WithThePickupSentence()
+        public async Task StartWithPickup_NoPickupMember_Is400WithTheMemberSentence()
         {
-            var (service, bot, _, _) = await LaunchAsync(OneHealthy, table: RsPointerService.For("AXPE"));
+            var (service, _, _, _) = await LaunchAsync(OneHealthy, table: RsPointerService.For("AXPE"));
 
-            Assert.Equal(NoPickup, await RefusalAsync(service, Run(a => (a.Pickup, a.TrainType) = (true, TrainType.Standard))));
+            Assert.Equal(NoPickupMember, await RefusalAsync(service, Run(a => (a.Pickup, a.TrainType) = (true, TrainType.Standard))));
+        }
+
+        [Fact]
+        public async Task StartWithPickup_AZigzagoon_PassesTheGuards()
+        {
+            var (service, _, _, _) = await LaunchAsync([Mon(20, 7), Zigzagoon()], table: RsPointerService.For("AXPE"));
+
+            string? refusal = await RefusalAsync(service, Run(a => (a.Pickup, a.TrainType) = (true, TrainType.Standard)));
+
+            Assert.DoesNotContain(NoPickupMember, refusal);
+            Assert.DoesNotContain(PickupNeedsTrainMode, refusal);
+        }
+
+        [Fact]
+        public async Task StartWithPickupAndNoTrainMode_Is400WithoutARead()
+        {
+            var (service, bot, _, _) = await LaunchAsync([Mon(20, 7), Zigzagoon()], table: RsPointerService.For("AXPE"));
+
+            Assert.Equal(PickupNeedsTrainMode, await RefusalAsync(service, Run(a => a.Pickup = true)));
+            Assert.Equal(0, bot.PartyReads);
+        }
+
+        // FR-12: Pickup needs a train mode, so on a game code with no per-game part it gets the train mode's refusal, first.
+        [Theory]
+        [InlineData(TrainType.Standard)]
+        [InlineData(TrainType.Switch)]
+        public async Task StartWithPickup_UnknownGameCode_Is400WithTheTrainingSentenceWithoutARead(TrainType trainType)
+        {
+            var (service, bot, _, _) = await LaunchAsync([Mon(20, 7), Zigzagoon()]);
+
+            Assert.Equal(NoTrainingAddresses, await RefusalAsync(service, Run(a => (a.Pickup, a.TrainType) = (true, trainType))));
             Assert.Equal(0, bot.PartyReads);
         }
 
