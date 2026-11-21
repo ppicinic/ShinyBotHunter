@@ -55,7 +55,24 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        internal static string ItemName(ushort id) => id < Items.Length ? Items[id] : $"Item {id}";
+        // A Gen 3 number with no Gen 4 item is kept as this bit plus the Gen 3 number: no sprite, and no collision, since Gen 4 ids stop near 540 and Gen 3 ids at 376.
+        private const ushort Gen3Unknown = 0x8000;
+
+        // The tally's id for an RS take's Gen 3 item number.
+        internal static ushort FromGen3(ushort gen3Item)
+        {
+            ushort id = ItemConverter.GetItemFuture3(gen3Item);
+            return ItemConverter.IsItemTransferable34(id) ? id : (ushort)(Gen3Unknown | gen3Item);
+        }
+
+        internal static string ItemName(ushort id)
+        {
+            if ((id & Gen3Unknown) != 0)
+            {
+                return $"Item {id & ~Gen3Unknown}";
+            }
+            return id < Items.Length ? Items[id] : $"Item {id}";
+        }
 
         // Items by count, most first, then by name.
         private static PickupItemsResponse Snapshot(string gameFileName, string milestone, Dictionary<ushort, int> items)

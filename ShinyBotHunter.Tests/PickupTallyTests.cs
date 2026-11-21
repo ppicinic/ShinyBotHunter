@@ -98,5 +98,47 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(1, push.Total);
             Assert.Equal([new PickupItemCount(17, "Potion", 1)], push.Items);
         }
+
+        [Theory]
+        [InlineData(22, 26, "Super Potion")]
+        [InlineData(23, 27, "Full Heal")]
+        [InlineData(2, 2, "Ultra Ball")]
+        [InlineData(68, 50, "Rare Candy")]
+        [InlineData(19, 23, "Full Restore")]
+        [InlineData(24, 28, "Revive")]
+        [InlineData(110, 92, "Nugget")]
+        [InlineData(64, 46, "Protein")]
+        [InlineData(69, 51, "PP Up")]
+        [InlineData(187, 221, "King’s Rock")]
+        public void Gen3PickupItemsConvertToGen4NumbersAndNames(ushort gen3, ushort gen4, string name)
+        {
+            ushort id = PickupTally.FromGen3(gen3);
+
+            Assert.Equal(gen4, id);
+            Assert.Equal(name, PickupTally.ItemName(id));
+        }
+
+        [Fact]
+        public void AGen3NumberOutsideTheConversionIsNamedByItsGen3Number()
+        {
+            ushort id = PickupTally.FromGen3(52);
+
+            Assert.NotEqual(128, id);
+            Assert.Equal("Item 52", PickupTally.ItemName(id));
+        }
+
+        [Fact]
+        public async Task AnRsTakeIsCountedUnderItsGen4Number()
+        {
+            PickupTally tally = Tally([]);
+
+            await tally.RecordAsync("R", "M", PickupTally.FromGen3(22));
+            await tally.RecordAsync("R", "M", PickupTally.FromGen3(22));
+            await tally.RecordAsync("R", "M", PickupTally.FromGen3(52));
+
+            Assert.Equal(
+                [new PickupItemCount(26, "Super Potion", 2), new PickupItemCount(0x8000 | 52, "Item 52", 1)],
+                tally.Read()[0].Items);
+        }
     }
 }
