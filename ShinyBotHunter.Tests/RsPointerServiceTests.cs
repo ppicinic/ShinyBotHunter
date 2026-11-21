@@ -174,6 +174,22 @@ namespace ShinyBotHunter.Tests
             Assert.Null(table.StopLearningYesNo);
             Assert.Null(table.UseNextPokemonYesNo);
             Assert.Null(table.PartyMenuMainCallback2);
+            Assert.Null(table.StartMenuInputTask);
+            Assert.Null(table.OverworldCallback2);
+        }
+
+        // pret symbols, commit 78b1990, lines 4846 and 2949: sub_80712B4 and CB2_Overworld, + 1 for the Thumb bit.
+        [Theory]
+        [InlineData("AXPE", 2, 0x080712D9u, 0x080543C9u)]
+        [InlineData("AXPE", 1, 0x080712D9u, 0x080543C9u)]
+        [InlineData("AXVE", 2, 0x080712D5u, 0x080543C5u)]
+        [InlineData("AXVE", 1, 0x080712D5u, 0x080543C5u)]
+        public void EachGameHasItsStartMenuAndOverworld(string gameCode, int revision, uint startMenuTask, uint overworld)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, revision);
+
+            Assert.Equal(startMenuTask, table.StartMenuInputTask);
+            Assert.Equal(overworld, table.OverworldCallback2);
         }
 
         // pret symbols, commit 78b1990, line 4647: CB2_PartyMenuMain, + 1 for the Thumb bit.
@@ -260,6 +276,14 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x02020004u, table.Sprites);
             Assert.Equal(0x02038470u, table.BattlePartyCurrentOrder);
             Assert.Equal(0x02016078u, table.RunTries);
+            Assert.Equal(0x08089CF5u, table.FieldPartyMenuTask);
+            Assert.Equal(0x08089DB5u, table.PokemonMenuTask);
+            Assert.Equal(0x0808A081u, table.PokemonItemMenuTask);
+            Assert.Equal(0x0202E8F6u, table.PartyMenuMessagePrinting);
+            Assert.Equal(0x0202E91Eu, table.MenuWindowState);
+            Assert.Equal(0x0202FFA8u, table.PokemonMenuCursorPos);
+            Assert.Equal(0x0202FFA9u, table.PokemonMenuActionCount);
+            Assert.Equal(0x0202FFAAu, table.PokemonMenuActions);
         }
 
         [Fact]
