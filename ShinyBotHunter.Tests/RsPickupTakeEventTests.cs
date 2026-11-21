@@ -255,6 +255,262 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
 
+        // Down on the list from cursor from to cursor to, one press each.
+        private static GameSnapshot[][] Walk(int from, int to) => [.. Enumerable.Range(from + 1, to - from).Select(c => new[] { List(c) })];
+
+        // One held slot's presses on cursor i as the game answers them: A (3 lag frames still showing the list, then the
+        // menu), Down to ITEM, A (a blank frame, then the submenu), Down to TAKE, A (the message printing, then waiting), A
+        // (the message closing, a blank frame, the list).
+        private static GameSnapshot[][] TakeSlot(int i, string entries = "0,1,2,3")
+        {
+            int item = Array.IndexOf(entries.Split(','), "2");
+            return
+            [
+                [List(i), Menu(i, 0, entries)],
+                .. Enumerable.Range(1, item).Select(p => new[] { Menu(i, p, entries) }),
+                [Blank, ItemMenu(i, 0)],
+                [ItemMenu(i, 1)],
+                [Message(3), Message(6), Message(2), Message(3), Message(5)],
+                [Message(2), Blank, List(i)],
+            ];
+        }
+
+        // The macros one held slot's take sends with ITEM at index item.
+        private static string[] TakeMacros(int item = 2) => [A, .. Enumerable.Repeat(Down, item), A, Down, A, A];
+
+        [Fact]
+        public async Task TheHeldSlotsAreThoseReadAtTheList()
+        {
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 2), .. TakeSlot(2), .. Leave()]);
+            PokemonState held = Party(Mudkip(), Zigzagoon(), Zigzagoon(23), Zigzagoon());
+            List<(int Presses, GameSnapshot? Showing)> reads = [];
+            // The held party only with the list on screen after exactly START and A; a read made anywhere else sees nothing held.
+            Func<Task<PokemonState>> readParty = () =>
+            {
+                reads.Add((game.Macros.Count, game.LastRead));
+                return Task.FromResult(game.Macros.Count == 2 && game.LastRead == List(0) ? held : Party(Mudkip(), Zigzagoon(), Zigzagoon(), Zigzagoon()));
+            };
+            PickupTally tally = Tally([]);
+
+            string? park = await Visit(game, Deciding(), () => { }, readParty, tally);
+
+            Assert.Null(park);
+            Assert.Equal([Start, A, Down, Down, .. TakeMacros(), B, B], game.Macros);
+            // The look at List(0), the per-take read back on List(2), then the read in the free field.
+            Assert.Equal([(2, List(0)), (11, List(2)), (13, Free)], reads);
+            Assert.Equal([new PickupItemCount(27, "Full Heal", 1)], Assert.Single(tally.Read()).Items);
+        }
+
+        [Fact]
+        public async Task TakesTwoHeldSlotsWithEveryPressConfirmed()
+        {
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 1), .. TakeSlot(1), .. Walk(1, 3), .. TakeSlot(3), .. Leave()]);
+            GameState state = Deciding();
+            List<string> calls = [];
+            List<PickupItemsResponse> pushes = [];
+            PickupTally tally = Tally(pushes);
+            Func<Task<PokemonState>> reads = Reads(
+                Party(Mudkip(), Zigzagoon(22), Zigzagoon(), Zigzagoon(110), Zigzagoon(), Zigzagoon()),
+                Party(Mudkip(), Zigzagoon(), Zigzagoon(), Zigzagoon(110), Zigzagoon(), Zigzagoon()),
+                Empty());
+
+            (string? park, string log) = await Logged(() => Visit(game, state, () => calls.Add("clear"), reads, tally, readFrame: Frames(5000, 5300)));
+
+            Assert.Null(park);
+            Assert.Equal([Start, A, Down, A, Down, Down, A, Down, A, A, Down, Down, A, Down, Down, A, Down, A, A, B, B], game.Macros);
+            string entries = "0,1,2,3";
+            Assert.Equal(
+            [
+                Free, StartMenu(1), List(0),
+                List(1), Menu(1, 0, entries), Menu(1, 1, entries), Menu(1, 2, entries), ItemMenu(1, 0), ItemMenu(1, 1), Message(5),
+                List(1), List(2),
+                List(3), Menu(3, 0, entries), Menu(3, 1, entries), Menu(3, 2, entries), ItemMenu(3, 0), ItemMenu(3, 1), Message(5),
+                List(3), StartMenu(1),
+            ], game.SeenAtPress);
+            PickupItemsResponse took = Assert.Single(tally.Read());
+            Assert.Equal("SA-Test", took.GameFileName);
+            Assert.Equal("Route 101", took.Milestone);
+            Assert.Equal([new PickupItemCount(92, "Nugget", 1), new PickupItemCount(26, "Super Potion", 1)], took.Items);
+            Assert.Equal(2, pushes.Count);
+            Assert.Contains("[Pickup] held 2 of 5 pickup members; take", log);
+            Assert.Contains("[Pickup] slot 2 (Zigzagoon) menu [0,1,2,3]: ITEM at position 2", log);
+            Assert.Contains("[Pickup] took Super Potion (Gen 3 item 22) from slot 2 (Zigzagoon)", log);
+            Assert.Contains("[Pickup] took Nugget (Gen 3 item 110) from slot 4 (Zigzagoon)", log);
+            Assert.Contains("[Pickup] A on TAKE, ", log);
+            Assert.Contains("ms: confirmed by slot 4's take message waiting for a button (", log);
+            Assert.Contains("[Pickup] trip took 300 frames, ", log);
+            Assert.DoesNotContain("dropped", log);
+            Assert.Empty(calls);
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
+        [Fact]
+        public async Task AFieldMoveComesFirst_ItemIsFoundAtItsPosition()
+        {
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 1), .. TakeSlot(1, "10,0,1,2,3"), .. Leave()]);
+
+            (string? park, string log) = await Logged(() => Visit(game, Deciding(), () => { },
+                Reads(Party(Mudkip(), Zigzagoon(110)), Party(Mudkip(), Zigzagoon())), Tally([])));
+
+            Assert.Null(park);
+            Assert.Equal([Start, A, Down, .. TakeMacros(3), B, B], game.Macros);
+            Assert.Contains("[Pickup] slot 2 (Zigzagoon) menu [10,0,1,2,3]: ITEM at position 3", log);
+            Assert.Contains("[Pickup] took Nugget (Gen 3 item 110) from slot 2 (Zigzagoon)", log);
+        }
+
+        [Fact]
+        public async Task AMailHolderIsNotVisited_AndIsTheStillHoldsStop()
+        {
+            // Orange Mail, 121, in slot 2; a Super Potion in slot 3 is still taken.
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 2), .. TakeSlot(2), .. Leave()]);
+            GameState state = Deciding();
+            PickupTally tally = Tally([]);
+
+            (string? park, string log) = await Logged(() => Visit(game, state, () => { },
+                Reads(Party(Mudkip(), Zigzagoon(121), Zigzagoon(22)), Party(Mudkip(), Zigzagoon(121), Zigzagoon())), tally));
+
+            Assert.Equal([Start, A, Down, Down, .. TakeMacros(), B, B], game.Macros);
+            Assert.Contains("[Pickup] held 2 of 2 pickup members; take", log);
+            Assert.Contains("[Pickup] slot 2 (Zigzagoon) holds mail; not visited", log);
+            Assert.Equal([new PickupItemCount(26, "Super Potion", 1)], Assert.Single(tally.Read()).Items);
+            Assert.Equal($"Pickup: Zigzagoon still holds {PickupTally.ItemName(PickupTally.FromGen3(121))} after the take; check the bag and the Pokémon menu.", park);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+        }
+
+        [Fact]
+        public async Task AMenuWithNoItem_IsClosedWithBAndTheSlotLeft()
+        {
+            // Slot 2's menu has no ITEM entry; slot 3's item is still taken.
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 1), [List(1), Menu(1, 0, "0,1,3")], [List(1)], .. Walk(1, 2), .. TakeSlot(2), .. Leave()]);
+            GameState state = Deciding();
+            PickupTally tally = Tally([]);
+
+            (string? park, string log) = await Logged(() => Visit(game, state, () => { },
+                Reads(Party(Mudkip(), Zigzagoon(22), Zigzagoon(23)), Party(Mudkip(), Zigzagoon(22), Zigzagoon())), tally));
+
+            Assert.Equal([Start, A, Down, A, B, Down, .. TakeMacros(), B, B], game.Macros);
+            Assert.Equal(Menu(1, 0, "0,1,3"), game.SeenAtPress[4]);
+            Assert.Contains("[Pickup] slot 2 (Zigzagoon) menu [0,1,3]: no ITEM; left", log);
+            Assert.Contains("confirmed by the party list taking keys on cursor 1 (", log);
+            Assert.Equal([new PickupItemCount(27, "Full Heal", 1)], Assert.Single(tally.Read()).Items);
+            Assert.Equal("Pickup: Zigzagoon still holds Super Potion after the take; check the bag and the Pokémon menu.", park);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+        }
+
+        [Fact]
+        public async Task AFullPocket_DismissesRecordsNothingAndStops()
+        {
+            // Revive, 24, not in the bag, with the pocket full: the message is dismissed and the slot still holds it.
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 1), .. TakeSlot(1), .. Leave()]);
+            GameState state = Deciding();
+            List<PickupItemsResponse> pushes = [];
+            PickupTally tally = Tally(pushes);
+
+            (string? park, string log) = await Logged(() => Visit(game, state, () => { }, Reads(Party(Mudkip(), Zigzagoon(24))), tally));
+
+            Assert.Equal([Start, A, Down, .. TakeMacros(), B, B], game.Macros);
+            Assert.Contains("[Pickup] slot 2 (Zigzagoon) still holds Revive (Gen 3 item 24) after TAKE; left for the stop", log);
+            Assert.DoesNotContain("[Pickup] took", log);
+            Assert.Empty(tally.Read());
+            Assert.Empty(pushes);
+            Assert.Equal("Pickup: Zigzagoon still holds Revive after the take; check the bag and the Pokémon menu.", park);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+        }
+
+        [Fact]
+        public async Task AnEggAndAFaintedMemberAreWalkedOver()
+        {
+            PokemonData egg = Zigzagoon();
+            egg.IVs = 1u << 30;
+            PokemonData fainted = Zigzagoon(22);
+            fainted.HP = 0;
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 2), .. TakeSlot(2), .. Walk(2, 3), .. TakeSlot(3), .. Leave()]);
+            PickupTally tally = Tally([]);
+
+            (string? park, string log) = await Logged(() => Visit(game, Deciding(), () => { },
+                Reads(Party(Mudkip(), egg, fainted, Zigzagoon(23)), Party(Mudkip(), egg, Zigzagoon(), Zigzagoon(23)), Party(Mudkip(), egg, Zigzagoon(), Zigzagoon())),
+                tally));
+
+            Assert.Null(park);
+            Assert.Contains("[Pickup] held 2 of 2 pickup members; take", log);
+            Assert.Equal([Start, A, Down, Down, .. TakeMacros(), Down, .. TakeMacros(), B, B], game.Macros);
+            Assert.Equal([List(0), List(1)], game.SeenAtPress.Where((_, k) => game.Macros[k] == Down).Take(2));
+            Assert.Equal(List(2), game.SeenAtPress[4]);
+            Assert.Equal(List(2), game.SeenAtPress[11]);
+            Assert.Equal([new PickupItemCount(27, "Full Heal", 1), new PickupItemCount(26, "Super Potion", 1)], Assert.Single(tally.Read()).Items);
+        }
+
+        // Every press of a visit that takes slot 2 (ITEM at 2) and closes slot 3's menu (no ITEM), with the start cursor on
+        // 0, and the game's answer to each.
+        private static readonly GameSnapshot[][] EveryStep =
+        [
+            [Free, StartMenu(0)],
+            [StartMenu(1)],
+            [Blank, List(0)],
+            [List(1)],
+            .. TakeSlot(1),
+            [List(2)],
+            [Menu(2, 0, "0,1,3")],
+            [List(2)],
+            .. Leave(),
+        ];
+
+        // A row per wait of the #488 plan's table, by the index of the press whose answer never comes; -1 is the opening
+        // wait, with no press.
+        [Theory]
+        [InlineData(-1, "Pickup: Waited for the field free before the Pickup visit")]
+        [InlineData(0, "Pickup: Waited for the start menu taking keys after START")]
+        [InlineData(1, "Pickup: Waited for start cursor 1 after Down on the start menu 0 -> 1")]
+        [InlineData(2, "Pickup: Waited for the party list taking keys on cursor 0 after A on POKéMON")]
+        [InlineData(3, "Pickup: Waited for the party cursor on 1 after Down on the party list 0 -> 1")]
+        [InlineData(4, "Pickup: Waited for slot 2's Pokémon menu after A on cursor 1")]
+        [InlineData(5, "Pickup: Waited for the menu cursor on 1 after Down on slot 2's menu 0 -> 1")]
+        [InlineData(7, "Pickup: Waited for slot 2's ITEM submenu after A on ITEM")]
+        [InlineData(8, "Pickup: Waited for the submenu cursor on TAKE after Down on GIVE")]
+        [InlineData(9, "Pickup: Waited for slot 2's take message waiting for a button after A on TAKE")]
+        [InlineData(10, "Pickup: Waited for the party list taking keys on cursor 1 after A at slot 2's take message")]
+        [InlineData(13, "Pickup: Waited for the party list taking keys on cursor 2 after B on slot 3's menu")]
+        [InlineData(14, "Pickup: Waited for the start menu taking keys after B on the party list")]
+        [InlineData(15, "Pickup: Waited for the field free after B on the start menu")]
+        public async Task AStaleStepStops_NamingTheStepAndTheSnapshot(int stuck, string waitedFor)
+        {
+            // The gate repeats after the stuck press, so it is sent once more after the retry window and then goes stale.
+            GameSnapshot gate = stuck switch { -1 => NoTask, 0 => Free, _ => EveryStep[stuck - 1][^1] };
+            MenuGame game = stuck == -1 ? new(NoTask) : new(Free, [.. EveryStep.Take(stuck), [gate]]);
+            GameState state = Deciding();
+            List<EventState> topAtClear = [];
+
+            string? park = await Visit(game, state, () => topAtClear.Add(state.State.Peek()),
+                Reads(Party(Mudkip(), Zigzagoon(22), Zigzagoon(23)), Party(Mudkip(), Zigzagoon(), Zigzagoon(23))), Tally([]),
+                retryAfter: TimeSpan.FromMilliseconds(50), stale: TimeSpan.FromMilliseconds(150));
+
+            Assert.StartsWith(waitedFor, park);
+            Assert.Contains(gate.ToString(), park);
+            Assert.Equal(stuck == -1 ? 0 : stuck + 2, game.Macros.Count);
+            if (stuck >= 0)
+            {
+                Assert.Equal(game.Macros[stuck], game.Macros[stuck + 1]);
+            }
+            Assert.Equal([EventState.DecideOverworldAction], topAtClear);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+        }
+
+        [Fact]
+        public async Task AStoppedVisitRecordsOnlyConfirmedTakes()
+        {
+            // Slot 4's message is never answered: it stays waiting for a button.
+            GameSnapshot[][] slot4 = TakeSlot(3);
+            MenuGame game = new(Free, [.. Open, .. Walk(0, 1), .. TakeSlot(1), .. Walk(1, 3), .. slot4[..^1], [Message(5)]]);
+            PickupTally tally = Tally([]);
+
+            string? park = await Visit(game, Deciding(), () => { },
+                Reads(Party(Mudkip(), Zigzagoon(22), Zigzagoon(), Zigzagoon(110)), Party(Mudkip(), Zigzagoon(), Zigzagoon(), Zigzagoon(110))), tally,
+                retryAfter: TimeSpan.FromMilliseconds(50), stale: TimeSpan.FromMilliseconds(150));
+
+            Assert.StartsWith("Pickup: Waited for the party list taking keys on cursor 3 after A at slot 4's take message", park);
+            Assert.Equal([new PickupItemCount(26, "Super Potion", 1)], Assert.Single(tally.Read()).Items);
+        }
+
         [Fact]
         public void RsProfile_CreatesTheRsVisit()
         {
