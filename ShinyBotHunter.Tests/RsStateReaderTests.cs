@@ -266,7 +266,7 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task TrainingReadsAreOneRequestOfFifteenBlocks()
+        public async Task TrainingReadsAreOneRequestOfSixteenBlocks()
         {
             FakeMemoryClient memory = BattleMemory();
 
@@ -279,7 +279,8 @@ namespace ShinyBotHunter.Tests
                 (0x030006A4, 0, 1), (0x03001770, 0, 4), (0x03001BAD, 0, 1), (0x03004330, 0, 4),
                 (0x03004226, 0, 2), (0x02024D1E, 0, 9), (0x02024E60, 0, 1),
                 (0x03001774, 0, 4), (0x02016018, 0, 0x85), (0x02024E64, 0, 1), (0x02018079, 0, 1),
-                (0x02024A6A, 0, 0x1AA), (0x0202E892, 0, 2), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
+                (0x02024A6A, 0, 0x1AA), (0x0202E892, 0, 0x8E), (0x030005BC, 0, 4), (0x03004B20, 0, 0x280),
+                (0x0202FFA8, 0, 10),
             ];
             Assert.Equal(expected, request.Blocks.Select(block => (block.Anchor, block.Hops.Length, block.Length)));
         }

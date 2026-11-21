@@ -6,7 +6,7 @@ namespace ShinyBotHunter.Games.Rs
     /// <summary>
     /// Classifies the RS screen from seven direct reads made on one frame (docs/specs/rs-wild-encounter.md FR-7,
     /// docs/research/rs-wild-encounter.md "What memory shows through one cycle"). Built with trainingReads it reads
-    /// fifteen blocks on one frame, plus one sprite and the palette fade on the party screen and the palette fade on the
+    /// sixteen blocks on one frame, plus one sprite and the palette fade on the party screen and the palette fade on the
     /// forget-a-move screen, and also classifies the training and field
     /// script screens (docs/specs/rs-navigation-and-training.md); the flee path's reader is built without it.
     /// </summary>
@@ -34,6 +34,7 @@ namespace ShinyBotHunter.Games.Rs
         private const int FieldWindowBlock = 12;
         private const int NativeBlock = 13;
         private const int TasksBlock = 14;
+        private const int PokemonMenuBlock = 15;
 
         // struct Task (include/task.h): func u32 at + 0, isActive u8 at + 4, s16 data[16] at + 8; 16 tasks of 0x28.
         // Struct offsets, not addresses; decomp only.
@@ -118,9 +119,10 @@ namespace ShinyBotHunter.Games.Rs
                     new(addresses.MoveSelectionCursor, direct, 1),
                     new(addresses.ForgetMoveCursor, direct, 1),
                     new(addresses.ActiveBattlerPartyIndex, direct, scriptPointerOffset + 4),
-                    new(addresses.FieldMessageWindowState, direct, 2),
+                    new(addresses.FieldMessageWindowState, direct, (int)(addresses.MenuWindowState - addresses.FieldMessageWindowState) + 2),
                     new(addresses.ScriptNative, direct, 4),
                     new(addresses.Tasks, direct, TaskSize * TaskCount),
+                    new(addresses.PokemonMenuCursorPos, direct, (int)(addresses.PokemonMenuActions - addresses.PokemonMenuCursorPos) + 8),
                 ];
             }
         }
