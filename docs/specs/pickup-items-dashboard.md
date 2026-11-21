@@ -120,6 +120,7 @@ QA ran on the feature tip 174f5e7 plus the switch-wait fix in the commit that ad
 
 ## Changelog
 
+- 2026-11-21 (epic #485): the non-goal "RS" no longer holds: Ruby and Sapphire have Pickup ([RS Pickup spec](rs-pickup.md)), and their takes are counted, each Gen 3 item number turned into the tally's Gen 4 one (`PickupTally.FromGen3`, #489).
 - 2026-11-10: FR-12, the header reads game file then milestone: "i rather the title be the game name then the milestone", "just one window per game".
 - 2026-11-10: item sprites, FR-9 to FR-11, from the owner's ask: "let's add sprites and let's add a sprite image fetcher like we do for pokemon". FR-10 then made a grid, several items to a row: "i think items can be multiple per row to consolidate space".
 - 2026-11-10: first draft, from the owner's answers: totals only, keep adding until the backend restarts, a manual switch, one window per game.

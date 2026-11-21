@@ -93,7 +93,8 @@ The bot reads the game when you press Run on a Ruby or Sapphire **Wild Encounter
 | `The party could not be read; try again once the game is in the field.` | The bot could not read your party. | Wait until your character is in the field, and start again. |
 | `The first Pokémon in the party has fainted.` | Your first Pokémon has no HP left, or the party is empty. | Heal it, or put a Pokémon that can battle first, and start again. |
 | `Ruby and Sapphire have no Headbutt trees.` | Encounter Type Headbutt was sent, though it is greyed out. | Pick Spin or Run. |
-| `Pickup is not available on Ruby and Sapphire.` | Pickup was sent ticked, though it is greyed out. | Leave Pickup unticked. |
+| `Pickup needs a train mode: the Pokémon must be knocked out, not fled from.` | Pickup is ticked but Train Type is None. | Pick Standard or Switch, or untick Pickup. |
+| `No Pokémon in your party has the Pickup ability.` | Pickup is ticked and no Pokémon in your party has the ability. | Put a Pokémon with Pickup in your party, or untick Pickup. |
 | `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).` | Train Type Standard or Switch was sent for a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads. | Leave Train Type at None, or train on a US ROM. |
 
 ### Something is missing from the Start form
@@ -253,7 +254,7 @@ The `<what>` of those stops, as the bot writes them. Party slots and move slots 
 | `the battle window to leave <n>` | pressing A at a battle message or an evolution text |
 | `the cursor on RUN`, `the cursor on RUN after the missing press`, `the screen to leave the action menu` | running from the battle: when training, because the Pokémon fighting is too hurt or out of damaging PP, the calculator found no move, the switch failed, or a Pokémon fainted |
 
-The two refusals training can meet when you press **Run**, `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).` and `Pickup is not available on Ruby and Sapphire.`, are under [A Ruby or Sapphire wild hunt is not ready](#a-ruby-or-sapphire-wild-hunt-is-not-ready).
+The refusals training and Pickup can meet when you press **Run**, `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).`, `Pickup needs a train mode: the Pokémon must be knocked out, not fled from.` and `No Pokémon in your party has the Pickup ability.`, are under [A Ruby or Sapphire wild hunt is not ready](#a-ruby-or-sapphire-wild-hunt-is-not-ready).
 
 ## A hunt stops with "Waited for ...; the game state stayed ..."
 
