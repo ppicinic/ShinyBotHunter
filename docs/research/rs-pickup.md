@@ -1,0 +1,135 @@
+# Research: Pickup in Ruby and Sapphire (1.2)
+
+Status: spike done, 2026-11-21. Nothing in this doc is implemented in the bot; it is the source for the [RS Pickup spec](../specs/rs-pickup.md).
+Related: [HGSS Pickup research](pickup.md) and [spec](../specs/pickup-mode.md) (the mode this extends), [RS navigation and training research](rs-navigation-and-training.md) (the train mode that wins the battles, the battle party screen's reads), [RS wild encounter research](rs-wild-encounter.md) (the field and battle addresses), AGENTS rule 16.
+
+The spike ran on the dev PC with the backend, the dashboard and one EmuHawk from the QA install (`C:\BizHawk-2.11`, sound off) on monitor one, on its own ROM copies (`SA-Pickup`, Sapphire 1.2; `RU-Pickup`, Ruby 1.2) and its own save, all deleted afterwards. The staged QA saves were not touched. The decomp is the `pret/pokeruby` checkout at commit `5784633`; addresses are from pret's symbol tables for both games at 1.1 and 1.2.
+
+## What was proved
+
+1. **The existing train mode makes Pickup roll.** Wild Encounter, Spin, Train Standard, target level 101, started through the backend on the Route 101 QA save with five Zigzagoon added behind the Mudkip: 31 won battles in about 11 minutes, with a Pokémon Center trip on the way, and afterwards every one of the five Zigzagoon held an item (Nugget, Super Potion, Ultra Ball, PP Up, Super Potion).
+2. **The take loop runs from memory alone.** From the free field: START, POKéMON, then per holder the party cursor, A, ITEM, TAKE, A at the message, then B and B back to the free field. Every press was confirmed by the byte it changes, none by time, and none was dropped in five visits. A visit with nothing to take is 148 frames (2.5 s). Each take adds about 100 frames (1.7 s). Five takes: 671 frames (11.2 s).
+3. **One set of gates serves both games.** The whole visit ran on Ruby 1.2 with three addresses four bytes lower than Sapphire's, as the symbol tables say. The party menu's own steps are the same addresses in both games at 1.1 and 1.2.
+4. **The menu's variants are readable.** A member that knows a field move has that move first in its menu, mail replaces ITEM with MAIL, and a full bag pocket leaves the item held. Each was produced on the emulator and each shows in memory.
+5. **Two things the bot has today do not work for Gen 3.** The party read gives the ability slot, not the ability, so the HGSS "ability is 53" check never finds a Pickup member. And the Pickup items window names items and loads sprites by Gen 4 item number.
+
+## The rule, from the decomp
+
+- The roll is `atkE5_pickup` (`src/battle_script_commands.c`), the battle script command `pickup`. It appears once, in `BattleScript_PayDayMoneyAndPickUpItems` (`data/battle_scripts_1.s`), which the won-battle script runs. A fled battle and a lost one do not reach it. **Pickup needs a win.**
+- It walks the whole party, not the battlers. A member rolls when its ability is Pickup, it is not an egg, and it holds nothing: `Random() % 10 == 0`, 10 %.
+- The ability comes from the species and the ability slot: `ALT_ABILITY ? ability2 : ability1` of `gBaseStats[species]`. Six species have it in Ruby and Sapphire:
+
+| Species (National Dex) | Slot with Pickup |
+|---|---|
+| Zigzagoon (263), Linoone (264), Meowth (52), Teddiursa (216), Phanpy (231) | slot 0 (their only ability) |
+| Aipom (190) | slot 1 (slot 0 is Run Away) |
+
+- On a hit, `Random() % 100` picks from one fixed table. There are no level tiers.
+
+| Item | Gen 3 id | Chance |
+|---|---|---|
+| Super Potion | 22 | 30 % |
+| Full Heal | 23 | 10 % |
+| Ultra Ball | 2 | 10 % |
+| Rare Candy | 68 | 10 % |
+| Full Restore | 19 | 10 % |
+| Revive | 24 | 10 % |
+| Nugget | 110 | 10 % |
+| Protein | 64 | 5 % |
+| PP Up | 69 | 4 % |
+| King's Rock | 187 | 1 % |
+
+With five empty-handed members, `1 − 0.9^5 = 41 %` of won battles give at least one item. A held item stops that member's roll, so taking the items is what keeps the rate up, as on HGSS.
+
+## The bag
+
+`AddBagItem` (`src/item.c`): an item joins a slot that already holds it up to 99, then starts a new slot. The Items pocket has 20 slots and the Balls pocket 16. Nine of the ten Pickup items go to the Items pocket and the Ultra Ball to the Balls pocket. When there is no room, Take prints "The BAG is full. The POKéMON's item could not be removed." and the item stays held.
+
+Seen on the emulator: with the Items pocket's empty slots filled by RAM writes, Take on a PP Up printed that message, the menu behaved exactly as after a successful take, and the party record still held item 69.
+
+## The party menu, from the decomp and the probe
+
+`src/pokemon_menu.c` and `src/party_menu.c`. The menu is one task whose function says which step it is on.
+
+| Step | What memory shows | Address |
+|---|---|---|
+| The start menu takes input | a task with function `sub_80712B4` | `0x080712D9` Sapphire, `0x080712D5` Ruby (the same at 1.1) |
+| Start menu entries and cursor | `sCurrentStartMenuActions`, `sNumStartMenuActions`, `sStartMenuCursorPos`; POKéMON is action 1 | `0x0202E8FE`, `0x0202E8FD`, `0x0202E8FC` (in the table today) |
+| The party list takes input | callback 2 is `CB2_PartyMenuMain`, the party task's function is `HandleDefaultPartyMenu`, `gPaletteFade.active` is 0 | `0x0806AF01` / `0x0806AEFD` (in the table); `0x08089CF5` both games; `0x0202F38F` bit 7 (in the table) |
+| The party cursor | `data[0]` of the sprite named by the party task's `data[3] >> 8` | `gSprites` `0x02020004`, 0x44 a sprite, `+ 0x2E` (the battle party screen's read) |
+| The Pokémon's menu is up | the party task's function is `sub_8089D94` | `0x08089DB5` both games |
+| Its entries, in order | `sPokeMenuOptionsNo`, `sPokeMenuOptionsOrder` | `0x0202FFA9`, `0x0202FFAA` |
+| Its cursor, and the Item submenu's | `sPokeMenuCursorPos` | `0x0202FFA8` |
+| The Item submenu is up (GIVE, TAKE, CANCEL) | the party task's function is `sub_808A060` | `0x0808A081` both games |
+| The take message waits for a button | `gPartyMenuMessage_IsPrinting` is 1 and the menu window's state is 5 (3 while it prints) | `0x0202E8F6`; `gMenuWindow` `0x0202E908` `+ 0x16` = `0x0202E91E` |
+| Back in the field with the start menu open | callback 2 is `CB2_Overworld`, the start menu's input task is back, the fade is off | `0x080543C9` / `0x080543C5` |
+| The field is free | `sLockFieldControls` is 0 | `0x030006A4` (in the table) |
+
+The entries of a Pokémon's menu are ids: 0 SUMMARY, 1 SWITCH, 2 ITEM, 3 CANCEL, 7 MAIL, 10 and up the field moves. The game builds the list with the field moves the Pokémon knows first, then SUMMARY, SWITCH (only with two or more in the party), ITEM or MAIL, CANCEL. Seen:
+
+- A Zigzagoon with no field move: `[0, 1, 2, 3]`, ITEM at position 2.
+- The same with Cut written into its first move: `[10, 0, 1, 2, 3]`, ITEM at position 3.
+- The same holding a mail item (121): `[0, 1, 7, 3]`, no ITEM entry.
+
+So the position of ITEM is read, never assumed.
+
+The take message is `Received the {item} from {name}.` and ends in a wait for a button. An A before the window's state reads 5 is not taken.
+
+Leaving: B at the list fades out, the game returns to the field and opens the start menu again on its own, with the cursor still on POKéMON. A second B closes it.
+
+## The loop, as the probe ran it
+
+One read per wait, 2-frame holds, frames by `gMain.vblankCounter1`. The same on Sapphire and Ruby.
+
+| Step | Press | Confirmed by | Frames |
+|---|---|---|---|
+| Open the start menu | START | the start menu's input task is up | 10 |
+| To POKéMON | Down or Up, one at a time | the start cursor reading the next position | 0 to 6 each (0 presses on every visit after the first) |
+| Open the party | A | callback 2 `CB2_PartyMenuMain`, task `HandleDefaultPartyMenu`, fade off | 55 to 58 |
+| Read the party | none | the list is on screen | |
+| To a holder | Down, one at a time | the party cursor reading the next slot | 4 to 6 each |
+| Its menu | A | the task function reading `sub_8089D94` | 4 to 8 |
+| To ITEM | Down, one at a time | `sPokeMenuCursorPos` reading the next position | 4 to 6 each |
+| The Item submenu | A | the task function reading `sub_808A060` | 4 to 5 |
+| To TAKE | Down | `sPokeMenuCursorPos` reading 1 | 4 to 6 |
+| Take | A | the message printing and the window's state 5 | 40 to 46 |
+| Dismiss | A | printing 0 and the task function back to `HandleDefaultPartyMenu` | 5 to 8 |
+| Leave the party | B | callback 2 `CB2_Overworld`, the start menu's input task, fade off | 51 to 59 |
+| Close the start menu | B | the field lock reading 0 | 5 |
+
+| Visit | Frames | Seconds |
+|---|---|---|
+| Nothing held (Sapphire, Ruby) | 148, 148 | 2.5 |
+| Two takes plus a mail holder looked at and left (Sapphire) | 399 | 6.7 |
+| Five takes (Ruby) | 671 | 11.2 |
+| One take alone | 97 to 108 | 1.7 |
+
+A won battle on Route 101 with the Lv 7 to 11 Mudkip took 872 to 1,557 frames, 1,130 on average (18.8 s), so a look after every battle costs about an eighth of the cycle.
+
+## What the bot has that does not fit
+
+- **The ability.** `Gen3PokemonParser` sets `PokemonData.Ability` to the ability slot (0 or 1), because that is what a Gen 3 record stores. `BotService.PickupRefusal` and `PickupTakeEvent` compare it with 53. For Gen 3 the test is the table above: species and slot. The parser already gives the National Dex number.
+- **The event.** `PickupTakeEvent` is HGSS's: touches on the bottom screen, the HGSS address table, the HGSS party app's states. Ruby and Sapphire need their own visit; `OrchestratorEvent.DecideOverworldAction` builds the HGSS one directly today.
+- **Item numbers.** `PickupTally` names an item from PKHeX's Gen 4 strings by id and the dashboard loads `Items/<id>.png`, where the sprites were saved by Gen 4 number. Gen 3 numbers differ (Rare Candy is 68, Gen 4's is 50; Nugget 110 and 92; King's Rock 187 and 221). The ten Pickup items all exist in Gen 4.
+- **Mail.** Gen 3 mail is items 121 to 132; HGSS's check is 137 to 148.
+- **The capability.** `HasPickup` is false for RS and the choice is greyed out with "Pickup is not available on Ruby and Sapphire."
+- **The reader.** `RsStateReader` with its training reads is at 15 of ApiHawk's 16 blocks. Its tasks block and callback 2 are what the visit needs most. Its two-byte block at `0x0202E892` (the field message window's state) can grow to `0x0202E91F` and then also carries `gPartyMenuMessage_IsPrinting`, the start menu's cursor, count and entries, and the menu window's state. `sPokeMenuCursorPos` and the entry list are one more block of 10 bytes at `0x0202FFA8`.
+
+## The save
+
+`rs.qa-pickup` (`../shinybothunterqasaves/rs/qa-pickup.SaveRAM`, sha256 `55d8f0c866be5ee29480933a25f525a068655133c208281dd60b973635d49848`): the `qa-route101` save after the spike's run, saved in-game on Route 101 grass at (14, 4). The party is the shiny Mudkip at Lv 11 (it learned Water Gun into its free slot on the way) and five Zigzagoon at Lv 2, empty-handed. The five are copies of one wild Zigzagoon's record written into party slots 2 to 6, so they share a personality value; that does not matter for the roll or the menu. It loads on both `SA` and `RU` ROMs (seen on both).
+
+Held items for a take scenario are written into the party records in RAM (decrypt, set the item, fix the checksum, encrypt), which is how the spike made every state after the first run.
+
+## Not proved
+
+- Any bot code: the gates were driven by a probe.
+- Versions 1.1. The symbol tables give the same addresses as 1.2 for everything here; not run.
+- A full Balls pocket, and a slot at 99.
+- An Aipom (the slot-1 case), a fainted member, an egg.
+- A real mail (the spike wrote the item number only; the menu showed MAIL).
+- Which battle each of the five items came from: the hunt was not interrupted to look.
+
+## Evidence
+
+`ShinyBotHunter.Qa/dashboard/qa-runs/20261121-rs-pickup-spike/` on the dev PC (gitignored): `backend.log` (the 31 battles), the probe scripts (`pk.py`, `visit.py`, `setitem.py`, `mkparty.py`, `p1.py` to `p6.py`, `save.py`), `shots/` (the list, TAKE, the message, the full-bag message), `save/qa-pickup.SaveRAM`. The run wrote its encounters to the dev database under the milestone Route 101 for the game file `SA-Pickup`.
