@@ -143,7 +143,7 @@ test('HGSS Route 33 through the dashboard: fainted lead, walk to the Pokémon Ce
     expect(backendLines(/GameStateTimeoutException/), 'a stale-timeout fired').toEqual([])
     expect(await resume.isVisible(), 'event parked in Waiting').toBe(false)
     expect(backendLines(/\[Navigator\] Healing with/).length, 'not exactly one heal').toBe(1)
-    expect(backendLines(/Movement blocked|abandoning the route/), 'the stall fired').toEqual([])
+    expect(backendLines(/Movement blocked|Sign seen|abandoning the route/), 'the stall or a sign fired').toEqual([])
 
     // Each warp wait logs every (Screen, map) change; its last line must be on its destination map with the field free.
     const warps = backendLines(/\[Navigator\] Warp to map/)
