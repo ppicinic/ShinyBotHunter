@@ -176,7 +176,7 @@ Room in the bag: the Items pocket holds 20 kinds of item, up to 99 of each. A ta
 
 ### If a visit stops
 
-Each of these appears in the backend's window, and the entry shows the bot waiting, with **Resume**. Resume goes straight to a new visit: it waits for your character to stand in the field, then opens the party list again. If the game shows the same thing for 5 s before that, the visit stops again with a `Waited for the field free before the Pickup visit` line.
+Each of these appears in the backend's window, and the entry shows the bot waiting, with **Resume**. Resume goes back to the bot's usual decision: it finishes or heals first if that is due, and otherwise starts a new visit, which waits for your character to stand in the field, then opens the party list again. If the game shows the same thing for 5 s before that, the visit stops again with a `Waited for the field free before the Pickup visit` line.
 
 **You see** `[Pickup] Pickup: <name> still holds <item> after the take; check the bag and the Pokémon menu.`
 **It means** after the visit a Pickup Pokémon still holds an item. Either its pocket in the bag is full, so the game could not take it, or the item is mail: the bot does not open a Pokémon that holds mail (the backend's window shows `[Pickup] slot <n> (<name>) holds mail; not visited` first).

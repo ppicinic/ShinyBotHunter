@@ -45,7 +45,7 @@ With five empty-handed members, `1 − 0.9^5 = 41 %` of won battles give at leas
 
 `AddBagItem` (`src/item.c`): an item joins a slot that already holds it up to 99, then starts a new slot. The Items pocket has 20 slots and the Balls pocket 16. Nine of the ten Pickup items go to the Items pocket and the Ultra Ball to the Balls pocket. When there is no room, Take prints "The BAG is full. The POKéMON's item could not be removed." and the item stays held.
 
-Seen on the emulator: with the Items pocket's empty slots filled by RAM writes, Take on a PP Up printed that message, the menu behaved exactly as after a successful take, and the party record still held item 69.
+Seen on the emulator: with the Items pocket's empty slots filled by RAM writes, Take on a PP Up printed that message, the menu behaved exactly as after a successful take, and the party record still held item 69. (The spike's bag held no PP Up at that point. The `qa-pickup` save's bag does, so there a held PP Up stacks and the take succeeds; see the emulator rounds.)
 
 ## The party menu, from the decomp and the probe
 
