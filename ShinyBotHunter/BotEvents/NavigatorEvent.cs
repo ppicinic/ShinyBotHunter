@@ -51,9 +51,6 @@ namespace ShinyBotHunter.BotEvents
         // sign that cannot be routed around would retry forever.
         private const int MaxBlockedRetries = 3;
 
-        // Dismisses whatever dialogue is up. B rather than A: A on a signpost just reopens it.
-        private const string DismissTextMacro = "T.B;W.30;T.B;W.30";
-
         // A field script whose snapshot has not changed for this long parks the bot (R18).
         private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
 
@@ -75,6 +72,7 @@ namespace ShinyBotHunter.BotEvents
             Battle,
             PoisonEvent,
             Blocked,
+            Sign,
         }
 
         public NavigatorEvent(PokemonStateReader reader)
@@ -455,15 +453,20 @@ namespace ShinyBotHunter.BotEvents
                         // the loop re-reads our real position and recomputes the A* from there.
                         continue;
                     }
-                    if (outcome == SegmentOutcome.Blocked)
+                    if (outcome is SegmentOutcome.Blocked or SegmentOutcome.Sign)
                     {
+                        // Closed before the cap check, so a route that gives up leaves no sign open.
+                        if (outcome == SegmentOutcome.Sign)
+                            await CloseSignAsync(state.Bot.State, (HgssPointerService)state.Bot.Addresses, Press(state.Bot, cancellationToken),
+                                ScriptStale, cancellationToken);
                         blockedRetries++;
                         if (blockedRetries > MaxBlockedRetries)
                         {
                             Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex} blocked {MaxBlockedRetries} times; abandoning the route.");
                             return false;
                         }
-                        await RecoverFromBlockedSegmentAsync(state, cancellationToken);
+                        await RecoverFromBlockedSegmentAsync(state, outcome == SegmentOutcome.Sign ? "Walked under a sign" : "Movement blocked",
+                            cancellationToken);
                         // Retry with the penalty in place, so the recomputed A* prefers another way.
                         continue;
                     }
@@ -507,7 +510,7 @@ namespace ShinyBotHunter.BotEvents
             Task macroTask = state.Bot.WaitForMacroAsync(cancellationToken);
             Task battleTask = WaitForBattleAsync(state.Bot, cts.Token);
             Task poisonTask = WaitForPoisonEventAsync(state.Bot, partyAtStart, cts.Token);
-            Task stallTask = WaitForStallAsync(state.Bot, cts.Token);
+            Task<GameSnapshot?> stallTask = WaitForStallAsync(state.Bot, cts.Token);
 
             Task first = await Task.WhenAny(macroTask, battleTask, poisonTask, stallTask);
 
@@ -524,7 +527,7 @@ namespace ShinyBotHunter.BotEvents
                 await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
-                return SegmentOutcome.Blocked;
+                return (await stallTask) is null ? SegmentOutcome.Blocked : SegmentOutcome.Sign;
             }
 
             return SegmentOutcome.Completed;
@@ -535,9 +538,10 @@ namespace ShinyBotHunter.BotEvents
         /// macro is still running and the field is free. The macro holds a direction until the
         /// coordinate reaches its target, so anything that blocks movement holds that direction forever
         /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
-        /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait.
+        /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait. Returns null on a
+        /// stall, and the sign's snapshot when the held wait ends at a sign (<see cref="IsSign"/>).
         /// </summary>
-        private async Task WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
+        private async Task<GameSnapshot?> WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
             (short lastX, short lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
             var still = Stopwatch.StartNew();
@@ -548,7 +552,12 @@ namespace ShinyBotHunter.BotEvents
                 if (snapshot.Screen != GameScreen.FieldFree)
                 {
                     Console.WriteLine($"[Navigator] Stall timer held: {snapshot}");
-                    await Overworld.WaitForReadyAsync(bot.State, cancellationToken);
+                    GameSnapshot ready = await WaitForFieldFreeOrSignAsync(bot.State, (HgssPointerService)bot.Addresses, cancellationToken);
+                    if (ready.Screen != GameScreen.FieldFree)
+                    {
+                        Console.WriteLine($"[Navigator] Sign seen: {ready}");
+                        return ready;
+                    }
                     (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
                     still.Restart();
                     continue;
@@ -563,25 +572,29 @@ namespace ShinyBotHunter.BotEvents
                 }
                 if (still.ElapsedMilliseconds >= StallTimeoutMs)
                 {
-                    return;
+                    return null;
                 }
             }
         }
 
         /// <summary>
-        /// Clears whatever locked movement and makes the tile we are standing on expensive, so the
-        /// recomputed route prefers to go around it. The tile is the trainer's own position, not the
-        /// obstacle it is facing: the obstacle is already impassable to A*, and it is standing here
-        /// and pressing into it that opens the message.
+        /// Makes the tile we are standing on expensive, so the recomputed route prefers to go around
+        /// it. The tile is the trainer's own position, not the obstacle it is facing: the obstacle is
+        /// already impassable to A*, and it is stepping onto this tile that opens a sign above it.
         /// </summary>
-        private async Task RecoverFromBlockedSegmentAsync(GameState state, CancellationToken cancellationToken)
+        private async Task RecoverFromBlockedSegmentAsync(GameState state, string reason, CancellationToken cancellationToken)
         {
-            state.Bot.RunMacroString(DismissTextMacro);
-            await state.Bot.WaitForMacroAsync(cancellationToken);
-
             int mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
             (int x, int y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
 
+            int cost = AddStuckTilePenalty(state, mapId, x, y);
+
+            Console.WriteLine($"[Navigator] {reason} at map={mapId} ({x},{y}); set tile cost {cost}.");
+        }
+
+        // Adds the stuck-tile penalty to one tile and returns its new cost.
+        internal static int AddStuckTilePenalty(GameState state, int mapId, int x, int y)
+        {
             if (!state.TilePenalties.TryGetValue(mapId, out var penalties))
             {
                 penalties = new Dictionary<(int X, int Y), int>();
@@ -589,8 +602,7 @@ namespace ShinyBotHunter.BotEvents
             }
             penalties.TryGetValue((x, y), out int existing);
             penalties[(x, y)] = existing + StuckTilePenalty;
-
-            Console.WriteLine($"[Navigator] Movement blocked at map={mapId} ({x},{y}); dismissed the dialogue and set tile cost {penalties[(x, y)]}.");
+            return penalties[(x, y)];
         }
 
         private static IReadOnlyDictionary<(int X, int Y), int>? PenaltiesForMap(GameState state, int mapId)

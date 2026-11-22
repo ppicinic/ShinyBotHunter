@@ -357,5 +357,19 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("the sign close", e.WaitingFor);
             Assert.Equal(Script(SignWait), e.Last);
         }
+
+        [Fact]
+        public void StuckTilePenaltyAddsToTheTileItIsGiven()
+        {
+            GameState state = new();
+
+            int first = NavigatorEvent.AddStuckTilePenalty(state, 73, 488, 264);
+            int second = NavigatorEvent.AddStuckTilePenalty(state, 73, 488, 264);
+
+            Assert.Equal(25, first);
+            Assert.Equal(50, second);
+            Assert.Equal([73], state.TilePenalties.Keys);
+            Assert.Equal([(488, 264)], state.TilePenalties[73].Keys);
+        }
     }
 }
