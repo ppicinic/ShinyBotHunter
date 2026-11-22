@@ -291,5 +291,71 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(Free, end);
         }
+
+        private static Task CloseSign(ScriptedReader reader, List<string> presses)
+            => NavigatorEvent.CloseSignAsync(reader, Table, macro =>
+            {
+                presses.Add(macro);
+                return Task.CompletedTask;
+            }, Stale, CancellationToken.None);
+
+        [Fact]
+        public async Task BoardIsClosedWithOneBAtTheWaitNative()
+        {
+            ScriptedReader reader = new(
+                Script(null), Script(SlideIn), Script(SlideIn), Script(null), Script(SignWait), Script(null), Script(WaitStd), Script(null), Free);
+
+            List<string> presses = [];
+            await CloseSign(reader, presses);
+
+            Assert.Equal([B], presses);
+        }
+
+        [Fact]
+        public async Task TextSignGetsOneBAtItsArrowThenOneAtTheWait()
+        {
+            ScriptedReader reader = new(
+                Script(SlideIn), Script(SignPrinting, 10, 0), Script(SignPrinting, 10, 0), Script(SignPrinting, 10, 2, 0x022A7966),
+                Script(SignPrinting, 10), Script(SignWait, 10), Script(null, 10), Free);
+
+            List<string> presses = [];
+            await CloseSign(reader, presses);
+
+            Assert.Equal([B, B], presses);
+        }
+
+        public static TheoryData<GameSnapshot> NoKeyStates => new()
+        {
+            Script(SlideIn),
+            Script(null),
+            Script(SignPrinting, 10, 0),
+        };
+
+        [Theory]
+        [MemberData(nameof(NoKeyStates))]
+        public async Task NothingIsPressedWithoutAKeyState(GameSnapshot held)
+        {
+            List<string> presses = [];
+            ScriptedReader reader = new(held);
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => CloseSign(reader, presses));
+
+            Assert.Empty(presses);
+            Assert.Equal("the sign to take a key", e.WaitingFor);
+            Assert.Equal(held, e.Last);
+        }
+
+        [Fact]
+        public async Task BThatDoesNotCloseTheBoardIsRetriedThenThrows()
+        {
+            List<string> presses = [];
+            ScriptedReader reader = new(Script(SignWait));
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => CloseSign(reader, presses));
+
+            Assert.Equal([B, B, B], presses);
+            Assert.Equal("the sign close", e.WaitingFor);
+            Assert.Equal(Script(SignWait), e.Last);
+        }
     }
 }

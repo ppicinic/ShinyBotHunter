@@ -265,6 +265,36 @@ namespace ShinyBotHunter.BotEvents
             => GameStateWait.UntilAsync(game, "the overworld ready", s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses),
                 TimeSpan.FromSeconds(10), ct);
 
+        /// <summary>
+        /// Closes a sign with B until the field is free (FR-3, rule 16). A B is sent only at the sign's wait native, or at
+        /// the text sign's printing native once its printer is at the arrow, and is confirmed by that state changing; a B
+        /// that is not taken is sent again, up to the attempts, then throws "the sign close". Nothing is pressed while the
+        /// board slides in or the text draws; a state that never takes a key throws "the sign to take a key" after stale.
+        /// </summary>
+        internal static async Task CloseSignAsync(
+            IGameStateReader game, HgssPointerService addresses, Func<string, Task> press, TimeSpan stale, CancellationToken ct)
+        {
+            while (true)
+            {
+                GameSnapshot at = await GameStateWait.UntilAsync(game, "the sign to take a key",
+                    s => s.Screen == GameScreen.FieldFree || s.Native == addresses.SignWaitNative
+                        || (s.Native == addresses.SignPrintingNative && s.AtTextArrow()),
+                    stale, ct);
+                if (at.Screen == GameScreen.FieldFree)
+                {
+                    Console.WriteLine($"[Navigator] Sign closed: {at}");
+                    return;
+                }
+                Func<GameSnapshot, bool> taken = at.Native == addresses.SignWaitNative
+                    ? s => s.Native != addresses.SignWaitNative
+                    : s => s.Native != addresses.SignPrintingNative || !s.AtTextArrow() || s.TextCursor != at.TextCursor;
+                int presses = 0;
+                GameSnapshot confirmed = await GameStateWait.PressUntilAsync(game, () => { presses++; return press(PressB); }, "the sign close",
+                    taken, ScriptPressConfirm, ScriptPressAttempts, ct);
+                Console.WriteLine($"[Navigator] Sign: T.B at native 0x{at.Native:X8} after {presses} press(es), confirmed by {confirmed}");
+            }
+        }
+
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
         {
             await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
