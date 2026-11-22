@@ -161,7 +161,7 @@ test('HGSS heal variants through the dashboard: walk to the Pokémon Center, one
     expect(backendLines(/GameStateTimeoutException/), 'a stale-timeout fired').toEqual([])
     expect(await resume.isVisible(), 'event parked in Waiting').toBe(false)
     expect(backendLines(/\[Navigator\] Healing with/).length, 'not exactly one heal').toBe(1)
-    expect(backendLines(/Movement blocked|abandoning the route/), 'the stall fired').toEqual([])
+    expect(backendLines(/Movement blocked|Sign seen|abandoning the route/), 'the stall or a sign fired').toEqual([])
 
     // Exactly one nurse conversation: one menu, one Yes, B only after it, the heal animation after it,
     // and no field task between the loop's FieldFree and the return path.
