@@ -614,7 +614,7 @@ export async function trainingRun(setup: () => Promise<void>, form: TrainForm, b
       })
     }
     await shotAll('02-cancelled', pages)
-    expect(flashUnchanged(rom, save),`"the save's first 131,072 bytes unchanged": the ${rom} SaveRAM changed`).toBe(true)
+    expect(flashUnchanged(rom, save), `"the save's first 131,072 bytes unchanged": the ${rom} SaveRAM changed`).toBe(true)
     await shutdown(frame, admin)
 
     const log = backendLog()
