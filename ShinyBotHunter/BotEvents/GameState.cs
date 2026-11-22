@@ -49,8 +49,8 @@ namespace ShinyBotHunter.BotEvents
         public int NavigationPathIndex { get; set; } = 0;
         /// <summary>
         /// Extra pathfinding cost for tiles the bot has got stuck on, keyed by bot map id then tile.
-        /// Standing next to a signpost and pressing into it opens its message, which locks movement
-        /// until dismissed -- the tile is walkable so A* has no reason to avoid it, and the sign is
+        /// A step Up onto the tile below a sign opens it, which locks movement until it is closed
+        /// -- the tile is walkable so A* has no reason to avoid it, and the sign is
         /// not on it so marking obstacles doesn't help. Learning the tile and making it expensive is
         /// enough to route around it while leaving it usable when there is no other way past.
         /// Lives with the run: shared across the legs of a chain, gone on restart.
