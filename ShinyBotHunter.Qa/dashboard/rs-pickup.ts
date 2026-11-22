@@ -36,6 +36,9 @@ export const PICKUP_STOP = /\[Pickup\] Pickup: /
 // Groups: name, item name.
 export const STILL_HOLDS_STOP = /\[Pickup\] Pickup: (.+?) still holds (.+?) after the take; check the bag and the Pok.{1,2}mon menu\.\s*$/
 
+// rs-wild.ts's OVER for a won battle: the lead knocked the wild Pokémon out, nothing pressed on RUN.
+export const WON = /\[RsBattle\] battle over: (\d+) frames from the battle bit, (\d+) ms, (\d+) presses, 0 on RUN\s*$/
+
 // One regex per press of the visit, on `<what> | <by>`; a line's kind is the row's name and its numbers.
 const KIND: [string, RegExp][] = [
   ['START', /^START \| the start menu taking keys$/],
@@ -324,7 +327,7 @@ export function checkEmptyHanded(log: string[], party: Mon[], slots: number[]): 
   }
 }
 
-export type Decision = { held: number; takes: Take[]; frames: number; ms: number }
+type Decision = { held: number; takes: Take[]; frames: number; ms: number }
 
 /**
  * NFR-2's decision windows in `log` from line `from` (cut by the caller at a trip line): the first from `from` to the

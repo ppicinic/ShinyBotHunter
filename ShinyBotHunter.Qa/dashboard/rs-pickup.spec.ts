@@ -8,12 +8,10 @@ import { expAt, readSlot } from './rs-training'
 import { backendLog, MINUTE } from './static'
 import {
   checkBag, checkDecisions, checkEmptyHanded, checkItemsWindow, ITEMS_POCKET, PICKUP_ITEMS, PICKUP_SLOTS, PICKUP_TRIP, pickupRun,
-  takes, waitPickup
+  takes, waitPickup, WON
 } from './rs-pickup'
 
 const BATTLES = 30
-// A won battle: the lead knocked the wild Pokémon out, nothing pressed on RUN.
-const WON = /\[RsBattle\] battle over: (\d+) frames from the battle bit, (\d+) ms, (\d+) presses, 0 on RUN\s*$/
 // Ultra Ball, the one Pickup item of the Poké Balls pocket.
 const ULTRA_BALL = 2
 // The most experience a Route 101 wild gives: floor(60 x 3 / 7), a Lv 3 Zigzagoon; Mudkip learns Bide at Lv 15.
@@ -37,13 +35,19 @@ test('RS Pickup rs-pickup: thirty won battles, a visit before the first and afte
         .toBeGreaterThanOrEqual(missing.length)
       expect(launch.balls.some((r) => r.item === ULTRA_BALL || r.item === 0), 'the Poké Balls pocket has no room for an Ultra Ball').toBe(true)
     },
-    async () => {
+    async (run) => {
+      // The Pickup items switch off at the start, as hgss-pickup-items-window asserts: the dashboard only, no emulator read.
+      const admin = run.pages.admin
+      await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
+      await expect(admin.getByLabel('Pickup items windows', { exact: true }), 'the Pickup items windows switch is on at the start; turn it off (qa-automation.md, preconditions)')
+        .not.toBeChecked()
+      await admin.getByRole('button', { name: 'Bot Control', exact: true }).click()
       // A heal trip (the walk, the nurse and back) can fall between two wins, so each win gets 6 minutes.
       for (let n = 1; n <= BATTLES; n++) await waitPickup(WON, n, 6 * MINUTE, `"thirty won battles": won battle ${n} of ${BATTLES}`)
       const sofar = backendLog()
       const thirtieth = sofar.flatMap((l, i) => (WON.test(l) ? [i] : []))[BATTLES - 1]
       awaited = sofar.slice(0, thirtieth).filter((l) => PICKUP_TRIP.test(l)).length + 1
-      await waitPickup(PICKUP_TRIP, awaited, 6 * MINUTE,`"a visit after every won one": the visit after won battle ${BATTLES}`)
+      await waitPickup(PICKUP_TRIP, awaited, 6 * MINUTE, `"a visit after every won one": the visit after won battle ${BATTLES}`)
       return 'cancel'
     },
     { whileIdle: (run, now) => checkItemsWindow(run.pages.admin, run.rom, takes(now)) }

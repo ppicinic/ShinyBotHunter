@@ -305,10 +305,10 @@ npx playwright test rs-pickup-field-move
 npx playwright test rs-pickup-bag-full
 npx playwright test rs-pickup-lead-item
 npx playwright test rs-pickup-greyed
-npx playwright test rs-pickup.spec   # about 15 minutes, plus about 3 for a heal trip
-npx playwright test rs-pickup-ruby   # on RU-Wild, which the scenario sets itself
-npx playwright test rs-pickup-heal
+npx playwright test rs-pickup-ruby   # on RU-Wild, which the scenario sets itself: no QA_RS_ROM needed
 Remove-Item Env:QA_RS_ROM, Env:QA_RS_VARIANT   # PowerShell keeps both for the session
+npx playwright test rs-pickup.spec   # about 15 minutes, plus about 3 for a heal trip
+npx playwright test rs-pickup-heal
 ```
 Each run writes `ShinyBotHunter.Qa/dashboard/qa-runs/<yyyyMMdd-HHmmss>-hgss-route33-dashboard/` (gitignored). It holds `steps.log`, `backend.log`, `dashboard-build.log`, a PNG of every window at each step (`01-launched` to `08-bot-cancelled`), `admin.webm` from Playwright, the other windows' videos under `videos/`, and `emulator.mp4` from `record-window.ps1`, at twice the window size, with the console code page in `emulator.mp4.log`. The recorder clears the console input encoding's preamble before starting ffmpeg: under code page 65001 `Process.Start` writes a 3-byte BOM into the redirected stdin, which shifts every raw frame and turns the video red.
 

@@ -10,11 +10,10 @@ import {
 } from './rs-training'
 import { OVER } from './rs-wild'
 import { backendLog, MINUTE } from './static'
-import { checkDecisions, checkVisit, PICKUP_HELD, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, startPickup, visit, waitPickup } from './rs-pickup'
+import { checkDecisions, checkVisit, PICKUP_HELD, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, startPickup, visit, waitPickup, WON } from './rs-pickup'
 
 const CENTER = 'OldaleTown_PokemonCenter_1F (7, 4)'
 const START_TILE = 'Route101 (14, 4)'
-const WON = /\[RsBattle\] battle over: (\d+) frames from the battle bit, (\d+) ms, (\d+) presses, 0 on RUN\s*$/
 // The save's lead: Tackle, Growl, Mud-Slap, Water Gun. Growl does no damage, so the damaging PP is 35 + 10 + 25.
 const MOVES = [33, 45, 189, 55]
 const DAMAGING_PP = 70

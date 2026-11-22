@@ -6,14 +6,13 @@ import { expect, test } from '@playwright/test'
 import { STATE, writeSlot } from './rs-training'
 import { backendLog, MINUTE } from './static'
 import {
-  checkBag, checkDecisions, checkEmptyHanded, MENU_ENTRIES, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, takes, visit, waitPickup
+  checkBag, checkDecisions, checkEmptyHanded, MENU_ENTRIES, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, takes, visit, waitPickup, WON
 } from './rs-pickup'
 
 const ROM = 'RU-Wild'
 const BATTLES = 10
 const ITEMS = [22, 23, 2, 68, 19]
 const NAMES = ['Super Potion', 'Full Heal', 'Ultra Ball', 'Rare Candy', 'Full Restore']
-const WON = /\[RsBattle\] battle over: (\d+) frames from the battle bit, (\d+) ms, (\d+) presses, 0 on RUN\s*$/
 
 test('RS Pickup rs-pickup-ruby: on Ruby, the first visit takes all five in slot order, then ten won battles each followed by a visit', async () => {
   test.setTimeout(20 * MINUTE)
