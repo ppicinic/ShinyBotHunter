@@ -335,8 +335,8 @@ type Decision = { held: number; takes: Take[]; frames: number; ms: number }
  * walk stays in its window; the last may end at the cut). Each holds one count line and one trip line, the count's held
  * equal to its take lines and the slots its visit opened those of the takes. Its visit, START to the trip line, passes
  * checkVisit, with the start-menu Down only in the first window when `firstSinceLaunch` (the game keeps the cursor for
- * the session). Its trip is under NFR-1's 4,000 ms + 2,200 ms per take. Retries are summed per kind over the windows
- * into steps.log and returned.
+ * the session). Its trip passes checkTrip (NFR-1 in game frames). Retries are summed per kind over the windows into
+ * steps.log and returned.
  */
 export function checkDecisions(log: string[], from: number, firstSinceLaunch: boolean): { decisions: Decision[]; retries: Record<string, number> } {
   const windows: [number, number][] = []
@@ -366,14 +366,29 @@ export function checkDecisions(log: string[], from: number, firstSinceLaunch: bo
     const slots = visitedSlots(v)
     expect(slots.map((s) => s.slot), `${name}: the slots opened against the slots taken from\n${quoted}`).toEqual(taken.map((t) => t.slot))
     for (const [kind, n] of Object.entries(checkVisit(v, { first: firstSinceLaunch && w === 0, slots }, name))) retries[kind] = (retries[kind] ?? 0) + n
-    const [, frames, ms] = PICKUP_TRIP.exec(trips[0])!.map(Number)
-    const bound = 4000 + 2200 * taken.length
-    expect(ms, `NFR-1: ${name}'s visit with ${taken.length} takes took ${frames} frames, ${ms} ms; the bound is ${bound} ms`).toBeLessThan(bound)
+    const { frames, ms } = checkTrip(trips[0], taken.length, name)
     return { held, takes: taken, frames, ms }
   })
-  step(`${decisions.length} decisions, [held, ms] each: ${JSON.stringify(decisions.map((d) => [d.held, d.ms]))}; ` +
+  step(`${decisions.length} decisions, [held, frames, ms] each: ${JSON.stringify(decisions.map((d) => [d.held, d.frames, d.ms]))}; ` +
     `dropped and sent again over the run: ${JSON.stringify(retries)}`)
   return { decisions, retries }
+}
+
+/**
+ * NFR-1 on one trip line, in game frames: under 240 frames plus 132 per take (4 s and 2.2 s at 60 frames a second; five
+ * takes 900). The spec's numbers are frames at 60 a second, and the QA emulator with its window recorder ran at 31 to
+ * 60 frames a second during visits (run 20261122-031032), so the wall-clock ms is logged with the visit's frames a
+ * second, and a visit under 45 frames a second gets a line of its own, not a failure.
+ */
+export function checkTrip(line: string, takeCount: number, name: string): { frames: number; ms: number } {
+  const [, frames, ms] = PICKUP_TRIP.exec(line)!.map(Number)
+  const fps = (frames * 1000) / ms
+  step(`${name}: trip ${frames} frames, ${ms} ms, ${fps.toFixed(1)} frames a second`)
+  if (fps < 45) step(`${name}: the emulator ran at ${fps.toFixed(1)} frames a second during this visit, under 45`)
+  const bound = 240 + 132 * takeCount
+  expect(frames, `NFR-1: ${name}'s visit with ${takeCount} takes took ${frames} frames, ${ms} ms; the bound is ${bound} frames (60 a second)`)
+    .toBeLessThan(bound)
+  return { frames, ms }
 }
 
 /**

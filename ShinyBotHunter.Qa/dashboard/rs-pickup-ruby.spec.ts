@@ -47,7 +47,7 @@ test('RS Pickup rs-pickup-ruby: on Ruby, the first visit takes all five in slot 
       .toEqual(PICKUP_SLOTS.map((slot) => [String(slot), '0,1,2,3', '2']))
 
     // Every decision up to the visit after the tenth win: the count line, the takes, the presses (START, Down 0 -> 1 on
-    // the first visit only, ...) with the field free at the end, and NFR-1 (under 15 s for the five).
+    // the first visit only, ...) with the field free at the end, and NFR-1 in game frames (under 900 for the five).
     const cut = log.flatMap((l, i) => (PICKUP_TRIP.test(l) ? [i] : []))[awaited - 1]
     const { decisions } = checkDecisions(log.slice(0, cut + 1), 0, true)
     expect(decisions.length, '"each followed by a visit": the decision windows').toBeGreaterThanOrEqual(BATTLES + 1)
