@@ -253,6 +253,18 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
+        // A sign is up (FR-1): the field script runs one of the two sign natives. Read from the native alone, never from
+        // the script id or time.
+        internal static bool IsSign(GameSnapshot s, HgssPointerService addresses)
+            => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask
+                && (s.Native == addresses.SignWaitNative || s.Native == addresses.SignPrintingNative);
+
+        // The overworld-ready wait that also stops at a sign; a warp, a poison script or a battle behaves as in
+        // Overworld.WaitForReadyAsync.
+        internal static Task<GameSnapshot> WaitForFieldFreeOrSignAsync(IGameStateReader game, HgssPointerService addresses, CancellationToken ct)
+            => GameStateWait.UntilAsync(game, "the overworld ready", s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses),
+                TimeSpan.FromSeconds(10), ct);
+
         private async Task ReturnToStartAsync(GameState state, CancellationToken cancellationToken)
         {
             await WaitForOverworldReadyAsync(state.Bot, cancellationToken);
