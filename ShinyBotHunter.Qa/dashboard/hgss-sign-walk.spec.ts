@@ -116,11 +116,21 @@ test('HGSS Route 32 through the dashboard: heal trip to Violet City, close the t
       await shotAll('03-stuck', pages)
       throw e
     }
-    await shotAll('03-returned', pages)
-    const endTile = await readTile()
-    step(`end tile ${endTile}`)
+    // The party first: within one poll of the arrival, before a Spin battle on the grass can have run a turn.
     const after = await readParty()
     step(`party after: ${JSON.stringify(after)}`)
+    // Back on the start tile is judged by Spin's own check, which reads the position against the captured start
+    // before its first press; the RAM tile reads (0,0) once a battle is up, so it is logged only.
+    const spinCheck = /\[Spin\] facing=|\[Spin\] The player moved while turning\./
+    if (backendLines(/Clearing navigation path \(arrived back at start\)/).length > 0) {
+      try {
+        await expect.poll(() => backendLines(spinCheck).length > 0, { timeout: 60_000, intervals: [1000] }).toBe(true)
+      } catch {
+        throw new Error(`no [Spin] facing= or moved-while-turning line within 60 s of the arrival; last lines: ${backendLines(/\[Spin\]|\[Orchestrator\] State:/).slice(-5).join(' | ')}`)
+      }
+    }
+    await shotAll('03-returned', pages)
+    step(`end tile ${await readTile()} (not asserted)`)
 
     // 10. What the navigator did, then the asserts.
     for (const line of backendLines(/\[Navigator\]|\[GameState\]|\[Spin\]|\[Orchestrator\]|crashed/)) step(`backend: ${line}`)
@@ -140,6 +150,7 @@ test('HGSS Route 32 through the dashboard: heal trip to Violet City, close the t
     const crashAt = log.findIndex((l) => l.includes('crashed'))
     expect(crashAt, `event crashed: ${log[crashAt + 1]}`).toBe(-1)
     expect(backendLines(/GameStateTimeoutException/), 'a stale-timeout fired').toEqual([])
+    expect(indicesOf('[Spin] The player moved while turning.'), 'Spin found the player off the start tile').toEqual([])
     expect(await resume.isVisible(), 'event parked in Waiting').toBe(false)
     expect(backendLines(/\[Navigator\] Healing with/).length, 'not exactly one heal').toBe(1)
     expect(backendLines(/Movement blocked|abandoning the route/), 'the stall fired').toEqual([])
@@ -172,11 +183,11 @@ test('HGSS Route 32 through the dashboard: heal trip to Violet City, close the t
     expect([seen[0], pressed[0], closed[0], walkedUnder[0], home], 'the sign lines are out of order')
       .toEqual([seen[0], pressed[0], closed[0], walkedUnder[0], home].slice().sort((a, b) => a - b))
 
-    // Back on the tile the run started from, with the party healed.
+    // Back on the tile the run started from and spinning, with the party healed.
     const captured = backendLines(/\[Orchestrator\] Start tile captured:/)
     expect(captured.length, 'no start tile captured').toBeGreaterThan(0)
     expect(captured[0], 'captured start tile differs from the live start tile').toContain(startTile)
-    expect(endTile, 'not back on the start tile').toBe(startTile)
+    expect(indicesOf('[Spin] facing=').some((i) => i > home), 'no Spin turn on the start tile after the arrival').toBe(true)
     if (battlesAfterHeal.length === 0) {
       for (const p of after) expect(p.hp, `slot ${p.slot} ${p.name} not healed`).toBe(p.maxHp)
     } else {
