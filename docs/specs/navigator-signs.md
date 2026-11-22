@@ -1,6 +1,6 @@
 # Spec: the navigator closes a sign it opens (HGSS)
 
-Status: Implemented on `fix/navigator-sign` (epic #498), 2026-11-22. Not yet merged to main. Read "As built" first. A bug fix, run as a feature branch at the owner's instruction.
+Status: Implemented (epic #498), merged to main in #503 on 2026-11-21. Read "As built" first. A bug fix, run as a feature branch at the owner's instruction.
 Last updated: 2026-11-22
 Owner: Phil
 Related: [research: signs on the HGSS field](../research/hgss-signs.md) (the source for every address and count here), [HGSS state reader spec](hgss-state-reader.md) (R18, R19: the script press loop), [Primo egg hunt](primo-egg-hunt.md) (E5c and E5d: the same sign), [feature workflow](feature-workflow.md), AGENTS rule 16.
