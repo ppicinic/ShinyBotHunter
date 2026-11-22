@@ -1,15 +1,16 @@
 // The pieces the rs-pickup scenarios share (#490; docs/specs/rs-pickup.md, QA): every [Pickup] line RsPickupTakeEvent logs,
 // in one table; the qa-pickup save and the frame, which is rs-training.ts's trainingRun on that save with Pickup ticked;
-// the wait; the Items and Poké Balls pockets; and the check of one visit's presses. The memory port is touched only with
-// the bot idle (before Run, between the Cancels, at Complete) or Waiting, one awaited request at a time, each logged.
+// the wait; the Items and Poké Balls pockets; the check of one visit's presses and of every decision window (NFR-1,
+// NFR-2); and the Pickup items window. The memory port is touched only with the bot idle (before Run, between the
+// Cancels, at Complete) or Waiting, one awaited request at a time, each logged.
 import * as path from 'path'
-import { expect, type Locator } from '@playwright/test'
-import { readMemory, step } from './driver'
-import { BALL_SLOT, OVER, POS, PRISTINE, snapshotField, startWild, type Save } from './rs-wild'
+import { expect, type Locator, type Page } from '@playwright/test'
+import { readMemory, shotAll, step } from './driver'
+import { BALL_SLOT, OVER, PHASE, POS, PRISTINE, snapshotField, startWild, type Save } from './rs-wild'
 import {
-  failOnStops, MUDKIP, PP, readParty, refusal, trainingRun, writeLogged, writeSlot, type Mon, type Run, type TrainingResult
+  failOnStops, MUDKIP, PP, readParty, refusal, STATE, trainingRun, writeLogged, writeSlot, type Mon, type Run, type TrainingResult
 } from './rs-training'
-import { backendLog, hex8 } from './static'
+import { API, backendLog, hex8 } from './static'
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -21,8 +22,6 @@ export const PICKUP_HELD = /\[Pickup\] held (\d+) of (\d+) pickup members; (take
 export const MAIL = /\[Pickup\] slot (\d) \((.+?)\) holds mail; not visited\s*$/
 // The slot's Pokémon menu after A on it: the entry ids comma-separated, then where ITEM is. Groups: slot, name, entries, position.
 export const MENU_ENTRIES = /\[Pickup\] slot (\d) \((.+?)\) menu \[([\d,]*)\]: ITEM at position (\d)\s*$/
-// The same menu with no ITEM: B, and the slot left. Groups: slot, name, entries.
-export const NO_ITEM = /\[Pickup\] slot (\d) \((.+?)\) menu \[([\d,]*)\]: no ITEM; left\s*$/
 // A take, logged once the slot reads empty. Groups: item name, Gen 3 id, slot, name.
 export const PICKUP_TOOK = /\[Pickup\] took (.+?) \(Gen 3 item (\d+)\) from slot (\d) \((.+?)\)\s*$/
 // The take message dismissed with the item still held (a full pocket). Groups: slot, name, item name, Gen 3 id.
@@ -67,40 +66,45 @@ function kindOf(what: string, by: string): string | null {
 // --- the save and the frame ---------------------------------------------------------------------------------------
 
 // The spike's end state, saved in-game on Route 101 at (14, 4) (research doc, `rs.qa-pickup`).
-export const PICKUP_SAVE: Save = {
+const PICKUP_SAVE: Save = {
   file: path.join(path.dirname(PRISTINE), 'qa-pickup.SaveRAM'),
   sha: '55d8f0c866be5ee29480933a25f525a068655133c208281dd60b973635d49848'
 }
 // Internal species index (include/constants/species.h).
-export const ZIGZAGOON = 288
+const ZIGZAGOON = 288
 // The Zigzagoon's party slots, 1-based.
 export const PICKUP_SLOTS = [2, 3, 4, 5, 6]
-// Ruby and Sapphire's Pickup table, by Gen 3 id (FR-13): Super Potion, Full Heal, Ultra Ball, Rare Candy, Full Restore,
-// Revive, Nugget, Protein, PP Up, King's Rock.
-export const PICKUP_ITEMS = [22, 23, 2, 68, 19, 24, 110, 64, 69, 187]
+// Ruby and Sapphire's Pickup table, Gen 3 id to the Gen 4 id the tally records (FR-13's table, kept here so the backend's
+// conversion is not checked against itself): Super Potion, Full Heal, Ultra Ball, Rare Candy, Full Restore, Revive,
+// Nugget, Protein, PP Up, King's Rock.
+const GEN4: Record<number, number> = { 22: 26, 23: 27, 2: 2, 68: 50, 19: 23, 24: 28, 110: 92, 64: 46, 69: 51, 187: 221 }
+export const PICKUP_ITEMS = Object.keys(GEN4).map(Number)
 
 /** A pocket slot: item id and quantity, both u16; Ruby and Sapphire keep the quantities plain. */
 export type BagSlot = { item: number; quantity: number }
-export type Pockets = { items: BagSlot[]; balls: BagSlot[] }
+type Pockets = { items: BagSlot[]; balls: BagSlot[] }
 // gSaveBlock1 (POS, 0x02025734) + 0x560: 20 slots; + 0x600: 16 slots (rs-wild's BALL_SLOT).
 export const ITEMS_POCKET = POS + 0x560
-export const BALLS_POCKET = BALL_SLOT
+const BALLS_POCKET = BALL_SLOT
 
-export type PickupResult = TrainingResult & { launchBag: Pockets; idleBag: Pockets }
+type PickupResult = TrainingResult & { launchBag: Pockets; idleBag: Pockets }
 
 /**
  * trainingRun on the qa-pickup save, started by startPickup. With the bot idle before `setup`: the party as saved (six,
  * Mudkip Lv 11 leading, five Zigzagoon Lv 2 holding nothing, every checksum valid), the lead's HP and PP written full
  * (the spike's end state is not known, and a heal first would make no first visit), and both pockets read. Both pockets
- * are read again with the bot idle at the end. Then no [Pickup] stop but `expectedStop`.
+ * are read again with the bot idle at the end, then `whileIdle` runs with the run and the log so far. Then no [Pickup]
+ * stop but `expectedStop`.
  */
 export async function pickupRun(
   setup: (launchBag: Pockets) => Promise<void>,
   body: (run: Run, launchBag: Pockets) => Promise<'complete' | 'cancel'>,
-  { targetLevel = 101, expectedStop }: { targetLevel?: number; expectedStop?: RegExp } = {}
+  { targetLevel = 101, expectedStop, whileIdle }:
+  { targetLevel?: number; expectedStop?: RegExp; whileIdle?: (run: Run, log: string[]) => Promise<void> } = {}
 ): Promise<PickupResult> {
   let launchBag: Pockets | null = null
   let idleBag: Pockets | null = null
+  let started: Run | null = null
   const result = await trainingRun(
     async () => {
       const party = await readParty()
@@ -116,12 +120,16 @@ export async function pickupRun(
       await setup(launchBag)
     },
     { trainType: 'Standard', targetLevel },
-    (run) => body(run, launchBag!),
+    (run) => {
+      started = run
+      return body(run, launchBag!)
+    },
     {
       save: PICKUP_SAVE,
       start: (card) => startPickup(card, targetLevel),
       whileIdle: async () => {
         idleBag = await readPockets()
+        await whileIdle?.(started!, backendLog())
       }
     }
   )
@@ -199,7 +207,7 @@ export async function readPocket(addr: number, slots: number): Promise<BagSlot[]
 }
 
 /** The Items pocket, then the Poké Balls pocket. */
-export async function readPockets(): Promise<Pockets> {
+async function readPockets(): Promise<Pockets> {
   return { items: await readPocket(ITEMS_POCKET, 20), balls: await readPocket(BALLS_POCKET, 16) }
 }
 
@@ -214,7 +222,7 @@ export async function writePocket(addr: number, rows: BagSlot[]): Promise<void> 
 }
 
 /** Item id to quantity over both pockets. */
-export function bagCounts(bag: Pockets): Record<number, number> {
+function bagCounts(bag: Pockets): Record<number, number> {
   const counts: Record<number, number> = {}
   for (const { item, quantity } of [...bag.items, ...bag.balls]) if (item !== 0) counts[item] = (counts[item] ?? 0) + quantity
   return counts
@@ -314,4 +322,129 @@ export function checkEmptyHanded(log: string[], party: Mon[], slots: number[]): 
     const allowed = item === 0 || (battleAfter && PICKUP_ITEMS.includes(item))
     expect(allowed, `"the party empty-handed": slot ${slot} holds ${item} with the bot idle${battleAfter ? ', not a Pickup item' : ' and no battle after the last visit'}`).toBe(true)
   }
+}
+
+export type Decision = { held: number; takes: Take[]; frames: number; ms: number }
+
+/**
+ * NFR-2's decision windows in `log` from line `from` (cut by the caller at a trip line): the first from `from` to the
+ * first `State: Encountering`, then one from each `State: BattleComplete` to the next `Encountering` (a battle on a heal
+ * walk stays in its window; the last may end at the cut). Each holds one count line and one trip line, the count's held
+ * equal to its take lines and the slots its visit opened those of the takes. Its visit, START to the trip line, passes
+ * checkVisit, with the start-menu Down only in the first window when `firstSinceLaunch` (the game keeps the cursor for
+ * the session). Its trip is under NFR-1's 4,000 ms + 2,200 ms per take. Retries are summed per kind over the windows
+ * into steps.log and returned.
+ */
+export function checkDecisions(log: string[], from: number, firstSinceLaunch: boolean): { decisions: Decision[]; retries: Record<string, number> } {
+  const windows: [number, number][] = []
+  let open: number | null = from
+  for (let i = from; i < log.length; i++) {
+    const state = STATE.exec(log[i])?.[1]
+    if (open === null && state === 'BattleComplete') open = i
+    else if (open !== null && state === 'Encountering') {
+      windows.push([open, i])
+      open = null
+    }
+  }
+  if (open !== null) windows.push([open, log.length])
+
+  const retries: Record<string, number> = {}
+  const decisions = windows.map(([start, end], w) => {
+    const lines = log.slice(start, end)
+    const name = `decision ${w + 1}`
+    const quoted = lines.filter((l) => l.includes('[Pickup]') || STATE.test(l)).join('\n')
+    const counts = lines.filter((l) => PICKUP_HELD.test(l))
+    const trips = lines.filter((l) => PICKUP_TRIP.test(l))
+    expect([counts.length, trips.length], `"a visit after every won battle": ${name}'s count and trip lines\n${quoted}`).toEqual([1, 1])
+    const held = Number(PICKUP_HELD.exec(counts[0])![1])
+    const taken = takes(lines)
+    expect(taken.length, `"every held item taken": ${name} counts ${held} held\n${quoted}`).toBe(held)
+    const v = lines.slice(lines.findIndex((l) => PICKUP_PRESS.exec(l)?.[1] === 'START'), lines.indexOf(trips[0]) + 1)
+    const slots = visitedSlots(v)
+    expect(slots.map((s) => s.slot), `${name}: the slots opened against the slots taken from\n${quoted}`).toEqual(taken.map((t) => t.slot))
+    for (const [kind, n] of Object.entries(checkVisit(v, { first: firstSinceLaunch && w === 0, slots }, name))) retries[kind] = (retries[kind] ?? 0) + n
+    const [, frames, ms] = PICKUP_TRIP.exec(trips[0])!.map(Number)
+    const bound = 4000 + 2200 * taken.length
+    expect(ms, `NFR-1: ${name}'s visit with ${taken.length} takes took ${frames} frames, ${ms} ms; the bound is ${bound} ms`).toBeLessThan(bound)
+    return { held, takes: taken, frames, ms }
+  })
+  step(`${decisions.length} decisions, [held, ms] each: ${JSON.stringify(decisions.map((d) => [d.held, d.ms]))}; ` +
+    `dropped and sent again over the run: ${JSON.stringify(retries)}`)
+  return { decisions, retries }
+}
+
+/**
+ * "The Pickup items window shows each taken item with its name and sprite", with the bot idle and `taken` every take line
+ * of the run: the switch on Dashboard Config off, then clicked on; one window titled for `rom` with the header
+ * `[rom, Route 101]`; GET getPickupItems for `rom` with the Gen 4 id (FR-13's table), name and count of every take and
+ * their total; the window's cells and Total equal to it, every sprite loaded, more than one cell on the first row when
+ * there are several; then the switch clicked off and the window closed. The admin page's context holds every window.
+ */
+export async function checkItemsWindow(admin: Page, rom: string, taken: Take[]): Promise<void> {
+  expect(taken.length, '"the Pickup items window shows each taken item": no take line in the run').toBeGreaterThan(0)
+  const expected: Record<number, [string, number]> = {}
+  for (const t of taken) {
+    const id = GEN4[t.item]
+    expect(id, `the take of ${t.name} (Gen 3 item ${t.item}) is not in Ruby and Sapphire's Pickup table`).toBeDefined()
+    expected[id] = [t.name, (expected[id]?.[1] ?? 0) + 1]
+  }
+  const title = `Pokemon Dashboard — Pickup: ${rom}`
+  // The open Pickup windows; a closing page can throw on title(), so closed ones are skipped.
+  const pickupWindows = async (): Promise<{ page: Page; title: string }[]> => {
+    const found: { page: Page; title: string }[] = []
+    for (const page of admin.context().pages()) {
+      if (page.isClosed()) continue
+      const t = await page.title()
+      if (t.startsWith('Pokemon Dashboard — Pickup:')) found.push({ page, title: t })
+    }
+    return found
+  }
+  const pickupTitles = async (): Promise<string[]> => (await pickupWindows()).map((w) => w.title)
+
+  await admin.getByRole('button', { name: 'Dashboard Config', exact: true }).click()
+  const toggle = admin.getByLabel('Pickup items windows', { exact: true })
+  await expect(toggle, 'the Pickup items windows switch is on before the check; turn it off (qa-automation.md, preconditions)').not.toBeChecked()
+  expect(await pickupTitles(), 'a Pickup window before the switch').toEqual([])
+  // click, not check(): the box is controlled and ticks once main has made its GET and opened the windows.
+  await toggle.click()
+  await expect(toggle).toBeChecked({ timeout: 30_000 })
+  await expect.poll(pickupTitles, { timeout: 30_000, message: `no window titled "${title}"` }).toEqual([title])
+  const window = (await pickupWindows())[0].page
+
+  const res = await fetch(`${API}/bot/getPickupItems`)
+  expect(res.ok, `GET getPickupItems returned ${res.status}`).toBe(true)
+  const tallies = (await res.json()) as { gameFileName: string; milestone: string; total: number; items: { id: number; name: string; count: number }[] }[]
+  step(`GET getPickupItems: ${JSON.stringify(tallies)}`)
+  const tally = tallies.find((t) => t.gameFileName === rom)
+  expect(tally && [tally.milestone, tally.total], `GET getPickupItems for ${rom}: the milestone and the total`).toEqual([PHASE, taken.length])
+  expect(Object.fromEntries(tally!.items.map((i) => [i.id, [i.name, i.count]])), 'GET getPickupItems: Gen 4 id to name and count against the take lines')
+    .toEqual(expected)
+
+  const rows = [...tally!.items.map((i) => [i.name, String(i.count)]), ['Total', String(tally!.total)]]
+  await expect.poll(() => window.locator('.card-header > div > span').allTextContents(), { timeout: 10_000 }).toEqual([rom, PHASE])
+  await expect.poll(async () => [
+    ...(await window.getByTestId('pickup-item').evaluateAll((cells) => cells.map((c) =>
+      ['pickup-item-name', 'pickup-item-count'].map((id) => (c.querySelector(`[data-testid=${id}]`)?.textContent ?? '').trim())))),
+    ...(await window.getByTestId('pickup-total').evaluateAll((t) => t.map((e) => Array.from(e.children).map((c) => (c.textContent ?? '').trim()))))
+  ], { timeout: 10_000, message: 'the window\'s cells and Total against the GET' }).toEqual(rows)
+  // A missing Items/<gen 4 id>.png under spritesRootPath leaves the image with naturalWidth 0.
+  await expect.poll(() => window.locator('[data-testid=pickup-item] img').evaluateAll((imgs) =>
+    imgs.map((i) => (i as HTMLImageElement).complete && (i as HTMLImageElement).naturalWidth > 0)),
+  { timeout: 10_000, message: `the item sprites did not all load: Items/<gen 4 id>.png for ${tally!.items.map((i) => i.id).join(', ')}` })
+    .toEqual(tally!.items.map(() => true))
+  if (tally!.items.length > 1) {
+    const onFirstRow = await window.getByTestId('pickup-item').evaluateAll((cells) => {
+      const top = cells[0].getBoundingClientRect().top
+      return cells.filter((c) => c.getBoundingClientRect().top === top).length
+    })
+    expect(onFirstRow, 'the cells on the grid\'s first row').toBeGreaterThan(1)
+  }
+  await shotAll('03-items-window', { admin, pickup: window })
+
+  const closed = window.waitForEvent('close', { timeout: 30_000 })
+  await toggle.click()
+  await expect(toggle).not.toBeChecked({ timeout: 30_000 })
+  await closed
+  await expect.poll(pickupTitles, { timeout: 10_000 }).toEqual([])
+  step('the Pickup items window checked and closed')
 }
