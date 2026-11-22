@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test'
 import { writeSlot, STATE } from './rs-training'
 import { MINUTE } from './static'
 import {
-  checkBag, checkEmptyHanded, checkVisit, MENU_ENTRIES, PICKUP_HELD, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, takes, visit, waitPickup
+  checkBag, checkEmptyHanded, checkTrip, checkVisit, MENU_ENTRIES, PICKUP_HELD, PICKUP_SLOTS, PICKUP_TRIP, pickupRun, takes, visit, waitPickup
 } from './rs-pickup'
 
 const ITEMS = [22, 23, 2, 68, 19]
@@ -44,9 +44,8 @@ test('RS Pickup rs-pickup-take: five items in hand, the first visit before any b
   // "each press with its confirmation, the field free": START, Down 0 -> 1, A on POKéMON, eight per take, B, B.
   checkVisit(v, { first: true, slots: PICKUP_SLOTS.map((slot) => ({ slot, item: 2 })) }, '"each press with its confirmation"')
 
-  // "under 15 s" (NFR-1).
-  const [, frames, ms] = PICKUP_TRIP.exec(log[trip])!
-  expect(Number(ms), `"under 15 s": the trip took ${frames} frames, ${ms} ms`).toBeLessThan(15_000)
+  // "under 15 s" (NFR-1), in game frames: 900 at 60 a second.
+  checkTrip(log[trip], ITEMS.length, '"under 15 s"')
 
   // Between the Cancels: "the party empty-handed" and "the bag holding the five" (plus any later take).
   checkEmptyHanded(log, idle.party, PICKUP_SLOTS)

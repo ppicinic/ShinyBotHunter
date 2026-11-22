@@ -30,7 +30,7 @@ test('RS Pickup rs-pickup-field-move: Cut first on slot 6, its menu walked past 
   // "the menu's entries logged with the field move first; ITEM found at position 3".
   const entries = v.map((l) => MENU_ENTRIES.exec(l)).filter((m) => m !== null)
   expect(entries.map((m) => [m![1], m![3], m![4]]), '"the field move first; ITEM at position 3"').toEqual([['6', '10,0,1,2,3', '3']])
-  // Four Downs on the list, three on the menu (0 -> 1, 1 -> 2, 2 -> 3).
+  // Five Downs on the list (slot 6 is cursor 5), three on the menu (0 -> 1, 1 -> 2, 2 -> 3).
   checkVisit(v, { first: true, slots: [{ slot: 6, item: 3 }] }, '"ITEM found at position 3"')
   expect(takes(v).map((t) => [t.slot, t.item, t.name]), '"the Nugget taken"').toEqual([[6, NUGGET, 'Nugget']])
 
