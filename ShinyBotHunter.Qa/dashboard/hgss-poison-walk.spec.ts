@@ -146,7 +146,7 @@ test('HGSS poison walk through the dashboard: survive-poisoning script cleared m
     expect(backendLines(/GameStateTimeoutException/), 'a stale-timeout fired').toEqual([])
     expect(await resume.isVisible(), 'event parked in Waiting').toBe(false)
     expect(backendLines(/\[Navigator\] Healing with/).length, 'not exactly one heal').toBe(1)
-    expect(backendLines(/Movement blocked|abandoning the route/), 'the stall fired').toEqual([])
+    expect(backendLines(/Movement blocked|Sign seen|abandoning the route/), 'the stall or a sign fired').toEqual([])
 
     // The poison message: the party diff saw it once, the reader saw script 2003 before the Center,
     // the press loop pressed only A and ended on FieldFree, and the walk resumed after it.
