@@ -217,6 +217,14 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-heal-variants, hgss-poison-walk
         public uint WaitButtonOrDpadNative => 0x020410F1;
 
+        // sub_020415E0 (from ScrCmd_060), a sign is up and waits for a new A, B or d-pad key; the held direction is not new;
+        // root (revision-dependent; static ARM9, rev 0); observed 2026-11-21 (research/hgss-signs.md); QA: hgss-sign-walk
+        public uint SignWaitNative => 0x020415E1;
+
+        // sub_02041520 (TrainerTips), a text sign printing its page into slot 0, then at the arrow; A or B is ignored until
+        // the arrow; root (revision-dependent; static ARM9, rev 0); observed 2026-11-21 (research/hgss-signs.md); QA: hgss-sign-walk
+        public uint SignPrintingNative => 0x02041521;
+
         // The text printer, pointer-discovery.md "Text printer state (2026-10-24)".
 
         // sTextPrinterTasks (SysTask *[8], text.c), a slot NULL when no printer runs in it; root (revision-dependent;
