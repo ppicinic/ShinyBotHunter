@@ -513,7 +513,11 @@ namespace ShinyBotHunter.Pathfinding
                 ? mapService.GetGameMapIds(destBotMapId.Value)
                 : null;
             // A building exit warps on a step into the wall beyond its mat, which need not be the way the route arrived.
-            Direction? overshoot = overshootFinalStep ? ExitDirection(mapService.GetMap(mapId), destX, destY) ?? point.Direction : null;
+            // A kind-2 door tile warps on a press into its wall while standing on it, never on the step onto it.
+            Map map = mapService.GetMap(mapId);
+            Direction? overshoot = overshootFinalStep ? ExitDirection(map, destX, destY) ?? point.Direction
+                : destGameMapIds is not null && map[destY, destX] == Constant.MAP_Portal2 ? ExitDirection(map, destX, destY)
+                : null;
             return CreateMacro(path, destGameMapIds, overshoot);
         }
 

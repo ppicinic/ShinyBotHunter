@@ -6,6 +6,8 @@ using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
 {
+    // In the collection because MapService opens maps.bin without read sharing, as MapServiceTests says.
+    [Collection("macro-registry")]
     public class PathfindingTests
     {
         private const byte FacingRight = (byte)Direction.Right;
@@ -174,6 +176,41 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(Direction.Down, exit);
             Assert.Equal("M.Down.19.35497724;M.Left.8.35497716;M.Down.20.35497724.35471704.142756.73", macro);
+        }
+
+        // Walks onto each door tile from each of its open sides on the committed HGSS data, as a door segment
+        // into the gatehouse (bot map 55), and checks the walk ends with the step into the door's wall.
+        private static void AssertEachOpenSideEndsWith(int liveMapId, (int X, int Y)[] door, string finalMove)
+        {
+            var maps = new MapService(Path.Combine(RepoPaths.AppProject, "Data", "HGSS"));
+            var table = new HgssPointerService();
+            var service = new PathfindingService(maps, graphService: null!, table.TrainerX, table.TrainerY, table.Anchor, table.MapIdOffset);
+            Map map = maps.GetMap(liveMapId);
+            foreach (var (x, y) in door)
+            {
+                (int X, int Y)[] open = new[] { (x, y - 1), (x, y + 1), (x - 1, y), (x + 1, y) }
+                    .Where(n => map[n.Item2, n.Item1] is not (Constant.MAP_Blocked or Constant.MAP_Portal1 or Constant.MAP_Portal2))
+                    .ToArray();
+                Assert.NotEmpty(open);
+                foreach (var (nx, ny) in open)
+                {
+                    string? macro = service.Pathfind(liveMapId, nx, ny, x, y, new Capability(), FacingRight, destBotMapId: 55);
+                    Assert.NotNull(macro);
+                    Assert.EndsWith(finalMove, macro);
+                }
+            }
+        }
+
+        [Fact]
+        public void VioletGatehouseDoorStepsRightFromEachOpenSide()
+        {
+            AssertEachOpenSideEndsWith(73, [(511, 269), (511, 270)], "M.Right.512.35497716.35471704.142756.97");
+        }
+
+        [Fact]
+        public void Route31GatehouseDoorStepsLeft()
+        {
+            AssertEachOpenSideEndsWith(35, [(518, 269), (518, 270)], "M.Left.517.35497716.35471704.142756.97");
         }
     }
 }
