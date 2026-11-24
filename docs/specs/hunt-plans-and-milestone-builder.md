@@ -1,6 +1,6 @@
 # Spec: hunt plans and the milestone builder
 
-Status: Draft, from the spikes of 2026-11-24, with the owner's answers of the same day written in. Not started. Three things are still open; see "Open questions".
+Status: Draft, from the spikes of 2026-11-24, with the owner's answers of the same day written in. In progress on `feature/hunt-plans-milestones`. One thing is still open; see "Open questions".
 Last updated: 2026-11-24
 Owner: Phil
 Related: [research: the time mover](../research/time-mover.md) (the clock, the walk, the dashboard window), [research: the milestone builder](../research/milestone-builder.md) (the data, the encounter rule, the memory reads, the anchors, the name mapping), [headbutt research](../research/headbutt.md), [pathfinder spec](pathfinder-maps-flags-hms.md)
@@ -128,7 +128,10 @@ From the owner, 2026-11-24:
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
 | FR-25 | HGSS. The expected share of each species at a milestone is computed from its slots as the game does (research doc, "How the game picks a wild Pokémon"): the slot weights; the species list for the time of day; the sound slots; night fishing; then Repel and the lead's Keen Eye or Intimidate cancelling slots by level; Static and Magnet Pull; Hustle, Vital Spirit and Pressure. It also gives the share of encounters that survive. | Must | Unit tests against the worked examples in the research doc. |
+| FR-25a | RS. The expected share of each species at a milestone is computed from its slots as the game does (research doc, "Ruby and Sapphire", "The rule"): the slot weights of the modality; one species list; every slot rolls a level within its range. With the Repel counter above zero a land, surf or rock smash encounter is cancelled when the rolled level is below the level of the first party member that has HP and is not an egg, so a slot survives by the part of its level range at or above that level. Fishing does not check Repel. It also gives the share of encounters that survive. | Must | Unit tests: Route 101 plain gives 45, 45 and 10; a table with a level range against a Repel level inside the range. |
+| FR-25b | RS. No lead ability changes which species appears. Stench and Illuminate change only how often an encounter comes and are not part of the share. | Must | Unit test: the shares are the same for every lead ability. |
 | FR-26 | The inputs are read from memory while a hunt runs, never entered: the in-game time of day; the Repel counter; the lead's ability, level and egg flag, and the level of the first member that has not fainted. | Must | QA: the rate changes when the Repel counter is written. |
+| FR-26a | RS. The Repel counter is save variable `0x4021` at `gSaveBlock1 + 0x1382` (`u16`), from the decomp's layout; it is confirmed on the emulator before B3r's plan is approved. The Repel level is taken from the party read the bot already makes. | Must | The emulator round in the research doc; QA: `rs-rates-repel`. |
 | FR-27 | The phase card shows each row's expected share now, and the survive share when it is below 100 %. A row whose share is zero now (wrong time of day, cancelled by Repel) is dimmed and says why: "night only", "blocked by Repel". | Must | QA. |
 | FR-28 | With no hunt running on the game file, the card shows the shares for the time of day the game file was last seen in, with no Repel and no lead effect, marked as not live. | Should | QA. |
 | FR-29 | A Spin hunt is expected never to run a Repel out. A Run hunt and a plan's walk do spend steps: when "Repel's effect wore off..." comes up during a hunt, the bot closes it with A, confirmed by the field being free, and carries on. | Should | QA: the counter is unchanged across thirty spins; the message is closed on a Run hunt. |
@@ -256,6 +259,11 @@ Answered on 2026-11-24 and written into "Decided": how a living dex amount is wo
 ## Not proved by the spikes
 
 Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp and their Repel address from its layout; five anchors were generated and Route 101's was hunted on Sapphire); SoulSilver on the emulator; the ability rules on the emulator; anchors other than Route 30's; reachability and trainer sight in the anchor choice; the radio sound in memory; the 4:00 boundary and weekday rules; a plan across a route needing an HM. The research docs list each.
+
+## Changelog
+
+- 2026-11-24: first draft, from the spikes (#507).
+- 2026-11-24: FR-25a, FR-25b and FR-26a written out by the orchestrator from the research doc's Ruby and Sapphire section; the task split named them and the table did not have them. The status line corrected to one open question.
 
 ## Appendix: the maps and their names
 
