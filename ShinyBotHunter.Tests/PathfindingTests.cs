@@ -3,6 +3,7 @@ using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
+using System.IO.Compression;
 
 namespace ShinyBotHunter.Tests
 {
@@ -211,6 +212,49 @@ namespace ShinyBotHunter.Tests
         public void Route31GatehouseDoorStepsLeft()
         {
             AssertEachOpenSideEndsWith(35, [(518, 269), (518, 270)], "M.Left.517.35497716.35471704.142756.97");
+        }
+
+        // FR-38c: every tile of a run of two or more kind-2 tiles in the committed HGSS data has one wall across its run.
+        [Fact]
+        public void EveryKindTwoDoorRunHasOneDirection()
+        {
+            // Battle Hall's door on the Battle Frontier (bot map 210) is open on both sides across its run, so the walk
+            // takes no step there and the door wait times out naming the next map.
+            (int Map, int X, int Y)[] battleHall = [(210, 19, 34), (210, 19, 35)];
+            var maps = new Dictionary<int, Map>();
+            using (var file = File.OpenRead(Path.Combine(RepoPaths.AppProject, "Data", "HGSS", "maps.bin")))
+            using (var gzip = new GZipStream(file, CompressionMode.Decompress))
+            using (var reader = new BinaryReader(gzip))
+            {
+                int count = reader.ReadInt32();
+                for (int i = 0; i < count; i++)
+                {
+                    int id = reader.ReadInt32();
+                    var map = new Map(reader.ReadInt32(), reader.ReadInt32());
+                    for (int y = 0; y < map.Height; y++)
+                    {
+                        map.Tiles[y] = reader.ReadBytes(map.Width);
+                    }
+                    maps.Add(id, map);
+                }
+            }
+
+            var missing = new List<(int Map, int X, int Y)>();
+            foreach (var (id, map) in maps)
+            {
+                bool Portal2(int x, int y) => y >= 0 && y < map.Height && x >= 0 && x < map.Width && map[y, x] == Constant.MAP_Portal2;
+                for (int y = 0; y < map.Height; y++)
+                {
+                    for (int x = 0; x < map.Width; x++)
+                    {
+                        bool inRun = Portal2(x, y) && (Portal2(x, y - 1) || Portal2(x, y + 1) || Portal2(x - 1, y) || Portal2(x + 1, y));
+                        if (inRun && PathfindingService.ExitDirection(map, x, y) is null)
+                            missing.Add((id, x, y));
+                    }
+                }
+            }
+
+            Assert.Equal(battleHall, missing);
         }
     }
 }
