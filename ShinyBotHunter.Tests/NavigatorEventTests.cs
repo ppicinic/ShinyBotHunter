@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -370,6 +371,46 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(50, second);
             Assert.Equal([73], state.TilePenalties.Keys);
             Assert.Equal([(488, 264)], state.TilePenalties[73].Keys);
+        }
+
+        // The player on a live map at a tile, as the HGSS overworld reader reads it; the anchor's target is any value.
+        private static HgssOverworldReader StandingOn(int mapId, int x, int y)
+        {
+            const uint anchorTarget = 0x02300000;
+            FakeMemoryClient memory = new();
+            memory.Place(Table.Anchor, BitConverter.GetBytes(anchorTarget));
+            memory.Place((uint)(anchorTarget + Table.MapIdOffset), BitConverter.GetBytes((ushort)mapId));
+            memory.Place(Table.TrainerX, BitConverter.GetBytes((uint)x << 16));
+            memory.Place(Table.TrainerY, BitConverter.GetBytes((uint)y << 16));
+            return new HgssOverworldReader(memory, Table);
+        }
+
+        private static Task WaitForGatehouse(HgssOverworldReader overworld, List<string> presses)
+            => NavigatorEvent.WaitForWarpAsync(new ScriptedReader(Free), overworld, macro =>
+            {
+                presses.Add(macro);
+                return Task.CompletedTask;
+            }, [97], 1, 7, Stale, CancellationToken.None);
+
+        [Fact]
+        public async Task DoorWaitNamesTheNextNodesMap()
+        {
+            List<string> presses = [];
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(() => WaitForGatehouse(StandingOn(73, 511, 270), presses));
+
+            Assert.Equal("the warp to map 97 (still on map 73)", e.WaitingFor);
+            Assert.Empty(presses);
+        }
+
+        [Fact]
+        public async Task DoorWaitEndsOnTheNextNodesMap()
+        {
+            List<string> presses = [];
+
+            await WaitForGatehouse(StandingOn(97, 1, 7), presses);
+
+            Assert.Equal(["W.60"], presses);
         }
     }
 }
