@@ -47,17 +47,17 @@ namespace ShinyBotHunter.Service
         };
 
         /// <summary>First three characters of the game code identify the title; the fourth is region.</summary>
-        private static readonly Dictionary<string, (string Name, GameFlavor? Flavor)> GameCodes = new()
+        private static readonly Dictionary<string, (string Name, GameFlavor? Flavor, RomVersion? Version)> GameCodes = new()
         {
-            ["AXV"] = ("Pokemon Ruby", GameFlavor.RS),
-            ["AXP"] = ("Pokemon Sapphire", GameFlavor.RS),
-            ["IPK"] = ("Pokemon HeartGold", GameFlavor.HGSS),
-            ["IPG"] = ("Pokemon SoulSilver", GameFlavor.HGSS),
+            ["AXV"] = ("Pokemon Ruby", GameFlavor.RS, RomVersion.Ruby),
+            ["AXP"] = ("Pokemon Sapphire", GameFlavor.RS, RomVersion.Sapphire),
+            ["IPK"] = ("Pokemon HeartGold", GameFlavor.HGSS, RomVersion.HeartGold),
+            ["IPG"] = ("Pokemon SoulSilver", GameFlavor.HGSS, RomVersion.SoulSilver),
             // Recognised so the dashboard can name them, but no flavor yet: each becomes its own
             // GameFlavor when implemented, and both relocate their save blocks via DMA.
-            ["BPE"] = ("Pokemon Emerald", null),
-            ["BPR"] = ("Pokemon FireRed", null),
-            ["BPG"] = ("Pokemon LeafGreen", null),
+            ["BPE"] = ("Pokemon Emerald", null, null),
+            ["BPR"] = ("Pokemon FireRed", null, null),
+            ["BPG"] = ("Pokemon LeafGreen", null, null),
         };
 
         private static readonly Dictionary<char, string> Regions = new()
@@ -211,9 +211,9 @@ namespace ShinyBotHunter.Service
             string prefix = code.Substring(0, 3);
             char regionChar = code[3];
 
-            (string name, GameFlavor? flavor) = GameCodes.TryGetValue(prefix, out var hit)
+            (string name, GameFlavor? flavor, RomVersion? version) = GameCodes.TryGetValue(prefix, out var hit)
                 ? hit
-                : ($"Unknown ({code})", (GameFlavor?)null);
+                : ($"Unknown ({code})", (GameFlavor?)null, (RomVersion?)null);
 
             string language = Regions.TryGetValue(regionChar, out string? lang) ? lang : $"Unknown ({regionChar})";
 
@@ -234,7 +234,10 @@ namespace ShinyBotHunter.Service
                 Title: title,
                 Language: language,
                 Revision: revision,
-                RevisionSupport: support);
+                RevisionSupport: support)
+            {
+                Version = version
+            };
         }
 
         private void LogFindings(RomInfo info)
