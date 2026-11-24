@@ -161,7 +161,7 @@ P1 first; P2 after P1 (it changes the data the rebuild writes); P3 after P1 (it 
   - 153 (D37R0102): (4,3-5) Left; (4,35-36) Left
   - 207 (D31R0201): (14-16,19) Down
   - 210 (D32, Battle Frontier): (77,34-35) Right; (48-49,52) Down; (33,62-63) Left; (64,62-63) Right; (19,34-35) none, see below
-  - 211, 212, 214 (D32R0101/0201/0401): horizontal three-tile runs, Down; 213, 216 (D32R0301/0601): vertical three-tile runs, Left
+  - 211 (D32R0101): (6-8,20) Down; 212 (D32R0201): (14-16,19) Down; 213 (D32R0301): (1,6-8) Left; 214 (D32R0401): (2-4,12) Down; 216 (D32R0601): (1,5-7) Left
   - 347 (D32R0102): (14-15,34) Down
   - 401, 465 (R05R0101, R05R0202): (4,3-5) Left; (4,56-58) Left
 
