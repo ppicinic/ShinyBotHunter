@@ -211,6 +211,46 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void Static_PullsHalfTheRollsToElectricSlots()
+        {
+            var (shares, survive) = HgssRates.Compute(Route32, SlotCondition.Night, null, (byte)Ability.Static, 20, false);
+
+            Assert.Equal(1, survive, 6);
+            AssertShares(new()
+            {
+                [Mareep] = 0.55, [Wooper] = 0.175, [Ekans] = 0.15, [Bellsprout] = 0.10, [Zubat] = 0.025
+            }, shares);
+        }
+
+        [Fact]
+        public void MagnetPull_PullsHalfTheRollsToSteelSlots()
+        {
+            int[] species = [Wooper, Ekans, Wooper, Ekans, Bellsprout, Bellsprout, Mareep, Mareep, Wooper, Magnemite, Wooper, Magnemite];
+            var milestone = LandMilestone(Land(SlotCondition.Night, species, Route32Levels));
+
+            var (shares, _) = HgssRates.Compute(milestone, SlotCondition.Night, null, (byte)Ability.MagnetPull, 20, false);
+
+            Assert.Equal(0.525, shares[Magnemite], 6);
+            Assert.Equal(0.175, shares[Wooper], 6);
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public void StaticOrMagnetPull_NoOrEveryMatchingSlot_NoEffect(bool everySlot)
+        {
+            var (milestone, condition, ability) = everySlot
+                ? (LandMilestone(Land(SlotCondition.Day, Enumerable.Repeat(Magnemite, 12).ToArray(), Route32Levels)), SlotCondition.Day, Ability.MagnetPull)
+                : (Route30, SlotCondition.Morning, Ability.Static);
+            var plain = HgssRates.Compute(milestone, condition, null, 0, 20, false);
+
+            var (shares, survive) = HgssRates.Compute(milestone, condition, null, (byte)ability, 20, false);
+
+            AssertShares(new(plain.Shares), shares);
+            Assert.Equal(plain.Survive, survive, 6);
+        }
+
+        [Fact]
         public void SoundSlots_CountedAsOff()
         {
             Slot[] sounds = new[] { 2, 3, 4, 5 }.Select(i => new Slot(i, Azurill, 6, 6, LandWeights[i], SlotCondition.HoennSound)).ToArray();

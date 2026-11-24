@@ -19,11 +19,12 @@ namespace ShinyBotHunter.Milestones
             // Only the land and surf check sets the Repel flag (encounter_check.c:239-242); the others clear it (:1384).
             int? repel = milestone.Modality is Modality.Land or Modality.Surf ? repelLevel : null;
 
+            double[] picks = Picks(slots, ability);
             var masses = slots.Select(s => s.Species).Distinct().ToDictionary(s => s, _ => 0.0);
             double survive = 0;
             for (int i = 0; i < slots.Length; i++)
             {
-                double mass = slots[i].Weight / 100.0
+                double mass = picks[i]
                     * Levels(slots[i]).Sum(l => l.Chance * Kept(l.Level, ability, leadLevel, repel));
                 masses[slots[i].Species] += mass;
                 survive += mass;
@@ -45,6 +46,27 @@ namespace ShinyBotHunter.Milestones
                     : s),
             _ => throw new ArgumentOutOfRangeException(nameof(milestone), milestone.Modality, null)
         }).OrderBy(s => s.Index).ToArray();
+
+        // The chance each slot is taken. Magnet Pull (Steel) or Static (Electric): half the time, a uniform pick among the slots
+        // whose species has the type, unless none or all of them do (encounter_check.c:884-909, :1089-1110). The game reads
+        // the base form's types, so the species alone indexes the table.
+        private static double[] Picks(Slot[] slots, Ability ability)
+        {
+            double[] picks = slots.Select(s => s.Weight / 100.0).ToArray();
+            byte? type = ability switch
+            {
+                Ability.MagnetPull => (byte)MoveType.Steel,
+                Ability.Static => (byte)MoveType.Electric,
+                _ => null
+            };
+            if (type is null)
+                return picks;
+            bool[] typed = slots.Select(s => PersonalTable.HGSS[s.Species].Type1 == type || PersonalTable.HGSS[s.Species].Type2 == type).ToArray();
+            int count = typed.Count(t => t);
+            if (count == 0 || count == slots.Length)
+                return picks;
+            return picks.Select((p, i) => 0.5 * p + (typed[i] ? 0.5 / count : 0)).ToArray();
+        }
 
         // A land slot has one level; any other slot rolls uniformly within its range (encounter_check.c:742-764).
         private static IEnumerable<(int Level, double Chance)> Levels(Slot slot)
