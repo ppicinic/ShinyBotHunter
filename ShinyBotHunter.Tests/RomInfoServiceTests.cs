@@ -102,6 +102,27 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void GameCode_GivesVersion()
+        {
+            WriteNds("hg.nds", "IPKE", revision: 0);
+            WriteNds("ss.nds", "IPGE", revision: 0);
+            WriteGba("ruby.gba", "AXVE", revision: 2);
+            WriteGba("sapphire.gba", "AXPE", revision: 2);
+            WriteGba("emerald.gba", "BPEE", revision: 0);
+
+            var roms = Build().GetAll().ToDictionary(r => r.Handle);
+
+            Assert.Equal(RomVersion.HeartGold, roms["hg"].Version);
+            Assert.Equal(RomVersion.SoulSilver, roms["ss"].Version);
+            Assert.Equal(RomVersion.Ruby, roms["ruby"].Version);
+            Assert.Equal(RomVersion.Sapphire, roms["sapphire"].Version);
+            Assert.Null(roms["emerald"].Version);
+            // Both versions are still the one flavor: the version is not a plug point.
+            Assert.Equal(GameFlavor.HGSS, roms["hg"].Flavor);
+            Assert.Equal(GameFlavor.HGSS, roms["ss"].Flavor);
+        }
+
+        [Fact]
         public void FileWithoutAValidGbaHeader_IsSkippedRatherThanMisidentified()
         {
             File.WriteAllBytes(Path.Combine(dir, "not-a-rom.gba"), new byte[0x200]);

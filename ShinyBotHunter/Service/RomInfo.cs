@@ -16,6 +16,15 @@ namespace ShinyBotHunter.Service
         SupportedUntested
     }
 
+    /// <summary>Which version of a flavor's pair the ROM is; a fact about the ROM, not a flavor.</summary>
+    public enum RomVersion
+    {
+        HeartGold,
+        SoulSilver,
+        Ruby,
+        Sapphire
+    }
+
     /// <summary>
     /// A game's identity, read from its ROM header. This — not the filename — is what says which game,
     /// flavor, console and revision an emulator is running.
@@ -37,6 +46,9 @@ namespace ShinyBotHunter.Service
         int Revision,
         RevisionSupport RevisionSupport)
     {
+        /// <summary>Null for a game the bot recognises but has no flavor for.</summary>
+        public RomVersion? Version { get; init; }
+
         /// <summary>True when the header maps to a flavor the bot has game logic for.</summary>
         public bool IsKnownGame => Flavor is not null;
 
