@@ -65,6 +65,17 @@ The spike's prototype kept one window per game file: same window handle, same ti
 3. **The prototype window went blank on both swaps to `Route 30 Night`.** The page finished loading and logged no error; the same phase in an ordinary phase window rendered, and swaps to `Route 30 AM` and back to `Route 32` rendered. Cause not found.
 4. **The destination tile is hand-picked.** The first tile given was four columns off the grass and the hunt spun on a path with no encounter and no complaint. A destination needs a check that it is a tile of the kind the hunt needs.
 
+## The blank window, explained (2026-11-24)
+
+A research round on the spike's patch (a worktree at `57c2eef` with `spike-code.patch` applied, the dev databases, no emulator) reproduced item 3 of "What does not work as built" and found the cause. It is not the phase.
+
+- **Reproduced.** A swap with the window in plain view draws, "Route 30 Night" included. A swap while another window fully covers the phase window gives a blank window, for any of the three phases. The blank capture is byte for byte the spike's `night-0.png` (md5 `57b5f14a...`).
+- **Cause.** Chromium's occlusion tracking marks a fully covered window hidden (`document.visibilityState` reads `hidden`) and stops producing frames for it. The prototype reloads the page in the existing window (`loadFile` / `loadURL` in `syncPhaseWindows`), so the old frame is gone and no new one is painted until the window is uncovered; what shows is the window's background colour. The page itself was complete while blank: the card's rows were in the DOM and the console had no error. An ordinary phase window drew because a new window is shown on `ready-to-show`, which brings it to the front.
+- **Removing it.** With `backgroundThrottling: false` in the card window's `webPreferences`, or with the launch switch `--disable-features=CalculateNativeWinOcclusion`, the same covered swap drew. Uncovering the window also painted it within seconds.
+- **Not established.** What covered the window during the spike's two Night swaps. And whether a covered phase window on `main` today stops repainting its counts by the same mechanism: likely, not tried.
+
+Evidence: `ShinyBotHunter.Qa/dashboard/qa-runs/20261124-blank-window/` (gitignored): `covered-0.png`, `amcovered-0.png`, `r32covered-0.png` (blank), `night1-0.png` (drawn, uncovered), `fixB-0.png` and `flagA-0.png` (the two removals).
+
 ## Not proved
 
 - The 4:00 boundary, a day-of-week window, and a window crossed while the bot is parked or in a long battle.

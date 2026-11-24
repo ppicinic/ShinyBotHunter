@@ -1,6 +1,6 @@
 # Spec: hunt plans and the milestone builder
 
-Status: Draft, from the spikes of 2026-11-24, with the owner's answers of the same day written in. In progress on `feature/hunt-plans-milestones`. One thing is still open; see "Open questions".
+Status: Draft, from the spikes of 2026-11-24, with the owner's answers of the same day written in. In progress on `feature/hunt-plans-milestones`. The open question is answered; see "Open questions".
 Last updated: 2026-11-24
 Owner: Phil
 Related: [research: the time mover](../research/time-mover.md) (the clock, the walk, the dashboard window), [research: the milestone builder](../research/milestone-builder.md) (the data, the encounter rule, the memory reads, the anchors, the name mapping), [headbutt research](../research/headbutt.md), [pathfinder spec](pathfinder-maps-flags-hms.md)
@@ -168,6 +168,7 @@ The spike's workaround (one more step in the last walked direction when the walk
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
 | FR-39 | A phase window that names a game file is that file's one window: its name, title, place and size do not change when the milestone does. The new milestone is shown in it. | Must | QA: the window handle and bounds before and after a move. |
+| FR-39a | A phase window is painted while another window covers it, so a capture of it never shows a blank or stale card. | Must | QA: a swap with the window fully covered, captured, shows the new milestone. |
 | FR-40 | A move replaces the game file's milestone in the dashboard configuration in one push. | Must | Unit test. |
 | FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows dim and its shares change at 4:00, 10:00 and 20:00 in-game without a move. | Must | QA. |
 
@@ -254,6 +255,8 @@ Not the owner's to answer; it is the first step of the task's plan.
 
 1. **The blank window.** In the spike's prototype of FR-39 (one dashboard window per game file, with a new milestone loaded into it), the window showed nothing after both swaps to the phase "Route 30 Night": a dark empty window, no rows, no error logged. Swaps to "Route 30 AM" and back to "Route 32" drew correctly, and "Route 30 Night" drew correctly in an ordinary phase window. It was only ever in throwaway code, never on `main`. C2's plan starts by reproducing it and finding the cause.
 
+   **Answered 2026-11-24** ([research](../research/time-mover.md), "The blank window, explained"): it is not the phase. A window that another window fully covers is not painted by Chromium, and the prototype reloaded the page in it. C2 keeps a card window painting while covered (FR-39a).
+
 Answered on 2026-11-24 and written into "Decided": how a living dex amount is worked out, version exclusives, the female goal and males, Unown, where a species shows, Repel and spinning, cave and sand tiles, when a plan leaves, the two old names, whether unhuntable milestones are listed, Ruby and Sapphire's anchors and presets.
 
 ## Not proved by the spikes
@@ -264,6 +267,7 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 
 - 2026-11-24: first draft, from the spikes (#507).
 - 2026-11-24: FR-25a, FR-25b and FR-26a written out by the orchestrator from the research doc's Ruby and Sapphire section; the task split named them and the table did not have them. The status line corrected to one open question.
+- 2026-11-24: the blank window explained; FR-39a added by the orchestrator from that finding.
 
 ## Appendix: the maps and their names
 
