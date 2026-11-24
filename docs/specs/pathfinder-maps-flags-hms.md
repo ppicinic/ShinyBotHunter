@@ -130,3 +130,39 @@ P1 first; P2 after P1 (it changes the data the rebuild writes); P3 after P1 (it 
 
 - 2026-11-03: first draft, from the spike of the same day.
 - 2026-11-03: second run of the spike: FR-2b (rock-climb and brink tiles), FR-9 as one driver proved on all seven moves, FR-11's waterfall descent and warp exits, four QA scenarios and two saves, the Strength open question closed and the cutscene one opened.
+- 2026-11-24: side doors (#509, FR-38 to FR-38c of [hunt-plans-and-milestone-builder.md](hunt-plans-and-milestone-builder.md)). A kind-2 (`MAP_Portal2`) tile warps on a press into its wall while standing on it, never on the step onto it, so a door segment that ends on one now steps through it in the direction of its wall (`PathfindingService.ExitDirection`); for a run of two or more kind-2 tiles only the two neighbours across the run count. HGSS's data has no warp arrows and is not regenerated. The door wait after a door segment waits for the live ids of the next node's map, not the map the walk ended on. Every kind-2 run in the committed HGSS `maps.bin`, as bot map (names): tiles = direction:
+  - 0 (R31): (518,269-270) Left
+  - 1 (T31/R28): (887,266-267) Right
+  - 3 (T22/R32): (454,246-247) Left; (511,269-270) Right; (454,293-294) Left
+  - 4 (D24R0101): (447,293-294) Right
+  - 5 (T23/R33): (392,462-463) Left
+  - 6 (T25/R34): (372-373,449) Down
+  - 7 (T27/R37/R36/R35): (358,166-167) Left; (415,175-176) Right; (374,237-238) Left; (447,246-247) Right; (430-431,252) Down; (358-359,316) Down
+  - 8 (R39/R38/T26/W40/T24/W41): (351,166-167) Right
+  - 10 (R42/T28/R44): (422,175-176) Left
+  - 11 (T30/R45/R46): (626-627,380) Down
+  - 12 (T29/R43): (537-538,134) Down; (524-525,156) Down
+  - 13 (R02/T02/R22): (936,266-267) Left; (1036-1037,280) Down
+  - 15 (T03/R03/R02R0101): (1028-1029,138) Down; (1050-1051,183) Down
+  - 16 (R25/R24/R04/T04/R09/R05/R10): (1300-1301,189) Down
+  - 17 (T11): (1280,240-241) Left; (1337,240-241) Right; (1300-1301,253) Down
+  - 18 (T07/R07/R16R0301): (1273,240-241) Right; (1158,276-277) Left
+  - 19 (R16/R17/T08/R18): (1151,276-277) Right; (1241,422-423) Right; (1155,426-427) Right; (1162,426-427) Left; (1203-1204,445) Down
+  - 20 (R10R0101/R08/T05/R12/R13/R14/R15): (1344,240-241) Left; (1408,305-306) Left; (1248,422-423) Left
+  - 21 (R06/T06/R11): (1401,305-306) Right
+  - 31 (DIRECT2): (7-8,11) Down; 32 (DIRECT4): (6-9,11) Down
+  - 33 (D17R1101): (9,9-10) Left
+  - 54, 420, 421 (D22R0101/0102/0103): (75,39-40) Right; (40-41,86) Down
+  - 67 (D10R0101): (24-25,51) Down
+  - 74 (D36R0101): (15,80-81) Right
+  - 86 (T27PC0103): (7-8,11) Down; 87 (T27PC0104): (6-9,11) Down
+  - 104 (D46R0101): (32-33,77) Down
+  - 151 (T25R0501): (3,3-4) Left; 336 (T11R0601): (3,3-4) Left
+  - 153 (D37R0102): (4,3-5) Left; (4,35-36) Left
+  - 207 (D31R0201): (14-16,19) Down
+  - 210 (D32, Battle Frontier): (77,34-35) Right; (48-49,52) Down; (33,62-63) Left; (64,62-63) Right; (19,34-35) none, see below
+  - 211 (D32R0101): (6-8,20) Down; 212 (D32R0201): (14-16,19) Down; 213 (D32R0301): (1,6-8) Left; 214 (D32R0401): (2-4,12) Down; 216 (D32R0601): (1,5-7) Left
+  - 347 (D32R0102): (14-15,34) Down
+  - 401, 465 (R05R0101, R05R0202): (4,3-5) Left; (4,56-58) Left
+
+  Battle Hall's door on the Battle Frontier, (19,34) and (19,35) on bot map 210, is open on both sides across its run and keeps no direction: the walk takes no step there and the door wait times out naming the next map. Kind 2 also covers the escalator behaviour (0x6A), which the data cannot tell apart from a south warp, so any of the horizontal Down runs inside buildings may be one; none is treated differently.

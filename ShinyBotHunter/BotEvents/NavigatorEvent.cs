@@ -54,6 +54,9 @@ namespace ShinyBotHunter.BotEvents
         // A field script whose snapshot has not changed for this long parks the bot (R18).
         private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
 
+        // A warp wait whose screen and map id have not changed for this long parks the bot (R11).
+        private static readonly TimeSpan WarpStale = TimeSpan.FromSeconds(15);
+
         // The prompt-press values of LevelUpFlow: a press that has not landed after a second is pressed again.
         private static readonly TimeSpan ScriptPressConfirm = TimeSpan.FromMilliseconds(1000);
         private const int ScriptPressAttempts = 3;
@@ -478,7 +481,8 @@ namespace ShinyBotHunter.BotEvents
                 if (toNodeIsPortal)
                 {
                     var warpDest = path[state.NavigationPathIndex + 2].Node;
-                    await WaitForWarpAsync(state.Bot, mapIdAfter, warpDest.X, warpDest.Y, cancellationToken);
+                    await WaitForWarpAsync(state.Bot.State, state.Bot.Overworld, Press(state.Bot, cancellationToken),
+                        state.Bot.Profile.Maps!.GetGameMapIds(warpDest.MapId), warpDest.X, warpDest.Y, WarpStale, cancellationToken);
                     // The warp wait accepts a landing within one tile of the spawn node, and walking
                     // back onto the spawn node can step onto the door again, so the next segment goes
                     // from where we landed to the node after it. When the spawn node is the last
@@ -490,7 +494,8 @@ namespace ShinyBotHunter.BotEvents
                 }
                 else if (mapIdAfter != mapId)
                 {
-                    await WaitForWarpAsync(state.Bot, mapIdAfter, null, null, cancellationToken);
+                    await WaitForWarpAsync(state.Bot.State, state.Bot.Overworld, Press(state.Bot, cancellationToken),
+                        [mapIdAfter], null, null, WarpStale, cancellationToken);
                 }
 
                 state.NavigationPathIndex++;
@@ -807,36 +812,37 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        // Waits until the field is free on the destination map (and, when given, within a tile of
-        // the destination). Throws after 15 s with neither the screen nor the map id changing (R11).
-        private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
+        // Waits until the field is free on one of the destination map ids (and, when given, within a tile of
+        // the destination). Throws after the stale time with neither the screen nor the map id changing (R11).
+        internal static async Task WaitForWarpAsync(IGameStateReader game, IOverworldReader overworld, Func<string, Task> press,
+            IReadOnlyList<int> destMapIds, int? destX, int? destY, TimeSpan stale, CancellationToken cancellationToken)
         {
+            string dest = string.Join("/", destMapIds);
             (GameScreen Screen, int MapId)? last = null;
             var unchanged = Stopwatch.StartNew();
             while (true)
             {
-                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
-                int mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+                GameSnapshot snapshot = await game.ReadAsync(cancellationToken);
+                int mapId = await overworld.GetMapIdAsync(cancellationToken);
                 if (last != (snapshot.Screen, mapId))
                 {
-                    Console.WriteLine($"[Navigator] Warp to map {destMapId}: on map {mapId}, {snapshot}");
+                    Console.WriteLine($"[Navigator] Warp to map {dest}: on map {mapId}, {snapshot}");
                     last = (snapshot.Screen, mapId);
                     unchanged.Restart();
                 }
-                if (mapId == destMapId && snapshot.Screen == GameScreen.FieldFree)
+                if (destMapIds.Contains(mapId) && snapshot.Screen == GameScreen.FieldFree)
                 {
                     if (!destX.HasValue || !destY.HasValue)
                         break;
-                    var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    var (x, y) = await overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
                 }
-                if (unchanged.Elapsed >= TimeSpan.FromSeconds(15))
-                    throw new GameStateTimeoutException($"the warp to map {destMapId} (still on map {mapId})", snapshot);
+                if (unchanged.Elapsed >= stale)
+                    throw new GameStateTimeoutException($"the warp to map {dest} (still on map {mapId})", snapshot);
                 await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
-            bot.RunMacroString("W.60");
-            await bot.WaitForMacroAsync(cancellationToken);
+            await press("W.60");
         }
 
         // Wait until the field is free: no app, no task, map up, so we don't pathfind from a bogus origin.
