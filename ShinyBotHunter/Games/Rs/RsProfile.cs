@@ -37,7 +37,6 @@ namespace ShinyBotHunter.Games.Rs
                 HasChainedEncounter: false,
                 HasStaticEncounter: false,
                 HasHeadbuttTrees: false,
-                HasPickup: false,
                 HasWildRunChecks: true),
             revisions: [1, 2],
             Addresses,
@@ -69,6 +68,16 @@ namespace ShinyBotHunter.Games.Rs
             trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null,
                 PartyMenuMainCallback2: not null }
                 ? null
-                : NoTrainingAddresses);
+                : NoTrainingAddresses,
+            isPickupMember: HasPickupAbility,
+            createPickupVisit: (provider, bot) => new RsPickupTakeEvent(bot, provider.GetRequiredService<PokemonStateReader>(), provider.GetRequiredService<PickupTally>()));
+
+        // The species with Pickup and the slot that holds it (docs/research/rs-pickup.md); Ability is the Gen 3 ability slot.
+        private static bool HasPickupAbility(PokemonData member) => !member.IsEgg && member.Species switch
+        {
+            263 or 264 or 52 or 216 or 231 => member.Ability == 0,
+            190 => member.Ability == 1,
+            _ => false,
+        };
     }
 }

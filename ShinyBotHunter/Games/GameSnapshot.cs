@@ -4,7 +4,7 @@ namespace ShinyBotHunter.Games
         GameScreen Screen,
         BattleOutcome? Outcome, int? Script, int? Prompt, uint? TaskFunction, uint? Native = null, int? SummaryState = null,
         int? TextPrinter = null, int? AppState = null, int? PartyMonIndex = null, uint? AppInit = null,
-        int? StartMenuState = null, uint? TextCursor = null, int? Question = null)
+        int? StartMenuState = null, uint? TextCursor = null, int? Question = null, string? MenuEntries = null)
     {
         // RenderText's waits for A or B at the arrow (pointer-discovery.md, "Text printer state (2026-10-24)"); 3, 7 and 8
         // are decomp only.
@@ -29,8 +29,15 @@ namespace ShinyBotHunter.Games
     // CB2_PartyMenuMain PartyMonIndex (the party cursor) and AppState (gPaletteFade.active, 1 while it fades); on OtherApp for the forget-a-move screen, in battle or in the scene (data[0] 21, data[8] 6), Prompt (its
     // cursor), TaskFunction (the summary's input task or its destroy task while one is active, else null) and AppState
     // (gPaletteFade.active, 1 while the screen fades); on FieldTask, TextPrinter (the field message window's state),
-    // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active);
-    // PartyMonIndex on BattleMenu (the battler's party slot); Prompt on BattleMoveList (the move cursor); Prompt (the
+    // Native (the field script's native) and TaskFunction (Task_HandleYesNoInput while that task is active); on FieldTask
+    // while the start menu's input task takes keys under CB2_Overworld (its data[0] 1), TaskFunction (that task), Prompt
+    // (the start cursor), MenuEntries (the start menu's action ids) and AppState (gPaletteFade.active); on OtherApp for
+    // the field party screen
+    // (callback 2 CB2_PartyMenuMain out of battle), TaskFunction (the list's, the Pokémon submenu's or the ITEM submenu's
+    // task function while one is active, else null), TextPrinter (the menu window's state) while
+    // gPartyMenuMessage_IsPrinting is 1, and with one of the tasks active PartyMonIndex (the party cursor) and AppState
+    // (gPaletteFade.active), Prompt (sPokeMenuCursorPos) under either submenu and MenuEntries (the Pokémon submenu's entry
+    // ids) under the Pokémon submenu; MenuEntries is the ids comma-separated in decimal; PartyMonIndex on BattleMenu (the battler's party slot); Prompt on BattleMoveList (the move cursor); Prompt (the
     // level-up box page, 1 or 2) and PartyMonIndex (the getter's slot) on BattleExpPrompt; Prompt (1), PartyMonIndex
     // (the getter's slot) and Question (5 "Delete a move?", 10 "Stop learning?") on BattleMoveLearnPrompt; Outcome and
     // PartyMonIndex (the fainted slot) on BattleScript, "Use next POKéMON?".

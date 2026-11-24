@@ -205,6 +205,8 @@ Changed 2026-11-17 by the [RS navigation and training spec](rs-navigation-and-tr
 
 Changed 2026-11-17 by the same spec, FR-18 (#451, T3b): RS declares `HasOverworldNavigation` and `HasTraining`. The constructor adds `HasChainedEncounter ⇒ HasTraining`, since a chained leg may train and needs the navigator part. Without `HasTraining` nothing is greyed any more; a train mode is refused at Run when `TrainingRefusal` gives a sentence for the bot's table.
 
+Changed 2026-11-21 by the [RS Pickup spec](rs-pickup.md) (epic #485, #486): `HasPickup` is deleted. Two parts replace it: `IsPickupMember`, whether a party member has Pickup (HGSS: the ability is 53; RS: the species and the ability slot), and `CreatePickupVisit`, the visit the orchestrator makes per decision (HGSS's `PickupTakeEvent`, RS's `RsPickupTakeEvent`). A capability flag could not say who has Pickup: a Gen 3 record stores the ability slot, not the ability, so the test differs by generation. And with both wild-encounter flavors having a visit, nothing is left for the flag to grey; `BotService` greys and refuses Pickup from the party read through `IsPickupMember` alone.
+
 `PokemonStateReader.GetPokemonState` checks `CanReadBoxes` and throws `InvalidOperationException` otherwise, replacing today's `NotSupportedException` from the pointer service. `PokemonState`'s hard-coded 18x30 (`PokemonStateReader.cs:17-20`) reads `BoxLayout` instead.
 
 ### Overworld reader
@@ -397,3 +399,4 @@ None. Resolved 2026-10-21 by the owner: the chain reader and every behaviour cha
 - 2026-11-16 (#413): RS declares `CanReadBoxes` with `gPokemonStorage`'s boxes as its `BoxLayout`, whose `Storage` is an offset from the party read's base (the anchor itself on RS).
 - 2026-11-17 (#451): RS declares `HasOverworldNavigation` and `HasTraining`; `HasChainedEncounter ⇒ HasTraining`; `Maps` is required by navigation.
 - 2026-11-17 (#434): made true for the merged RS feature: the capabilities record and the constructor's rules as built (the first draft's `HasTraining` comment no longer holds), `SeekLockHandOff`, `CreateNavigatorEvent` and `TrainingRefusal` on the profile, the RS table chosen by game code, RS's maps with elevation and events under `RouteSearch`, and the registry's requirements.
+- 2026-11-21 (epic #485): `HasPickup` deleted; `IsPickupMember` and `CreatePickupVisit` on the profile replace it.

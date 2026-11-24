@@ -333,6 +333,7 @@ Follow-ups proposed, none done:
 
 ## Changelog
 
+- 2026-11-21 (epic #485): Pickup is offered on Ruby and Sapphire with a train mode ([RS Pickup spec](rs-pickup.md)). FR-18a's "Pickup stays greyed on RS" no longer holds: `HasPickup` is deleted, and Pickup is greyed and refused only when no party member has it (`profile.IsPickupMember`). The rest of FR-18a stands.
 - 2026-11-17: FR-18 corrected to round six of the readings (#475, the fix cycle of PR #476): B at "Use next POKéMON?" waits for `gBattleCommunication[0]` to read 1, since a B on the frame the pointer arrives was dropped in 4 of 6 QA runs; the forced menu's party is read once the list takes keys and taken in row order, since the game keeps the records in row order while the menu is up and the earlier read picked the fainted Pokémon; the nobody-alive stop added.
 - 2026-11-17: FR-18's faint rule, the owner's answer to open question 2 (#475; research "A battler faints: the readings"): No at "Use next POKéMON?", then the fastest alive sent out and RUN once, then Waiting with one Discord message; the blackout stays Waiting. The QA row, "As built", and "What diverged" 2, 13 and 15 follow; open question 2 closed.
 - 2026-11-17: closed out (D1, #434). Status Implemented; "As built", "What diverged" and "Evidence" added; the open questions replaced by the three asked of the owner, with the defaults as built, and the follow-ups.

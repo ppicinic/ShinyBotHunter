@@ -7,10 +7,10 @@ namespace ShinyBotHunter.Service.Pointers
     ///
     /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and five
+    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and seven
     /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/>, <see cref="StopLearningYesNo"/>,
-    /// <see cref="UseNextPokemonYesNo"/> and <see cref="PartyMenuMainCallback2"/>, differ between the games: that is the
-    /// per-game part, chosen by
+    /// <see cref="UseNextPokemonYesNo"/>, <see cref="PartyMenuMainCallback2"/>, <see cref="StartMenuInputTask"/> and
+    /// <see cref="OverworldCallback2"/>, differ between the games: that is the per-game part, chosen by
     /// <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
@@ -24,12 +24,14 @@ namespace ShinyBotHunter.Service.Pointers
         private static readonly RsPointerService Sapphire = new()
         {
             WaitForAorBPress = 0x080670E5, DeleteMoveYesNo = 0x081D8ED2, StopLearningYesNo = 0x081D8EE1,
-            UseNextPokemonYesNo = 0x081D8C56, PartyMenuMainCallback2 = 0x0806AF01,
+            UseNextPokemonYesNo = 0x081D8C56, PartyMenuMainCallback2 = 0x0806AF01, StartMenuInputTask = 0x080712D9,
+            OverworldCallback2 = 0x080543C9,
         };
         private static readonly RsPointerService Ruby = new()
         {
             WaitForAorBPress = 0x080670E1, DeleteMoveYesNo = 0x081D8F42, StopLearningYesNo = 0x081D8F51,
-            UseNextPokemonYesNo = 0x081D8CC6, PartyMenuMainCallback2 = 0x0806AEFD,
+            UseNextPokemonYesNo = 0x081D8CC6, PartyMenuMainCallback2 = 0x0806AEFD, StartMenuInputTask = 0x080712D5,
+            OverworldCallback2 = 0x080543C5,
         };
 
         /// <summary>
@@ -75,6 +77,18 @@ namespace ShinyBotHunter.Service.Pointers
         // in-battle switch, read frame by frame" S1, S10), both 1.1 values decomp only; QA: none yet: rs-train-switch
         // (Ruby: none yet: rs-train-switch-ruby)
         public uint? PartyMenuMainCallback2 { get; private init; }
+
+        // sub_80712B4, the start menu's input task function; ROM code, stored with the Thumb bit as RAM holds it (pret
+        // symbols line 4846: Sapphire 080712d8, Ruby 080712d4, rev 1 equal to rev 2); constant, per game; observed on
+        // Sapphire 1.2 and Ruby 1.2 (research "The party menu, from the decomp and the probe"), both 1.1 values decomp
+        // only; QA: none yet: rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint? StartMenuInputTask { get; private init; }
+
+        // CB2_Overworld, callback 2 in the field; ROM code, stored with the Thumb bit as RAM holds it (pret symbols line
+        // 2949: Sapphire 080543c8, Ruby 080543c4, rev 1 equal to rev 2); constant, per game; observed on Sapphire 1.2 and
+        // Ruby 1.2 (research "The party menu, from the decomp and the probe"), both 1.1 values decomp only; QA: none yet:
+        // rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint? OverworldCallback2 { get; private init; }
 
         // gPlayerPartyCount = 0x03004350, gPlayerParty = 0x03004360, both in IWRAM. Anchor is the
         // count, so the party sits a fixed 0x10 beyond it and the existing offset fields still apply.
@@ -359,5 +373,47 @@ namespace ShinyBotHunter.Service.Pointers
         // gBattleStruct->runTries (u8): gSharedMem + 0x16078 (include/battle.h:362), + 1 at each Run the game takes; root
         // (absolute; pret symbols line 1); observed (F4, F6); QA: none yet: rs-train-switch-battler-spent fainted-stop
         public uint RunTries => 0x02016078;
+
+        // Pickup, docs/research/rs-pickup.md "The party menu, from the decomp and the probe": the field party menu, its
+        // Pokémon submenu and the start menu. Every value below is the same in the Ruby and Sapphire rev 1 and rev 2 tables.
+
+        // HandleDefaultPartyMenu, the field party list's task function; constant (ROM, pret symbols line 6009, 08089cf4 +
+        // 1, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp only; QA: none yet: rs-pickup-take
+        // (Ruby: rs-pickup-ruby)
+        public uint FieldPartyMenuTask => 0x08089CF5;
+
+        // sub_8089D94, the task's function while the Pokémon submenu (SUMMARY, the field moves, ITEM, CANCEL) takes keys;
+        // constant (ROM, pret symbols line 6010, 08089db4 + 1, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby
+        // 1.2, 1.1 decomp only; QA: none yet: rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint PokemonMenuTask => 0x08089DB5;
+
+        // sub_808A060, the task's function while the ITEM submenu (GIVE, TAKE, MAIL, CANCEL) takes keys; constant (ROM,
+        // pret symbols line 6019, 0808a080 + 1, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp
+        // only; QA: none yet: rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint PokemonItemMenuTask => 0x0808A081;
+
+        // gPartyMenuMessage_IsPrinting (u8), 1 while the party menu prints its message; root (absolute; pret symbols line
+        // 159, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp only; QA: none yet: rs-pickup-take
+        // (Ruby: rs-pickup-ruby)
+        public uint PartyMenuMessagePrinting => 0x0202E8F6;
+
+        // gMenuWindow (0x0202E908) + 0x16, state (u16, include/text.h:54), the window the party menu's message prints in;
+        // root (absolute; pret symbols line 165, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp
+        // only; QA: none yet: rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint MenuWindowState => 0x0202E91E;
+
+        // sPokeMenuCursorPos (u8), the cursor of the Pokémon submenu and of the ITEM submenu; root (absolute; pret symbols
+        // line 222, rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp only; QA: none yet:
+        // rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint PokemonMenuCursorPos => 0x0202FFA8;
+
+        // sPokeMenuOptionsNo (u8), the Pokémon submenu's entry count; root (absolute; pret symbols line 223, rev 1 equal to
+        // rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp only; QA: none yet: rs-pickup-take (Ruby: rs-pickup-ruby)
+        public uint PokemonMenuActionCount => 0x0202FFA9;
+
+        // sPokeMenuOptionsOrder (u8[8]), the Pokémon submenu's entry ids in order; root (absolute; pret symbols line 224,
+        // rev 1 equal to rev 2); observed on Sapphire 1.2 and Ruby 1.2, 1.1 decomp only; QA: none yet: rs-pickup-take
+        // (Ruby: rs-pickup-ruby)
+        public uint PokemonMenuActions => 0x0202FFAA;
     }
 }

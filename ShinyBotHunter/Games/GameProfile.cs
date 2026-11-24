@@ -60,6 +60,13 @@ namespace ShinyBotHunter.Games
         /// <summary>Why a ROM's address table cannot train, or null when it can. Null when every table of the flavor can.</summary>
         public Func<IPointerService, string?>? TrainingRefusal { get; }
 
+        /// <summary>Whether a party member has Pickup. Null when the flavor has no Pickup.</summary>
+        public Func<PokemonData, bool>? IsPickupMember { get; }
+
+        /// <summary>The Pickup visit, made per decision; done with true when every Pickup member is empty-handed, false when it
+        /// parked in Waiting. Null when the flavor has no Pickup visit.</summary>
+        public Func<IServiceProvider, IBot, IBotEvent<bool>>? CreatePickupVisit { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -77,7 +84,9 @@ namespace ShinyBotHunter.Games
             Func<IServiceProvider, IBot, Task>? saveGame = null,
             TimeSpan? seekLockHandOff = null,
             Func<IServiceProvider, IBotEvent<GameState>>? createNavigatorEvent = null,
-            Func<IPointerService, string?>? trainingRefusal = null)
+            Func<IPointerService, string?>? trainingRefusal = null,
+            Func<PokemonData, bool>? isPickupMember = null,
+            Func<IServiceProvider, IBot, IBotEvent<bool>>? createPickupVisit = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -156,6 +165,8 @@ namespace ShinyBotHunter.Games
             SeekLockHandOff = seekLockHandOff;
             CreateNavigatorEvent = createNavigatorEvent;
             TrainingRefusal = trainingRefusal;
+            IsPickupMember = isPickupMember;
+            CreatePickupVisit = createPickupVisit;
         }
     }
 }

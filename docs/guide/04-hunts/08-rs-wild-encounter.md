@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (training, the switch, the level-up box, the new move, evolution, the faint, TrainerSentence), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (the walk, the nurse, every stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (DecideOverworldAction, CanFightNextEncounter, HealTripLine), ShinyBotHunter/BotEvents/BattleReadiness.cs, ShinyBotHunter/Pathfinding/RouteSearch.cs, ShinyBotHunter/Service/DiscordBotService.cs (SendNewMoveDecisionAndWaitAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (capabilities, seekLockHandOff, trainingRefusal), ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md, docs/specs/rs-navigation-and-training.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (training, the switch, the level-up box, the new move, evolution, the faint, TrainerSentence), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (the walk, the nurse, every stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (DecideOverworldAction, CanFightNextEncounter, HealTripLine), ShinyBotHunter/BotEvents/BattleReadiness.cs, ShinyBotHunter/Pathfinding/RouteSearch.cs, ShinyBotHunter/Service/DiscordBotService.cs (SendNewMoveDecisionAndWaitAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (capabilities, seekLockHandOff, trainingRefusal, isPickupMember), ShinyBotHunter/BotEvents/RsPickupTakeEvent.cs, ShinyBotHunter/Service/BotService.cs (PickupRefusal, PickupNeedsTrainMode), ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/research/rs-pickup.md, docs/specs/rs-wild-encounter.md, docs/specs/rs-navigation-and-training.md, docs/specs/rs-pickup.md -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -7,7 +7,7 @@ Part of the [ShinyBotHunter guide](../README.md)
 
 The bot turns on the spot, or runs back and forth along a short line in the grass, until a wild battle starts. It presses A at "Wild … appeared!" and reads the wild Pokémon at the FIGHT / BAG / POKéMON / RUN menu, once it has slid in and, if it is shiny, sparkled. It writes the Pokémon to the encounter log and runs away. It stops when it finds a Pokémon you are hunting for, or when the milestone is complete.
 
-With Train Type None it runs from every battle. With Train Type Standard or Switch it trains a Pokémon instead: it fights, and when the Pokémon is too hurt or out of PP it walks to the nearest Pokémon Center, heals and walks back. [Training](#training) explains it. Ruby and Sapphire have no Pickup, Headbutt or chained hunts.
+With Train Type None it runs from every battle. With Train Type Standard or Switch it trains a Pokémon instead: it fights, and when the Pokémon is too hurt or out of PP it walks to the nearest Pokémon Center, heals and walks back. [Training](#training) explains it. With **Pickup** ticked as well, it takes the items your Pickup Pokémon find into the bag; [Farming items with Pickup](#farming-items-with-pickup) explains it. Ruby and Sapphire have no Headbutt or chained hunts.
 
 It is tested on version 1.2 of Ruby and Sapphire. Version 1.1 runs, untested. Version 1.0 cannot be used: launching it fails, and the backend's window shows `RS revision 0: no address table. Hunts run on revisions 1 and 2.`
 
@@ -23,6 +23,7 @@ Every button press is checked against the game's memory before the next one.
 6. **Every menu and message closed.**
 7. **A milestone for the game RS**, made in the [Milestone Editor](../03-dashboard.md#make-a-milestone).
 8. **To train (Train Type Standard or Switch):** a US Ruby or Sapphire ROM, and a Pokémon Center your character can walk to from the start tile without any HM. The bot uses no Cut, Surf, Strength, Rock Smash, Waterfall or Dive. Every trainer on the way must already be beaten: the bot stops at any trainer who has not been. The fighting Pokémon needs more than a quarter of its HP and at least 3 PP across its damaging moves; otherwise the bot heals first.
+9. **For Pickup:** a train type, and a Pokémon with the Pickup ability anywhere in your party (see [Farming items with Pickup](#farming-items-with-pickup)).
 
 ## Start a hunt
 
@@ -44,9 +45,10 @@ Every button press is checked against the game's memory before the next one.
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. Either way the hunt also ends once the milestone is complete. **NoTarget**: nothing is a target; it needs a train mode, and the hunt ends when the Pokémon reaches the target level. | Target Type |
 | How to meet wild Pokémon. **Spin**: turn on the spot. **Run**: run back and forth in a straight line. Headbutt is greyed out. | Encounter Type |
 | How many tiles to run each way from the start tile, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
-| Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting; the first Pokémon still earns experience. Standard and Switch need a US Ruby or Sapphire ROM. Pickup shows with them, greyed out. | Train Type |
-| The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it. | Target Level (101 = no end) |
+| Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting; the first Pokémon still earns experience. Standard and Switch need a US Ruby or Sapphire ROM. | Train Type |
+| The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it; use that to farm items with Pickup. | Target Level (101 = no end) |
 | The party slot of the Pokémon that fights in Switch training, from 2 to 6. Shown only for Switch. It starts at 2. | Battler |
+| Whether to take the items your Pickup Pokémon find. Shown when Train Type is not None. Greyed out when no Pokémon in your party has the Pickup ability. See [Farming items with Pickup](#farming-items-with-pickup). | Pickup |
 
 ### Greyed-out choices
 
@@ -55,7 +57,6 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 | Choice | Reason |
 |---|---|
 | Encounter Type Headbutt | `Ruby and Sapphire have no Headbutt trees.` |
-| Pickup, once a train type is chosen | `Pickup is not available on Ruby and Sapphire.` |
 
 ## Spin and Run
 
@@ -123,9 +124,67 @@ After the lost battle, or the 30 s stop: finish the battle yourself, heal, walk 
 
 ### What is still off
 
-- Pickup, Chained Encounter and Headbutt are not offered for Ruby and Sapphire.
+- Chained Encounter and Headbutt are not offered for Ruby and Sapphire.
 - No HM is used, so a Pokémon Center that needs one is out of reach: the bot stops with `No route to a Pokémon Center on foot from <place>.`
 - Training on a ROM that is not the US Ruby or Sapphire is refused at **Run** with `Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE).`
+
+## Farming items with Pickup
+
+Pokémon with the Pickup ability sometimes find an item after a battle. With **Pickup** ticked, the bot fights as Train Type says, and takes the items into your bag so the Pokémon can find more.
+
+What your party needs:
+
+- **A lead that wins.** The Pokémon in your first party slot (or the Battler, in Switch training) must knock the wild Pokémon out. Nothing is found after a battle the bot ran from, or one it lost.
+- **Pokémon with the Pickup ability,** in any party slot. They do not have to fight. In Ruby and Sapphire these are Zigzagoon, Linoone, Meowth, Teddiursa and Phanpy, and Aipom only with its second ability (an Aipom with Run Away does not count). An Egg does not count.
+
+How finding works:
+
+- After each won battle, each Pickup Pokémon that holds nothing has a 1 in 10 chance to find an item.
+- A Pokémon that already holds an item finds nothing. That is why the bot takes the items.
+- The level does not change what is found. Every find comes from one table:
+
+| Item | Chance |
+|---|---|
+| Super Potion | 30 % |
+| Full Heal | 10 % |
+| Ultra Ball | 10 % |
+| Rare Candy | 10 % |
+| Full Restore | 10 % |
+| Revive | 10 % |
+| Nugget | 10 % |
+| Protein | 5 % |
+| PP Up | 4 % |
+| King's Rock | 1 % |
+
+With five Pickup Pokémon holding nothing, about 4 won battles in 10 give at least one item.
+
+To farm:
+
+1. Pick a Train Type other than None.
+   You see the **Pickup** box.
+2. Tick **Pickup**.
+3. Set **Target Level (101 = no end)** to 101, so the hunt does not end on its own.
+4. Press **Run**.
+
+The box is greyed out with "No Pokémon in your party has the Pickup ability." after it when no Pokémon in your party has the ability. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
+
+What a visit looks like: before each encounter (once when the hunt starts, then after each battle, or, when a battle sends the bot to heal, after the walk back), the bot opens the party list as you would: START, POKéMON. It reads which Pickup Pokémon hold an item. For each one, it moves the cursor to it, presses A, picks ITEM, then TAKE, and presses A at "Received the … from …". Then it presses B twice, back to the field, and turns or runs again. It looks only at Pokémon with Pickup: an item held by a Pokémon without it, such as a lead that is not a Pickup Pokémon, is left where it is. The spike that the visit is built on measured about 2.5 s for a visit with nothing to take, and about 2 s more for each item taken (11.2 s for five).
+
+The items stay in your bag, and the [Pickup items window](../03-dashboard.md#watch-the-pickup-items) counts each one.
+
+Room in the bag: the Items pocket holds 20 kinds of item, up to 99 of each. A taken item joins the ones of its kind already there, or takes a free place. Ultra Balls go to the Balls pocket instead, which holds 16 kinds. When the pocket has no room, the game says "The BAG is full. The POKéMON's item could not be removed." and the Pokémon keeps its item; the bot then stops after the visit (below).
+
+### If a visit stops
+
+Each of these appears in the backend's window, and the entry shows the bot waiting, with **Resume**. Resume goes back to the bot's usual decision: it finishes or heals first if that is due, and otherwise starts a new visit, which waits for your character to stand in the field, then opens the party list again. If the game shows the same thing for 5 s before that, the visit stops again with a `Waited for the field free before the Pickup visit` line.
+
+**You see** `[Pickup] Pickup: <name> still holds <item> after the take; check the bag and the Pokémon menu.`
+**It means** after the visit a Pickup Pokémon still holds an item. Either its pocket in the bag is full, so the game could not take it, or the item is mail: the bot does not open a Pokémon that holds mail (the backend's window shows `[Pickup] slot <n> (<name>) holds mail; not visited` first).
+**Do** make room in the bag (use, sell or toss some items, or put them in your PC), or take the mail off that Pokémon yourself. Close every menu until your character stands in the field, and press **Resume**. An item still held is taken on the next visit, once there is room.
+
+**You see** `[Pickup] Pickup: Waited for <what>; the game state stayed <state>`, where `<what>` names a step of the visit, for example `the party list taking keys on cursor 0 after A on POKéMON`.
+**It means** a press of the visit was not followed by the screen it should open, and nothing in the game changed for 3 s (5 s while waiting for the field to be free before the visit). A press after which the game still shows exactly what it showed a second later is sent once more, never a third time.
+**Do** close any menu or message in the emulator until your character stands in the field, and press **Resume**.
 
 ## When a trainer stops you: win the battle and press Resume
 
@@ -190,6 +249,7 @@ The backend's window also shows:
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
 - When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves. Party slots and move slots in these lines count from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1, and a Pokémon's first move is move 0.
 - `[Orchestrator] heal trip: …` when the bot goes to heal. Its `switch slot <n>` is the dashboard's number, from 2 to 6.
+- With Pickup, `[Pickup]` lines for each visit: each press and what confirmed it, `held <n> of <n> pickup members` at the party list, `took <item> (Gen 3 item <n>) from slot <n> (<name>)` for each item taken, and `trip took <n> frames, <n> ms`. A `slot <n>` in these lines counts from 1, as the party list shows it; a `cursor <n>` counts from 0.
 - `[Navigator]` lines for each walk: `plan to <place> from <place>` with its cost and number of segments, one line per segment, `arrived on <place>`, and at the Pokémon Center the nurse's presses and `nurse: party HP … (full)`.
 
 ## How does it stop?
@@ -219,9 +279,17 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 **It means** your first Pokémon has no HP left, or the party is empty.
 **Do** heal it, or put a Pokémon that can battle first, then press **Run** again.
 
-**You see** Run refused with "Ruby and Sapphire have no Headbutt trees." or "Pickup is not available on Ruby and Sapphire."
+**You see** Run refused with "Ruby and Sapphire have no Headbutt trees."
 **It means** a greyed-out choice was sent anyway, for example from outside the dashboard.
 **Do** pick a choice that is not greyed out.
+
+**You see** Run refused with "Pickup needs a train mode: the Pokémon must be knocked out, not fled from."
+**It means** Pickup is ticked but Train Type is None, so every battle would be run from and nothing would be found.
+**Do** pick Standard or Switch, or untick Pickup.
+
+**You see** Run refused with "No Pokémon in your party has the Pickup ability."
+**It means** the bot read your party when you pressed Run and no Pokémon in it has the ability. The greyed-out box can be out of date if you changed your party in the game.
+**Do** put a Pokémon with Pickup in your party, or untick Pickup.
 
 **You see** Run refused with "Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE)."
 **It means** Train Type Standard or Switch was chosen on a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads.
@@ -269,6 +337,8 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[Navigator] stopped:` followed by `No route to a Pokémon Center on foot from <place>.`, `No route back to the start tile <place> from <place>.`, `Stuck walking to <place>.`, `The last step to <place> did not end (…).`, a `Waited for …` at the nurse, or `The party's HP was not full after the nurse: …`.
 **It means** the walk to the Pokémon Center or back, or the nurse, did not go as planned. A place is the game's name for the map and the tile, for example `Route101 (14, 4)`. [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) explains each.
 
+A stop during a Pickup visit starts with `[Pickup]`; see [If a visit stops](#if-a-visit-stops) for those.
+
 **Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again. After a lost battle, or a stop at the nurse or on a walk, your character is somewhere else, so walk it back to the start tile first; otherwise Resume stops again with `The player moved while turning` or `The player is off the run line`. If a Pokémon still needs healing, the bot then walks to the Pokémon Center again by itself.
 
 The bot records a catch only for a Pokémon it stopped on as a target: waiting at the FIGHT / BAG / POKéMON / RUN menu, with the shiny alert sent. A Pokémon you catch after any of the stops above is not recorded by the bot.
@@ -277,6 +347,6 @@ For anything else, see [When something goes wrong](../07-when-something-goes-wro
 
 ## Why does it work this way?
 
-What the hunt was built to do is in the [Ruby and Sapphire wild encounter spec](../../specs/rs-wild-encounter.md), and training and the walks in the [navigation and training spec](../../specs/rs-navigation-and-training.md). How the bot reads the game, and where the speed numbers come from, is in the research notes for [the wild hunt](../../research/rs-wild-encounter.md) and for [navigation and training](../../research/rs-navigation-and-training.md).
+What the hunt was built to do is in the [Ruby and Sapphire wild encounter spec](../../specs/rs-wild-encounter.md), training and the walks in the [navigation and training spec](../../specs/rs-navigation-and-training.md), and Pickup in the [Ruby and Sapphire Pickup spec](../../specs/rs-pickup.md). How the bot reads the game, and where the speed numbers come from, is in the research notes for [the wild hunt](../../research/rs-wild-encounter.md), for [navigation and training](../../research/rs-navigation-and-training.md) and for [Pickup](../../research/rs-pickup.md).
 
 Next: [Discord](../05-discord.md)

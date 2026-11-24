@@ -9,8 +9,8 @@ import { expect, type Locator, type Page } from '@playwright/test'
 import { clearMacro, readMemory, repoDir, runMacro, shotAll, step } from './driver'
 import {
   ADVANCE, cancelBot, cancelEventAndBot, CONFIRM, dashboardState, ENCOUNTER, flashUnchanged, installPristine, launchRs, LOCK,
-  OVER, PARTY, PARTY_COUNT, parseEncounter, psqlRows, readBattleBit, readTile, readU32, readU8, removeCheats, ROMS, SLOT_SIZE, startWild,
-  STOPPED, teardown, TO_RUN, type Tile, writeBytes
+  OVER, PARTY, PARTY_COUNT, parseEncounter, psqlRows, readBattleBit, readTile, readU32, readU8, removeCheats, ROMS, ROUTE101, type Save,
+  SLOT_SIZE, startWild, STOPPED, teardown, TO_RUN, type Tile, writeBytes
 } from './rs-wild'
 import { backendLog, CRASHED, hex8, MINUTE, settings, shutdown, startFrame, type Frame } from './static'
 
@@ -373,7 +373,7 @@ export async function waitLine(pattern: RegExp, count: number, ms: number, crite
 }
 
 /** getDashboardState's eventState Complete, failing at once on a stop (other than `expectedStop`), a crash or a stale-timeout. */
-async function waitComplete(expectedStop: RegExp | undefined, ms: number): Promise<void> {
+export async function waitComplete(expectedStop: RegExp | undefined, ms: number): Promise<void> {
   const deadline = Date.now() + ms
   while ((await dashboardState())?.eventState !== 'Complete') {
     failOnStops(backendLog(), expectedStop)
@@ -505,7 +505,7 @@ export type TrainForm = { trainType: 'Standard' | 'Switch'; targetLevel: number;
  * A refused Run: the dashboard shows startAction's 400 text in the card's red feedback box (BotControlTab's
  * renderFeedback) and leaves the form up.
  */
-const refusal = (card: Locator): Locator => card.locator('div[class~="bg-red-900/20"]')
+export const refusal = (card: Locator): Locator => card.locator('div[class~="bg-red-900/20"]')
 
 /**
  * startWild with Spin (the player never leaves the start tile, so the walk home at Complete is `already at start`), then
@@ -575,14 +575,18 @@ export async function idleRead(): Promise<IdleRead> {
  * (the writes) with the bot idle; startTraining; then `body`. On 'complete' it waits for Complete, reads with the bot
  * idle and removes the bot; on 'cancel' the event is cancelled and the read is made between the cancels. Then the flash
  * unchanged, the shutdown, no stop but `expectedStop`, every battle's press count, and one encounters row per encounter
- * line, none shiny. The teardown runs on every outcome. The result is for the scenario's asserts.
+ * line, none shiny. The teardown runs on every outcome. The result is for the scenario's asserts. Another family changes
+ * `save` (installed and compared instead of qa-route101), `start` (instead of startTraining with the form) and `whileIdle`
+ * (a read after idleRead, with the bot still idle).
  */
-export async function trainingRun(setup: () => Promise<void>, form: TrainForm, body: (run: Run) => Promise<'complete' | 'cancel'>): Promise<TrainingResult> {
+export async function trainingRun(setup: () => Promise<void>, form: TrainForm, body: (run: Run) => Promise<'complete' | 'cancel'>,
+  { save = ROUTE101, start = (card: Locator) => startTraining(card, form), whileIdle }:
+  { save?: Save; start?: (card: Locator) => Promise<string>; whileIdle?: () => Promise<void> } = {}): Promise<TrainingResult> {
   const rom = rsRom()
   const frame: Frame = { backend: null, app: null }
   const { pg } = settings()
   removeCheats()
-  installPristine(rom)
+  installPristine(rom, save)
   try {
     const admin = await startFrame(frame)
     const loggedIn = await discordMode()
@@ -595,20 +599,22 @@ export async function trainingRun(setup: () => Promise<void>, form: TrainForm, b
     expect(lead.checksumOk && lead.species === MUDKIP, `the lead does not decode as Mudkip (${MUDKIP}) with a valid checksum`).toBe(true)
     await shotAll('01-launched', pages)
     await setup()
-    const runStart = await startTraining(card, form)
+    const runStart = await start(card)
     const end = await body({ rom, card, pages, runStart, lead, loggedIn })
     let idle: IdleRead | null = null
     if (end === 'complete') {
       await waitComplete(form.expectedStop, 10 * MINUTE)
       idle = await idleRead()
+      await whileIdle?.()
       await cancelBot(card)
     } else {
       await cancelEventAndBot(card, async () => {
         idle = await idleRead()
+        await whileIdle?.()
       })
     }
     await shotAll('02-cancelled', pages)
-    expect(flashUnchanged(rom), `"the save's first 131,072 bytes unchanged": the ${rom} SaveRAM changed`).toBe(true)
+    expect(flashUnchanged(rom, save), `"the save's first 131,072 bytes unchanged": the ${rom} SaveRAM changed`).toBe(true)
     await shutdown(frame, admin)
 
     const log = backendLog()

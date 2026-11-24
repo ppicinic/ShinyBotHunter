@@ -6,9 +6,10 @@ namespace ShinyBotHunter.Games.Rs
     /// <summary>
     /// Classifies the RS screen from seven direct reads made on one frame (docs/specs/rs-wild-encounter.md FR-7,
     /// docs/research/rs-wild-encounter.md "What memory shows through one cycle"). Built with trainingReads it reads
-    /// fifteen blocks on one frame, plus one sprite and the palette fade on the party screen and the palette fade on the
-    /// forget-a-move screen, and also classifies the training and field
-    /// script screens (docs/specs/rs-navigation-and-training.md); the flee path's reader is built without it.
+    /// sixteen blocks on one frame, plus one sprite and the palette fade on the battle and field party screens and the
+    /// palette fade on the forget-a-move screen and the start menu, and also classifies the training and field
+    /// script screens (docs/specs/rs-navigation-and-training.md) and the field party screen (docs/specs/rs-pickup.md);
+    /// the flee path's reader is built without it.
     /// </summary>
     public class RsStateReader : IGameStateReader
     {
@@ -34,6 +35,7 @@ namespace ShinyBotHunter.Games.Rs
         private const int FieldWindowBlock = 12;
         private const int NativeBlock = 13;
         private const int TasksBlock = 14;
+        private const int PokemonMenuBlock = 15;
 
         // struct Task (include/task.h): func u32 at + 0, isActive u8 at + 4, s16 data[16] at + 8; 16 tasks of 0x28.
         // Struct offsets, not addresses; decomp only.
@@ -88,6 +90,24 @@ namespace ShinyBotHunter.Games.Rs
         // faints: the readings", round six, A).
         private const byte YesNoTakesKeys = 1;
 
+        // One block from FieldMessageWindowState to MenuWindowState inclusive (0x8E bytes); the party menu's printing flag
+        // and the menu window's state in it.
+        private readonly int partyMessagePrintingOffset;
+        private readonly int menuWindowOffset;
+
+        // One block from PokemonMenuCursorPos through PokemonMenuActions (10 bytes); the count's and the entries' places in it.
+        private readonly int pokemonMenuCountOffset;
+        private readonly int pokemonMenuActionsOffset;
+
+        // The start menu's cursor, count and entries, in the field window's block.
+        private readonly int startCursorOffset;
+        private readonly int startCountOffset;
+        private readonly int startActionsOffset;
+
+        // The start menu's input task takes keys once its data[0] reads 1: on the frame the task is listed it reads 0, and a
+        // press landing then or one frame later is dropped (emulator round 1, 2026-11-21, issue #485).
+        private const int StartMenuTakesKeys = 1;
+
         public RsStateReader(IMemoryClient memory, RsPointerService addresses, bool trainingReads = false)
         {
             this.memory = memory;
@@ -97,6 +117,13 @@ namespace ShinyBotHunter.Games.Rs
             levelUpBoxOffset = (int)(addresses.LevelUpBoxState - addresses.ExpGetterMonId);
             scriptPointerOffset = (int)(addresses.BattlescriptCurrInstr - addresses.ActiveBattlerPartyIndex);
             outcomeOffset = trainingReads ? (int)(addresses.BattleOutcome - addresses.BattleCommunication) : 0;
+            partyMessagePrintingOffset = (int)(addresses.PartyMenuMessagePrinting - addresses.FieldMessageWindowState);
+            menuWindowOffset = (int)(addresses.MenuWindowState - addresses.FieldMessageWindowState);
+            pokemonMenuCountOffset = (int)(addresses.PokemonMenuActionCount - addresses.PokemonMenuCursorPos);
+            pokemonMenuActionsOffset = (int)(addresses.PokemonMenuActions - addresses.PokemonMenuCursorPos);
+            startCursorOffset = (int)(addresses.StartMenuCursorPos - addresses.FieldMessageWindowState);
+            startCountOffset = (int)(addresses.StartMenuActionCount - addresses.FieldMessageWindowState);
+            startActionsOffset = (int)(addresses.StartMenuActions - addresses.FieldMessageWindowState);
             int[] direct = [];
             blocks =
             [
@@ -118,9 +145,10 @@ namespace ShinyBotHunter.Games.Rs
                     new(addresses.MoveSelectionCursor, direct, 1),
                     new(addresses.ForgetMoveCursor, direct, 1),
                     new(addresses.ActiveBattlerPartyIndex, direct, scriptPointerOffset + 4),
-                    new(addresses.FieldMessageWindowState, direct, 2),
+                    new(addresses.FieldMessageWindowState, direct, (int)(addresses.MenuWindowState - addresses.FieldMessageWindowState) + 2),
                     new(addresses.ScriptNative, direct, 4),
                     new(addresses.Tasks, direct, TaskSize * TaskCount),
+                    new(addresses.PokemonMenuCursorPos, direct, (int)(addresses.PokemonMenuActions - addresses.PokemonMenuCursorPos) + 8),
                 ];
             }
         }
@@ -169,6 +197,11 @@ namespace ShinyBotHunter.Games.Rs
 
             if ((read[InBattleBlock].Bytes[0] & InBattleBit) == 0)
             {
+                // The field party screen, before the lock, whose value there does not matter.
+                if (trainingReads && BitConverter.ToUInt32(read[Callback2Block].Bytes, 0) == addresses.PartyMenuMainCallback2)
+                {
+                    return await ReadFieldPartyAsync(read, tasks, ct);
+                }
                 if (read[LockBlock].Bytes[0] == 0)
                 {
                     return new GameSnapshot(GameScreen.FieldFree, null, null, null, null);
@@ -178,9 +211,21 @@ namespace ShinyBotHunter.Games.Rs
                     return new GameSnapshot(GameScreen.FieldTask, null, null, null, null);
                 }
                 uint? yesNo = FindTask(tasks, addresses.TaskHandleYesNoInput) is null ? null : addresses.TaskHandleYesNoInput;
+                uint native = BitConverter.ToUInt32(read[NativeBlock].Bytes, 0);
+                byte[] fieldWindow = read[FieldWindowBlock].Bytes;
+                // The start menu takes keys under CB2_Overworld with its input task past its first frame; its fade is one
+                // more request, while it is up only (research rs-pickup.md, "Back in the field with the start menu open").
+                if (yesNo is null && BitConverter.ToUInt32(read[Callback2Block].Bytes, 0) == addresses.OverworldCallback2
+                    && addresses.StartMenuInputTask is uint startMenu && FindTask(tasks, startMenu) is int start
+                    && TaskDatum(tasks, start, 0) == StartMenuTakesKeys)
+                {
+                    ChainBlockResult[] fade = await memory.ReadChainBlocksAsync([new(addresses.PaletteFadeActive, [], 1)], ct: ct);
+                    return new GameSnapshot(GameScreen.FieldTask, null, null, fieldWindow[startCursorOffset], startMenu,
+                        Native: native, TextPrinter: BitConverter.ToUInt16(fieldWindow, 0), AppState: fade[0].Bytes[0] >> FadeActiveShift,
+                        MenuEntries: string.Join(',', fieldWindow[startActionsOffset..(startActionsOffset + fieldWindow[startCountOffset])]));
+                }
                 return new GameSnapshot(GameScreen.FieldTask, null, null, null, yesNo,
-                    Native: BitConverter.ToUInt32(read[NativeBlock].Bytes, 0),
-                    TextPrinter: BitConverter.ToUInt16(read[FieldWindowBlock].Bytes, 0));
+                    Native: native, TextPrinter: BitConverter.ToUInt16(fieldWindow, 0));
             }
 
             BattleOutcome? outcome = Map(read[OutcomeBlock].Bytes[outcomeOffset]);
@@ -268,6 +313,31 @@ namespace ShinyBotHunter.Games.Rs
             ChainBlockResult[] fade = await memory.ReadChainBlocksAsync([new(addresses.PaletteFadeActive, [], 1)], ct: ct);
             return new GameSnapshot(GameScreen.OtherApp, outcome, null, read[ForgetCursorBlock].Bytes[0], summaryTask,
                 AppState: fade[0].Bytes[0] >> FadeActiveShift);
+        }
+
+        // The field party screen (docs/research/rs-pickup.md "The party menu, from the decomp and the probe"): one task whose
+        // function is the list's, the Pokémon submenu's or the ITEM submenu's. During the take message it runs the give/take
+        // follow-ups instead, so none is found and only the message is read: the menu window's state while
+        // gPartyMenuMessage_IsPrinting is 1. With one found, the party cursor and the fade (one more request, as on the
+        // battle party screen), the submenus' cursor, and the Pokémon submenu's entries.
+        private async Task<GameSnapshot> ReadFieldPartyAsync(ChainBlockResult[] read, byte[] tasks, CancellationToken ct)
+        {
+            byte[] window = read[FieldWindowBlock].Bytes;
+            int? message = window[partyMessagePrintingOffset] == 1 ? BitConverter.ToUInt16(window, menuWindowOffset) : null;
+            if ((FindTask(tasks, addresses.FieldPartyMenuTask) ?? FindTask(tasks, addresses.PokemonMenuTask)
+                ?? FindTask(tasks, addresses.PokemonItemMenuTask)) is not int party)
+            {
+                return new GameSnapshot(GameScreen.OtherApp, null, null, null, null, TextPrinter: message);
+            }
+            uint function = BitConverter.ToUInt32(tasks, party);
+            (int cursor, int fade) = await ReadPartyCursorAsync(tasks, party, ct);
+            byte[] menu = read[PokemonMenuBlock].Bytes;
+            int? prompt = function == addresses.FieldPartyMenuTask ? null : menu[0];
+            string? entries = function == addresses.PokemonMenuTask
+                ? string.Join(',', menu[pokemonMenuActionsOffset..(pokemonMenuActionsOffset + menu[pokemonMenuCountOffset])])
+                : null;
+            return new GameSnapshot(GameScreen.OtherApp, null, null, prompt, function, TextPrinter: message, AppState: fade,
+                PartyMonIndex: cursor, MenuEntries: entries);
         }
 
         // The party cursor is data[0] of the sprite the party task's data[3] names in its high byte (research "The switch"), and the
