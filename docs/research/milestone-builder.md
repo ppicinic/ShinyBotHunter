@@ -142,6 +142,19 @@ What the generated anchors do not yet account for, and must before they are trus
 
 **The file:** 1,203,576 bytes of JSON, 72,720 gzipped (from 70,208). Generation took 1 min 45 s on the owner's machine. Apart from the anchors, the milestones and slots are unchanged.
 
+### Generated headbutt stands (2026-11-25)
+
+`--generatemilestoneshgss` (#539) now writes, on each tree of a headbutt milestone, a stand: an `Anchor` (game map, tile, ranges 0), the `Facing` toward the tree and the stand's route `Cost` to a Pokémon Center. The same in both versions. The milestone's own `Anchor` stays null; which tree a file hunts depends on its trainer ID, so it is worked out per file when asked (`HeadbuttTrees.AnchorFor`) and never stored. Nothing calls it at Start yet: that is the follow-up B1h-b.
+
+- **The stand rule.** For each tile T of the tree and each direction d, the tile one step back from T against d, facing d. Kept only when T is `MAP_Blocked` in the map data (the hunt's turn press toward it then only turns), the stand is no tree's tile, it is on the milestone's map (on the overworld, in a cell the map owns, since the game looks the tree up in the table of the map the player stands in), and it is out of every trainer's sight and off the tile below every sign, as for land. The cheapest stand that reaches a Pokémon Center and is reached back from it wins, the first in tile then Up, Down, Left, Right order at equal cost; with no HM first, with every HM only when nothing is reached.
+- **The tree kind.** `Headbutt_GetTreeType_Regular` (`src/field/headbutt.c`): `trainerId % 10` picks the row of `sRareTreeLUT_1` to `_5Plus` by the number of regular trees, the tree's index (mod 5 for five or more) the column; secret trees are always secret. The trainer ID is the full 32-bit `profile->id`, visible ID in the low half: read from the game's source, not observed on the emulator. The bot reads only the visible half today.
+- **The file's tree.** The kinds whose slots hold a species still a target on the file (every kind when none is), then the tree of such a kind with the cheapest stand, the first in list order at equal cost.
+- **Azalea Town** (`74-headbutt`): tree 0's stand is (426, 464) facing Down, the spike's own tile. On the owner's `HG-Headbutt` save (15613 / 35374, so 2318286077, digit 7) Heracross is on the common trees 0, 3, 5, 8, 10 and 13, and the cheapest is tree 3 from (407, 456) facing Up, cost 71. The visible half alone (digit 3) would pick tree 14 from (412, 476) facing Down, cost 81.
+
+**Counts:** 843 of the 872 trees have a stand; 59 of the 60 headbutt milestones have at least one. The 29 without: Route 13's trees 4, 5 and 6, whose tiles the map data marks free, not blocked; and 26 blocked trees with no stand that passes the rule and reaches a Pokémon Center and back (Route 4 6, National Park 5 secret, Cherrygrove City 4 secret, Mt. Silver Cave lower mountainside 3, Route 32 2, Routes 15, 25, 39 and 45 1 each, Route 38 1 and 1 secret). `460-headbutt` Mt. Silver Cave has none, as its land milestones have no anchor.
+
+**The file:** 1,348,604 bytes of JSON, 88,788 gzipped. Generation took 2 min 17 s. Apart from the trees' three new fields, every milestone, slot, tree tile and land anchor is unchanged (398 per version, the same ids).
+
 ## The existing names
 
 Production's 20 phases, read (not written) on 2026-11-24. The suffix is the game file: none for `Pokemon SoulSilver` (living dex), `b` for `Pokemon SoulSilver2` (females), `c` for `Pokemon HeartGold` (version exclusives). The number is the owner's order.

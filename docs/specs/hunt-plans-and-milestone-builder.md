@@ -317,6 +317,10 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 
 - 2026-11-25, from the owner ("yeah it can be inline of botcontrol. the spiker had a nice mock"): the plan editor is inline in the Bot Control tab under the Wild Encounter form, and follows the spike's mock, now committed beside this spec. C4 is two tasks, C4a the backend (#564) and C4b the dashboard (#524).
 
+- 2026-11-25 (B1h, #539), decided by the orchestrator at plan review:
+  - FR-21's "trainer ID 15613" means the full 32-bit trainer ID, 2318286077 on the owner's save (visible 15613, secret 35374), whose last digit is 7: the game takes `trainerId % 10` on `profile->id`. This is from the game's source, not observed on the emulator.
+  - FR-21 for headbutt: each tree's stand, facing and route cost are generated; the file's tree is worked out when asked, from the kinds that hold a species still a target on the file (any tree that gives Pokémon when none is), and never stored (FR-42). Wiring it into Start is a follow-up task (B1h-b) after C3b (#550).
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.
