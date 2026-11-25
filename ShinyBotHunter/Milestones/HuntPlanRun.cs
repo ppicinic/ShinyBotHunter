@@ -108,7 +108,7 @@ namespace ShinyBotHunter.Milestones
                 state.NavigationPath = null;
                 state.NavigationPathIndex = 0;
                 state.SwapState(EventState.ReturnToStart);
-                Console.WriteLine($"[Orchestrator] Plan: {(DayOfWeek)state.RatesSeen.Weekday} {state.RatesSeen.Hour}h names {name}; walking from {state.Milestone} to map {anchor.Map} ({anchor.X}, {anchor.Y})");
+                Console.WriteLine($"[Orchestrator] Plan: {(DayOfWeek)state.RatesSeen.Weekday} {state.RatesSeen.Hour}h names {name}; walking from map {map} ({x}, {y}) to map {anchor.Map} ({anchor.X}, {anchor.Y})");
                 return true;
             }
         }

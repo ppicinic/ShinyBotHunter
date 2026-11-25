@@ -47,9 +47,10 @@ test('hgss-plan-repel-walk: the Repel message on the plan\'s walk closed with on
     await shotAll('01-launched', pages)
 
     await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
-    // The first decision walks from the default's own milestone (the pick is the default, so no switch).
+    // The first decision walks from the save's tile (the pick is the default, so no switch).
     const walk = PLAN_WALK.exec((await seen(PLAN_WALK, 1, 2 * MINUTE)).line)!
-    expect([walk[1], walk[3], walk[4], walk[5], walk[6], walk[7]], 'the plan\'s first walk').toEqual([WEEKDAYS[clock.weekday], R30.name, R30.id, ...R30.at])
+    expect([walk[1], walk[3], walk[4], walk[5], walk[6], walk[7], walk[8], walk[9]], 'the plan\'s first walk')
+      .toEqual([WEEKDAYS[clock.weekday], R30.name, '36', '474', '294', ...R30.at])
 
     // The box, seen by the navigator at a segment's end or from the stall path, then the one close.
     await seen(NAV_REPEL, 1, 5 * MINUTE)
