@@ -107,7 +107,7 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 | Store | Data | Access |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Three EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
-| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the subscriptions and the recent count; `appearance` is not in it), `GameFiles` (one document per game file, `_id` the game file name: its goal's `Entries`, its `Hidden` rows, and the picker's `Archived`, `Order` labels and `Assigned` phases; a read of a file with no document writes nothing, and each write is a one-field upsert) | Five DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
+| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the subscriptions and the recent count; `appearance` is not in it), `GameFiles` (one document per game file, `_id` the game file name: its goal's `Entries`, its `Hidden` rows, and the picker's `Archived`, `Order` labels and `Assigned` phases; a read of a file with no document writes nothing, and each write upserts one field, an order label as a pull then a push) | Five DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/` | |
 
 ### Write path
@@ -279,5 +279,5 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-11-17: Ruby and Sapphire train, heal and walk home: RS declares navigation and training, the training refusal at Start, the heal trip's log line (#451).
 - 2026-11-17: section 7 and axis 1 made true for the merged RS feature (#434): `RsNavigatorEvent` over `RouteSearch` and the walk's hand-off, `RsBattleEvent`'s training and its one re-press, `FieldAdvance`, the four per-game members, and which reader carries the training reads.
 - 2026-11-18: `appearance` saved per PC in a file, not in the `DashboardConfig` document; the recent-encounters list starts empty (epic #478).
-- 2026-11-25: the `GameFiles` collection, the goal and milestone-rows endpoints, and the profile's `Milestones` part (#536, epic #508).
 - 2026-11-24: the milestone picker endpoint, and the archive, order and assignment fields and endpoints on `GameFiles` (#514, epic #508).
+- 2026-11-25: the `GameFiles` collection, the goal and milestone-rows endpoints, and the profile's `Milestones` part (#536, epic #508).

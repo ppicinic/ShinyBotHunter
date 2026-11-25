@@ -3,8 +3,8 @@ using ShinyBotHunter.Milestones;
 
 namespace ShinyBotHunter.Persistence.MongoDb
 {
-    // The GameFiles collection: one document per game file (FR-7). Each write is one single-document upsert of one field, so a
-    // hide and an entries edit never overwrite each other.
+    // The GameFiles collection: one document per game file (FR-7). Each write upserts one field of one document, so a hide and an
+    // entries edit never overwrite each other; an order label is two such updates, a pull then a push.
     public class MongoGameFileDao
     {
         // Set once in the constructor; IMongoCollection is thread-safe.
