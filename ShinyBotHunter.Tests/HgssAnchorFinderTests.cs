@@ -1,4 +1,6 @@
 using Newtonsoft.Json.Linq;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Scripts.Milestones;
 
 namespace ShinyBotHunter.Tests
@@ -59,6 +61,32 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal([(0, 0, 5), (0, 1, 2), (3, 1, 2), (0, 2, 5)], runs.Where(r => r.Horizontal).Select(r => (r.X, r.Y, r.Length)));
             Assert.Equal([(0, 0, 3), (1, 0, 3), (2, 0, 1), (3, 0, 3), (4, 0, 3), (2, 2, 1)], runs.Where(r => !r.Horizontal).Select(r => (r.X, r.Y, r.Length)));
+        }
+
+        [Fact]
+        public void Stands_TreeOfTwoTiles_EveryFreeNeighbourFacingIt()
+        {
+            var tree = new HeadbuttTree(false, [[5, 5], [6, 5]]);
+            var treeTiles = new HashSet<(int X, int Y)> { (5, 5), (6, 5) };
+
+            var stands = HgssAnchorFinder.Stands(tree, treeTiles, (_, _) => true, (_, _) => true);
+
+            Assert.Equal([(5, 6, Direction.Up), (5, 4, Direction.Down), (4, 5, Direction.Right), (6, 6, Direction.Up), (6, 4, Direction.Down), (7, 5, Direction.Left)], stands);
+        }
+
+        [Fact]
+        public void Stands_OtherTreeTrainerSightAndUnblockedTile_LeftOut()
+        {
+            var tree = new HeadbuttTree(false, [[5, 5], [6, 5]]);
+            // Another tree at (4, 5); a trainer at (6, 4) facing Left sees (5, 4); (6, 5) is not blocked, so nothing faces it.
+            var treeTiles = new HashSet<(int X, int Y)> { (5, 5), (6, 5), (4, 5) };
+            var sight = HgssAnchorFinder.Unsafe(JObject.Parse("""
+                { "objects": [ { "type": 1, "movement": 0, "facingDirection": 2, "param0": 1, "xRange": 0, "yRange": 0, "x": 6, "z": 4, "y": 0 } ] }
+                """));
+
+            var stands = HgssAnchorFinder.Stands(tree, treeTiles, (x, y) => (x, y) != (6, 5), (x, y) => !sight.Contains((x, y)));
+
+            Assert.Equal([(5, 6, Direction.Up)], stands);
         }
     }
 }
