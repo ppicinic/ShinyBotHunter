@@ -126,3 +126,22 @@ export function startMacroRecord(apiUrl: string, pos: number): Promise<Response>
 export function stopMacroRecord(apiUrl: string, pos: number, name: string): Promise<Response> {
   return request('POST', `${apiUrl}/api/dev/macroRecord/stop/${pos}`, { name })
 }
+
+// A game file with no goal stored reads as an empty one.
+export function getGoal(apiUrl: string, gameFileName: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}`)
+}
+
+// Replaces the goal's entries; 400 with the reason the server refuses them.
+export function putGoal(apiUrl: string, gameFileName: string, entries: { species: number; formCode: string | null; amount: number }[]): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}`, entries)
+}
+
+// Adds the preset's entries for species the goal has none for, saves, and returns the goal; 404 when the file's version has no milestones.
+export function applyGoalPreset(apiUrl: string, game: string, gameFileName: string, preset: import('../types/api').GoalPreset): Promise<Response> {
+  return request('POST', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/preset/${preset}`)
+}
+
+export function getSpeciesNames(apiUrl: string, game: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/species/${encodeURIComponent(game)}`)
+}

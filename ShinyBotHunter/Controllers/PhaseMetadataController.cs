@@ -84,6 +84,19 @@ namespace ShinyBotHunter.Controllers
             return Ok(result);
         }
 
+        // The goal editor's names: every species of the flavor's dex, by number.
+        [HttpGet("species/{game}")]
+        public ActionResult GetSpeciesNames(string game)
+        {
+            int last = Enum.Parse<GameFlavor>(game) switch
+            {
+                GameFlavor.HGSS => PKHeX.Core.PersonalTable.HGSS.MaxSpeciesID,
+                GameFlavor.RS => PKHeX.Core.PersonalTable.RS.MaxSpeciesID,
+                var flavor => throw new ArgumentOutOfRangeException(nameof(game), flavor, null)
+            };
+            return Ok(Enumerable.Range(1, last).Select(s => new { Species = s, Name = pokemonMetadataService.GetPokemonMetadata(s).PokemonName }));
+        }
+
         [HttpGet("goal/{gameFileName}")]
         public async Task<ActionResult<GameFile>> GetGoalAsync(string gameFileName) => Ok(await gameFileDao.LoadAsync(gameFileName));
 
