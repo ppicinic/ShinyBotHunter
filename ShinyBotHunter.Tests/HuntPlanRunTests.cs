@@ -50,11 +50,11 @@ namespace ShinyBotHunter.Tests
             return new HuntPlanRun(NightOn30(), stops);
         }
 
-        // Arrived on Route 32 with no move owed, as after the first commit.
+        // Started on Route 32 with no move owed, as after the first commit.
         private static HuntPlanRun OnRoute32()
         {
             HuntPlanRun run = Run();
-            (run.Arrived, run.Pending) = (true, null);
+            (run.Started, run.Pending) = (true, null);
             return run;
         }
 
@@ -197,6 +197,40 @@ namespace ShinyBotHunter.Tests
             Assert.Equal((34, 547, 304), (state.StartMapId, state.StartX, state.StartY));
             Assert.Equal(BattleMode.Flee, state.BattleMode);
             Assert.Equal(Route30, run.Pending);
+        }
+
+        // FR-36: the first decision walks to the default's anchor; the rule that matches when that walk ends is a move, so Route
+        // 32 stays the milestone until the walk to Route 30 commits.
+        [Fact]
+        public async Task Step_RuleMatchesAfterTheFirstWalk_MilestoneStaysUntilTheCommit()
+        {
+            HuntPlanRun run = Run();
+            FakeMemoryClient memory = new();
+            Stand(memory, 36, 450, 330);
+            FakeBot bot = new(Task.CompletedTask) { Overworld = new HgssOverworldReader(memory, Table) };
+            GameState state = StateAt(bot, run, Route32, 19);
+            Calls calls = new([], []);
+
+            Assert.True(await StepAsync(run, state, calls));
+            Assert.Equal(Route32, run.Pending);
+            run.WalkEnded = true;
+            Stand(memory, 36, 458, 339);
+            state.RatesSeen = state.RatesSeen! with { Hour = 20 };
+            state.SwapState(EventState.DecideOverworldAction);
+            Assert.True(await StepAsync(run, state, calls));
+
+            Assert.Equal(Route32, state.Milestone);
+            Assert.Same(run.Stops[Route32].Leg.Target, state.Target);
+            Assert.Equal(Route30, run.Pending);
+            Assert.Equal([EventState.ReturnToStart], state.State);
+            Assert.Empty(calls.Follows);
+
+            Stand(memory, 34, 547, 304);
+            state.SwapState(EventState.DecideOverworldAction);
+            Assert.False(await StepAsync(run, state, calls));
+
+            Assert.Equal(Route30, state.Milestone);
+            Assert.Equal([Route30], calls.Follows);
         }
 
         // FR-33 and FR-33a: no move while the rule does not match, and a walk at the first decision after it does.

@@ -313,20 +313,23 @@ namespace ShinyBotHunter.BotEvents
                 // MilestoneComplete is not read for these targets.
                 return;
             }
-            state.MilestoneComplete = await IsCompleteAsync(state, state.Milestone);
-            if (plan is not null)
+            if (plan is null)
             {
-                // FR-34: the plan skips a complete stop; read here, at Init and the catch check, never at the decision.
-                var complete = new HashSet<string>();
-                foreach (string stop in plan.Stops.Keys)
-                {
-                    if (await IsCompleteAsync(state, stop))
-                    {
-                        complete.Add(stop);
-                    }
-                }
-                plan.Complete = complete;
+                state.MilestoneComplete = await IsCompleteAsync(state, state.Milestone);
+                return;
             }
+            // FR-34: the plan skips a complete stop; read here, at Init, the catch check and the plan's switch of milestone, never
+            // on a decision that keeps its milestone.
+            var complete = new HashSet<string>();
+            foreach (string stop in plan.Stops.Keys)
+            {
+                if (await IsCompleteAsync(state, stop))
+                {
+                    complete.Add(stop);
+                }
+            }
+            plan.Complete = complete;
+            state.MilestoneComplete = complete.Contains(state.Milestone);
         }
 
         private async Task<bool> IsCompleteAsync(GameState state, string milestone)

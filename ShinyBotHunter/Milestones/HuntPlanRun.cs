@@ -11,13 +11,14 @@ namespace ShinyBotHunter.Milestones
         public HuntPlan Plan { get; } = plan;
         public IReadOnlyDictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)> Stops { get; } = stops;
 
-        // Pending, Complete, Arrived and WalkEnded are written and read only by the orchestrator's one loop, in sequence; Resume
+        // Pending, Complete, Started and WalkEnded are written and read only by the orchestrator's one loop, in sequence; Resume
         // restarts that loop only after it has returned at Waiting, so there is no lock. Complete is replaced, never mutated.
         // The milestone a walk is owed to, null once the bot stands on the hunted milestone's anchor.
         public string? Pending { get; set; } = plan.Default;
         public IReadOnlySet<string> Complete { get; set; } = new HashSet<string>();
-        // False until the first commit, so the first decision's pick becomes the milestone before any walk (binding answer 6).
-        public bool Arrived { get; set; }
+        // False until the first decision has walked or committed, so only that decision's pick becomes the milestone before any
+        // walk (binding answer 6); every later move is logged under the milestone left until it commits (FR-36).
+        public bool Started { get; set; }
         // Set when the navigator finished a plan walk, so a walk that ended off the anchor parks instead of walking again.
         public bool WalkEnded { get; set; }
 
@@ -31,7 +32,7 @@ namespace ShinyBotHunter.Milestones
                 state.MilestoneComplete = true;
                 return false;
             }
-            if (!Arrived && pick != state.Milestone)
+            if (!Started && pick != state.Milestone)
             {
                 await SwitchToAsync(state, pick, follow, updateMilestone);
             }
@@ -52,7 +53,7 @@ namespace ShinyBotHunter.Milestones
                 }
                 OrchestratorEvent.UseAnchor(state, stopAnchor);
                 Pending = null;
-                Arrived = true;
+                Started = true;
                 WalkEnded = false;
                 return false;
             }
@@ -64,6 +65,7 @@ namespace ShinyBotHunter.Milestones
                 return true;
             }
             Pending = pick;
+            Started = true;
             WalkEnded = false;
             OrchestratorEvent.UseAnchor(state, stopAnchor);
             // A walk parked on the way left its route behind; this one is planned from where the player stands.
