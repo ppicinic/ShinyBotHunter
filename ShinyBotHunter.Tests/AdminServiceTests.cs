@@ -186,6 +186,44 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(expected.ToHashSet(), sharedSaves[^1].GamePhases.ToHashSet());
         }
 
+        [Fact]
+        public async Task AFailedSaveDoesNotFailFollowHunt()
+        {
+            List<DashboardConfig> pushes = [];
+            bool failing = false;
+            RecordingLogger logger = new();
+            AdminService service = new(
+                config => { pushes.Add(config); return Task.CompletedTask; },
+                () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
+                _ => failing ? throw new InvalidOperationException("save failed") : Task.CompletedTask,
+                () => Task.FromResult<Appearance?>(null),
+                _ => Task.CompletedTask,
+                logger);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            failing = true;
+
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 30 Night");
+
+            Assert.Equal([new GamePhase(GameFlavor.HGSS, "Route 30 Night", "HG-TimeMove") { followsHunt = true }], pushes[^1].GamePhases);
+            var entry = Assert.Single(logger.Entries);
+            Assert.Equal(LogLevel.Error, entry.Level);
+            Assert.Equal("save failed", entry.Exception!.Message);
+        }
+
+        [Fact]
+        public async Task UnsubscribingAFollowsHuntCardRemovesItWhateverItShows()
+        {
+            List<DashboardConfig> sharedSaves = [];
+            AdminService service = Service([], sharedSaves, []);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove");
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 30 Night");
+
+            await service.UnsubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+
+            Assert.Equal([new GamePhase(GameFlavor.HGSS, "Route 32", "HG-TimeMove")], sharedSaves[^1].GamePhases);
+        }
+
         // The same options as the controllers in Startup.cs; the JsonException is what [ApiController] answers with a 400.
         [Theory]
         [InlineData("gradients")]
