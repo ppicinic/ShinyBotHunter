@@ -9,7 +9,9 @@ using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
@@ -83,18 +85,24 @@ namespace ShinyBotHunter.Tests
         private static Task<BotService> LaunchAsync(int map, int x, int y, GameScreen screen, params byte[][] party)
             => LaunchAsync(Admin([]), map, x, y, screen, party);
 
-        private static async Task<BotService> LaunchAsync(AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
+        private static Task<BotService> LaunchAsync(AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
+            => LaunchAsync(new GameFile { Id = "fake.nds" }, admin, map, x, y, screen, party);
+
+        // The file is the game file Run reads for its links (FR-44a).
+        private static async Task<BotService> LaunchAsync(GameFile file, AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
-            var factory = new FakeBotFactory(settings, Task.CompletedTask, Profile());
+            GameProfile profile = Profile();
+            var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             // The hunt's event resolves these when Run builds it; the test cancels it before it reaches them.
             var provider = new ServiceCollection()
                 .AddSingleton(new PokemonStateReader())
                 .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
                 .AddSingleton(new ShinyAlertService(null!, settings))
                 .AddSingleton(admin)
+                .AddSingleton(new MongoGameFileDao(_ => Task.FromResult(file)))
                 .BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(profile));
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
             FakeBot bot = factory.Bots[0];
             FakeMemoryClient memory = new();
