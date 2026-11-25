@@ -4,6 +4,7 @@ using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -251,35 +252,46 @@ namespace ShinyBotHunter.BotEvents
                 return;
             }
             var phaseInfo = phaseInfoService.GetPhaseInfo(state.GameFlavor, state.Milestone);
-            if (phaseInfo is null && state.Target is PhaseTarget target)
+            if (phaseInfo is null)
             {
-                // A generated milestone: its target knows the goal (FR-14).
-                state.MilestoneComplete = await target.IsMilestoneCompleteAsync();
+                // A generated milestone is complete by its rows whatever the target (FR-14).
+                var milestone = PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                    provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone);
+                state.MilestoneComplete = IsGeneratedComplete(milestone, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(state.Bot.GameFileName),
+                    await persistenceService.GetCaughtPokemonAsync(state.GameFlavor));
                 return;
             }
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(state.GameFlavor)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
+            state.MilestoneComplete = IsPhaseComplete(phaseInfo, caughtPokemon);
+        }
+
+        // FR-14: complete when none of the milestone's rows is a target. A name that is neither a phase nor a milestone of the
+        // file's version is complete, as it was before generated milestones.
+        internal static bool IsGeneratedComplete(Milestone? milestone, GameFile gameFile, IEnumerable<CaughtPokemon> caughtPokemon)
+            => milestone is null || MilestoneRows.Build(milestone, gameFile, caughtPokemon).All(r => !r.IsTarget);
+
+        // Today's phase rule, moved unchanged (FR-42); caughtPokemon is the file's catches.
+        internal static bool IsPhaseComplete(PhaseInfo phaseInfo, IEnumerable<CaughtPokemon> caughtPokemon)
+        {
             bool complete = true;
-            if (phaseInfo is not null)
+            foreach (var targetPokemon in phaseInfo.Pokemon)
             {
-                foreach (var targetPokemon in phaseInfo.Pokemon)
+                if (targetPokemon.RequireSpecificForm)
                 {
-                    if (targetPokemon.RequireSpecificForm)
+                    if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.FormCode == targetPokemon.FormCode).Count() < targetPokemon.Amount)
                     {
-                        if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.FormCode == targetPokemon.FormCode).Count() < targetPokemon.Amount)
-                        {
-                            complete = false;
-                        }
+                        complete = false;
                     }
-                    else
+                }
+                else
+                {
+                    if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.Name == targetPokemon.Name).Count() < targetPokemon.Amount)
                     {
-                        if (caughtPokemon.Where(x => x.Pokemon.IsShiny && x.Pokemon.Name == targetPokemon.Name).Count() < targetPokemon.Amount)
-                        {
-                            complete = false;
-                        }
+                        complete = false;
                     }
                 }
             }
-            state.MilestoneComplete = complete;
+            return complete;
         }
 
         internal static async Task FinishAsync(GameState state)
