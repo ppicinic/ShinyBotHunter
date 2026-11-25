@@ -71,11 +71,11 @@ test('HGSS headbutt anchor: the trainer ID picks Route 32\'s stand, the walk the
     await shotAll('01-three-cycles', pages)
     await cancelEventAndBot(card)
 
-    // 4. The headbutt card: no Share column, no shares footer; the endpoint gives no shares for a headbutt milestone.
+    // 4. The headbutt card: no share under a name, no shares footer; the endpoint gives no shares for a headbutt milestone.
     const json = (await rows('HGSS', HEADBUTT, HANDLE)).json
     expect([json.survive, json.rows.every((r: { share: number | null }) => r.share === null)], 'shares on a headbutt milestone').toEqual([null, true])
-    await expect(cardWindow.locator('thead th', { hasText: 'Share' }), 'a Share column on the headbutt card').toHaveCount(0)
-    await expect(cardWindow.getByText(/Shares: not seen|of encounters survive|not live/), 'a shares footer on the headbutt card').toHaveCount(0)
+    await expect(cardWindow.getByTestId('row-share'), 'a share on the headbutt card').toHaveCount(0)
+    await expect(cardWindow.getByText(/Shares: not seen|not live/), 'a shares footer on the headbutt card').toHaveCount(0)
     await shotAll('02-card', pages)
 
     expect(fs.readFileSync(saveOf(HANDLE)).equals(fs.readFileSync(saveOf(HANDLE) + '.bak')), 'SaveRAM differs from its .bak').toBe(true)
