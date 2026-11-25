@@ -93,17 +93,7 @@ namespace ShinyBotHunter.Tests
         private sealed record Calls(List<string> Follows, List<string> Updates);
 
         private static Task<bool> StepAsync(HuntPlanRun run, GameState state, Calls calls) => run.StepAsync(state,
-            m =>
-            {
-                calls.Follows.Add(m);
-                return Task.CompletedTask;
-            },
-            s =>
-            {
-                calls.Updates.Add(s.Milestone);
-                return Task.CompletedTask;
-            },
-            CancellationToken.None);
+            m => { calls.Follows.Add(m); return Task.CompletedTask; }, s => { calls.Updates.Add(s.Milestone); return Task.CompletedTask; }, CancellationToken.None);
 
         // A party block for the decision: level, HP, ability, and 1 for an egg.
         private sealed class RateFieldsParser : IPokemonParser
@@ -242,12 +232,7 @@ namespace ShinyBotHunter.Tests
             List<PersistPokemonData> logged = [];
 
             await OrchestratorEvent.LogEncounterAndAskTargetAsync(state, new PokemonData { Level = 5, PID = 0x12345678 },
-                p =>
-                {
-                    logged.Add(p);
-                    return Task.CompletedTask;
-                },
-                _ => Task.CompletedTask);
+                p => { logged.Add(p); return Task.CompletedTask; }, _ => Task.CompletedTask);
 
             Assert.Equal(Route32, Assert.Single(logged).Phase);
         }
