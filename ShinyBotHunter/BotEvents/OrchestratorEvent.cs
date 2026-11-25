@@ -49,6 +49,8 @@ namespace ShinyBotHunter.BotEvents
         private PickupTally pickupTally;
         // The hunt's anchor, or null to hunt where the bot stands (FR-23).
         private readonly MilestoneAnchor? anchor;
+        // True from the Init that walks to the anchor until that walk ends; one orchestrator runs one bot loop in sequence, no lock.
+        private bool walkingToAnchor;
 
         public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null)
         {
@@ -78,11 +80,12 @@ namespace ShinyBotHunter.BotEvents
                 if(state.StartX == -1 && state.StartY == -1 && state.StartMapId == -1)
                 {
                     await CaptureStartAsync(state, state.Bot.Overworld, cancellationToken);
+                    walkingToAnchor = UseAnchor(state, anchor);
                 }
                 // Every Init, not just the first: a chained leg re-enters here with the start tile
                 // already captured and still needs its milestone state read fresh.
                 await UpdateMilestoneState(state);
-                state.SwapState(EventState.DecideOverworldAction);
+                state.SwapState(walkingToAnchor ? EventState.ReturnToStart : EventState.DecideOverworldAction);
             }
             while(state.State.Count != 0 && state.State.Peek() != EventState.Complete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
             {
@@ -115,6 +118,11 @@ namespace ShinyBotHunter.BotEvents
                      || topState == EventState.ReturnToStart)
                 {
                     await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
+                    if (walkingToAnchor)
+                    {
+                        walkingToAnchor = AnchorWalkGoesOn(state, anchor!.Anchor, PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                            provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone);
+                    }
                 }
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
@@ -164,6 +172,43 @@ namespace ShinyBotHunter.BotEvents
             EncounterType.Headbutt => new HeadbuttEncounterEvent(bot),
             _ => new RunEncounterEvent(bot, encounterParams) { LockedHandOff = bot.Profile.SeekLockHandOff },
         };
+
+        // FR-23: the anchor becomes the start tile, so the walk there, the heal trips and the end-of-hunt return all go to it
+        // with the navigators' existing walk. The walk flees, as a heal trip does; DecideOverworldAction restores the battle mode.
+        internal static bool UseAnchor(GameState state, MilestoneAnchor? anchor)
+        {
+            if (anchor is null)
+            {
+                return false;
+            }
+            state.StartMapId = anchor.Anchor.Map;
+            state.StartX = anchor.Anchor.X;
+            state.StartY = anchor.Anchor.Y;
+            if (anchor.Facing != Direction.None)
+            {
+                state.StartFacing = anchor.Facing;
+            }
+            state.BattleMode = BattleMode.Flee;
+            return true;
+        }
+
+        // Whether the walk to the anchor goes on after the navigator ran: still walking, or in a battle on the way. HGSS's
+        // navigator completes in place when it finds no path, but a hunt that never reached its anchor is not complete (FR-23),
+        // so that walk parks with the sentence after the navigator's own line with where the player stood.
+        internal static bool AnchorWalkGoesOn(GameState state, Anchor anchor, string milestone)
+        {
+            EventState top = state.State.Peek();
+            if (top is EventState.ReturnToStart or EventState.BattleStart)
+            {
+                return true;
+            }
+            if (top == EventState.Complete)
+            {
+                Console.WriteLine($"[Orchestrator] {milestone}: no path to the anchor ({anchor.X}, {anchor.Y}).");
+                state.SwapState(EventState.Waiting);
+            }
+            return false;
+        }
 
         internal static async Task CaptureStartAsync(GameState state, IOverworldReader overworld, CancellationToken cancellationToken)
         {
