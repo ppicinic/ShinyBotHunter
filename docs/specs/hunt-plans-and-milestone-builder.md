@@ -219,18 +219,18 @@ New scenarios, on a copy of `hgss.qa-route32` unless said; the emulator's DS clo
 | `hgss-existing-backfill` | `hgss-existing-unchanged`, `hgss-backfill` | Production's phases, imported into the local QA `PhaseInfos` by id and removed after, behave as before (FR-42, FR-42a, FR-39c): the picker, a stored card and a hunt where the bot stands. Then "1-4 Route 30" linked to Route 30 · grass on one file (FR-43 to FR-46, FR-44a): the counts with and without the link, the link's refusals, the copy of amounts, and a second file's picker at the title screen. |
 | `hgss-milestone-refusals` | `hgss-plan-refused`, `hgss-milestone-bad-anchor` | FR-15, FR-15a, FR-17, FR-18, FR-22, FR-24, FR-35, the HGSS no-path case, the picker items, the all-complete ending, and the headbutt picker read. |
 | `rs-milestone-anchor` | `rs-milestone-anchor`, `rs-milestone-rows` | `anchor`: no Hunt Plan field and the RS plan refusal; the Sapphire picker; Route 101 · grass's card at 45, 45 and 10 before Run; the walk to the generated anchor (4, 2) and a spin there; a Version exclusives goal changes the rows' wanted. `no-route`: Route 110 · grass is not reachable on foot from Route 101: the RS navigator's no-route line and Waiting. |
-| `rs-rates-repel` | `rs-rates-repel` | FR-26a and FR-29 on RS: with the lead at Lv 4 and the Repel counter at 30, all three Route 101 rows "blocked by Repel" and live; a Run hunt closes "REPEL's effect wore off" with one A and carries on; the card back at 45, 45 and 10. |
+| `rs-rates-repel` | `rs-rates-repel` | FR-26a and FR-29 on RS: with the lead at Lv 4 and the Repel counter at 30, the endpoint gives all three Route 101 rows "blocked by Repel" and live, and the card draws none of them; a Run hunt closes "REPEL's effect wore off" with one A and carries on; the card back at 45, 45 and 10. |
 | `hgss-milestone-anchor` | `hgss-milestone-anchor` | FR-23 and FR-38: Route 30 · grass started from Route 32 walks to its anchor through the side door, both ways; a battle on the walk and a heal trip back to the anchor. |
-| `hgss-rates-repel` | `hgss-rates-repel` | FR-26, FR-27, FR-29: `run`, the Repel counter through a Run hunt and its close; `spin`, the counter unchanged across 90 s of turning. |
-| `hgss-rates-clock` | `hgss-rates-clock` | FR-27, FR-28, FR-30, FR-32, FR-41: the card's rows change at the first decision past 20:00, 4:00 or 10:00 with no move; `20` also checks the not-live card, the night rod card and a restart. |
+| `hgss-rates-repel` | `hgss-rates-repel` | FR-26, FR-27, FR-29: `run`, the Repel counter through a Run hunt and its close, the rows it blocks gone from the card and the others with their share under the name; `spin`, the counter unchanged across 90 s of turning. |
+| `hgss-rates-clock` | `hgss-rates-clock` | FR-27, FR-28, FR-30, FR-32, FR-41: the card's rows change at the first decision past 20:00, 4:00 or 10:00 with no move: a species out of its time leaves the card, one in it shows its share under its name; `20` also checks the not-live card, the night rod card and a restart. |
 | `hgss-plan-editor` | new | FR-37, FR-37a, FR-37b: the Hunt Plan field's create, replace, preview, rename, delete and their refusals, a plan naming a milestone with no anchor refused at Start, the plan on a SoulSilver bot. |
 | `hgss-plan-ending` | new | FR-34 as rewritten and FR-34a's "none for a milestone complete at Start": `default-complete`, the first incomplete rule stands in for a complete default; `all-complete`, Complete at the first decision with no walk and no message. |
 | `hgss-plan-repel-walk` | new | FR-29 on a plan's walk (#562): "Repel's effect wore off..." during the walk is closed with one A and the walk carries on to Route 30's anchor with no park. |
-| `hgss-plan-night` | `hgss-plan-night` | From Route 32 at 19:48 in-game (not 19:58): FR-33, FR-36, FR-38 on a plan walk, FR-38d, FR-39, FR-39a, FR-39b, FR-40 and FR-34a's next milestone; `start-on-rule`, at 21:00 the first pick is Route 30 before any walk. |
-| `hgss-plan-morning-back` | `hgss-plan-morning-back` | From 09:42 (not 09:52): Route 30 in the morning, back to Route 32 at 10:00; `complete-on-return`, Route 32 complete when the walk arrives, the message and the walk back (FR-34, FR-34a). |
-| `hgss-plan-weekday` | `hgss-plan-weekday` | Started Thursday 23:50: before midnight the Friday rule does not match, after it it does; `hg` on HeartGold, `ss` on SoulSilver with the two milestones swapped. |
-| `hgss-milestone-complete` | new | FR-34a with no plan and for a plan's last milestone, FR-13's wanted shiny parking the hunt, the shiny alert, a plan in use while its hunt is parked in Waiting. |
-| `hgss-headbutt-anchor` | new | FR-21 in a hunt: the file's tree, Route 32's tree 23 stood on from (470, 421) facing Right, and a headbutt card with no Share column. |
+| `hgss-plan-night` | `hgss-plan-night` | From Route 32 at 19:48 in-game (not 19:58), Route 32 hunted from its anchor set on the save's tile (the walk south to the generated one meets a story trigger): FR-33, FR-36, FR-38 on a plan walk, FR-38d, FR-39, FR-39a, FR-39b, FR-40 and FR-34a's next milestone; `start-on-rule`, at 21:00 the first pick is Route 30 before any walk. |
+| `hgss-plan-morning-back` | `hgss-plan-morning-back` | From 09:42 (not 09:52), with Route 32's anchor set on the save's tile first: Route 30 in the morning, back to Route 32 at 10:00; `complete-on-return`, Route 32 complete when the walk arrives, the message and the walk back (FR-34, FR-34a). |
+| `hgss-plan-weekday` | `hgss-plan-weekday` | Started Thursday 23:50: before midnight the Friday rule does not match, after it it does; `hg` on HeartGold, hunting Route 32 from its anchor set on the save's tile with no Thursday walk; `ss` on SoulSilver with the two milestones swapped. |
+| `hgss-milestone-complete` | new | Route 32 hunted from its anchor set on the save's tile: FR-34a with no plan and for a plan's last milestone, FR-13's wanted shiny parking the hunt, the shiny alert, a plan in use while its hunt is parked in Waiting. |
+| `hgss-headbutt-anchor` | new | FR-21 in a hunt: the file's tree, Route 32's tree 23 stood on from (470, 421) facing Right, and a headbutt card with no share. |
 
 Each scenario's steps, asserts and data review are in the plan on #525.
 
@@ -274,9 +274,9 @@ Implemented on `feature/hunt-plans-milestones`, epic #508, 2026-11-25. The requi
 - Anchors: generated by `HgssAnchorFinder` and `RsMilestoneProcessor.FindAnchor` (`Scripts/Milestones/RsMilestoneProcessor.cs:152`) into the data files; a file's replacement or headbutt tree through `GameFile.AnchorFor` (`Goal.cs:39`) and `HeadbuttTrees.AnchorFor` (`HeadbuttTrees.cs:32`). FR-24 is checked at Start (`BotService.AnchorTileStop`, `BotService.cs:1076-1077`).
 - `profile.Rates` (`GameProfile.cs:65-67`) with `HgssRates.Compute` and `RsRates.Compute`. The rate inputs are read at each decision, beside the party read (`OrchestratorEvent.cs:486-495`; HGSS through `HgssFieldSystemStateReader.ReadClockAndRepelAsync`, `:103`).
 - The Repel message is closed on an HGSS Run hunt (`RunEncounterEvent.cs:89-102`), on the HGSS navigator's walk (`NavigatorEvent.cs:466`, `:520`) and on a US RS Run hunt (`RunEncounterEvent.cs:107-121`).
-- `HuntPlanRun` (`Milestones/HuntPlanRun.cs`) in the decision, the FR-35 refusal at Start (`HuntPlanRun.ReachRefusalAsync`, `:118-146`), and the milestone message (`OrchestratorEvent.cs:331-338` with no plan, `HuntPlanRun.cs:43-55` with one, both through `ShinyAlertService.NotifyStopAsync`).
+- `HuntPlanRun` (`Milestones/HuntPlanRun.cs`) in the decision, whose walk line names the tile it walks from (`:111`, #602), the FR-35 refusal at Start (`HuntPlanRun.ReachRefusalAsync`, `:118-146`), and the milestone message (`OrchestratorEvent.cs:331-338` with no plan, `HuntPlanRun.cs:43-55` with one, both through `ShinyAlertService.NotifyStopAsync`).
 - Fixed and follows-the-hunt cards; a phase window paints while covered (`windowManager.ts:148`).
-- The dashboard: the Goals tab (`AdminCard.tsx:19`, `GoalEditorTab.tsx`), `MilestoneFiles.tsx`, `MilestoneRowsPanel.tsx`, the plan editor `HuntPlanEditor.tsx` under the Wild Encounter form, and the Share column on the card (`PhaseCard.tsx:211`).
+- The dashboard: the Goals tab (`AdminCard.tsx:19`, `GoalEditorTab.tsx`), `MilestoneFiles.tsx`, `MilestoneRowsPanel.tsx`, the plan editor `HuntPlanEditor.tsx` under the Wild Encounter form, and on the card each row's share under its name, with a row at a zero share not drawn (`PhaseCard.tsx:76`, `:245-246`; #603).
 - The one test seam of the feature, on the game-file store (A7, #574), and the side door's step (C1, `PathfindingService.ExitDirection`, `PathfindingService.cs:526`).
 - No package, no project, no ApiHawk change; two new Mongo collections, `GameFiles` and `HuntPlans`.
 
@@ -289,7 +289,7 @@ Each item is recorded in the changelog on its date; this list does not restate t
 3. FR-21: the trainer ID is the full 32-bit one, from the game's source; a headbutt stand needs no HM (B1h and B1h-c, 2026-11-25).
 4. FR-23: a hunt with no path to its anchor parks in Waiting with a sentence; it does not end Complete (`OrchestratorEvent.cs:227-240`; B2, 2026-11-25).
 5. FR-24: checked at Start against the committed map data, not at the anchor (B2, 2026-11-25).
-6. FR-25: no shares on a headbutt card (`MilestoneRows.cs:40`; B4b and B4c, 2026-11-25).
+6. FR-25: no shares on a headbutt card: the rows give no share, so the card draws every row with no share under the names (`MilestoneRows.cs:40`; B4b and B4c, 2026-11-25).
 7. FR-26, FR-32 and NFR-1: the clock and the Repel counter are not on the snapshot. One request is added per decision, and the first decision after a launch has no Repel reading (B4a, 2026-11-25). NFR-1 is measured by the regression pass (Evidence).
 8. FR-27 and FR-41: shares change at the first encounter after 4:00, 10:00 or 20:00, not on the hour (B4b and B4c, 2026-11-25).
 9. FR-29: each close is gated on the byte its press changes: on HGSS script 2022 leaving `WaitABPressNative`, on RS lock 1, mode 2 and `WaitForAorBPress`, confirmed by the lock reading 0. RS ROMs other than US Ruby and Sapphire stop at the message as before (B4a, #556, #589, 2026-11-25).
@@ -298,7 +298,7 @@ Each item is recorded in the changelog on its date; this list does not restate t
 12. FR-37: the mock's in-game clock chip is not built. The editor shows only the fixed times line (`HuntPlanEditor.tsx:332`), because nothing the dashboard reads exposes the weekday and hour (C4a and C4b, 2026-11-25).
 13. FR-37b: rename is refused while the plan is in use too, not only delete (C4a and C4b, 2026-11-25).
 14. FR-38a: the door's direction is derived from the door tile and the wall (`PathfindingService.ExitDirection`), not from regenerated data (C1).
-15. FR-42a: the note on a stored phase's card is not drawn. `PhaseCard.tsx` has no Share column and no footer note for a stored phase (`:115`, `:211`, `:288-298`), and no scenario asserts a note.
+15. FR-42a: the note on a stored phase's card is not drawn. `PhaseCard.tsx` has no share under the name and no footer note for a stored phase (`:114`, `:245-246`, `:284-291`), and no scenario asserts a note.
 16. FR-44: the linked name is refused at Start on every hunt type (A4 and A7, 2026-11-25).
 17. Design notes, "the reads are the profile's": as built, the rate-input read and both Repel closes are chosen by the address table's type (`state.Bot.Addresses is HgssPointerService` / `is RsPointerService`, `OrchestratorEvent.cs:486`, `:491`; `RunEncounterEvent.cs:59`, `:107`), not through a profile part.
 18. Not built: shares on a headbutt card, the clock chip, the "do nothing until the rule's time" choice, the Route 1 edge (#578).
@@ -307,7 +307,7 @@ Each item is recorded in the changelog on its date; this list does not restate t
 
 Nothing below was run for this close-out; the results are the orchestrator's QA runs on the feature branch. Run folders are under `ShinyBotHunter.Qa/dashboard/qa-runs/`, named `<stamp>-hgss-route33-dashboard`.
 
-**The regression pass, on `4261d14`.** Final: 30 runs, all passed. HGSS Run 192.5 encounters an hour (bar 189), HGSS Spin 176.7, RS Spin 268.5 and RS Run 268.9 (floor 265, target 270). The speed runs are `20261125-191835` (`hgss-wild-speed`) and `20261125-203919` (`rs-wild-speed`); the other 28 are the folders stamped `20261125-191610` to `20261125-215224`. After `4261d14` the bot code changed only in `HuntPlanRun.cs` and a comment in `OrchestratorEvent.cs` (#593, `c243f53`), and `HuntPlanRun` runs only with a plan (`git diff --stat 4261d14..bd1fddd -- ShinyBotHunter PokemonDashboard`).
+**The regression pass, on `4261d14`.** Final: 30 runs, all passed. HGSS Run 192.5 encounters an hour (bar 189), HGSS Spin 176.7, RS Spin 268.5 and RS Run 268.9 (floor 265, target 270). The speed runs are `20261125-191835` (`hgss-wild-speed`) and `20261125-203919` (`rs-wild-speed`); the other 28 are the folders stamped `20261125-191610` to `20261125-215224`. The regression pass predates three later changes, so it did not run them: `HuntPlanRun.cs` and a comment in `OrchestratorEvent.cs` (#593, `c243f53`), one log line in `HuntPlanRun.cs` (#602, `a91ae47`), and the counts card in `PhaseCard.tsx` (#603, `108c4fe`). `HuntPlanRun` runs only with a plan; the card change is dashboard only (`git diff --stat 4261d14..108c4fe -- ShinyBotHunter PokemonDashboard`).
 
 **The new-scenario pass.**
 
@@ -351,7 +351,7 @@ Nothing below was run for this close-out; the results are the orchestrator's QA 
 - Races: out-of-order re-reads, a late plan-list response.
 - The chained hunt's card across legs.
 - The Archive error with the backend stopped. `hgss-milestone-refusals` restarts the backend and checks that the archive survives; it never presses Archive while the backend is down.
-- The link refusal sentence on Primo and Static: their place check answers first on this save (`hgss-existing-backfill.spec.ts:33-35`, `:232-235`).
+- The link refusal sentence on Primo and Static: their place check answers first on this save (`hgss-existing-backfill.spec.ts:33-35`, `:233-238`).
 - Resume with the RS Repel box up.
 - A poison tick on the last step before the Pokémon Center.
 - Two "The plan is finished." messages from one decision.
@@ -365,6 +365,7 @@ Nothing below was run for this close-out; the results are the orchestrator's QA 
 - "The milestone message was not sent" (`OrchestratorEvent.cs:420`).
 - A chained hunt's milestone message.
 - A planned hunt's encounters per hour against the same milestone hunted without a plan.
+- The walk to Route 32 · grass's generated anchor from the QA save: it is stopped by a one-time story NPC, so the scenarios that hunt Route 32 set its anchor on the save's tile instead (#602). The HGSS navigator has no handling for a live story trigger on a walk (`NavigatorEvent.cs`).
 
 ## Open questions
 
@@ -468,7 +469,7 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - Since #585 (#583) and #594 (#593), FR-34 as built is the rewritten rule, so C3b's "FR-34 as built" sentence no longer holds.
   - Since #587 (#582), the preset is the file's stored choice, so A5a's "a preset adds species the goal lacks ... presets do not stack" no longer holds.
   - #593: a plan arriving at a completed stop picks again, and the plan re-reads completion once before ending.
-  - The QA table renamed to the sixteen scenarios, the old row names kept in its middle column; "As built", "What diverged" and "Evidence" written; status Implemented.
+  - The QA table renamed to the sixteen scenarios, the old row names kept in its middle column; "As built", "What diverged" and "Evidence" written; status Implemented. They describe the tip after #602 and #603.
 
 ## Appendix: the maps and their names
 
