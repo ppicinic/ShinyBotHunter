@@ -38,7 +38,7 @@ const ENCOUNTERS = 5
 // backend.log is written in the console's code page, so a milestone name's middle dot is matched by any one or two characters.
 const logged = (name: string): RegExp => new RegExp(`^${name.replace('·', '.{1,2}')}$`)
 
-type MilestoneRow = { species: number; name: string; wanted: number; caught: number; share: number | null; reason: string | null }
+type MilestoneRow = { species: number; name: string; wanted: number; caught: number; share: number | null }
 type Rows = { rows: MilestoneRow[]; survive: number | null; live: boolean }
 
 /** Sapphire's generated milestone ids, as Milestone.Id makes them. */
@@ -65,16 +65,20 @@ async function readCard(page: Page): Promise<CardView> {
     const t = (e: Element | null | undefined): string => (e?.textContent ?? '').replace(/\s+/g, ' ').trim()
     const card = document.querySelector('.dashboard-card')
     const headers = Array.from(document.querySelectorAll('thead th')).map(t)
-    const share = headers.indexOf('Share')
     const rows = Array.from(document.querySelectorAll('tbody tr')).map((tr) => {
       const td = tr.querySelectorAll('td')
-      return { name: t(td[1]).replace('✓', '').trim().toLowerCase(), share: share < 0 ? null : t(td[share]), shinies: t(td[td.length - 1]).replace(/\s+/g, '').replace(/\(\d+missed\)$/, '') }
+      const share = td[1]?.querySelector('[data-testid="row-share"]')
+      return {
+        name: Array.from(td[1]?.querySelectorAll('span') ?? []).map(t).join('').replace('✓', '').trim().toLowerCase(),
+        share: share ? t(share) : null,
+        shinies: t(td[td.length - 1]).replace(/\s+/g, '').replace(/\(\d+missed\)$/, '')
+      }
     })
     return { headers, rows, footer: t(card?.lastElementChild) }
   })
 }
-// The card's Share cell and last cell for a server row (PhaseCard).
-const drawnShares = (r: Rows): string[] => r.rows.map((x) => `${x.name.toLowerCase()} ${x.share === 0 && x.reason !== null ? x.reason : `${((x.share ?? 0) * 100).toFixed(1)} %`}`)
+// The share under each name and the last cell for a server row (PhaseCard); a row at a zero share is not drawn.
+const drawnShares = (r: Rows): string[] => r.rows.filter((x) => x.share !== 0).map((x) => `${x.name.toLowerCase()} ${((x.share ?? 0) * 100).toFixed(1)} %`)
 const drawnWanted = (r: Rows): string[] => r.rows.map((x) => `${x.name.toLowerCase()} ${x.wanted === 0 ? `${x.caught}tracked` : `${x.caught}/${x.wanted}`}`)
 
 /** The RS card's one form: the milestone, ShinyTarget and the mode, then Run; returns the click's ISO time. */

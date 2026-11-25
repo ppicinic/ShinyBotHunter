@@ -62,7 +62,8 @@ async function readCard(page: Page): Promise<CardView> {
       const td = tr.querySelectorAll('td')
       const img = td[0]?.querySelector('img')
       return {
-        line: `${t(td[1]).replace('✓', '').trim()} ${t(td[td.length - 1]).replace(/\s+/g, '')}`.toLowerCase(),
+        // The name cell's spans only: a card with shares draws the share under the name (PhaseCard).
+        line: `${Array.from(td[1]?.querySelectorAll('span') ?? []).map(t).join('').replace('✓', '').trim()} ${t(td[td.length - 1]).replace(/\s+/g, '')}`.toLowerCase(),
         sprite: img ? img.naturalWidth : null
       }
     })

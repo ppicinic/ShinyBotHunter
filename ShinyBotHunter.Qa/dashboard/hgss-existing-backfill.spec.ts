@@ -46,7 +46,7 @@ const REREAD = 90_000
 
 type Picked = { id: string; name: string; modality: string | null }
 type Entry = { species: number; formCode: string | null; amount: number }
-type MilestoneRow = { species: number; key: string; encountersHere: number }
+type MilestoneRow = { species: number; key: string; encountersHere: number; share: number | null }
 
 /** HeartGold's generated milestone ids, as Milestone.Id makes them from Data/HGSS/milestones.json.gz. */
 function heartGoldIds(): string[] {
@@ -70,7 +70,7 @@ async function link(handle: string, milestoneId: string, linked: boolean): Promi
   return { status: res.status, text }
 }
 
-type CardView = { headers: string[]; rows: { name: string; here: number; amount: string }[]; count: number; footer: string }
+type CardView = { headers: string[]; rows: { name: string; here: number; amount: string }[]; shares: number; count: number; footer: string }
 /** The card's table, header count and footer from its window's DOM. */
 async function readCard(page: Page): Promise<CardView> {
   return page.evaluate(() => {
@@ -84,7 +84,8 @@ async function readCard(page: Page): Promise<CardView> {
       return { name: t(td[1]).replace('✓', '').trim().toLowerCase(), here: Number(t(td[here]).replace(/,/g, '')), amount: shinies.includes('/') ? shinies.split('/')[1] : shinies }
     })
     const count = Number(t(card?.querySelector('[data-testid="phase-encounter-count"]')).replace(/,/g, ''))
-    return { headers, rows, count, footer: t(card?.lastElementChild) }
+    const shares = document.querySelectorAll('[data-testid="row-share"]').length
+    return { headers, rows, shares, count, footer: t(card?.lastElementChild) }
   })
 }
 
@@ -93,6 +94,9 @@ function expectedHere(rowsOf: MilestoneRow[], handle: string, milestones: string
   const species = milestones.flatMap((m) => rowsFor(handle, m, EPOCH)).map((r) => Number(r.species))
   return rowsOf.map((r) => species.filter((s) => s === r.species).length)
 }
+
+/** The counts of the rows the card draws: a row at a zero share (a species not met now on a file seen hunting) is not drawn. */
+const drawnHere = (rowsOf: MilestoneRow[], here: number[]): number[] => here.filter((_, i) => rowsOf[i].share !== 0)
 
 async function milestoneRows(handle: string): Promise<MilestoneRow[]> {
   const res = await rows('HGSS', ROUTE30, handle)
@@ -145,7 +149,7 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
     expect(options, '"in the server\'s order": the form\'s milestone select').toEqual(ids)
     await shotAll('02-picker', pages)
 
-    // (b) A fixed card on the stored phase with no file: today's card, its stored rows, no Share column and no new footer line.
+    // (b) A fixed card on the stored phase with no file: today's card, its stored rows, no share under a name and no new footer line.
     expect((await subscribe({ game: 'HGSS', phase: PHASE, gameName: null })).status, `subscribe ${PHASE}`).toBe(200)
     const stored = await windowByTitle(app, `HGSS — ${PHASE}`, MINUTE)
     pages.stored = stored
@@ -153,8 +157,8 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
       .toEqual(STORED_ROWS)
     const storedView = await readCard(stored)
     step(`stored card: ${JSON.stringify(storedView)}`)
-    expect(storedView.headers, '"no Share column" on the stored card').not.toContain('Share')
-    expect(storedView.footer, '"no new footer line" on the stored card').not.toMatch(/encounters survive|not live|Shares: not seen/)
+    expect(storedView.shares, '"no share" on the stored card').toBe(0)
+    expect(storedView.footer, '"no new footer line" on the stored card').not.toMatch(/not live|Shares: not seen/)
     const countBefore = storedView.count
 
     // (c) A hunt at the stored phase where the bot stands: no anchor and no plan, three encounters, counted under its name.
@@ -203,7 +207,7 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
     const generated = await windowByTitle(app, `HGSS — ${ROUTE30} (${LEGACY})`, MINUTE)
     pages.generated = generated
     await expect.poll(async () => (await readCard(generated)).rows.map((r) => r.here), { message: `${LEGACY}'s generated card with the link`, timeout: MINUTE })
-      .toEqual(withLink)
+      .toEqual(drawnHere(linked, withLink))
     const second = await milestoneRows(LEGACY2)
     const own = expectedHere(second, LEGACY2, [ROUTE30])
     expect(second.map((r) => r.encountersHere), `"a second card for ${LEGACY2} shows its own counts"`).toEqual(own)
@@ -212,7 +216,7 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
     const generated2 = await windowByTitle(app, `HGSS — ${ROUTE30} (${LEGACY2})`, MINUTE)
     pages.generated2 = generated2
     await expect.poll(async () => (await readCard(generated2)).rows.map((r) => r.here), { message: `"${LEGACY2}'s card shows 0"`, timeout: MINUTE })
-      .toEqual(own)
+      .toEqual(drawnHere(second, own))
     await shotAll('06-generated-cards', pages)
 
     // (f) The linked name leaves HG-Legacy's picker, and every hunt type refuses it.
@@ -261,7 +265,7 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
     const withoutLink = expectedHere(unlinked, LEGACY, [ROUTE30])
     expect(unlinked.map((r) => r.encountersHere), `"without the link" ${LEGACY}'s rows`).toEqual(withoutLink)
     await expect.poll(async () => (await readCard(generated)).rows.map((r) => r.here), { message: `"the generated card drops the ${PHASE} encounters"`, timeout: REREAD, intervals: [2000] })
-      .toEqual(withoutLink)
+      .toEqual(drawnHere(unlinked, withoutLink))
     await shotAll('08-unlinked', pages)
 
     // (i) The link is per file: with HG-Legacy linked again, HG-Legacy2 at the title screen still lists the phase, and every
