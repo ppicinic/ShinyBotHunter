@@ -59,6 +59,15 @@ export function setMilestoneOrder(apiUrl: string, gameFileName: string, mileston
   return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}/order`, { milestone, label })
 }
 
+// The milestone's anchor on the bot's game file becomes where the bot stands, hunted with this range (both 0: spin). 400 with the reason.
+export function setAnchor(apiUrl: string, pos: number, milestone: string, xRange: number, yRange: number): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/bot/anchor/${pos}?milestone=${encodeURIComponent(milestone)}&xRange=${xRange}&yRange=${yRange}`)
+}
+
+export function clearAnchor(apiUrl: string, pos: number, milestone: string): Promise<Response> {
+  return request('DELETE', `${apiUrl}/api/bot/anchor/${pos}?milestone=${encodeURIComponent(milestone)}`)
+}
+
 export function getParty(apiUrl: string, pos: number): Promise<Response> {
   return request('GET', `${apiUrl}/api/bot/getParty/${pos}`)
 }

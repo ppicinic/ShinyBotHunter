@@ -113,6 +113,8 @@ Once a milestone is picked, two controls appear under the list:
 
 Both are saved for this game file and the list reloads.
 
+On **Wild Encounter**, a line under the settings shows the picked milestone's anchor, the tile its hunt starts from, or `No anchor: hunted where the bot stands`. **Set anchor here** makes where your character stands the anchor for this game file, and **Clear** removes one you set; [Where the hunt starts: the anchor](04-hunts/01-wild-encounter.md#where-the-hunt-starts-the-anchor) explains both.
+
 An emulator offers only the actions its game supports, and only while it is not busy. While an action is running, the entry shows no actions; you can only cancel it.
 
 While a Ruby or Sapphire wild hunt runs, its entry can show small grey lines under its name, each naming something in your save that slows the hunt. These are the [speed lines](04-hunts/08-rs-wild-encounter.md#the-speed-lines).

@@ -231,6 +231,15 @@ export interface AdminMetadata {
 
 export type Modality = 'Land' | 'Surf' | 'OldRod' | 'GoodRod' | 'SuperRod' | 'RockSmash' | 'Headbutt'
 
+// Matches C# Anchor (Milestone.cs): a tile on game map `map`, run left-right xRange or up-down yRange tiles each way, or with both 0 a spin.
+export interface Anchor {
+  map: number
+  x: number
+  y: number
+  xRange: number
+  yRange: number
+}
+
 export interface PickerMilestone {
   // A generated milestone's id ("34-land"), or a custom phase's name. Sent as PhaseName at Start.
   id: string
@@ -241,6 +250,10 @@ export interface PickerMilestone {
   complete: boolean
   archived: boolean
   order: string | null
+  // Where the hunt starts on this file; null is hunted where the bot stands.
+  anchor: Anchor | null
+  // True when this file stores a replacement, false when the anchor is the generated one.
+  anchorSet: boolean
 }
 
 export interface BotMilestones {
