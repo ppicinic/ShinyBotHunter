@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/HeadbuttEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (encounter type choices), docs/specs/headbutt-encounter.md (FR-3 to FR-9), docs/specs/pickup-mode.md (FR-2 to FR-7), docs/research/pickup.md, PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync), ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Service/BotService.cs (NoHuntYet), PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx (the milestone picker) -->
+<!-- Derived from: ShinyBotHunter/BotEvents/OrchestratorEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs, docs/specs/hgss-state-reader.md, ShinyBotHunter/BotEvents/ChainedOrchestratorEvent.cs, ShinyBotHunter/BotEvents/LevelUpFlow.cs, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Resume"), ShinyBotHunter/Service/BotService.cs (ValidateAndBuildLeg, StartWildEncounter, StartChainedEncounter, ResumeAsync, GetAvailableActions), ShinyBotHunter/Service/BotDtos.cs (TargetType), ShinyBotHunter/BotEvents/GameState.cs (TrainType), ShinyBotHunter/BotEvents/Factories/EncounterParams.cs, ShinyBotHunter/BotEvents/Target/PhaseTarget.cs, ShinyBotHunter/BotEvents/Target/ShinyTarget.cs, ShinyBotHunter/BotEvents/Target/NoTarget.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/HeadbuttEncounterEvent.cs, ShinyBotHunter/BotEvents/NavigatorEvent.cs, ShinyBotHunter/BotEvents/BattleReadiness.cs, PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (field labels), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (encounter type choices), docs/specs/headbutt-encounter.md (FR-3 to FR-9), docs/specs/pickup-mode.md (FR-2 to FR-7), docs/research/pickup.md, PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (Run and + Leg buttons), ApiHawk/CommandServer.cs (the M action), ShinyBotHunter/Pathfinding/PathfindingService.cs (capabilities, closest Pokemon Center node), ShinyBotHunter/Data/HGSS/graph.bin and mapreverselookup.json, OrchestratorEvent.cs (CheckForCatchAsync), ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Service/BotService.cs (NoHuntYet), PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx (the milestone picker), ShinyBotHunter/Milestones/Goal.cs (GameFile.AnchorFor, MilestoneAnchor), OrchestratorEvent.cs (UseAnchor, AnchorWalkGoesOn), ShinyBotHunter/Service/BotService.cs (EncounterTypeRefusal, AnchorTileStop, AnchorLeg, SetAnchorAsync, ClearAnchorAsync), ShinyBotHunter/Controllers/BotController.cs (bot/anchor), ShinyBotHunter/Milestones/MilestonePicker.cs (Anchor, AnchorSet), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (the anchor line, Set anchor here, Clear) -->
 # Wild and chained encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -17,7 +17,7 @@ There are two actions for it on the dashboard:
 ## What does your save need?
 
 1. **An emulator that is already running with your save loaded.** These actions do not start an emulator. Start one first with **Launch Bot + Continue**, as [the dashboard page](../03-dashboard.md) describes.
-2. **Your character standing on the tile you want to hunt from.** The bot remembers that tile as home when the hunt starts. It walks back there after every trip to heal, and again before the hunt finishes.
+2. **Your character standing on the tile you want to hunt from,** unless the milestone has an anchor: then the bot walks to the anchor first, from wherever your character stands (see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor)). The bot remembers that tile as home when the hunt starts. It walks back there after every trip to heal, and again before the hunt finishes.
 3. **For walking back and forth (Encounter Type Run):** room to walk in a straight line from that tile, the same number of tiles each way. The bot paces left and right, or up and down, centred on where you stand.
 4. **For turning on the spot (Encounter Type Spin):** nothing extra. The bot turns through the four directions without leaving the tile.
 5. **For headbutting a tree (Encounter Type Headbutt):** stand on foot facing a headbutt tree, not on a bike or surfing, and have a Pokémon in your party that knows Headbutt. The bot does not choose a tree or walk to one; every headbutt checks that there is a tree in front of you.
@@ -46,16 +46,48 @@ How the action form works in general is on [the dashboard page](../03-dashboard.
 
 | What it means | Field on the dashboard |
 |---|---|
-| The milestone the encounters are filed under. With Target Type PhaseTarget or ShinyTarget, it is also the list of shiny Pokémon the hunt is trying to complete. It is one you made, or a generated one such as `Route 30 · grass`, whose Pokémon come from the game's own tables and whose amounts come from the game file's goal; with no goal set for the file, a generated milestone wants nothing, so it is already complete. Surf, rod and rock smash milestones read `(no hunt yet)` and Run is refused at them. The list and its filters are on [the dashboard page](../03-dashboard.md#the-milestone-field). | Milestone |
+| The milestone the encounters are filed under. With Target Type PhaseTarget or ShinyTarget, it is also the list of shiny Pokémon the hunt is trying to complete. It is one you made, or a generated one such as `Route 30 · grass`, whose Pokémon come from the game's own tables and whose amounts come from the game file's goal; with no goal set for the file, a generated milestone wants nothing, so it is already complete. Surf, rod and rock smash milestones read `(no hunt yet)` and Run is refused at them. A grass or cave milestone is hunted with Run or Spin, a headbutt milestone with Headbutt. A milestone with an anchor is hunted from it; see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor). The list and its filters are on [the dashboard page](../03-dashboard.md#the-milestone-field). | Milestone |
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. **NoTarget**: nothing is ever found, so the hunt is only for training and needs a Train Type other than None. With PhaseTarget and ShinyTarget, the hunt also ends once the milestone is complete. | Target Type |
 | How to meet wild Pokémon. **Run**: walk back and forth in a straight line. **Spin**: turn on the spot. **Headbutt**: headbutt the tree you are facing. | Encounter Type |
-| How many tiles to walk each way from home, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
+| How many tiles to walk each way from home, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. At a milestone with an anchor, the anchor decides Run or Spin and the range instead, but these must still be filled in correctly. | X Range, Y Range |
 | Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting. The Pokémon in the first slot still earns experience. | Train Type |
 | The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it; use that to farm items with Pickup. | Target Level (101 = no end) |
 | The party slot of the Pokémon that fights in Switch training, from 2 to 6. Shown only for Switch. It starts at 2. | Battler |
 | Whether to take the items your Pickup Pokémon find. Shown when Train Type is not None. Greyed out when no Pokémon in your party has the Pickup ability. See [Farming items with Pickup](#farming-items-with-pickup). | Pickup |
 
 A shiny Pokémon that the hunt is not looking for is treated like any other wild Pokémon: the bot runs from it, or fights it when training.
+
+## Where the hunt starts: the anchor
+
+A milestone can have an anchor: a tile where its hunt starts, and how it is hunted there (Run along a line, or Spin). Most generated grass and cave milestones come with one. A milestone you made has none until you set one.
+
+- **With an anchor,** pressing **Run** first walks your character to the anchor, the way the bot walks back from a Pokémon Center: without field moves, running from every wild battle on the way. Those Pokémon are still written to the encounter log, and a Pokémon you are hunting for still stops the bot. The anchor is then the hunt's home: heal trips come back to it, and the bot walks back to it before the hunt finishes.
+- **The anchor decides Run or Spin and the range,** whatever the form's Encounter Type, X Range and Y Range say. The form must still be filled in correctly: Run with both ranges at 0 is refused before the anchor is used. An anchor does not change Headbutt.
+- **With no anchor,** the hunt starts where your character stands.
+
+Under the Wild Encounter settings, the card shows the picked milestone's anchor:
+
+| The card shows | It means |
+|---|---|
+| `Anchor: map 34 (547, 304), run up-down ±6, generated` | The milestone's own anchor: game map 34, tile (547, 304), walking up and down 6 tiles each way. `run left-right ±<n>` and `spin` are the other two ways. |
+| The same ending `set on this file` | An anchor you set for this game file. It replaces the generated one on this file only. |
+| `No anchor: hunted where the bot stands` | The hunt starts where your character stands. |
+
+With an anchor (and Encounter Type other than Headbutt), an orange line under it says what the hunt will do, for example `The anchor decides Run or Spin and the range: this hunt will run up-down ±6, whatever the form says.`
+
+### Set or clear an anchor
+
+1. In the emulator, stand your character on the tile you want, facing the way you want, with every menu and message closed.
+2. On the card, pick **Wild Encounter**, the milestone, and Encounter Type **Run** with its range, or **Spin**.
+   **Set anchor here** stays greyed out until Encounter Type is picked, and for Run until one range is above 0.
+3. Press **Set anchor here**.
+   The anchor line now shows your tile and range, ending `set on this file`.
+
+The anchor stores where your character stands and faces, and the form's Run or Spin and range. With Headbutt picked it stores the tile and facing, and the hunt still headbutts. It is kept with the game file, so it is still there after a reload or a restart. Nothing is pressed in the game. The tile is not checked when you set it; **Run** checks it (see [If it stops early](#if-it-stops-early)).
+
+**Clear** shows only for an anchor you set. It removes it, so the milestone goes back to its generated anchor, or to none.
+
+A chained hunt does not use anchors: each leg starts where the bot stands.
 
 ## Start a chained hunt
 
@@ -142,7 +174,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 
 - **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough.
 - **It finishes where it stands.** It could not find a way home, or a way to a Pokémon Center.
-- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or your character is off the run line, or off the tile it turns on. Or the field stayed locked for 15 s with no battle. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
+- **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or your character is off the run line, or off the tile it turns on. Or the field stayed locked for 15 s with no battle. Or it found no way to the milestone's anchor. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
 
 ## If it stops early
@@ -158,6 +190,22 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **You see** Run refused with "X and Y range must be non-negative values".
 **It means** one of the ranges is below 0.
 **Do** use 0 or a number above it.
+
+**You see** Run refused with "Route 30 · grass: the anchor (550, 304) is not grass." with the milestone's name, the anchor's tile, and `grass` or `cave`.
+**It means** the milestone's anchor is not a tile of the milestone's grass, or of its cave floor, on the game's own map, so the milestone's Pokémon would not appear there. It is checked when you press Run, before any walk. Usually it is an anchor you set while standing on a path. Milestones you made are not checked.
+**Do** stand your character in the milestone's grass and press **Set anchor here** again, or press **Clear** to go back to the generated anchor.
+
+**You see** Run refused with "Route 30 · grass is not hunted with Headbutt.", "Route 30 · headbutt is not hunted with Run." or the same with Spin.
+**It means** Headbutt was picked at a grass or cave milestone, or Run or Spin at a headbutt milestone.
+**Do** pick Run or Spin at a grass or cave milestone, and Headbutt at a headbutt one.
+
+**You see** **Set anchor here** refused with "Close any menu or message and stand in the field.", "Only x or y range must be supplied, not both." or "X and Y range must be non-negative values".
+**It means** the game was not in the free field when you pressed it, or the range is one Run would refuse. Nothing was stored.
+**Do** close the menu or message, or fix the range, and press **Set anchor here** again.
+
+**You see** the bot waiting, and the backend's window shows `[Orchestrator] Route 30 · grass: no path to the anchor (547, 304).` with the milestone's name and the anchor's tile, after a `[Navigator] No path back to start from map=<map> (<x>,<y>) -- completing in place` line that says where your character stood.
+**It means** at the start of the hunt the bot found no way from where your character stood to the anchor without field moves. The hunt does not finish there: it waits, and nothing was hunted.
+**Do** cancel the hunt, walk your character nearer the anchor (onto its map, or anywhere the bot can walk from without field moves), and press **Run** again. Or stand where you want to hunt and press **Set anchor here**.
 
 **You see** Run refused with "TargetLevel must be a positive value when a train mode is enabled."
 **It means** Train Type is Standard or Switch and Target Level is empty or 0.
