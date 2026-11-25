@@ -10,6 +10,7 @@ namespace ShinyBotHunter.Tests
         // read from the decomp; the visible half alone ends in 3.
         private const uint OwnersId = 35374u << 16 | 15613u;
         private const uint VisibleHalf = 15613;
+        private const int Heracross = 214;
 
         private static Milestone Azalea()
             => MilestoneFile.Load(Path.Combine(RepoPaths.AppProject, "Data", "HGSS"))[RomVersion.HeartGold].Single(m => m.Id == "74-headbutt");
@@ -71,6 +72,36 @@ namespace ShinyBotHunter.Tests
             {
                 Assert.Equal(SlotCondition.SecretTree, HeadbuttTrees.KindAt(milestone, 2, 0, digit));
             }
+        }
+
+        [Fact]
+        public void AnchorFor_AzaleaTown_15613_35374_WantsHeracross()
+        {
+            // Digit 7: trees 0, 3, 5, 8, 10 and 13 are common, the only table with Heracross; tree 3's stand is the cheapest (71).
+            var anchor = HeadbuttTrees.AnchorFor(Azalea(), OwnersId, new HashSet<int> { Heracross });
+
+            Assert.Equal(new MilestoneAnchor("74-headbutt", new Anchor(74, 407, 456, 0, 0), Direction.Up), anchor);
+        }
+
+        [Fact]
+        public void AnchorFor_AzaleaTown_VisibleHalfAlone_GivesAnotherTree()
+        {
+            // Digit 3: trees 0, 4, 5, 9, 10 and 14 are common; tree 14's stand is the cheapest (81).
+            var anchor = HeadbuttTrees.AnchorFor(Azalea(), VisibleHalf, new HashSet<int> { Heracross });
+
+            Assert.Equal(new MilestoneAnchor("74-headbutt", new Anchor(74, 412, 476, 0, 0), Direction.Down), anchor);
+        }
+
+        [Fact]
+        public void AnchorFor_AzaleaTown_NothingWanted_CheapestTreeThatGivesPokemon()
+        {
+            var azalea = Azalea();
+            int[] none = [2, 7, 12];
+            var cheapest = azalea.Trees.Where((t, i) => !none.Contains(i)).MinBy(t => t.Cost)!;
+
+            var anchor = HeadbuttTrees.AnchorFor(azalea, OwnersId, new HashSet<int>());
+
+            Assert.Equal(new MilestoneAnchor("74-headbutt", cheapest.Anchor!, cheapest.Facing), anchor);
         }
 
         [Fact]
