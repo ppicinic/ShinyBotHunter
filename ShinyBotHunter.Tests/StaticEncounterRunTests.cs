@@ -218,6 +218,15 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task LinkedPhaseIsRefused()
+        {
+            var file = new GameFile { Id = "fake.nds", Links = [new MilestoneLink("Dialga", "34-land")] };
+            var service = await LaunchAsync(file, Admin([]), 522, 16, 14, GameScreen.FieldFree, Block(493));
+
+            await AssertRefusedAsync(service, Run(), "Dialga is linked to 34-land on fake.nds; start 34-land, or remove the link.");
+        }
+
+        [Fact]
         public async Task AllChecksPassStartTheHunt()
         {
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493));
