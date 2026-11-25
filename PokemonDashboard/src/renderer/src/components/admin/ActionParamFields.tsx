@@ -89,7 +89,9 @@ export function ActionParamFields({
   return (
     <>
       {schema.requiredParameters?.map((param) => (
-        <div key={param} data-testid={`param-${param}`} className="flex items-center gap-2">
+        // The milestone picker carries param-PhaseName on the wrapper of its one milestone select, not on the row, so
+        // the row's filter select is not inside it.
+        <div key={param} data-testid={param === 'PhaseName' && !params['HuntPlan'] ? undefined : `param-${param}`} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
           {param === 'GameName' && games ? (
             <select
@@ -119,6 +121,7 @@ export function ActionParamFields({
                 />
                 {modalities.length > 0 && (
                   <select
+                    data-testid="param-PhaseName-filter"
                     value={milestoneModality}
                     onChange={(e) => setMilestoneModality(e.target.value)}
                     className="bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
@@ -139,43 +142,45 @@ export function ActionParamFields({
                   Show archived
                 </label>
               </div>
-              {/* A "no hunt yet" milestone stays selectable, so Start shows the server's reason. */}
-              <select
-                value={params[param] ?? ''}
-                onChange={(e) => onChange(param, e.target.value)}
-                className="w-full bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-              >
-                <option value="">Select a milestone...</option>
-                {shownMilestones.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {`${m.order ? `${m.order} ` : ''}${m.name}${m.huntable ? '' : ' (no hunt yet)'}${m.archived ? ' (archived)' : ''}`}
-                  </option>
-                ))}
-              </select>
-              {gameFileName && selectedMilestone && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => saveMilestone(() => api.setMilestoneArchived(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, !selectedMilestone.archived))}
-                    className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600"
-                  >
-                    {selectedMilestone.archived ? 'Unarchive' : 'Archive'}
-                  </button>
-                  <input
-                    key={selectedMilestone.id}
-                    type="text"
-                    defaultValue={selectedMilestone.order ?? ''}
-                    onBlur={(e) => {
-                      if (e.target.value !== (selectedMilestone.order ?? '')) {
-                        void saveMilestone(() => api.setMilestoneOrder(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, e.target.value))
-                      }
-                    }}
-                    placeholder="Order"
-                    className="w-20 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                  />
-                  {milestoneError && <span className="text-xs text-red-400">{milestoneError}</span>}
-                </div>
-              )}
+              <div data-testid="param-PhaseName" className="space-y-1">
+                {/* A "no hunt yet" milestone stays selectable, so Start shows the server's reason. */}
+                <select
+                  value={params[param] ?? ''}
+                  onChange={(e) => onChange(param, e.target.value)}
+                  className="w-full bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">Select a milestone...</option>
+                  {shownMilestones.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {`${m.order ? `${m.order} ` : ''}${m.name}${m.huntable ? '' : ' (no hunt yet)'}${m.archived ? ' (archived)' : ''}`}
+                    </option>
+                  ))}
+                </select>
+                {gameFileName && selectedMilestone && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => saveMilestone(() => api.setMilestoneArchived(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, !selectedMilestone.archived))}
+                      className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600"
+                    >
+                      {selectedMilestone.archived ? 'Unarchive' : 'Archive'}
+                    </button>
+                    <input
+                      key={selectedMilestone.id}
+                      type="text"
+                      defaultValue={selectedMilestone.order ?? ''}
+                      onBlur={(e) => {
+                        if (e.target.value !== (selectedMilestone.order ?? '')) {
+                          void saveMilestone(() => api.setMilestoneOrder(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, e.target.value))
+                        }
+                      }}
+                      placeholder="Order"
+                      className="w-20 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+                    />
+                    {milestoneError && <span className="text-xs text-red-400">{milestoneError}</span>}
+                  </div>
+                )}
+              </div>
             </div>
           ) : param === 'TargetType' ? (
             <select
