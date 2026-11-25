@@ -1,6 +1,7 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -89,6 +90,88 @@ namespace ShinyBotHunter.Tests
                 }
             }
             Assert.True(cases > 200 && targets > 0 && targets < cases, $"{targets} targets in {cases} cases");
+        }
+
+        [Fact]
+        public void ProductionPhases_ResolveToThePhasePath()
+        {
+            var phases = ProductionPhases(Metadata());
+
+            // No stored phase name is a generated id, so no stored phase can leave today's path whichever lookup came first.
+            Assert.All(phases, p => Assert.All(Hgss.Keys, v => Assert.Null(PhaseTarget.FindMilestone(Hgss, v, p.Name))));
+            Assert.Equal("34-land", PhaseTarget.FindMilestone(Hgss, RomVersion.SoulSilver, "34-land")!.Id);
+            Assert.Null(PhaseTarget.FindMilestone(Hgss, null, "34-land"));
+            Assert.Null(PhaseTarget.FindMilestone(null, RomVersion.SoulSilver, "34-land"));
+        }
+
+        private static readonly IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> Hgss =
+            MilestoneFile.Load(Path.Combine(RepoPaths.AppProject, "Data", "HGSS"));
+
+        private const int Pidgey = 16, Rattata = 19, Growlithe = 58;
+
+        private static CaughtPokemon Caught(int species, string formCode, bool shiny = true)
+            => new() { Pokemon = new PokemonData { Species = (ushort)species, FormCode = formCode, PID = shiny ? 0u : 0x00080000u }, Phase = "34-land", GameFileName = File };
+
+        private static PokemonData Wild(int species, string formCode) => new() { Species = (ushort)species, FormCode = formCode };
+
+        [Fact]
+        public void Generated_ShinyWantedIncomplete_IsTarget()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)] };
+
+            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey")], Wild(Pidgey, "pidgey")));
+        }
+
+        [Fact]
+        public void Generated_AmountZero_NotTarget()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 0)] };
+
+            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Pidgey, "pidgey")));
+            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", new GameFile { Id = File }, [], Wild(Pidgey, "pidgey")));
+        }
+
+        [Fact]
+        public void Generated_Complete_NotTarget()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)] };
+
+            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey"), Caught(Pidgey, "pidgey")], Wild(Pidgey, "pidgey")));
+        }
+
+        [Fact]
+        public void Generated_Hidden_NotTarget()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)], Hidden = [new HiddenRow("34-land", "#16")] };
+
+            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Pidgey, "pidgey")));
+            Assert.True(PhaseTarget.IsGeneratedTarget("46-land", goal, [], Wild(Pidgey, "pidgey")));
+        }
+
+        [Fact]
+        public void Generated_NonShinyCatch_NotCounted()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
+
+            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey", shiny: false)], Wild(Pidgey, "pidgey")));
+        }
+
+        [Fact]
+        public void Generated_FormEntry_DecidesByForm()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 0)] };
+
+            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Rattata, "rattata;f")));
+            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Rattata, "rattata")));
+        }
+
+        [Fact]
+        public void Generated_SpeciesNotInTableButWanted_IsTarget()
+        {
+            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Growlithe, null, 1)] };
+
+            Assert.DoesNotContain(Hgss[RomVersion.SoulSilver].Single(m => m.Id == "34-land").Slots, s => s.Species == Growlithe);
+            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Growlithe, "growlithe")));
         }
     }
 }
