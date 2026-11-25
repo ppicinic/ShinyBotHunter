@@ -90,10 +90,11 @@ namespace ShinyBotHunter.Tests
             return state;
         }
 
-        private sealed record Calls(List<string> Follows, List<string> Updates);
+        private sealed record Calls(List<string> Follows, List<string> Updates, List<string> Told);
 
         private static Task<bool> StepAsync(HuntPlanRun run, GameState state, Calls calls) => run.StepAsync(state,
-            m => { calls.Follows.Add(m); return Task.CompletedTask; }, s => { calls.Updates.Add(s.Milestone); return Task.CompletedTask; }, CancellationToken.None);
+            m => { calls.Follows.Add(m); return Task.CompletedTask; }, s => { calls.Updates.Add(s.Milestone); return Task.CompletedTask; },
+            s => { calls.Told.Add(s); return Task.CompletedTask; }, CancellationToken.None);
 
         // A party block for the decision: level, HP, ability, and 1 for an egg.
         private sealed class RateFieldsParser : IPokemonParser
@@ -170,7 +171,7 @@ namespace ShinyBotHunter.Tests
         {
             HuntPlanRun run = OnRoute32();
             GameState state = StateAt(new FakeBot(Task.CompletedTask), run, Route32, 12);
-            Calls calls = new([], []);
+            Calls calls = new([], [], []);
 
             Assert.False(await StepAsync(run, state, calls));
 
@@ -185,7 +186,7 @@ namespace ShinyBotHunter.Tests
         {
             HuntPlanRun run = Run();
             GameState state = StateAt(StandingAt(36, 450, 330), run, Route32, 21);
-            Calls calls = new([], []);
+            Calls calls = new([], [], []);
 
             Assert.True(await StepAsync(run, state, calls));
 
@@ -209,7 +210,7 @@ namespace ShinyBotHunter.Tests
             Stand(memory, 36, 450, 330);
             FakeBot bot = new(Task.CompletedTask) { Overworld = new HgssOverworldReader(memory, Table) };
             GameState state = StateAt(bot, run, Route32, 19);
-            Calls calls = new([], []);
+            Calls calls = new([], [], []);
 
             Assert.True(await StepAsync(run, state, calls));
             Assert.Equal(Route32, run.Pending);
@@ -240,7 +241,7 @@ namespace ShinyBotHunter.Tests
             HuntPlanRun run = OnRoute32();
             FakeBot bot = new(Task.CompletedTask);
             GameState state = StateAt(bot, run, Route32, 19);
-            Calls calls = new([], []);
+            Calls calls = new([], [], []);
 
             Assert.False(await StepAsync(run, state, calls));
             FakeMemoryClient memory = new();
@@ -261,7 +262,7 @@ namespace ShinyBotHunter.Tests
         {
             HuntPlanRun run = OnRoute32();
             GameState state = StateAt(StandingAt(36, 458, 339), run, Route32, 21);
-            await StepAsync(run, state, new Calls([], []));
+            await StepAsync(run, state, new Calls([], [], []));
             state.State.Push(EventState.BattleStart);
             List<PersistPokemonData> logged = [];
 
@@ -279,7 +280,7 @@ namespace ShinyBotHunter.Tests
             run.Pending = Route30;
             GameState state = StateAt(StandingAt(34, 547, 304), run, Route32, 21);
             state.EncounterMacros["Run"] = "the Route 32 line";
-            Calls calls = new([], []);
+            Calls calls = new([], [], []);
 
             Assert.False(await StepAsync(run, state, calls));
 
@@ -304,7 +305,7 @@ namespace ShinyBotHunter.Tests
             Console.SetOut(log);
             try
             {
-                Assert.True(await StepAsync(run, state, new Calls([], [])));
+                Assert.True(await StepAsync(run, state, new Calls([], [], [])));
             }
             finally
             {
@@ -326,7 +327,7 @@ namespace ShinyBotHunter.Tests
             state.NavigationPath = [];
             state.NavigationPathIndex = 3;
 
-            Assert.True(await StepAsync(run, state, new Calls([], [])));
+            Assert.True(await StepAsync(run, state, new Calls([], [], [])));
 
             Assert.Equal([EventState.ReturnToStart], state.State);
             Assert.Equal((34, 547, 304), (state.StartMapId, state.StartX, state.StartY));
@@ -342,7 +343,7 @@ namespace ShinyBotHunter.Tests
             run.Pending = Route30;
             GameState state = StateAt(StandingAt(34, 560, 310), run, Route32, 10);
 
-            Assert.True(await StepAsync(run, state, new Calls([], [])));
+            Assert.True(await StepAsync(run, state, new Calls([], [], [])));
 
             Assert.Equal(Route32, run.Pending);
             Assert.Equal(Route32, state.Milestone);
@@ -358,7 +359,7 @@ namespace ShinyBotHunter.Tests
             skipping.Complete = new HashSet<string> { Route30 };
             GameState night = StateAt(new FakeBot(Task.CompletedTask), skipping, Route32, 21);
 
-            Assert.False(await StepAsync(skipping, night, new Calls([], [])));
+            Assert.False(await StepAsync(skipping, night, new Calls([], [], [])));
             Assert.Equal(Route32, night.Milestone);
             Assert.Equal([EventState.DecideOverworldAction], night.State);
 
@@ -367,10 +368,66 @@ namespace ShinyBotHunter.Tests
             (FakeBot bot, _) = HgssDecisionBot();
             GameState state = DecisionState(bot);
 
-            await DecideAsync(state, s => StepAsync(done, s, new Calls([], [])));
+            await DecideAsync(state, s => StepAsync(done, s, new Calls([], [], [])));
 
             Assert.True(state.MilestoneComplete);
             Assert.Equal([EventState.Complete], state.State);
+        }
+
+        // FR-34a: the catch check completed the hunted milestone, so the next decision tells it once, naming the next pick.
+        [Fact]
+        public async Task Step_MilestoneCompletesMidHunt_TellsItOnceWithTheNext()
+        {
+            HuntPlanRun run = OnRoute32();
+            GameState state = StateAt(StandingAt(34, 547, 304), run, Route30, 21);
+            Calls calls = new([], [], []);
+
+            await StepAsync(run, state, calls);
+            Assert.Empty(calls.Told);
+            run.Complete = new HashSet<string> { Route30 };
+            await StepAsync(run, state, calls);
+            state.SwapState(EventState.DecideOverworldAction);
+            await StepAsync(run, state, calls);
+
+            Assert.Equal($"Night on 30: {run.Stops[Route30].Name} is complete on fake.nds. Next: {run.Stops[Route32].Name}.", Assert.Single(calls.Told));
+        }
+
+        // FR-34a under E1's rule (#583): with every milestone complete the pick is null; the plan is finished, told once though
+        // the decision's finish check runs after it.
+        [Fact]
+        public async Task Step_LastMilestoneCompletes_TellsThePlanIsFinished()
+        {
+            HuntPlanRun run = OnRoute32();
+            run.Complete = new HashSet<string> { Route30 };
+            (FakeBot bot, _) = HgssDecisionBot();
+            GameState state = DecisionState(bot);
+            Calls calls = new([], [], []);
+
+            await DecideAsync(state, s => StepAsync(run, s, calls));
+            Assert.Empty(calls.Told);
+            run.Complete = new HashSet<string> { Route30, Route32 };
+            state.SwapState(EventState.DecideOverworldAction);
+            await DecideAsync(state, s => StepAsync(run, s, calls));
+            Assert.False(await StepAsync(run, state, calls));
+
+            Assert.Equal($"Night on 30: {run.Stops[Route32].Name} is complete on fake.nds. The plan is finished.", Assert.Single(calls.Told));
+            Assert.True(state.MilestoneComplete);
+            Assert.Equal([EventState.Complete], state.State);
+        }
+
+        // FR-34a: a milestone already complete when the hunt started is never told.
+        [Fact]
+        public async Task Step_CompleteAtStart_TellsNothing()
+        {
+            HuntPlanRun run = OnRoute32();
+            run.Complete = new HashSet<string> { Route30 };
+            GameState state = StateAt(new FakeBot(Task.CompletedTask), run, Route32, 12);
+            Calls calls = new([], [], []);
+
+            await StepAsync(run, state, calls);
+            await StepAsync(run, state, calls);
+
+            Assert.Empty(calls.Told);
         }
 
         private static PathfindingService Pathfinding()

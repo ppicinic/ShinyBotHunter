@@ -55,6 +55,9 @@ namespace ShinyBotHunter.BotEvents
         private bool walkingToAnchor;
         // The saved plan the hunt moves by (FR-33), or null; its own fields say how they are protected.
         private readonly HuntPlanRun? plan;
+        // FR-34a with no plan: null until Init's read, true once the milestone was complete at Start or has been told; written
+        // and read only by the orchestrator's one loop, no lock.
+        private bool? milestoneTold;
 
         public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null, HuntPlanRun? plan = null)
         {
@@ -103,7 +106,8 @@ namespace ShinyBotHunter.BotEvents
                         // With a plan, the step's answer sets walkingToAnchor: true from the walk it starts until that walk ends.
                         await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken,
                             plan is null ? null : async s => walkingToAnchor = await plan.StepAsync(s,
-                                m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState, cancellationToken));
+                                m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState,
+                                m => TellAsync(provider.GetRequiredService<ShinyAlertService>().NotifyStopAsync, m), cancellationToken));
                         if (state.RatesSeen is { } seen)
                         {
                             phaseInfoService.RecordLive(state.Bot.GameFileName, seen);
@@ -326,7 +330,12 @@ namespace ShinyBotHunter.BotEvents
             }
             if (plan is null)
             {
-                state.MilestoneComplete = await IsCompleteAsync(state, state.Milestone);
+                bool milestoneComplete = await IsCompleteAsync(state, state.Milestone);
+                milestoneTold = await TellIfCompleteAsync(milestoneTold, milestoneComplete,
+                    () => $"{PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                        provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone} is complete on {state.Bot.GameFileName}.",
+                    s => TellAsync(provider.GetRequiredService<ShinyAlertService>().NotifyStopAsync, s));
+                state.MilestoneComplete = milestoneComplete;
                 return;
             }
             // FR-34: the plan skips a complete stop; read here, at Init, the catch check and the plan's switch of milestone, never
@@ -385,6 +394,31 @@ namespace ShinyBotHunter.BotEvents
                 }
             }
             return complete;
+        }
+
+        // FR-34a with no plan: told once when the milestone becomes complete mid-hunt; null is before Init's read, where a
+        // milestone already complete counts as told. Static with its inputs passed in, so a test can drive it.
+        internal static async Task<bool> TellIfCompleteAsync(bool? told, bool complete, Func<string> sentence, Func<string, Task> tell)
+        {
+            if (told == false && complete)
+            {
+                await tell(sentence());
+            }
+            return told == true || complete;
+        }
+
+        // FR-34a: a failed send is logged in full and the hunt goes on (AGENTS rule 10); SendMessageAsync throws
+        // ChannelClosedException once StopAsync has completed the queue.
+        internal static async Task TellAsync(Func<string, Task> send, string sentence)
+        {
+            try
+            {
+                await send(sentence);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Orchestrator] The milestone message was not sent: {sentence}{Environment.NewLine}{ex}");
+            }
         }
 
         internal static async Task FinishAsync(GameState state)
