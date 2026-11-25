@@ -39,7 +39,7 @@ Everything needed is in the checkout, no ROM unpacking:
 |---|---|---|---|---|
 | Free | 0x00 | no collision, plain behaviour | 59,013 | 64,176 |
 | Portal | 0x01 | a warp event's tile | 1,108 | 988 |
-| Grass | 0x03 | tall, long and ash grass, indoor encounter floor | 5,972 | 6,066 |
+| Grass | 0x03 | every land-encounter behaviour (corrected 2026-11-24, below) | 5,972 | 6,066 |
 | Surf | 0x04 | every water behaviour, currents included | 55,450 | 52,464 |
 | Ledges right, left, down | 0x05, 0x06, 0x07 | `MB_JUMP_EAST`, `_WEST`, `_SOUTH` | 132, 171, 647 | 132, 171, 647 |
 | Waterfall | 0x0D | `MB_WATERFALL` | 196 | 196 |
@@ -54,6 +54,8 @@ Everything needed is in the checkout, no ROM unpacking:
 Kinds 0x00 to 0x11 and 0x80 mean what they mean on HGSS; 0x12 is the HGSS spec's flag-gated NPC; 0x13 (the prototype's only) and 0x14 are new. Beside the planes, per map: the flagged objects with their flag ids, the sight tiles with their trainer flags (the prototype's only), the triggers with variable id and value, the warps with destination and whether they are arrow warps, and the connections.
 
 Corrected 2026-11-17 (#425): Surf is not every water behaviour but the game's surfable bit (`sTileBitAttributes` in `src/metatile_behavior.c`); `MB_PUDDLE` and `MB_SHALLOW_WATER` are walked on, and the generator writes them free (0x00).
+
+Corrected 2026-11-24 (#518): Grass (0x03) is the eight behaviours `MetatileBehavior_IsLandWildEncounter` (`src/metatile_behavior.c`) passes, the wild-encounter bit without the surfable bit: 0x02 tall grass, 0x03 long grass, 0x05 `MB_UNUSED_05`, 0x06 `MB_UNUSED_DEEP_SAND`, 0x08 `MB_UNUSED_CAVE`, 0x0B indoor encounter, 0x24 ash grass and 0x25 `MB_FOOTPRINTS`. Before, it was 0x02, 0x03, 0x09, 0x0B and 0x24: cave floor (0x08) and Route 111's desert (0x06) were Free, and 0x09 `MB_LONG_GRASS_SOUTH_EDGE`, which gives no encounter, was Grass. 55 maps changed: on Route 111 and 54 cave and indoor maps 9,188 tiles went from Free to Grass, and on Routes 119 and 120 275 went from Grass to Free (the layouts hold 9,352 and 282 such tiles; the rest are under an object, a trigger or a warp). Elevation and the side files did not change. `Data/RS` now has Free 55,263 and Grass 14,979. The search's step cost on Grass (3 against 1) now applies to cave floor and the desert too.
 
 2026-11-17 (#440): a warp is written only where the tile's behaviour in the layout fires one (118 warp events on other tiles are not), and its landing is the tile after the game's arrival step (one tile Down off a door or stairs, 471 warps; Up off 0x6E, 2; East off an escalator or the Lavaridge B1F warp, 36).
 

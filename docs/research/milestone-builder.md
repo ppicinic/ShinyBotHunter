@@ -242,6 +242,34 @@ Run on Sapphire (a copy of `rs.qa-route101`, 2026-11-24): the navigator walked f
 
 Feebas and mass outbreaks are not table slots and are not in the file.
 
+### Generated land anchors (2026-11-24)
+
+`--generatemilestoners` (#518) now writes an `Anchor` on each land milestone it can, the same in both versions, always a spin (both ranges 0). Surf, fishing and rock smash anchors are not generated. Apart from the anchors the file is unchanged: 249,543 bytes of JSON, 9,548 gzipped. The anchors took 7.4 s.
+
+- **The tiles.** Kind 3 on the milestone's maps, which since #518 is every land-encounter behaviour, cave floor and Route 111's desert included ([RS research, "The generated data"](rs-navigation-and-training.md#the-generated-data)). Taken out: every trainer's sight, read from each `data/maps/<Name>/map.json`'s `object_events` (`src/trainer_see.c`): a `TRAINER_TYPE_NORMAL` trainer with `MOVEMENT_TYPE_FACE_UP`, `_DOWN`, `_LEFT` or `_RIGHT` sees along that facing, every other trainer (buried ones too) in all four directions from every tile of its `movement_range_x`/`_y` box; `trainer_sight_or_berry_tree_id` tiles in a straight line, beaten trainers counted and walls not modelled. Signs are not taken out: on RS a sign needs an A press, and the spin presses none.
+- **The rule.** `RouteSearch` from every tile to the navigator's goal (a Pokémon Center's counter, (7, 4) on a `_PokemonCenter_1F` map), with flags and variables all 0 and no HM, starting at the tile's elevation (15 as 0). In ascending cost, ties to the lowest map and then row-major, the first tile that the counter reaches back wins. No HM fallback: the RS navigator walks no HM route.
+- **The spike's five** are reproduced: Route 101 (4, 2) 37, Route 102 (4, 7) 38, Route 103 (12, 15) 54, Route 104 (2, 11) 133, Route 110 (14, 97) 54.
+- **Route 111** is (19, 38) on the desert, cost 900, to Fallarbor Town. Its route crosses three live triggers: (10, 36) and (17, 38) set the weather, and (18, 38), live while `VAR_TEMP_3` is 0 as it is on entering the map, turns the player back without the Go-Goggles (`Route111_EventScript_15013A`). Every desert tile is behind it, so the anchor is only walked to with the Go-Goggles.
+- **Caves:** Granite Cave 1F (37, 11) 111, B1F (3, 21) 230, B2F (29, 12) 388 and Steven's room (7, 4) 260, all to Dewford Town; Rusturf Tunnel (29, 15) 59; Meteor Falls 1F 1R (27, 17) 271; Fiery Path (26, 3) 339; Victory Road 1F (15, 39) 71 and B1F (9, 3) 227.
+
+**Counts** (46 land milestones): spin 24, none 22.
+
+**No anchor.** A throwaway rerun of the search with every HM, and separately with every flag set, gave the reason:
+
+| Milestone | Why |
+|---|---|
+| 30-land Route 115, 33-land Route 118, 38-land Route 123 | With flags all 0, every tile needs Surf to reach a Center. Route 118 is reached on foot with every flag set (a flagged object closes the way while its flag is 0); Route 123 then still has no way back. |
+| 45-land Route 130 | No kind-3 tile on the map. |
+| 6145-land Meteor Falls 1F 2R and B1F 1R, 6147-land B1F 2R | Surf and Waterfall. |
+| 6157-land Jagged Pass | All 34 tiles reach a Center, downhill; none is reached back, even with every HM. |
+| 6159-land Mt. Pyre 1F to 3F, 6162-land 4F to 6F, 6165-land Exterior, 6166-land Summit | Surf. |
+| 6172-land Seafloor Cavern | Not reached even with every HM. |
+| 6181-land Cave of Origin Entrance, 6182-land 1F to B3F | Surf, in the data. |
+| 6189-land Victory Road B2F | Reaches a Center only with an HM, and is not reached back even with every HM. |
+| 6190-land Shoal Cave Low Tide rooms | Surf. |
+| 6196-land New Mauville Entrance, 6197-land Inside | Surf. |
+| 6223-land Sky Pillar 1F, 6225-land 3F, 6228-land 5F, 6227-land Shoal Cave Low Tide Ice Room | Not reached even with every HM. |
+
 ## Not proved
 
 - Ruby and Sapphire: one anchor was run. Their rates, their Repel address and their cave and desert tiles were not.
