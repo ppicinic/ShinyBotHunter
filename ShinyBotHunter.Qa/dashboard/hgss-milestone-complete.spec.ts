@@ -6,7 +6,7 @@ import { Y_ADDR } from './headbutt'
 import { backendLog, CRASHED, MINUTE, settings } from './static'
 import {
   assertLocalStores, cancelBot, clockConfig, deletePlan, launchHgss, milestoneMessages, putGoal, putPlan, renamePlan, RUN_FROM, saveOf,
-  seen, shutdown, stageCopy, startFrame, startWild, teardown, variant, writeLeadExtension, type Frame, type GoalEntry
+  seen, setAnchorHere, shutdown, stageCopy, startFrame, startWild, teardown, variant, writeLeadExtension, type Frame, type GoalEntry
 } from './milestones'
 
 // #525 Q1c: FR-34a with no plan and for a plan's last milestone, FR-13's wanted shiny parking the hunt, the shiny alert,
@@ -84,7 +84,10 @@ test(`HGSS milestone complete (${VARIANT}): a wanted shiny parks the hunt, the g
     }
     await writeLeadExtension({ hp: 30 })
 
-    // 1. The hunt at the generated anchor; two encounters there, then the patch armed.
+    // 1. The hunt from where the bot stands (anchor set here on grass: the walk south to the generated anchor meets a
+    // story trigger); two encounters there, then the patch armed.
+    const set = await setAnchorHere(0, ROUTE32, 0, 1)
+    expect(set.status, `Set anchor here: ${set.text}`).toBe(200)
     const runStart = await startWild(card, VARIANT === 'plan' ? { plan: PLAN, mode: 'Run', yRange: 1 } : { phase: ROUTE32, mode: 'Run', yRange: 1 })
     await seen(RUN_FROM, 1, 15 * MINUTE)
     const runAt = backendLog().findIndex((l) => RUN_FROM.test(l))

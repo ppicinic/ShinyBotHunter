@@ -569,10 +569,10 @@ Preconditions:
 | `hgss-plan-editor` | dashboard, persistence | none; create, replace, rename, delete, greyed while unsaved, the refusals, the preview, the plan on SoulSilver, no `HuntPlans` collection |
 | `hgss-plan-ending` | bot-engine, encounter | none; `default-complete`: the first incomplete rule stands in for the complete default; `all-complete`: Complete at once, no message |
 | `hgss-plan-repel-walk` | navigation, encounter | none; the Repel message during the plan's walk closed with 1 A, the walk carries on to the anchor |
-| `hgss-plan-night` | dashboard, bot-engine, navigation, encounter, discord | none; `night`: three milestones in one follows-the-hunt window (same handle and bounds, a covered capture), the switch at 20:00, the plan in use, the milestone message; `start-on-rule`: the first pick before any walk |
-| `hgss-plan-morning-back` | bot-engine, navigation, encounter, discord | none; `back`: Route 30 in the morning and back to Route 32 at 10:00; `complete-on-return`: the message and the walk back to Route 30 |
-| `hgss-plan-weekday` | bot-engine, encounter | none; `hg`, `ss`: Thursday 23:50 to Friday, a weekday rule matching after midnight |
-| `hgss-milestone-complete` | encounter, persistence, discord | `hgss-usa-rev0/wild-shiny`; a wanted shiny parks the hunt, the goal emptied, Resume: one milestone message and Complete; `plan`: the plan in use while parked, "The plan is finished." |
+| `hgss-plan-night` | dashboard, bot-engine, navigation, encounter, discord | none; `night`: Route 32 hunted from its anchor set on the save's tile (the walk south to the generated one meets a story trigger), three milestones in one follows-the-hunt window (same handle and bounds, a covered capture), the switch at 20:00, the plan in use, the milestone message; `start-on-rule`: the first pick before any walk |
+| `hgss-plan-morning-back` | bot-engine, navigation, encounter, discord | none; Route 32's anchor set on the save's tile first; `back`: Route 30 in the morning and back to Route 32 at 10:00; `complete-on-return`: the message and the walk back to Route 30 |
+| `hgss-plan-weekday` | bot-engine, encounter | none; `hg`, `ss`: Thursday 23:50 to Friday, a weekday rule matching after midnight; `hg` hunts Route 32 from its anchor set on the save's tile, with no Thursday walk |
+| `hgss-milestone-complete` | encounter, persistence, discord | `hgss-usa-rev0/wild-shiny`; Route 32 from its anchor set on the save's tile; a wanted shiny parks the hunt, the goal emptied, Resume: one milestone message and Complete; `plan`: the plan in use while parked, "The plan is finished." |
 | `hgss-headbutt-anchor` | encounter, headbutt, navigation | none; Headbutt taught to the lead in RAM; the trainer ID line, the walk to Route 32's stand with no Rock Smash, three battles, no Share column |
 
 ## Spike results (2026-10-20)

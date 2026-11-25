@@ -1,7 +1,8 @@
 // hgss-plan-morning-back (docs/specs/hunt-plans-and-milestone-builder.md, QA; #525 Q1b, plan scenario 12): C3b's "a Start just
 // before a time boundary and off the anchor". Plan QA Morning: default Route 32 · grass, rule Morning -> Route 30 · grass;
 // goal Hoppip 1 (Route 32) and Caterpie 1 (Route 30), on HG-Plan2, from the save's tile on Route 32, (474, 294), at 09:42 on a
-// Monday.
+// Monday. Route 32's anchor is set on the save's tile first: the walk to its generated anchor, which comes south from Violet
+// City, meets a story trigger.
 // `back` (the default): Route 30 in the morning, then at 10:00 back to Route 32 and its day species.
 // `complete-on-return`: the goal becomes Caterpie 1 alone before 10:00, so Route 32 is complete when the 10:00 walk arrives:
 // the message naming Route 30 and the walk back there, the first incomplete rule standing in (FR-34, FR-34a; #593).
@@ -11,7 +12,7 @@ import { expect, test } from '@playwright/test'
 import { emuHawkRunning, shotAll, step } from './driver'
 import {
   assertLocalStores, cancelEventAndBot, clockConfig, launchHgss, milestoneMessages, PLAN_NOW, PLAN_STOP, PLAN_WALK, putGoal,
-  putPlan, readClock, rowsFor, RUN_FROM, saveOf, seen, shutdown, stageCopy, startFrame, startWild, teardown, variant,
+  putPlan, readClock, rowsFor, RUN_FROM, saveOf, seen, setAnchorHere, shutdown, stageCopy, startFrame, startWild, teardown, variant,
   writeLeadExtension, type Clock, type Frame, type Plan
 } from './milestones'
 import { dashboardState } from './rs-wild'
@@ -19,7 +20,7 @@ import { backendLog, MINUTE } from './static'
 
 const which = variant(['back', 'complete-on-return'] as const)
 const HANDLE = 'HG-Plan2'
-const R32 = { id: '36-land', name: 'Route 32 · grass', at: ['36', '458', '339'] }
+const R32 = { id: '36-land', name: 'Route 32 · grass', at: ['36', '474', '294'] }
 const R30 = { id: '34-land', name: 'Route 30 · grass', at: ['34', '547', '304'] }
 const HOPPIP = 187
 const CATERPIE = 10
@@ -31,7 +32,7 @@ const PLAN: Plan = { name: 'QA Morning', default: R32.id, rules: [{ times: ['Mor
 const MESSAGE = `QA Morning: Route 32 · grass is complete on ${HANDLE}. Next: Route 30 · grass.`
 const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\)/
 const BATTLE = /, isShiny: (True|False)\s*$/
-const R32_MACRO = /^M\.Up\.332\.\d+(:\S+)?;M\.Down\.346\.\d+$/
+const R32_MACRO = /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/
 const R30_MACRO = /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/
 
 const hhmm = (c: Clock): string => `${WEEKDAYS[c.weekday]} ${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}`
@@ -66,6 +67,8 @@ test(`hgss-plan-morning-back ${which}: Route 30 in the morning, back at 10:00`, 
     const left = 10 * 60 - (launchClock.hour * 60 + launchClock.minute)
     expect(launchClock.hour >= 4 && left >= 8, `${hhmm(launchClock)} at launch leaves under 8 minutes of morning; set QA_CLOCK_START earlier`).toBe(true)
     await writeLeadExtension({ hp: 30 })
+    const set = await setAnchorHere(0, R32.id, 0, 1)
+    expect(set.status, `Set anchor here: ${set.text}`).toBe(200)
     await shotAll('01-launched', pages)
 
     const runStart = await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
@@ -110,7 +113,7 @@ test(`hgss-plan-morning-back ${which}: Route 30 in the morning, back at 10:00`, 
       const battlesAtR32 = battles()
       await seen(BATTLE, battlesAtR32 + 3, 10 * MINUTE)
       const runs = runsAfterSwitch(2)
-      expect([runs[0][1], runs[0][2]], 'the first Run after the switch starts on Route 32\'s anchor').toEqual(['458', '339'])
+      expect([runs[0][1], runs[0][2]], 'the first Run after the switch starts on Route 32\'s anchor').toEqual(R32.at.slice(1))
       for (const r of runs) expect(r[3], 'a Run line not on Route 32\'s line').toMatch(R32_MACRO)
       await shotAll('03-route32-day', pages)
       await cancelEventAndBot(card)
