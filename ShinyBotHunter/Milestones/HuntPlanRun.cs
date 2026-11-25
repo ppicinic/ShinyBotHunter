@@ -90,6 +90,10 @@ namespace ShinyBotHunter.Milestones
                 {
                     return $"{plan}: {name}'s anchor ({to.X}, {to.Y}) cannot be reached from here without an HM.";
                 }
+            }
+            foreach (var (name, stop) in stops)
+            {
+                Anchor to = stop!.Anchor;
                 foreach (var (fromName, from) in stops.Where(s => s.Name != name))
                 {
                     Anchor at = from!.Anchor;
