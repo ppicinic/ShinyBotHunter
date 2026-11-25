@@ -1,6 +1,8 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponseBase, MilestoneCardRow, PhaseEncounterResponse, PhasePokemonInfo } from '../types/api'
-import { milestoneCardRows, phaseCardRows } from './PhaseCard'
+import type { GameEncounterResponseBase, MilestoneCardRow, MilestoneRowsResponse, PhaseEncounterResponse, PhasePokemonInfo } from '../types/api'
+import { milestoneCardRows, PhaseCard, phaseCardRows } from './PhaseCard'
 
 function row(key: string, formCode: string | null, changes: Partial<MilestoneCardRow> = {}): MilestoneCardRow {
   return {
@@ -19,7 +21,6 @@ function row(key: string, formCode: string | null, changes: Partial<MilestoneCar
     encountersOnFile: 0,
     shinyEncountersOnFile: 0,
     share: null,
-    reason: null,
     ...changes
   }
 }
@@ -74,10 +75,51 @@ describe('milestoneCardRows', () => {
     expect(result[1].missed).toBe(0)
   })
 
-  it("carries each row's share and reason", () => {
-    const result = milestoneCardRows([row('#1', null, { share: 0.25 }), row('#2', null, { share: 0, reason: 'night only' })])
+  it("carries each row's share", () => {
+    const result = milestoneCardRows([row('#1', null, { share: 0.25 }), row('#2', null, { share: 0.75 })])
 
-    expect(result.map((r) => [r.share, r.reason])).toEqual([[0.25, null], [0, 'night only']])
+    expect(result.map((r) => r.share)).toEqual([0.25, 0.75])
+  })
+
+  it('drops a row at a zero share', () => {
+    const result = milestoneCardRows([row('#69', null, { share: 0.308 }), row('#19', null, { share: 0 }), row('#194', null, { share: 0.538 })])
+
+    expect(result.map((r) => r.key)).toEqual(['#69', '#194'])
+  })
+
+  it('keeps every row without shares', () => {
+    const result = milestoneCardRows([row('#1', null), row('#2', null), row('#3', null)])
+
+    expect(result.map((r) => r.key)).toEqual(['#1', '#2', '#3'])
+  })
+})
+
+describe('PhaseCard', () => {
+  function card(rows: MilestoneCardRow[], survive: number | null): string {
+    const milestone = { id: '36-land', name: 'Route 32 · grass', modality: 'Land', rows, survive, live: true, timeOfDay: 'Night' } as unknown as MilestoneRowsResponse
+    const subscription = { game: 'HGSS', phase: '36-land', gameName: 'HG-QA', encounterData: null, phaseInfo: null, milestone, notFound: false }
+    return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
+  }
+
+  it('draws the share under the name, with no Share column', () => {
+    const html = card([row('#69', null, { name: 'Bellsprout', share: 0.308 }), row('#41', null, { name: 'Zubat', share: 0 })], 0.65)
+
+    expect(html).toMatch(/Bellsprout<\/span><div data-testid="row-share"[^>]*>30.8 %<\/div><\/td>/)
+    expect(html).not.toContain('Zubat')
+    expect(html).not.toContain('>Share<')
+    expect(html).not.toContain('encounters survive')
+  })
+
+  it('draws every row and no share without shares', () => {
+    const html = card([row('#69', null, { name: 'Bellsprout' }), row('#41', null, { name: 'Zubat' })], null)
+
+    expect([html.includes('Bellsprout'), html.includes('Zubat'), html.includes('row-share')]).toEqual([true, true, false])
+  })
+
+  it('keeps the table when a Repel blocks every species', () => {
+    const html = card([row('#19', null, { name: 'Rattata', share: 0 })], 0)
+
+    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
   })
 })
 
@@ -109,6 +151,6 @@ describe('phaseCardRows', () => {
 
     const result = phaseCardRows(pokemon, undefined, undefined)
 
-    expect([result[0].share, result[0].reason]).toEqual([undefined, undefined])
+    expect(result[0].share).toBeUndefined()
   })
 })
