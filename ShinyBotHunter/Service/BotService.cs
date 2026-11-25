@@ -494,6 +494,10 @@ namespace ShinyBotHunter.Service
                 Console.WriteLine($"[BotService] {generated?.Name ?? leg.PhaseName}: hunting from the anchor map {anchor.Anchor.Map} ({anchor.Anchor.X}, {anchor.Anchor.Y}), "
                     + $"{HowHunted(leg.EncounterParams)} ({(gameFile.Anchors.Any(a => a.Milestone == leg.PhaseName) ? "set on this file" : "generated")})");
             }
+            else if (generated is { Modality: Modality.Headbutt })
+            {
+                Console.WriteLine($"[BotService] {generated.Name}: no generated headbutt stand for this file; hunting where the bot stands");
+            }
             return (leg, anchor);
         }
 

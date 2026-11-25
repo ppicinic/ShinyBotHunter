@@ -20,7 +20,7 @@ There are two actions for it on the dashboard:
 2. **Your character standing on the tile you want to hunt from,** unless the milestone has an anchor: then the bot walks to the anchor first, from wherever your character stands (see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor)). The bot remembers that tile as home when the hunt starts. It walks back there after every trip to heal, and again before the hunt finishes.
 3. **For walking back and forth (Encounter Type Run):** room to walk in a straight line from that tile, the same number of tiles each way. The bot paces left and right, or up and down, centred on where you stand.
 4. **For turning on the spot (Encounter Type Spin):** nothing extra. The bot turns through the four directions without leaving the tile.
-5. **For headbutting a tree (Encounter Type Headbutt):** stand on foot facing a headbutt tree, not on a bike or surfing, and have a Pokémon in your party that knows Headbutt. At a generated headbutt milestone, such as `Azalea Town · headbutt`, the bot walks to a tree that gives the Pokémon this game file still wants and faces it (see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor)); you need not stand anywhere. At a milestone you made, or one whose anchor you set, stand facing a tree as before. Every headbutt checks that there is a tree in front of you.
+5. **For headbutting a tree (Encounter Type Headbutt):** stand on foot facing a headbutt tree, not on a bike or surfing, and have a Pokémon in your party that knows Headbutt. At a generated headbutt milestone, such as `Azalea Town · headbutt`, the bot walks to a tree that gives the Pokémon this game file still wants and faces it (see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor)), so you need not stand anywhere. When there is no such tree it can reach without field moves (always at Route 1, Route 45, Pallet Town, Route 21 and Mt. Silver Cave, and at some milestones for some trainer IDs and goals), the card shows no anchor and you stand facing a tree as before. At a milestone you made, or one whose anchor you set, stand facing a tree as before. Every headbutt checks that there is a tree in front of you.
    If no Pokémon in your party knows Headbutt, the Headbutt choice is greyed out with "No Pokémon in your party knows Headbutt." after it. If it shows "The party could not be read; try again once the game is in the field." instead, get the game into the field, then start and cancel any hunt, or press the reload button beside Battler (shown when Train Type is Switch). Either makes the dashboard read your party again.
 6. **If the bot will fight (any Train Type other than None):** the Pokémon that does the fighting needs damaging moves with at least 3 PP between them, and more than a quarter of its HP. That is the Pokémon in your first party slot, or in Switch training the Pokémon in the Battler slot.
 
@@ -72,7 +72,7 @@ Under the Wild Encounter settings, the card shows the picked milestone's anchor:
 |---|---|
 | `Anchor: map 34 (547, 304), run up-down ±6, generated` | The milestone's own anchor: game map 34, tile (547, 304), walking up and down 6 tiles each way. `run left-right ±<n>` and `spin` are the other two ways; a headbutt milestone's anchor reads `headbutt`. |
 | The same ending `set on this file` | An anchor you set for this game file. It replaces the generated one on this file only. |
-| `No anchor: hunted where the bot stands` | The hunt starts where your character stands. A generated headbutt milestone shows this while the game is not in the field, because its tree comes from your trainer ID, which the bot can read only then. |
+| `No anchor: hunted where the bot stands` | The hunt starts where your character stands. A generated headbutt milestone shows this when no tree that gives what this file still wants has a stand the bot can reach without field moves, and while the game is not in the field, because its tree comes from your trainer ID, which the bot can read only then. |
 
 With an anchor at a grass or cave milestone (and Encounter Type other than Headbutt), an orange line under it says what the hunt will do, for example `The anchor decides Run or Spin and the range: this hunt will run up-down ±6, whatever the form says.`
 
@@ -274,8 +274,8 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 **Do** teach Headbutt to a Pokémon in your party, or pick Spin or Run.
 
 **You see** Run refused with "The trainer ID could not be read; start the hunt once the game is in the field."
-**It means** the milestone is a generated headbutt one, whose tree is chosen from your trainer ID, and when you pressed Run the bot could not read the ID, for example because the game was still on the title screen.
-**Do** wait until your character is standing in the game, then press **Run** again.
+**It means** the milestone is a generated headbutt one, whose tree is chosen from your trainer ID, and when you pressed Run the bot read your party but then could not read the ID, for example because the game changed screens in between.
+**Do** wait until your character is standing still in the field, then press **Run** again.
 
 **You see** Run refused with "The trainer ID read as 2318286077, but a party Pokémon with the visible ID 15613 has the full ID 81149; no headbutt tree can be chosen until the read is fixed." with your numbers.
 **It means** the bot's read of your trainer ID disagrees with a Pokémon in your party that you caught yourself, so the tree it would pick could be the wrong one. The second half of the ID is read from an address taken from the game's source and not yet checked on the emulator; this sentence means it is wrong.
