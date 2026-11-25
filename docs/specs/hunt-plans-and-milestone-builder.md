@@ -321,6 +321,8 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - FR-21's "trainer ID 15613" means the full 32-bit trainer ID, 2318286077 on the owner's save (visible 15613, secret 35374), whose last digit is 7: the game takes `trainerId % 10` on `profile->id`. This is from the game's source, not observed on the emulator.
   - FR-21 for headbutt: each tree's stand, facing and route cost are generated; the file's tree is worked out when asked, from the kinds that hold a species still a target on the file (any tree that gives Pokémon when none is), and never stored (FR-42). Wiring it into Start is a follow-up task (B1h-b) after C3b (#550).
 
+- 2026-11-25 (B1h-c, #572), decided by the orchestrator at plan review of #567: FR-21's headbutt stand needs no HM and is on a free or grass tile, as B1r's land anchors; there is no fallback to every HM, and a stand on water, a Cut tile or a Rock Smash tile is none. It is fixed at generation, where whether a stand needed an HM is known, not in `HeadbuttTrees.AnchorFor`, which sees only the cost. 686 of the 872 trees keep a stand (843 before); Route 1, Route 45, Pallet Town, Route 21 and Mt. Silver Cave's headbutt milestones have none and are hunted where the bot stands. The research doc lists the rest.
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.
