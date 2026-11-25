@@ -11,7 +11,7 @@ The dashboard is a set of separate windows:
 
 - **Admin**: the control panel. Everything on this page except the counts happens here.
 - **Recent Encounters**: the latest Pokémon the bot has met.
-- **One counts window per subscription**: the counts for one milestone (see [Watch the counts](#watch-the-counts)).
+- **One counts window per subscription**: the counts for one milestone, or for whatever milestone a game file is hunting (see [Watch the counts](#watch-the-counts)).
 - **One Pickup items window per game file, when switched on**: the items a Pickup hunt has taken (see [Watch the Pickup items](#watch-the-pickup-items)).
 
 Each is its own window. Move and resize them like any other window; the dashboard remembers where they were and puts them back the next time you open it.
@@ -142,9 +142,17 @@ Milestones are stored in the bot's database; see [Your data](06-your-data.md). A
 2. Under **Add Subscription**, pick the game in the first list.
 3. Pick the milestone in the second list.
 4. Optional: pick a game file in the third list to count only that file. Leave it on **No game file** to count all of them.
-5. Click **Add**.
+5. Optional: tick **Follows the hunt** to make a window that follows that game file's hunt (see below). It is greyed out until you pick a game file.
+6. Click **Add**.
 
 A counts window opens for that milestone, and it is listed under **Active Subscriptions**. The window shows one row per Pokémon in the milestone, with the columns **Name**, **Milestone Encounters**, **Game Encounters** and **Shinies Caught**.
+
+There are two kinds of counts window:
+
+- **Fixed**: shows the one milestone you picked, always. A game file can have any number of these. Its title is the game, the milestone and the game file, for example `HGSS — Route 32 (HG-TimeMove)`.
+- **Follows the hunt**: shows whatever milestone the bot on that game file is hunting. When a hunt starts on the file at another milestone, or a Chained Encounter moves to its next leg, the same window shows the new milestone's rows: it keeps its title, place and size, and it draws the new rows even while another window covers it. With no hunt running it shows the last milestone hunted, and after a restart it shows that one again. The milestone you pick when you add it is the one it shows until a hunt starts. Its title is the game and the game file, for example `HGSS — HG-TimeMove`, and it is listed with `· follows the hunt` after it.
+
+A game file has at most one window that follows the hunt, beside any fixed ones. When the game file you picked already has one, the checkbox is greyed out and reads **Follows the hunt (this file has one)**. Subscriptions made before this checkbox existed are fixed.
 
 To close a counts window for good, click **Remove** beside its entry under **Active Subscriptions**.
 
