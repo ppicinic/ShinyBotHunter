@@ -137,7 +137,8 @@ export function putGoal(apiUrl: string, gameFileName: string, entries: { species
   return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}`, entries)
 }
 
-// Adds the preset's entries for species the goal has none for, saves, and returns the goal; 404 when the file's version has no milestones.
+// Makes the preset the file's choice: every species not edited by hand takes its entries, the rest are kept; saves and returns a
+// PresetChange. 404 when the file's version has no milestones.
 export function applyGoalPreset(apiUrl: string, game: string, gameFileName: string, preset: import('../types/api').GoalPreset): Promise<Response> {
   return request('POST', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/preset/${preset}`)
 }

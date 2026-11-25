@@ -453,12 +453,23 @@ export interface GameFile {
   // The game file name
   id: string
   entries: GoalEntry[]
+  // The preset that supplied the default amounts (FR-8); "None" for a file that never picked one
+  preset: GoalPreset
   hidden: HiddenRow[]
   assigned: string[]
   links: MilestoneLink[]
 }
 
-export type GoalPreset = 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
+export type GoalPreset = 'None' | 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
+
+// POST /api/goal/{game}/{gameFileName}/preset/{preset}: the saved goal, and how many species took the new preset's entries
+// (changed) and how many hand-edited species were kept.
+export interface PresetChange {
+  preset: GoalPreset
+  entries: GoalEntry[]
+  changed: number
+  kept: number
+}
 
 export interface SpeciesName {
   species: number

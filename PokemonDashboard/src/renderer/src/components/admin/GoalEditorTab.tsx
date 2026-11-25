@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { GameFile, GameRomInfo, GoalEntry, GoalPreset, SpeciesName } from '../../types/api'
+import type { GameFile, GameRomInfo, GoalEntry, GoalPreset, PresetChange, SpeciesName } from '../../types/api'
 
 const PRESET_LABELS: Record<GoalPreset, string> = {
+  None: 'None',
   LivingDex: 'Living dex',
   FemaleForms: 'Female forms',
   VersionExclusives: 'Version exclusives'
@@ -11,7 +12,7 @@ const PRESET_LABELS: Record<GoalPreset, string> = {
 
 // FR-8: Ruby and Sapphire have no female forms preset (Decided).
 export function presetsFor(game: string): GoalPreset[] {
-  return game === 'HGSS' ? ['LivingDex', 'FemaleForms', 'VersionExclusives'] : ['LivingDex', 'VersionExclusives']
+  return game === 'HGSS' ? ['None', 'LivingDex', 'FemaleForms', 'VersionExclusives'] : ['None', 'LivingDex', 'VersionExclusives']
 }
 
 export interface GoalLine {
@@ -51,8 +52,12 @@ export function GoalEditorTab(): JSX.Element {
 
   const [roms, setRoms] = useState<GameRomInfo[]>([])
   const [fileName, setFileName] = useState('')
+  // The file selected now, read after a preset's await; written on every render, read only on the UI thread.
+  const selected = useRef(fileName)
+  selected.current = fileName
   const [names, setNames] = useState<SpeciesName[]>([])
   const [entries, setEntries] = useState<GoalEntry[] | null>(null)
+  const [preset, setPreset] = useState<GoalPreset>('None')
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [pendingPreset, setPendingPreset] = useState<GoalPreset | null>(null)
@@ -109,7 +114,11 @@ export function GoalEditorTab(): JSX.Element {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: GameFile) => { if (current) setEntries(data.entries) })
+      .then((data: GameFile) => {
+        if (!current) return
+        setEntries(data.entries)
+        setPreset(data.preset)
+      })
       .catch((err) => { if (current) setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load the goal', isError: true }) })
     return () => { current = false }
   }, [apiUrl, fileName])
@@ -163,16 +172,23 @@ export function GoalEditorTab(): JSX.Element {
     }
   }
 
-  const applyPreset = async (preset: GoalPreset): Promise<void> => {
+  const applyPreset = async (next: GoalPreset): Promise<void> => {
     setPendingPreset(null)
     setBusy(true)
     setFeedback(null)
     try {
-      const res = await api.applyGoalPreset(apiUrl, game, fileName, preset)
+      const res = await api.applyGoalPreset(apiUrl, game, fileName, next)
       if (res.status === 404) throw new Error('This game file is no longer in the game list: reopen the Goals tab.')
       if (!res.ok) throw new Error((await res.text()) || `Server returned ${res.status}`)
-      setEntries(await res.json() as GoalEntry[])
-      setFeedback({ msg: `${PRESET_LABELS[preset]} applied. Species already in the goal were kept.`, isError: false })
+      const change = await res.json() as PresetChange
+      // A response for a file that is no longer selected is dropped, as the load's is.
+      if (selected.current !== fileName) return
+      setEntries(change.entries)
+      setPreset(change.preset)
+      setFeedback({
+        msg: `${PRESET_LABELS[change.preset]} chosen: ${change.changed} species changed, ${change.kept} hand-edited species kept.`,
+        isError: false
+      })
     } catch (err) {
       setFeedback({ msg: err instanceof Error ? err.message : 'Preset failed', isError: true })
     } finally {
@@ -205,25 +221,23 @@ export function GoalEditorTab(): JSX.Element {
       {entries !== null && (
         <>
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Start from a preset</h3>
-            <div className="flex gap-2 flex-wrap">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Preset</h3>
+            <select
+              value={pendingPreset ?? preset}
+              onChange={(e) => setPendingPreset(e.target.value as GoalPreset)}
+              disabled={dirty || busy}
+              title={dirty ? 'Save the goal first' : undefined}
+              className="w-full bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
+            >
               {presetsFor(game).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPendingPreset(p)}
-                  disabled={dirty || busy}
-                  title={dirty ? 'Save the goal first' : undefined}
-                  className="text-xs px-2 py-1 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded transition-colors"
-                >
-                  {PRESET_LABELS[p]}
-                </button>
+                <option key={p} value={p}>{PRESET_LABELS[p]}</option>
               ))}
-            </div>
+            </select>
             {pendingPreset && (
               <div className="mt-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1.5 space-y-1.5">
                 <p>
-                  {PRESET_LABELS[pendingPreset]} adds an entry for every species the goal does not have yet. Entries already in the
-                  goal are kept. This saves the goal of {fileName} now.
+                  {PRESET_LABELS[pendingPreset]} replaces every amount you have not edited by hand with its own. Pokemon you changed,
+                  added or removed are kept as they are. This saves the goal of {fileName} now.
                 </p>
                 <div className="flex gap-2">
                   <button onClick={() => applyPreset(pendingPreset)} className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded">
@@ -250,7 +264,7 @@ export function GoalEditorTab(): JSX.Element {
             </div>
 
             {entries.length === 0 ? (
-              <p className="text-slate-500 text-sm">No entries. Start from a preset or add one below.</p>
+              <p className="text-slate-500 text-sm">No entries. Pick a preset or add one below.</p>
             ) : (
               <div className="space-y-1">
                 {lines.map((line) => (

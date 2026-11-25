@@ -3,7 +3,7 @@ import type { CopyOffer, GameFile } from '../../types/api'
 import { assignmentNote, chosenSpecies, linkOf } from './MilestoneFiles'
 
 function file(id: string, assigned: string[] = [], links: GameFile['links'] = []): GameFile {
-  return { id, entries: [], hidden: [], assigned, links }
+  return { id, entries: [], preset: 'None', hidden: [], assigned, links }
 }
 
 function offer(species: number): CopyOffer {
