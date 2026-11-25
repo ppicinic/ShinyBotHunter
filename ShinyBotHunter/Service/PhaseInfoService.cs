@@ -1,6 +1,7 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Persistence.MongoDb;
 using System.Text.Json;
@@ -22,6 +23,10 @@ namespace ShinyBotHunter.Service
         private readonly Dictionary<GamePhase, PhaseInfo> phaseInfos = new Dictionary<GamePhase, PhaseInfo>();
         // Same as phaseInfos: filled by InitAsync before the host starts, then read and written only under phasesLock. A name is added here only in the same critical section that adds its phaseInfos entry.
         private readonly Dictionary<GameFlavor, List<string>> gamePhases = new Dictionary<GameFlavor, List<string>>();
+        // The rate inputs each game file's hunt last saw, and whether its loop still runs (FR-28). Written by the bot loops
+        // (RecordLive after each decision, EndLive when the loop ends), read by GetMilestoneRowsAsync on request threads; only
+        // under phasesLock, never across an await. Memory only: empty after a restart (FR-28).
+        private readonly Dictionary<string, (RateInputs Inputs, bool Live)> rates = new();
         // Set once in the constructor; thread-safe for concurrent use.
         private IMongoCollection<PhaseInfo> phaseInfoCollection;
 
@@ -135,6 +140,34 @@ namespace ShinyBotHunter.Service
                 }
             }
             return result;
+        }
+
+        public void RecordLive(string gameFileName, RateInputs inputs)
+        {
+            lock (phasesLock)
+            {
+                rates[gameFileName] = (inputs, true);
+            }
+        }
+
+        // Keeps the last inputs; a file never recorded stays without an entry.
+        public void EndLive(string gameFileName)
+        {
+            lock (phasesLock)
+            {
+                if (rates.TryGetValue(gameFileName, out var seen))
+                {
+                    rates[gameFileName] = (seen.Inputs, false);
+                }
+            }
+        }
+
+        public (RateInputs Inputs, bool Live)? Seen(string gameFileName)
+        {
+            lock (phasesLock)
+            {
+                return rates.TryGetValue(gameFileName, out var seen) ? seen : null;
+            }
         }
 
         // Fills each phase row's name, species and default form code from the metadata, as InitAsync and AddOrUpdatePhaseInfoAsync load a phase.
