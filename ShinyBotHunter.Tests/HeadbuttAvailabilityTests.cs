@@ -361,6 +361,7 @@ namespace ShinyBotHunter.Tests
             var content = Assert.IsType<ContentResult>(result.Result);
             Assert.DoesNotContain(NeedsTrainMode, content.Content);
             Assert.DoesNotContain(NoPickup, content.Content);
+            Assert.Contains(nameof(Persistence.MongoDb.MongoGameFileDao), content.Content);
             Assert.Equal(1, bot.PartyReads);
         }
 
