@@ -228,6 +228,22 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void NoHuntYet_SurfRodsRockSmash_Refused()
+        {
+            var soulSilver = Hgss[RomVersion.SoulSilver];
+            var sapphire = Rs[RomVersion.Sapphire];
+            var refused = new[] { "34-surf", "34-oldrod", "34-goodrod", "34-superrod" }.Select(id => soulSilver.Single(m => m.Id == id))
+                .Append(soulSilver.First(m => m.Modality == Modality.RockSmash))
+                .Append(sapphire.First(m => m.Modality == Modality.Surf));
+
+            Assert.All(refused, m => Assert.Equal($"{m.Name}: no hunt yet.", BotService.NoHuntYet(m)));
+            Assert.Null(BotService.NoHuntYet(soulSilver.Single(m => m.Id == "34-land")));
+            Assert.Null(BotService.NoHuntYet(soulSilver.First(m => m.Modality == Modality.Headbutt)));
+            Assert.Null(BotService.NoHuntYet(sapphire.First(m => m.Modality == Modality.Land)));
+            Assert.Null(BotService.NoHuntYet(null));
+        }
+
+        [Fact]
         public void GeneratedComplete_ByRows_AndAnUnknownNameIsComplete()
         {
             var milestone = Hgss[RomVersion.SoulSilver].Single(m => m.Id == "34-land");

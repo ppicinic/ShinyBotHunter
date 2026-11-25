@@ -69,7 +69,8 @@ namespace ShinyBotHunter.Tests
             var admin = new AdminService(_ => Task.CompletedTask, () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
                 _ => Task.CompletedTask, () => Task.FromResult<Appearance?>(null), _ => Task.CompletedTask, NullLogger.Instance);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().AddSingleton(admin).BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            // A ROM directory never scanned: no game file has a version, so no phase name is a generated milestone.
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(profile));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             FakeBot bot = factory.Bots[0];
             bot.PartyBlocks = party;

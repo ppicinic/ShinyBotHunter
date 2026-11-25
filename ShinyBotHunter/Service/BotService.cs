@@ -304,6 +304,7 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException(reason);
                 }
             }
+            RefuseNoHuntYet(bot, args.PhaseName);
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -348,6 +349,10 @@ namespace ShinyBotHunter.Service
             if (args.Legs.Any(l => l.Pickup == true && (l.TrainType ?? TrainType.None) == TrainType.None))
             {
                 throw new ArgumentException(PickupNeedsTrainMode);
+            }
+            foreach (var leg in args.Legs)
+            {
+                RefuseNoHuntYet(slots.Entries[pos].Bot!, leg.PhaseName);
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.Legs.Any(l => l.EncounterType == EncounterType.Headbutt), args.Legs.Any(l => l.Pickup == true));
             // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
@@ -804,6 +809,20 @@ namespace ShinyBotHunter.Service
                 throw new ArgumentException(pickupReason);
             }
         }
+
+        // FR-15a: a generated milestone no EncounterType hunts (surf, the rods, rock smash) is refused before anything is read. A
+        // stored phase of the same name wins, as it does in PhaseTarget, so no stored phase is refused (FR-42).
+        private void RefuseNoHuntYet(IBot bot, string? phaseName)
+        {
+            if (phaseName is not null
+                && NoHuntYet(PhaseTarget.FindMilestone(profiles.Get(bot.GameFlavor).Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, phaseName)) is { } refusal
+                && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName) is null)
+            {
+                throw new ArgumentException(refusal);
+            }
+        }
+
+        internal static string? NoHuntYet(Milestone? generated) => generated is { Huntable: false } ? $"{generated.Name}: no hunt yet." : null;
 
         // FR-15: the milestone picker for the bot's game file, worked out on each request; null when no bot is at the position.
         public async Task<BotMilestones?> GetMilestonesAsync(int pos)
