@@ -1,4 +1,4 @@
-import type { Condition, ConditionalParameter, EncounterType, EventArgumentOptions, GameRomInfo, NewEventLegArguments, TrainType } from '../../types/api'
+import type { Condition, ConditionalParameter, EncounterType, EventArgumentOptions, GameRomInfo, HuntPlan, NewEventLegArguments, PlanTime, TrainType, Weekday } from '../../types/api'
 
 // Maps internal parameter names to user-friendly display labels
 const PARAM_DISPLAY_NAMES: Record<string, string> = {
@@ -13,6 +13,7 @@ const PARAM_DISPLAY_NAMES: Record<string, string> = {
   TargetLevel: 'Target Level (101 = no end)',
   SwitchSlot: 'Battler',
   Mode: 'Game',
+  HuntPlan: 'Hunt Plan',
 }
 export const getParamLabel = (param: string): string => PARAM_DISPLAY_NAMES[param] ?? param
 
@@ -60,10 +61,42 @@ export function initialParamsFor(schema: EventArgumentOptions): Record<string, s
   return params
 }
 
-/** True once every required parameter of the schema has a value. */
+/** True once every required parameter of the schema has a value. A chosen hunt plan stands in for the milestone,
+ *  which the server ignores when a plan is given. */
 export function requiredParamsFilled(schema: EventArgumentOptions, params: Record<string, string>): boolean {
   const required = schema.requiredParameters ?? []
-  return required.every((p) => params[p]?.trim())
+  return required.every((p) => (p === 'PhaseName' && params['HuntPlan']?.trim()) || params[p]?.trim())
+}
+
+/** C# DayOfWeek's order, Sunday first. */
+export const WEEKDAYS: Weekday[] = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+/** The game's time of day for an hour, as HuntPlan.TimeOfDay: morning 4 to 10, day 10 to 20, night 20 to 4. */
+export function planTime(hour: number): PlanTime {
+  if (hour >= 4 && hour < 10) return 'Morning'
+  if (hour >= 10 && hour < 20) return 'Day'
+  return 'Night'
+}
+
+/** The milestone a plan hunts at this weekday and hour, as HuntPlan.Pick with nothing complete: the first rule whose
+ *  times and weekdays match (an empty set matches any), numbered from 1, or the default with rule null. */
+export function planPick(plan: Pick<HuntPlan, 'default' | 'rules'>, weekday: Weekday, hour: number): { milestone: string; rule: number | null } {
+  const time = planTime(hour)
+  const index = plan.rules.findIndex((r) => (r.times.length === 0 || r.times.includes(time)) &&
+    (r.weekdays.length === 0 || r.weekdays.includes(weekday)))
+  return index < 0 ? { milestone: plan.default, rule: null } : { milestone: plan.rules[index].milestone, rule: index + 1 }
+}
+
+/** A weekday's 24 hours as runs of the same pick, `to` exclusive. */
+export function planPreview(plan: Pick<HuntPlan, 'default' | 'rules'>, weekday: Weekday): { from: number; to: number; milestone: string; rule: number | null }[] {
+  const runs: { from: number; to: number; milestone: string; rule: number | null }[] = []
+  for (let hour = 0; hour < 24; hour++) {
+    const pick = planPick(plan, weekday, hour)
+    const last = runs[runs.length - 1]
+    if (last && last.rule === pick.rule && last.milestone === pick.milestone) last.to = hour + 1
+    else runs.push({ from: hour, to: hour + 1, ...pick })
+  }
+  return runs
 }
 
 /** The conditional parameters currently on screen. */
