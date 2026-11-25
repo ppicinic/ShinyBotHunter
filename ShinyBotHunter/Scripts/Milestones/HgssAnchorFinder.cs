@@ -12,7 +12,8 @@ namespace ShinyBotHunter.Scripts.Milestones
     // the decomp's zone events. The longest straight run whose middle tile reaches a Pokémon Center and back wins, left
     // and right before up and down at equal length, and among equal runs the cheapest to the Pokémon Center. Under three
     // tiles it is a spin on the cheapest tile. With no HM first, and only when nothing is reached, with every HM.
-    // A headbutt tree's stand (FR-21) is chosen the same way, from the tiles beside the tree.
+    // A headbutt tree's stand (FR-21) is a tile beside the tree, on a free or grass tile and reached with no HM; it has
+    // no fallback to every HM.
     public class HgssAnchorFinder
     {
         private static readonly Direction[] AllDirections = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
@@ -41,8 +42,8 @@ namespace ShinyBotHunter.Scripts.Milestones
         }
 
         // Each tree of one headbutt map with the stand beside it that is cheapest to a Pokémon Center and reached back from
-        // it with no HM, on a free or grass tile; a tree with no such stand is returned unchanged. As for land there is no
-        // HM fallback, and a stand on water, a Cut tile or a Rock Smash tile is not one (headbutt while surfing is not run).
+        // it with no HM, on a free or grass tile; a tree with no such stand is returned unchanged. As for RS land (B1r) there
+        // is no HM fallback, and a stand on water, a Cut tile or a Rock Smash tile is not one (headbutt while surfing is not run).
         public async Task<HeadbuttTree[]> StandAsync(HeadbuttTree[] trees, int id, string internalName, bool overworld)
         {
             var map = maps.GetMap(id);
