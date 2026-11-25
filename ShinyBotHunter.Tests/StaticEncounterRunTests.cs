@@ -1,17 +1,20 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PKHeX.Core;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
+using static ShinyBotHunter.Service.PhaseInfoService;
 
 namespace ShinyBotHunter.Tests
 {
@@ -77,7 +80,10 @@ namespace ShinyBotHunter.Tests
         }
 
         // A launched bot at position 0, standing and seeing what the test says, and the service whose Run checks see it.
-        private static async Task<BotService> LaunchAsync(int map, int x, int y, GameScreen screen, params byte[][] party)
+        private static Task<BotService> LaunchAsync(int map, int x, int y, GameScreen screen, params byte[][] party)
+            => LaunchAsync(Admin([]), map, x, y, screen, party);
+
+        private static async Task<BotService> LaunchAsync(AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, Profile());
@@ -86,6 +92,7 @@ namespace ShinyBotHunter.Tests
                 .AddSingleton(new PokemonStateReader())
                 .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
                 .AddSingleton(new ShinyAlertService(null!, settings))
+                .AddSingleton(admin)
                 .BuildServiceProvider();
             var service = new BotService(settings, factory, provider, null!, null!, null!);
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
@@ -97,6 +104,16 @@ namespace ShinyBotHunter.Tests
             bot.PartyBlocks = party;
             return service;
         }
+
+        // A start moves the follows-the-hunt card, so the provider needs an AdminService; its pushes land in the list.
+        private static AdminService Admin(List<DashboardConfig> pushes)
+            => new(
+                config => { pushes.Add(config); return Task.CompletedTask; },
+                () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
+                _ => Task.CompletedTask,
+                () => Task.FromResult<Appearance?>(null),
+                _ => Task.CompletedTask,
+                NullLogger.Instance);
 
         private static NewEventArguments Run(string? encounter = "Dialga (Sinjoh Ruins)", string? phase = "Dialga")
             => new() { EventName = "HGSS Static Encounter", PhaseName = phase, StaticEncounter = encounter };
@@ -198,6 +215,34 @@ namespace ShinyBotHunter.Tests
             var service = await LaunchAsync(522, 16, 14, GameScreen.FieldFree, Block(493));
 
             await AssertStartedAsync(service);
+        }
+
+        [Fact]
+        public async Task StartingAHuntMovesTheFollowsTheHuntCard()
+        {
+            List<DashboardConfig> pushes = [];
+            AdminService admin = Admin(pushes);
+            await admin.SubscribeGamePhaseAsync("HGSS", "x", "fake.nds", followsHunt: true);
+            var service = await LaunchAsync(admin, 522, 16, 14, GameScreen.FieldFree, Block(493));
+            pushes.Clear();
+
+            await AssertStartedAsync(service);
+
+            Assert.Equal([new GamePhase(GameFlavor.HGSS, "Dialga", "fake.nds") { followsHunt = true }], Assert.Single(pushes).GamePhases);
+        }
+
+        [Fact]
+        public async Task ARefusedStartLeavesTheFollowsTheHuntCard()
+        {
+            List<DashboardConfig> pushes = [];
+            AdminService admin = Admin(pushes);
+            await admin.SubscribeGamePhaseAsync("HGSS", "x", "fake.nds", followsHunt: true);
+            var service = await LaunchAsync(admin, 315, 16, 14, GameScreen.FieldFree, Block(493));
+            pushes.Clear();
+
+            await AssertRefusedAsync(service, Run(), OffTheStage);
+
+            Assert.Empty(pushes);
         }
 
         [Fact]
