@@ -4,7 +4,8 @@ using ShinyBotHunter.Milestones;
 namespace ShinyBotHunter.Persistence.MongoDb
 {
     // The GameFiles collection: one document per game file (FR-7). Each write upserts one field of one document, so a hide and an
-    // entries edit never overwrite each other; an order label is two such updates, a pull then a push.
+    // entries edit never overwrite each other; an order label is two such updates, a pull then a push. A preset change writes its
+    // two fields, the preset and the entries it produced, in one update.
     public class MongoGameFileDao
     {
         // Set once in the constructor; IMongoCollection is thread-safe.
@@ -34,6 +35,10 @@ namespace ShinyBotHunter.Persistence.MongoDb
         public Task SetEntriesAsync(string gameFileName, List<GoalEntry> entries)
             => collection.UpdateOneAsync(f => f.Id == gameFileName, Builders<GameFile>.Update.Set(f => f.Entries, entries),
                 new UpdateOptions { IsUpsert = true });
+
+        public Task SetPresetAsync(string gameFileName, GoalPreset preset, List<GoalEntry> entries)
+            => collection.UpdateOneAsync(f => f.Id == gameFileName,
+                Builders<GameFile>.Update.Set(f => f.Preset, preset).Set(f => f.Entries, entries), new UpdateOptions { IsUpsert = true });
 
         public Task SetHiddenAsync(string gameFileName, HiddenRow row, bool hidden)
             => collection.UpdateOneAsync(f => f.Id == gameFileName,

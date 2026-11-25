@@ -9,12 +9,12 @@ function entry(species: number, formCode: string | null, amount = 1): GoalEntry 
 const names = new Map([[190, 'Aipom'], [201, 'Unown'], [16, 'Pidgey']])
 
 describe('presetsFor', () => {
-  it('gives HeartGold and SoulSilver the three presets', () => {
-    expect(presetsFor('HGSS')).toEqual(['LivingDex', 'FemaleForms', 'VersionExclusives'])
+  it('gives HeartGold and SoulSilver none and the three presets', () => {
+    expect(presetsFor('HGSS')).toEqual(['None', 'LivingDex', 'FemaleForms', 'VersionExclusives'])
   })
 
   it('gives Ruby and Sapphire no female forms preset', () => {
-    expect(presetsFor('RS')).toEqual(['LivingDex', 'VersionExclusives'])
+    expect(presetsFor('RS')).toEqual(['None', 'LivingDex', 'VersionExclusives'])
   })
 })
 

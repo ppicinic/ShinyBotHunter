@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -14,6 +15,9 @@ namespace ShinyBotHunter.Milestones
         [BsonId]
         public string Id { get; set; } = "";
         public List<GoalEntry> Entries { get; set; } = new List<GoalEntry>();
+        // The preset that supplied the default amounts in Entries (FR-8); a string, so reordering the enum changes nothing stored.
+        [BsonRepresentation(BsonType.String)]
+        public GoalPreset Preset { get; set; }
         public List<HiddenRow> Hidden { get; set; } = new List<HiddenRow>();
         // Milestone ids and custom phase names the owner archived on this file (FR-17).
         public List<string> Archived { get; set; } = new List<string>();

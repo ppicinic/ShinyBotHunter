@@ -115,7 +115,7 @@ namespace ShinyBotHunter.Controllers
         }
 
         [HttpPost("goal/{game}/{gameFileName}/preset/{preset}")]
-        public async Task<ActionResult<List<GoalEntry>>> ApplyPresetAsync(string game, string gameFileName, GoalPreset preset)
+        public async Task<ActionResult> ApplyPresetAsync(string game, string gameFileName, GoalPreset preset)
         {
             var flavor = Enum.Parse<GameFlavor>(game);
             RomVersion? version = romInfoService.GetByHandle(gameFileName)?.Version;
@@ -124,19 +124,21 @@ namespace ShinyBotHunter.Controllers
             {
                 return NotFound();
             }
-            IReadOnlyList<GoalEntry> presetEntries;
+            var file = await gameFileDao.LoadAsync(gameFileName);
+            IReadOnlyList<GoalEntry> from, to;
             try
             {
-                presetEntries = GoalPresets.Entries(preset, version.Value, milestones, pokemonMetadataService);
+                from = GoalPresets.Entries(file.Preset, version.Value, milestones, pokemonMetadataService);
+                to = GoalPresets.Entries(preset, version.Value, milestones, pokemonMetadataService);
             }
             catch (ArgumentException e)
             {
                 // Ruby and Sapphire have no female forms preset.
                 return BadRequest(e.Message);
             }
-            var entries = GoalPresets.Apply((await gameFileDao.LoadAsync(gameFileName)).Entries, presetEntries);
-            await gameFileDao.SetEntriesAsync(gameFileName, entries);
-            return Ok(entries);
+            var (entries, changed, kept) = GoalPresets.Change(file.Entries, from, to);
+            await gameFileDao.SetPresetAsync(gameFileName, preset, entries);
+            return Ok(new { Preset = preset, Entries = entries, Changed = changed, Kept = kept });
         }
 
         [HttpPut("goal/{gameFileName}/hidden")]

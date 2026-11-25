@@ -1,5 +1,6 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -144,30 +145,110 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void Apply_KeepsAnEditedAmount()
+        public void HgssNone_IsEmpty()
         {
-            var livingDex = GoalPresets.Entries(GoalPreset.LivingDex, RomVersion.HeartGold, Hgss, Metadata());
-            var goal = GoalPresets.Apply([], livingDex)
-                .Where(e => e.Species != Pidgey)
-                .Select(e => e.Species == Aipom ? e with { Amount = 6 } : e)
-                .ToList();
+            Assert.Empty(GoalPresets.Entries(GoalPreset.None, RomVersion.HeartGold, Hgss, Metadata()));
+        }
 
-            var applied = GoalPresets.Apply(goal, livingDex);
+        private static IReadOnlyList<GoalEntry> Hg(GoalPreset preset) => GoalPresets.Entries(preset, RomVersion.HeartGold, Hgss, Metadata());
 
-            Assert.Equal(6, AnyForm(applied, Aipom));
-            Assert.Equal(3, AnyForm(applied, Pidgey));
-            Assert.Equal(livingDex.Count, applied.Count);
+        [Fact]
+        public void Change_UneditedFollowsTheNewPreset()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+            var exclusives = Hg(GoalPreset.VersionExclusives);
+
+            var (entries, changed, kept) = GoalPresets.Change(livingDex, livingDex, exclusives);
+
+            Assert.Equal(exclusives, entries);
+            Assert.Equal(493 - exclusives.Count(e => AnyForm(livingDex, e.Species) == 1), changed);
+            Assert.Equal(0, kept);
         }
 
         [Fact]
-        public void Apply_SkipsASpeciesWithFormEntries()
+        public void Change_KeepsAnEditedAmount()
         {
-            List<GoalEntry> goal = [new GoalEntry(Zubat, "zubat;f", 2), new GoalEntry(Zubat, "zubat", 0)];
+            var livingDex = Hg(GoalPreset.LivingDex);
+            var exclusives = Hg(GoalPreset.VersionExclusives);
+            var edited = livingDex.Select(e => e.Species == Aipom ? e with { Amount = 6 } : e).ToList();
 
-            var applied = GoalPresets.Apply(goal, GoalPresets.Entries(GoalPreset.LivingDex, RomVersion.HeartGold, Hgss, Metadata()));
+            var (entries, _, kept) = GoalPresets.Change(edited, livingDex, exclusives);
+            // An edit back to the old preset's amount is no edit.
+            var (followed, _, _) = GoalPresets.Change(edited.Select(e => e.Species == Aipom ? e with { Amount = 2 } : e).ToList(), livingDex, exclusives);
 
-            Assert.Equal(goal, applied.Where(e => e.Species == Zubat));
-            Assert.Equal(3, AnyForm(applied, Golbat));
+            Assert.Equal(6, AnyForm(entries, Aipom));
+            Assert.Equal(1, kept);
+            Assert.Equal(exclusives, followed);
+        }
+
+        [Fact]
+        public void Change_KeepsAnAddedSpecies()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+
+            var (entries, _, kept) = GoalPresets.Change([new GoalEntry(Aipom, null, 6)], [], livingDex);
+
+            Assert.Equal(6, AnyForm(entries, Aipom));
+            Assert.Equal(3, AnyForm(entries, Pidgey));
+            Assert.Equal(livingDex.Count, entries.Count);
+            Assert.Equal(1, kept);
+        }
+
+        [Fact]
+        public void Change_KeepsARemovedEntry()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+
+            var (entries, _, _) = GoalPresets.Change(livingDex.Where(e => e.Species != Pidgey).ToList(), livingDex, Hg(GoalPreset.FemaleForms));
+
+            Assert.DoesNotContain(entries, e => e.Species == Pidgey);
+        }
+
+        [Fact]
+        public void Change_ARemovedEntryReturnsAfterAPresetWithoutIt()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+            var femaleForms = Hg(GoalPreset.FemaleForms);
+            var (removed, _, _) = GoalPresets.Change(livingDex.Where(e => e.Species != Pidgey).ToList(), livingDex, femaleForms);
+
+            var (entries, _, _) = GoalPresets.Change(removed, femaleForms, livingDex);
+
+            Assert.Equal(3, AnyForm(entries, Pidgey));
+        }
+
+        [Fact]
+        public void Change_KeepsAHandEditedFormSpeciesWhole()
+        {
+            var femaleForms = Hg(GoalPreset.FemaleForms);
+            var edited = femaleForms.Select(e => e.FormCode == "zubat;f" ? e with { Amount = 5 } : e).ToList();
+
+            var (entries, _, _) = GoalPresets.Change(edited, femaleForms, Hg(GoalPreset.LivingDex));
+
+            Assert.Equal(new[] { new GoalEntry(Zubat, "zubat;f", 5), new GoalEntry(Zubat, "zubat", 0) }, entries.Where(e => e.Species == Zubat));
+            Assert.Null(PhaseMetadataController.GoalError(entries));
+            Assert.Equal(3, AnyForm(entries, Golbat));
+        }
+
+        [Fact]
+        public void Change_ToNone_RemovesOnlyUneditedEntries()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+            var edited = livingDex.Select(e => e.Species == Aipom ? e with { Amount = 6 } : e).ToList();
+
+            var (entries, _, _) = GoalPresets.Change(edited, livingDex, Hg(GoalPreset.None));
+
+            Assert.Equal([new GoalEntry(Aipom, null, 6)], entries);
+        }
+
+        [Fact]
+        public void Change_UnownEditedLetterKeepsAll28()
+        {
+            var livingDex = Hg(GoalPreset.LivingDex);
+            var edited = livingDex.Select(e => e.FormCode == "unown-a" ? e with { Amount = 2 } : e).ToList();
+
+            var (entries, _, _) = GoalPresets.Change(edited, livingDex, Hg(GoalPreset.VersionExclusives));
+
+            Assert.Equal(edited.Where(e => e.Species == Unown), entries.Where(e => e.Species == Unown));
         }
 
         [Fact]
@@ -177,7 +258,8 @@ namespace ShinyBotHunter.Tests
             {
                 Id = "Pokemon SoulSilver2",
                 Entries = [new GoalEntry(Zubat, "zubat;f", 2), new GoalEntry(Zubat, "zubat", 0), new GoalEntry(16, null, 3)],
-                Hidden = [new HiddenRow("34-land", "#16")]
+                Hidden = [new HiddenRow("34-land", "#16")],
+                Preset = GoalPreset.LivingDex
             };
 
             BsonDocument document = file.ToBsonDocument();
@@ -188,6 +270,16 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(file.Id, loaded.Id);
             Assert.Equal(file.Entries, loaded.Entries);
             Assert.Equal(file.Hidden, loaded.Hidden);
+            Assert.Equal("LivingDex", document["Preset"].AsString);
+            Assert.Equal(GoalPreset.LivingDex, loaded.Preset);
+        }
+
+        [Fact]
+        public void GameFile_WithoutPreset_ReadsAsNone()
+        {
+            var document = new BsonDocument { ["_id"] = "Pokemon SoulSilver2", ["Entries"] = new BsonArray() };
+
+            Assert.Equal(GoalPreset.None, BsonSerializer.Deserialize<GameFile>(document).Preset);
         }
 
         [Fact]
