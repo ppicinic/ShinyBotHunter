@@ -4,6 +4,7 @@ import * as api from '../../services/apiClient'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PickerMilestone } from '../../types/api'
 import { romLabel } from '../../types/api'
 import { choiceOptions, encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
+import { HuntPlanEditor } from './HuntPlanEditor'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
@@ -23,7 +24,8 @@ export function ActionParamFields({
   partyLoading,
   games,
   gameFileName,
-  onMilestonesChanged
+  onMilestonesChanged,
+  onPlanDirtyChange
 }: {
   schema: EventArgumentOptions
   params: Record<string, string>
@@ -38,6 +40,8 @@ export function ActionParamFields({
   // The bot's game file, for archiving and labelling the picked milestone. Without it the picker has no Archive or Order.
   gameFileName?: string
   onMilestonesChanged?: () => void
+  // Told whether the plan editor holds unsaved changes, so the card can grey what would drop them.
+  onPlanDirtyChange?: (dirty: boolean) => void
 }): JSX.Element {
   const { config } = useAppContext()
   const [milestoneText, setMilestoneText] = useState('')
@@ -98,6 +102,11 @@ export function ActionParamFields({
                 <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
               ))}
             </select>
+          ) : param === 'PhaseName' && params['HuntPlan'] ? (
+            // The server ignores the form's milestone when a plan is given (C3b); the value is kept for No plan.
+            <span className="flex-1 text-xs text-slate-400">
+              Set by the plan &quot;{params['HuntPlan']}&quot;: it starts on its default and follows the in-game clock.
+            </span>
           ) : param === 'PhaseName' ? (
             <div className="flex-1 space-y-1">
               <div className="flex items-center gap-2">
@@ -235,6 +244,13 @@ export function ActionParamFields({
                     <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
                   ))}
                 </select>
+              ) : param === 'HuntPlan' ? (
+                <HuntPlanEditor
+                  value={params[param] ?? ''}
+                  onChange={(v) => onChange(param, v)}
+                  milestones={availablePhases}
+                  onDirtyChange={(dirty) => onPlanDirtyChange?.(dirty)}
+                />
               ) : (
                 <input
                   type="text"
@@ -246,6 +262,11 @@ export function ActionParamFields({
               )}
             </div>
           ))}
+          {params['HuntPlan'] && (
+            <div className="text-xs text-slate-400 mt-0.5">
+              The plan picks each milestone and hunts it from its anchor. Encounter Type must suit all of them: Run or Spin for grass and caves, Headbutt for trees. The dashboard window follows the bot.
+            </div>
+          )}
         </div>
       )}
       {visibleConditionals.length > 0 && (
