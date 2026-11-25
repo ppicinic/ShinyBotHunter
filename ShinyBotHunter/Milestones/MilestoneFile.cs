@@ -32,7 +32,7 @@ namespace ShinyBotHunter.Milestones
             throw new InvalidDataException($"map-names.json has no name for milestone {milestone.Id}");
         }
 
-        private static string Word(Milestone milestone) => milestone.Modality switch
+        internal static string Word(Milestone milestone) => milestone.Modality switch
         {
             Modality.Land => milestone.HasGrass ? "grass" : "cave",
             Modality.Surf => "surf",
