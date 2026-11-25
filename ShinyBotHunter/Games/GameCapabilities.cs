@@ -14,5 +14,6 @@ namespace ShinyBotHunter.Games
         bool HasStaticEncounter = false,   // HGSS Static Encounter: the graph and pathfinding walk to the spot
         bool HasHeadbuttTrees = false,     // the Headbutt encounter type
         bool HasPickup = false,            // Pickup, which takes the items through HGSS's bag
-        bool HasWildRunChecks = false);    // the RS checks and speed lines at a Wild Encounter's Run
+        bool HasWildRunChecks = false,     // the RS checks and speed lines at a Wild Encounter's Run
+        bool HasHuntPlans = false);        // a Wild Encounter's saved hunt plan, which needs the in-game clock
 }
