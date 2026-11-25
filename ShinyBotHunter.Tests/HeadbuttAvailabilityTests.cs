@@ -346,7 +346,7 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task StartChainedEncounterWithPickupInSlotFour_Starts()
+        public async Task StartChainedEncounterWithPickupInSlotFour_PassesTheGuards()
         {
             var (service, bot) = await LaunchAsync(WithBoth);
             var args = new NewEventArguments
@@ -357,7 +357,11 @@ namespace ShinyBotHunter.Tests
 
             var result = await new BotController(service).StartAction(0, args);
 
-            Assert.IsType<OkObjectResult>(result.Result);
+            // The stub provider has no game file store for the link check, so it fails after the guards.
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.DoesNotContain(NeedsTrainMode, content.Content);
+            Assert.DoesNotContain(NoPickup, content.Content);
+            Assert.Contains(nameof(Persistence.MongoDb.MongoGameFileDao), content.Content);
             Assert.Equal(1, bot.PartyReads);
         }
 

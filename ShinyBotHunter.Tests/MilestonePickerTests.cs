@@ -179,6 +179,27 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void Picker_LinkedPhase_LeftOutOnItsFileOnly()
+        {
+            PhaseInfo[] phases = [Phase("1-4 Route 30"), Phase("1-8 Route 32")];
+            var generated = Hgss[RomVersion.SoulSilver];
+            var fileA = new GameFile { Id = "A", Links = [new MilestoneLink("1-4 Route 30", "34-land")] };
+            var fileB = new GameFile { Id = "B" };
+            var unlinked = new GameFile { Id = "A" };
+
+            var listA = MilestonePicker.List(generated, phases, fileA, new HashSet<string>(), []);
+            var listB = MilestonePicker.List(generated, phases, fileB, new HashSet<string>(), []);
+            var before = MilestonePicker.List(generated, phases, unlinked, new HashSet<string>(), []);
+
+            Assert.DoesNotContain(listA, e => e.Id == "1-4 Route 30");
+            Assert.Contains(listA, e => e.Id == "1-8 Route 32");
+            Assert.Contains(listA, e => e.Id == "34-land");
+            Assert.Contains(listB, e => e.Id == "1-4 Route 30");
+            Assert.Equal(before, listB);
+            Assert.Equal(before.Where(e => e.Id != "1-4 Route 30"), listA);
+        }
+
+        [Fact]
         public void Picker_Archived_FlaggedAndNothingElseChanges()
         {
             var generated = Hgss[RomVersion.SoulSilver];

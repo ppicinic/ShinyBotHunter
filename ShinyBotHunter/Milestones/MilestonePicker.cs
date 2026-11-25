@@ -13,12 +13,13 @@ namespace ShinyBotHunter.Milestones
     public static class MilestonePicker
     {
         // FR-15 to FR-18: every generated milestone of the file's version (each has at least one row, since every slot species is
-        // one), and every custom phase assigned to the file or to no file; labelled entries first by label, then by name.
+        // one), and every custom phase assigned to the file or to no file and not linked on it (FR-44); labelled entries first by
+        // label, then by name.
         public static List<PickerMilestone> List(IReadOnlyList<Milestone> generated, IEnumerable<PhaseInfo> phases, GameFile file,
             IReadOnlySet<string> assignedAnywhere, IReadOnlyList<CaughtPokemon> caught)
         {
             var fileCaught = caught.Where(c => c.GameFileName == file.Id).ToList();
-            var custom = phases.Where(p => file.Assigned.Contains(p.Name) || !assignedAnywhere.Contains(p.Name))
+            var custom = phases.Where(p => (file.Assigned.Contains(p.Name) || !assignedAnywhere.Contains(p.Name)) && file.Links.All(l => l.Phase != p.Name))
                 .Select(p => Entry(file, p.Name, p.Name, null, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught)));
             var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught)));
             return custom.Concat(milestones)

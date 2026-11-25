@@ -332,7 +332,9 @@ namespace ShinyBotHunter.Service
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
-            MilestoneAnchor? anchor = (await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName)).AnchorFor(leg.PhaseName, generated);
+            var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+            RefuseLinked(bot, gameFile, leg.PhaseName);
+            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated);
             if (anchor is not null && generated is { Modality: Modality.Land }
                 && AnchorTileStop(generated, anchor.Anchor, bot.Profile.Maps!, bot.Profile.LandTileKind!(generated)) is { } notOfTheKind)
             {
@@ -381,6 +383,11 @@ namespace ShinyBotHunter.Service
             // Validate every leg before anything starts -- a bad leg 3 shouldn't be discovered
             // after leg 1 has already been running for an hour.
             var legs = args.Legs.Select(x => ValidateAndBuildLeg(x, slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor)).ToList();
+            var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(slots.Entries[pos].Bot!.GameFileName);
+            foreach (var leg in legs)
+            {
+                RefuseLinked(slots.Entries[pos].Bot!, gameFile, leg.PhaseName);
+            }
 
             var chainedEvent = new ChainedOrchestratorEvent(provider, legs);
             // The chain shares one GameState across all legs so the start tile survives leg
@@ -843,6 +850,26 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException(refusal);
             }
+        }
+
+        // FR-44a: nothing is logged under a linked phase name, so a hunt of it is refused, naming the milestone to start instead.
+        private void RefuseLinked(IBot bot, GameFile gameFile, string? phaseName)
+        {
+            if (LinkedRefusal(gameFile, phaseName,
+                profiles.Get(bot.GameFlavor).Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version) is { } refusal)
+            {
+                throw new ArgumentException(refusal);
+            }
+        }
+
+        internal static string? LinkedRefusal(GameFile file, string? phaseName, IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones, RomVersion? version)
+        {
+            if (file.Links.FirstOrDefault(l => l.Phase == phaseName) is not { } link)
+            {
+                return null;
+            }
+            string name = PhaseTarget.FindMilestone(milestones, version, link.MilestoneId)?.Name ?? link.MilestoneId;
+            return $"{phaseName} is linked to {name} on {file.Id}; start {name}, or remove the link.";
         }
 
         // Decided at B2's plan review: Headbutt hunts a headbutt milestone, and Run and Spin a land one.
