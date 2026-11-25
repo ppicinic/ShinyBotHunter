@@ -1,3 +1,5 @@
+using ShinyBotHunter.Service;
+
 namespace ShinyBotHunter.Milestones
 {
     // FR-43: moving an existing phase onto the generated data, as a link the owner makes on one file.
@@ -27,5 +29,26 @@ namespace ShinyBotHunter.Milestones
 
         // The suggested milestone id for an existing phase, or null for a phase with none (training, starters, gifts).
         public static string? Suggestion(string phase) => Suggestions.GetValueOrDefault(phase);
+
+        // FR-45: per species of the phase, in phase order, the phase's amounts as goal entries beside the goal's own for it.
+        public static List<CopyOffer> Offer(PhaseInfo phase, GameFile file)
+            => PhaseEntries(phase).GroupBy(e => e.Species)
+                .Select(g => new CopyOffer(g.Key, g.ToList(), file.Entries.Where(e => e.Species == g.Key).ToList()))
+                .ToList();
+
+        // The goal with each chosen species' entries replaced by the phase's; every other entry is kept as it is.
+        public static List<GoalEntry> ApplyCopy(IReadOnlyList<GoalEntry> goal, PhaseInfo phase, IReadOnlyCollection<int> chosen)
+            => [.. goal.Where(e => !chosen.Contains(e.Species)), .. PhaseEntries(phase).Where(e => chosen.Contains(e.Species))];
+
+        // A row that requires its form is a form entry, any other an any-form entry. A species with an any-form row leaves out its
+        // form rows at 0 (production's Unown in "1-10 Ruins of Alph"), as today's rule lets the any-form row decide.
+        private static IEnumerable<GoalEntry> PhaseEntries(PhaseInfo phase)
+        {
+            var entries = phase.Pokemon.Select(p => new GoalEntry(p.SpeciesId, p.RequireSpecificForm ? p.FormCode : null, p.Amount)).ToList();
+            return entries.Where(e => e.FormCode is null || e.Amount > 0 || !entries.Any(a => a.Species == e.Species && a.FormCode is null));
+        }
     }
+
+    // FR-45's side-by-side view of one species: what the phase would copy and what the goal has now.
+    public record CopyOffer(int Species, List<GoalEntry> Phase, List<GoalEntry> Goal);
 }

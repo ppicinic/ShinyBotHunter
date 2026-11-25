@@ -177,6 +177,51 @@ namespace ShinyBotHunter.Controllers
             return NoContent();
         }
 
+        // FR-43 and FR-45: the link form's offer for an existing phase on a file, the suggested milestone of the file's version and
+        // the phase's amounts beside the goal's.
+        [HttpGet("goal/{game}/{gameFileName}/backfill/{phase}")]
+        public async Task<ActionResult> GetBackfillAsync(string game, string gameFileName, string phase)
+        {
+            var flavor = Enum.Parse<GameFlavor>(game);
+            var phaseInfo = phaseInfoService.GetPhaseInfo(flavor, phase);
+            if (phaseInfo is null)
+            {
+                return NotFound();
+            }
+            var suggested = Backfill.Suggestion(phase) is { } id
+                ? PhaseTarget.FindMilestone(gameProfiles.Get(flavor).Milestones, romInfoService.GetByHandle(gameFileName)?.Version, id)
+                : null;
+            return Ok(new
+            {
+                Suggested = suggested is null ? null : new { suggested.Id, suggested.Name },
+                Copy = Backfill.Offer(phaseInfo, await gameFileDao.LoadAsync(gameFileName))
+            });
+        }
+
+        // FR-45: copies the phase's amounts of the chosen species into the file's goal, replacing the goal's entries for them.
+        [HttpPost("goal/{game}/{gameFileName}/copy/{phase}")]
+        public async Task<ActionResult<List<GoalEntry>>> CopyAmountsAsync(string game, string gameFileName, string phase, [FromBody] List<int> species)
+        {
+            var phaseInfo = phaseInfoService.GetPhaseInfo(Enum.Parse<GameFlavor>(game), phase);
+            if (phaseInfo is null)
+            {
+                return NotFound();
+            }
+            var unknown = species.Where(s => phaseInfo.Pokemon.All(p => p.SpeciesId != s)).ToList();
+            if (unknown.Count > 0)
+            {
+                return BadRequest($"{phase} has no species {string.Join(", ", unknown)}");
+            }
+            var entries = Backfill.ApplyCopy((await gameFileDao.LoadAsync(gameFileName)).Entries, phaseInfo, species);
+            string? error = GoalError(entries);
+            if (error is not null)
+            {
+                return BadRequest(error);
+            }
+            await gameFileDao.SetEntriesAsync(gameFileName, entries);
+            return Ok(entries);
+        }
+
         // A generated milestone of the file's version seen through the file's goal: its rows with wanted, caught (FR-9) and the
         // encounters at this milestone and on the file (FR-11).
         [HttpGet("milestone/{game}/{milestoneId}/{gameFileName}")]
