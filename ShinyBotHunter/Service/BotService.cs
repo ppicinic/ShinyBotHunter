@@ -427,7 +427,7 @@ namespace ShinyBotHunter.Service
         }
 
         // Refused while in use: the hunt's name would then name no plan, and a delete of the new name would not see the hunt.
-        public async Task RenamePlanAsync(GameFlavor game, string name, string to)
+        public async Task RenamePlanAsync(GameFlavor game, string name, string? to)
         {
             if (string.IsNullOrWhiteSpace(to))
             {

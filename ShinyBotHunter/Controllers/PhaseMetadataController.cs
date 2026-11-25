@@ -329,7 +329,7 @@ namespace ShinyBotHunter.Controllers
         }
 
         [HttpPost("plans/{game}/{name}/rename")]
-        public async Task<ActionResult> RenamePlanAsync(string game, string name, [FromQuery] string to)
+        public async Task<ActionResult> RenamePlanAsync(string game, string name, [FromQuery] string? to)
         {
             try
             {
