@@ -9,7 +9,7 @@ Related: [research: the time mover](../research/time-mover.md) (the clock, the w
 
 Two things that share one model.
 
-**The milestone builder.** Today a milestone is typed in by hand: a name, a list of species, an amount each, and one copy per game file ("1-4 Route 30", "1-4b Route 30", "1-4c Route 30"). This replaces the typing with data. Every wild location and way of hunting it becomes a milestone generated from the game's own tables: 466 per version in HeartGold and SoulSilver, 283 per version in Ruby and Sapphire. What a game file still needs is its **goal**, held once per game file, not once per milestone. A milestone on screen is the game's table seen through that file's goal: the species still wanted there, their forms, how many are left, and the share of encounters each should be right now.
+**The milestone builder.** Today a milestone is typed in by hand: a name, a list of species, an amount each, and one copy per game file ("1-4 Route 30", "1-4b Route 30", "1-4c Route 30"). This replaces the typing with data. Every wild location and way of hunting it becomes a milestone generated from the game's own tables: 398 per version in HeartGold and SoulSilver once maps that share a table are merged (the spikes counted 466 and 283 with every map separate; see the changelog). What a game file still needs is its **goal**, held once per game file, not once per milestone. A milestone on screen is the game's table seen through that file's goal: the species still wanted there, their forms, how many are left, and the share of encounters each should be right now.
 
 **Hunt plans.** A Wild Encounter can be given rules: at night go to Route 30, on Fridays go to Union Cave, otherwise hunt Route 32. The bot reads the in-game clock, walks to the milestone's hunting spot when the rule changes, and the dashboard follows.
 
@@ -269,11 +269,20 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 - 2026-11-24: FR-25a, FR-25b and FR-26a written out by the orchestrator from the research doc's Ruby and Sapphire section; the task split named them and the table did not have them. The status line corrected to one open question.
 - 2026-11-24: the blank window explained; FR-39a added by the orchestrator from that finding.
 
+- 2026-11-24 (A1, #527, #528, #511), decided by the orchestrator at plan review:
+  - FR-1 and FR-3: maps of one location are one milestone per modality when their slots are identical in both versions, levels included; headbutt never merges. That gives 398 milestones per version on HGSS (land 90, surf 63, Old Rod 58, Good and Super Rod 59 each, rock smash 9, headbutt 60), not 466. A merged milestone is named for the location when it holds every map of the location with that modality, else its members' names joined; "Ruins of Alph (underground hall)" is the one exception.
+  - The Safari Zone (357) and the Bug-Catching Contest map (487) have no milestone (non-goals). On RS the four Safari Zone maps have none either.
+  - FR-2: the version is `RomVersion` on `RomInfo`.
+  - FR-3 on RS: the land word comes from the decomp's map type (underground and indoor maps are "cave", every other is "grass"), not from tiles, so FR-19b's new encounter tiles do not rename caves. RS merges by the same rule, with the region map section as the location.
+  - A milestone's id is the first map's id and the modality in lower case: `34-land`, `34-oldrod`, `74-headbutt`.
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.
 
 ### HeartGold and SoulSilver: 139 maps with a wild table
+
+**The "Shares a table with" column is superseded** (2026-11-24): it compared HeartGold species only and ignored levels. The grouping as built, with 35 merged milestones, is in the [research doc](../research/milestone-builder.md), "The generated file". The Map id and Name columns are the committed names.
 
 Map id is the game's map header number, which the bot reads as the current map. "Shares a table with" lists maps of the same location whose tables are identical in HeartGold; they are one milestone. "Differs" marks the 67 maps whose tables are not the same in HeartGold and SoulSilver.
 
