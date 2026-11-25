@@ -135,9 +135,10 @@ namespace ShinyBotHunter.Tests
         {
             var headbutt = Load()[RomVersion.HeartGold].Where(m => m.Modality == Modality.Headbutt).ToList();
 
-            Assert.Equal(843, headbutt.Sum(m => m.Trees.Count(t => t.Anchor is not null)));
+            Assert.Equal(686, headbutt.Sum(m => m.Trees.Count(t => t.Anchor is not null)));
             Assert.Equal(872, headbutt.Sum(m => m.Trees.Length));
-            Assert.Equal(["460-headbutt"], headbutt.Where(m => m.Trees.All(t => t.Anchor is null)).Select(m => m.Id));
+            Assert.Equal(["9-headbutt", "47-headbutt", "49-headbutt", "93-headbutt", "460-headbutt"],
+                headbutt.Where(m => m.Trees.All(t => t.Anchor is null)).Select(m => m.Id));
         }
 
         [Fact]

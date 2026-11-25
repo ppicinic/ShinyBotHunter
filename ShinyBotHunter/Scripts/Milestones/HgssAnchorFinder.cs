@@ -41,7 +41,8 @@ namespace ShinyBotHunter.Scripts.Milestones
         }
 
         // Each tree of one headbutt map with the stand beside it that is cheapest to a Pokémon Center and reached back from
-        // it, with no HM first, then with every HM; a tree with no such stand is returned unchanged.
+        // it with no HM, on a free or grass tile; a tree with no such stand is returned unchanged. As for land there is no
+        // HM fallback, and a stand on water, a Cut tile or a Rock Smash tile is not one (headbutt while surfing is not run).
         public async Task<HeadbuttTree[]> StandAsync(HeadbuttTree[] trees, int id, string internalName, bool overworld)
         {
             var map = maps.GetMap(id);
@@ -49,37 +50,30 @@ namespace ShinyBotHunter.Scripts.Milestones
             var treeTiles = trees.SelectMany(t => t.Tiles).Select(t => (t[0], t[1])).ToHashSet();
             bool InMap(int x, int y) => x >= 0 && y >= 0 && x < map.Width && y < map.Height;
             bool Blocked(int x, int y) => InMap(x, y) && map[y, x] == Constant.MAP_Blocked;
-            bool Allowed(int x, int y) => InMap(x, y) && (!overworld || owners[y / HgssMilestoneProcessor.CellSize, x / HgssMilestoneProcessor.CellSize] == id)
+            bool Allowed(int x, int y) => InMap(x, y) && map[y, x] is Constant.MAP_Free or Constant.MAP_Grass
+                && (!overworld || owners[y / HgssMilestoneProcessor.CellSize, x / HgssMilestoneProcessor.CellSize] == id)
                 && !excluded.Contains((x, y));
-            var costs = new Dictionary<(int X, int Y, bool Hms), int?>();
+            var costs = new Dictionary<(int X, int Y), int?>();
             var result = new HeadbuttTree[trees.Length];
             for (int i = 0; i < trees.Length; i++)
             {
-                var stands = Stands(trees[i], treeTiles, Blocked, Allowed);
-                result[i] = trees[i];
-                foreach (bool hms in new[] { false, true })
+                (int X, int Y, Direction Facing)? best = null;
+                int bestCost = int.MaxValue;
+                foreach (var stand in Stands(trees[i], treeTiles, Blocked, Allowed))
                 {
-                    var capability = hms ? new Capability { CapabilityMask = 0xFF } : new Capability();
-                    (int X, int Y, Direction Facing)? best = null;
-                    int bestCost = int.MaxValue;
-                    foreach (var stand in stands)
+                    if (!costs.TryGetValue((stand.X, stand.Y), out int? cost))
                     {
-                        if (!costs.TryGetValue((stand.X, stand.Y, hms), out int? cost))
-                        {
-                            cost = costs[(stand.X, stand.Y, hms)] = await CenterCost(id, stand.X, stand.Y, capability);
-                        }
-                        if (cost < bestCost)
-                        {
-                            best = stand;
-                            bestCost = cost.Value;
-                        }
+                        cost = costs[(stand.X, stand.Y)] = await CenterCost(id, stand.X, stand.Y, new Capability());
                     }
-                    if (best is { } found)
+                    if (cost < bestCost)
                     {
-                        result[i] = trees[i] with { Anchor = new Anchor(id, found.X, found.Y, 0, 0), Facing = found.Facing, Cost = bestCost };
-                        break;
+                        best = stand;
+                        bestCost = cost.Value;
                     }
                 }
+                result[i] = best is { } found
+                    ? trees[i] with { Anchor = new Anchor(id, found.X, found.Y, 0, 0), Facing = found.Facing, Cost = bestCost }
+                    : trees[i];
             }
             return result;
         }
