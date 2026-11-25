@@ -323,6 +323,11 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 
 - 2026-11-25 (B1h-c, #572), decided by the orchestrator at plan review of #567: FR-21's headbutt stand needs no HM and is on a free or grass tile, as B1r's land anchors; there is no fallback to every HM, and a stand on water, a Cut tile or a Rock Smash tile is none. It is fixed at generation, where whether a stand needed an HM is known, not in `HeadbuttTrees.AnchorFor`, which sees only the cost. 686 of the 872 trees keep a stand (843 before); Route 1, Route 45, Pallet Town, Route 21 and Mt. Silver Cave's headbutt milestones have none and are hunted where the bot stands. The research doc lists the rest.
 
+- 2026-11-25 (B1h-b, #567), decided by the orchestrator at plan review and in its amendment:
+  - FR-21 at Start: a generated headbutt milestone the file has no replacement for gets the file's tree (`GameFile.AnchorFor` on the full trainer ID and the catches), walked to as any anchor; a plan whose stop is such a milestone gets the same anchor and the same reach check. The ID (4 bytes at `[[FS+0x0C]+0x84]`, the secret half from the source, not observed) and the catches are read only then: a stored phase, a replacement or any other milestone reads nothing new (FR-42). A failed read refuses Start. The ID is checked against the full OT ID of a party Pokémon with the same visible ID; one that differs refuses Start naming both values, and with none the Start log says the ID was not cross-checked.
+  - The picker reads the 4 bytes alone, with no party read; a failed read gives no headbutt anchor, so the picker works at the title screen as before.
+  - Headbutt shares on the card stay off; turning them on is a later task after B4b and B4c.
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.

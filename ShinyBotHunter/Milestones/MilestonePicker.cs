@@ -14,14 +14,14 @@ namespace ShinyBotHunter.Milestones
     {
         // FR-15 to FR-18: every generated milestone of the file's version (each has at least one row, since every slot species is
         // one), and every custom phase assigned to the file or to no file and not linked on it (FR-44); labelled entries first by
-        // label, then by name.
+        // label, then by name. A null trainerId gives a headbutt milestone no generated anchor.
         public static List<PickerMilestone> List(IReadOnlyList<Milestone> generated, IEnumerable<PhaseInfo> phases, GameFile file,
-            IReadOnlySet<string> assignedAnywhere, IReadOnlyList<CaughtPokemon> caught)
+            IReadOnlySet<string> assignedAnywhere, IReadOnlyList<CaughtPokemon> caught, uint? trainerId)
         {
             var fileCaught = caught.Where(c => c.GameFileName == file.Id).ToList();
             var custom = phases.Where(p => (file.Assigned.Contains(p.Name) || !assignedAnywhere.Contains(p.Name)) && file.Links.All(l => l.Phase != p.Name))
-                .Select(p => Entry(file, p.Name, p.Name, null, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught)));
-            var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught)));
+                .Select(p => Entry(file, p.Name, p.Name, null, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught), trainerId, caught));
+            var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught), trainerId, caught));
             return custom.Concat(milestones)
                 .OrderBy(e => e.Order is null)
                 .ThenBy(e => e.Order, Natural)
@@ -29,9 +29,10 @@ namespace ShinyBotHunter.Milestones
                 .ToList();
         }
 
-        private static PickerMilestone Entry(GameFile file, string id, string name, Modality? modality, Milestone? milestone, bool huntable, bool complete)
+        private static PickerMilestone Entry(GameFile file, string id, string name, Modality? modality, Milestone? milestone, bool huntable, bool complete,
+            uint? trainerId, IReadOnlyList<CaughtPokemon> caught)
             => new(id, name, modality, huntable, complete, file.Archived.Contains(id), file.Order.FirstOrDefault(l => l.Milestone == id)?.Label,
-                file.AnchorFor(id, milestone)?.Anchor, file.Anchors.Any(a => a.Milestone == id));
+                file.AnchorFor(id, milestone, trainerId, caught)?.Anchor, file.Anchors.Any(a => a.Milestone == id));
 
         private static readonly NaturalComparer Natural = new();
 

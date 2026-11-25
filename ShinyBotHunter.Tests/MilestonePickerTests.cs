@@ -111,7 +111,7 @@ namespace ShinyBotHunter.Tests
                 var stored = phases.Where(p => p.Game == game).ToList();
                 var caught = new List<CaughtPokemon> { Caught("Pidgey", Pidgey, "pidgey") };
 
-                var list = MilestonePicker.List(generated, stored, new GameFile { Id = File }, new HashSet<string>(), caught);
+                var list = MilestonePicker.List(generated, stored, new GameFile { Id = File }, new HashSet<string>(), caught, null);
 
                 var custom = list.Where(e => e.Modality is null).ToList();
                 Assert.Equal(stored.Select(p => p.Name).Order(), custom.Select(e => e.Id).Order());
@@ -133,7 +133,7 @@ namespace ShinyBotHunter.Tests
         {
             var hgss = ProductionPhases(Metadata()).Where(p => p.Game == GameFlavor.HGSS).Reverse().ToList();
 
-            var list = MilestonePicker.List([], hgss, new GameFile { Id = File }, new HashSet<string>(), []);
+            var list = MilestonePicker.List([], hgss, new GameFile { Id = File }, new HashSet<string>(), [], null);
 
             Assert.Equal(
             [
@@ -154,7 +154,7 @@ namespace ShinyBotHunter.Tests
 
             foreach (var (generated, count, huntable) in versions)
             {
-                var list = MilestonePicker.List(generated, [], new GameFile { Id = File }, new HashSet<string>(), []);
+                var list = MilestonePicker.List(generated, [], new GameFile { Id = File }, new HashSet<string>(), [], null);
 
                 Assert.Equal(count, list.Count);
                 Assert.Equal(generated.Select(m => m.Id).Order(), list.Select(e => e.Id).Order());
@@ -170,12 +170,12 @@ namespace ShinyBotHunter.Tests
             var fileB = new GameFile { Id = "B" };
             var assigned = new HashSet<string> { "X" };
 
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, assigned, []).Select(e => e.Id));
-            Assert.Equal(["Y"], MilestonePicker.List([], phases, fileB, assigned, []).Select(e => e.Id));
+            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, assigned, [], null).Select(e => e.Id));
+            Assert.Equal(["Y"], MilestonePicker.List([], phases, fileB, assigned, [], null).Select(e => e.Id));
 
             fileA.Assigned.Clear();
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, new HashSet<string>(), []).Select(e => e.Id));
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileB, new HashSet<string>(), []).Select(e => e.Id));
+            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, new HashSet<string>(), [], null).Select(e => e.Id));
+            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileB, new HashSet<string>(), [], null).Select(e => e.Id));
         }
 
         [Fact]
@@ -187,9 +187,9 @@ namespace ShinyBotHunter.Tests
             var fileB = new GameFile { Id = "B" };
             var unlinked = new GameFile { Id = "A" };
 
-            var listA = MilestonePicker.List(generated, phases, fileA, new HashSet<string>(), []);
-            var listB = MilestonePicker.List(generated, phases, fileB, new HashSet<string>(), []);
-            var before = MilestonePicker.List(generated, phases, unlinked, new HashSet<string>(), []);
+            var listA = MilestonePicker.List(generated, phases, fileA, new HashSet<string>(), [], null);
+            var listB = MilestonePicker.List(generated, phases, fileB, new HashSet<string>(), [], null);
+            var before = MilestonePicker.List(generated, phases, unlinked, new HashSet<string>(), [], null);
 
             Assert.DoesNotContain(listA, e => e.Id == "1-4 Route 30");
             Assert.Contains(listA, e => e.Id == "1-8 Route 32");
@@ -208,8 +208,8 @@ namespace ShinyBotHunter.Tests
             var plain = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
             var archived = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)], Archived = ["34-land"] };
 
-            var before = MilestonePicker.List(generated, [], plain, new HashSet<string>(), caught);
-            var after = MilestonePicker.List(generated, [], archived, new HashSet<string>(), caught);
+            var before = MilestonePicker.List(generated, [], plain, new HashSet<string>(), caught, null);
+            var after = MilestonePicker.List(generated, [], archived, new HashSet<string>(), caught, null);
 
             Assert.True(after.Single(e => e.Id == "34-land").Archived);
             Assert.Equal(before.Single(e => e.Id == "34-land") with { Archived = true }, after.Single(e => e.Id == "34-land"));
@@ -227,13 +227,31 @@ namespace ShinyBotHunter.Tests
             var replacement = new Anchor(34, 546, 300, 2, 0);
             var replaced = new GameFile { Id = File, Anchors = [new MilestoneAnchor("34-land", replacement, Direction.Left)] };
 
-            var before = MilestonePicker.List(generated, [Phase("X")], new GameFile { Id = File }, new HashSet<string>(), []);
-            var after = MilestonePicker.List(generated, [Phase("X")], replaced, new HashSet<string>(), []);
+            var before = MilestonePicker.List(generated, [Phase("X")], new GameFile { Id = File }, new HashSet<string>(), [], null);
+            var after = MilestonePicker.List(generated, [Phase("X")], replaced, new HashSet<string>(), [], null);
 
             Assert.Equal((new Anchor(34, 547, 304, 0, 6), false), (before.Single(e => e.Id == "34-land").Anchor, before.Single(e => e.Id == "34-land").AnchorSet));
             Assert.Equal((replacement, true), (after.Single(e => e.Id == "34-land").Anchor, after.Single(e => e.Id == "34-land").AnchorSet));
             Assert.Equal((null, false), (before.Single(e => e.Id == "X").Anchor, before.Single(e => e.Id == "X").AnchorSet));
             Assert.Equal(before.Where(e => e.Id != "34-land"), after.Where(e => e.Id != "34-land"));
+        }
+
+        // FR-21 (#567): the owner's HG-Headbutt ID (15613, 35374) wanting Heracross gets the file's Azalea tree; no ID, no anchor.
+        [Fact]
+        public void List_HeadbuttMilestone_AnchorIsTheFilesTree()
+        {
+            const int heracross = 214;
+            const uint ownersId = 2318286077;
+            var generated = Hgss[RomVersion.HeartGold];
+            var azalea = generated.Single(m => m.Id == "74-headbutt");
+            var file = new GameFile { Id = File, Entries = [new GoalEntry(heracross, null, 1)] };
+
+            var entry = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], ownersId).Single(e => e.Id == "74-headbutt");
+            var noId = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], null).Single(e => e.Id == "74-headbutt");
+
+            Assert.NotNull(entry.Anchor);
+            Assert.Equal((HeadbuttTrees.AnchorFor(azalea, ownersId, new HashSet<int> { heracross })!.Anchor, false), (entry.Anchor, entry.AnchorSet));
+            Assert.Equal((null, false), (noId.Anchor, noId.AnchorSet));
         }
 
         [Fact]
@@ -246,7 +264,7 @@ namespace ShinyBotHunter.Tests
                 Order = [new MilestoneLabel("Alpha", "1-10"), new MilestoneLabel("Echo", "1-4"), new MilestoneLabel("Bravo", "2-2c")]
             };
 
-            var list = MilestonePicker.List([], phases, file, new HashSet<string>(), []);
+            var list = MilestonePicker.List([], phases, file, new HashSet<string>(), [], null);
 
             Assert.Equal(["Echo", "Alpha", "Bravo", "Charlie", "Delta"], list.Select(e => e.Name));
             Assert.Equal(["1-4", "1-10", "2-2c", null, null], list.Select(e => e.Order));
@@ -258,7 +276,7 @@ namespace ShinyBotHunter.Tests
             var generated = Hgss[RomVersion.SoulSilver];
             var file = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
 
-            bool Complete(List<CaughtPokemon> caught) => MilestonePicker.List(generated, [], file, new HashSet<string>(), caught).Single(e => e.Id == "34-land").Complete;
+            bool Complete(List<CaughtPokemon> caught) => MilestonePicker.List(generated, [], file, new HashSet<string>(), caught, null).Single(e => e.Id == "34-land").Complete;
 
             Assert.False(Complete([]));
             Assert.False(Complete([Caught("Pidgey", Pidgey, "pidgey", "Pokemon HeartGold")]));

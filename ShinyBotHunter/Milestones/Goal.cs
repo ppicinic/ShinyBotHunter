@@ -30,11 +30,14 @@ namespace ShinyBotHunter.Milestones
         public List<string> CountedPhases(string milestoneId)
             => [milestoneId, .. Links.Where(l => l.MilestoneId == milestoneId).Select(l => l.Phase)];
 
-        // FR-22 and FR-23: the file's replacement, else the generated anchor with the facing the bot has, else null, which is
-        // hunted where the bot stands.
-        public MilestoneAnchor? AnchorFor(string milestone, Milestone? generated)
+        // FR-21 to FR-23: the file's replacement, else the generated land anchor with the facing the bot has, else for a headbutt
+        // milestone with the trainer ID the file's tree for the species still wanted, else null, which is hunted where the bot stands.
+        public MilestoneAnchor? AnchorFor(string milestone, Milestone? generated, uint? trainerId, IReadOnlyList<CaughtPokemon> caught)
             => Anchors.FirstOrDefault(a => a.Milestone == milestone)
-                ?? (generated?.Anchor is { } anchor ? new MilestoneAnchor(milestone, anchor, Direction.None) : null);
+                ?? (generated?.Anchor is { } anchor ? new MilestoneAnchor(milestone, anchor, Direction.None) : null)
+                ?? (generated is { Modality: Modality.Headbutt } && trainerId is { } id
+                    ? HeadbuttTrees.AnchorFor(generated, id, MilestoneRows.Build(generated, this, caught).Where(r => r.IsTarget).Select(r => r.Species).ToHashSet())
+                    : null);
     }
 
     // A wanted species in any form (FormCode null) or in one form, at Amount; an amount of 0 is a row that is never a target.

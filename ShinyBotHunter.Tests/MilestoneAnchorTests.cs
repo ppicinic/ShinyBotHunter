@@ -2,13 +2,17 @@ using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
@@ -37,13 +41,13 @@ namespace ShinyBotHunter.Tests
             var replacement = new MilestoneAnchor("34-land", new Anchor(34, 546, 300, 0, 0), Direction.Left);
             var file = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("33-land", new Anchor(33, 1, 2, 0, 0), Direction.Up), replacement] };
 
-            Assert.Equal(replacement, file.AnchorFor("34-land", Route30));
+            Assert.Equal(replacement, file.AnchorFor("34-land", Route30, null, []));
         }
 
         [Fact]
         public void AnchorFor_Generated_NoReplacement()
         {
-            Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None), new GameFile().AnchorFor("34-land", Route30));
+            Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None), new GameFile().AnchorFor("34-land", Route30, null, []));
         }
 
         // The acceptance "a custom milestone with no anchor starts where the bot stands": null, and UseAnchor changes nothing.
@@ -52,8 +56,8 @@ namespace ShinyBotHunter.Tests
         {
             var noGeneratedAnchor = SoulSilver.First(m => m.Modality == Modality.Land && m.Anchor is null);
 
-            Assert.Null(new GameFile().AnchorFor("my custom phase", null));
-            Assert.Null(new GameFile().AnchorFor(noGeneratedAnchor.Id, noGeneratedAnchor));
+            Assert.Null(new GameFile().AnchorFor("my custom phase", null, null, []));
+            Assert.Null(new GameFile().AnchorFor(noGeneratedAnchor.Id, noGeneratedAnchor, null, []));
         }
 
         // FR-42: with no replacement stored, none of production's 20 phases has an anchor, so each is hunted where the bot
@@ -65,7 +69,7 @@ namespace ShinyBotHunter.Tests
                 File.ReadAllText(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Fixtures", "production-phases.json")));
 
             Assert.Equal(20, phases.Count);
-            Assert.All(phases, p => Assert.Null(new GameFile { Id = "file" }.AnchorFor(p.Name, null)));
+            Assert.All(phases, p => Assert.Null(new GameFile { Id = "file" }.AnchorFor(p.Name, null, null, [])));
         }
 
         [Fact]
@@ -218,6 +222,142 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal([EventState.Waiting], state.State);
             Assert.Contains("Route 30 · grass: no path to the anchor (547, 304).", output.ToString());
+        }
+
+        // FR-21 (#567). Two regular trees: for a trainer ID ending in 0, tree 0 gives the common table and tree 1 the rare one
+        // (sRareTreeLUT_2); tree 0's stand is the cheaper.
+        private const int CommonSpecies = 1, RareSpecies = 2;
+        private const uint OwnersId = 2318286077;
+
+        private static Milestone TwoTrees() => new([1], Modality.Headbutt, false,
+            [new Slot(0, CommonSpecies, 1, 1, 100, SlotCondition.CommonTree), new Slot(1, RareSpecies, 1, 1, 100, SlotCondition.RareTree)],
+            [new HeadbuttTree(false, [[0, 0]], new Anchor(1, 0, 1, 0, 0), Direction.Up, 10), new HeadbuttTree(false, [[5, 0]], new Anchor(1, 5, 1, 0, 0), Direction.Down, 20)]);
+
+        private static CaughtPokemon CaughtOn(string file, int species)
+            => new() { Pokemon = new PokemonData { Species = (ushort)species }, Phase = "1-headbutt", GameFileName = file };
+
+        [Fact]
+        public void AnchorFor_Headbutt_TheFilesTreeWithItsFacing()
+        {
+            var file = new GameFile { Id = "file", Entries = [new GoalEntry(CommonSpecies, null, 1)] };
+
+            Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 0, 1, 0, 0), Direction.Up), file.AnchorFor("1-headbutt", TwoTrees(), 10, []));
+        }
+
+        // FR-42: a stored replacement comes back whatever the ID.
+        [Fact]
+        public void AnchorFor_Headbutt_ReplacementWins()
+        {
+            var replacement = new MilestoneAnchor("1-headbutt", new Anchor(1, 9, 9, 0, 0), Direction.Left);
+            var file = new GameFile { Id = "file", Anchors = [replacement] };
+
+            Assert.Equal(replacement, file.AnchorFor("1-headbutt", TwoTrees(), null, []));
+            for (uint digit = 0; digit < 10; digit++)
+            {
+                Assert.Equal(replacement, file.AnchorFor("1-headbutt", TwoTrees(), digit, []));
+            }
+        }
+
+        // No ID, no tree: hunted where the bot stands.
+        [Fact]
+        public void AnchorFor_Headbutt_NoTrainerId_Null()
+        {
+            Assert.Null(new GameFile { Id = "file" }.AnchorFor("1-headbutt", TwoTrees(), null, []));
+        }
+
+        [Fact]
+        public void AnchorFor_Headbutt_CaughtTargetChangesTheKind()
+        {
+            var file = new GameFile { Id = "file", Entries = [new GoalEntry(CommonSpecies, null, 1), new GoalEntry(RareSpecies, null, 1)] };
+
+            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [])!.Anchor.X);
+            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [CaughtOn("another file", CommonSpecies)])!.Anchor.X);
+            Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 5, 1, 0, 0), Direction.Down),
+                file.AnchorFor("1-headbutt", TwoTrees(), 10, [CaughtOn("file", CommonSpecies)]));
+        }
+
+        [Fact]
+        public void AnchorFor_Land_Unchanged()
+        {
+            Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None),
+                new GameFile { Id = "file" }.AnchorFor("34-land", Route30, OwnersId, [CaughtOn("file", 16)]));
+        }
+
+        // FR-42: a stored phase (generated null), a replacement or a land milestone reads no trainer ID; only a generated
+        // headbutt milestone with no replacement does, in a single leg or as one stop of a plan.
+        [Fact]
+        public void NeedsTrainerId_OnlyAGeneratedHeadbuttWithNoReplacement()
+        {
+            var replaced = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("1-headbutt", new Anchor(1, 9, 9, 0, 0), Direction.Left)] };
+
+            Assert.True(BotService.NeedsTrainerId([TwoTrees()], new GameFile { Id = "file" }));
+            Assert.True(BotService.NeedsTrainerId([Route30, null, TwoTrees()], new GameFile { Id = "file" }));
+            Assert.False(BotService.NeedsTrainerId([TwoTrees()], replaced));
+            Assert.False(BotService.NeedsTrainerId([null], new GameFile { Id = "file" }));
+            Assert.False(BotService.NeedsTrainerId([Route30], new GameFile { Id = "file" }));
+        }
+
+        private static readonly HgssPointerService Table = new();
+        private const uint FieldSystem = 0x02300000;
+        private const uint SaveData = 0x0227C254;
+
+        [Fact]
+        public async Task ReadTrainerId_FourBytesThroughTheSaveData()
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(Table.Anchor, BitConverter.GetBytes(FieldSystem));
+            memory.Place(FieldSystem + 0x0C, BitConverter.GetBytes(SaveData));
+            memory.Place(SaveData + 0x84, BitConverter.GetBytes((ushort)15613));
+            memory.Place(SaveData + 0x86, BitConverter.GetBytes((ushort)35374));
+
+            uint? id = await BotService.ReadTrainerIdAsync(memory, Table, CancellationToken.None);
+
+            Assert.Equal(OwnersId, id);
+            var (blocks, _) = Assert.Single(memory.ChainReads);
+            ChainBlockRequest block = Assert.Single(blocks);
+            Assert.Equal(Table.Anchor, block.Anchor);
+            Assert.Equal([0x0C, 0x84], block.Hops);
+            Assert.Equal(4, block.Length);
+        }
+
+        // The title screen: no save data, no ID, no exception.
+        [Fact]
+        public async Task ReadTrainerId_NullSaveData_Null()
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(Table.Anchor, BitConverter.GetBytes(FieldSystem));
+
+            Assert.Null(await BotService.ReadTrainerIdAsync(memory, Table, CancellationToken.None));
+        }
+
+        private static PokemonState Party(params uint[] otIds)
+        {
+            var party = new PokemonState { PartySize = otIds.Length };
+            for (int i = 0; i < otIds.Length; i++) party.PartyPokemon[i] = new PokemonData { OTId = otIds[i] };
+            return party;
+        }
+
+        [Fact]
+        public void CrossCheckTrainerId_OwnPokemonMatches_Compared()
+        {
+            Assert.Equal((true, (string?)null), BotService.CrossCheckTrainerId(OwnersId, Party(12345u << 16 | 999, OwnersId)));
+        }
+
+        // A wrong high half: the party's own Pokémon has the visible ID but another full ID.
+        [Fact]
+        public void CrossCheckTrainerId_FullIdDiffers_RefusesNamingBoth()
+        {
+            uint party = 1u << 16 | 15613;
+
+            Assert.Equal((true, "The trainer ID read as 2318286077, but a party Pokémon with the visible ID 15613 has the full ID 81149; "
+                + "no headbutt tree can be chosen until the read is fixed."), BotService.CrossCheckTrainerId(OwnersId, Party(OwnersId, party)));
+        }
+
+        // Only traded Pokémon (another visible ID): nothing to compare, so Start goes on and logs it.
+        [Fact]
+        public void CrossCheckTrainerId_NoOwnPokemon_NotCompared()
+        {
+            Assert.Equal((false, (string?)null), BotService.CrossCheckTrainerId(OwnersId, Party(35374u << 16 | 15614, 7)));
         }
     }
 }

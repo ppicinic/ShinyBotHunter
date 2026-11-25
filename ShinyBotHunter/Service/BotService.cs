@@ -5,6 +5,7 @@ using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Context;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
@@ -12,6 +13,7 @@ using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
 using static ShinyBotHunter.Service.PhaseInfoService;
@@ -331,7 +333,7 @@ namespace ShinyBotHunter.Service
             {
                 lead = await WildRefusalAsync(bot);
             }
-            await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
+            PokemonState? party = await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             EventLeg leg;
             MilestoneAnchor? anchor;
             HuntPlanRun? run = null;
@@ -339,7 +341,8 @@ namespace ShinyBotHunter.Service
             {
                 leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
                 var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile);
+                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [generated], party);
+                (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
             }
             else
             {
@@ -350,11 +353,12 @@ namespace ShinyBotHunter.Service
                     return (p.Generated, Leg: ValidateAndBuildLeg(legArgs, bot.GameFileName, bot.GameFlavor));
                 }).ToList();
                 var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, planLegs.Select(p => p.Generated), party);
                 var reach = new List<(string Name, MilestoneAnchor? Anchor)>();
                 var stops = new Dictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)>();
                 foreach (var (stopGenerated, planLeg) in planLegs)
                 {
-                    var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile);
+                    var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile, trainerId, caught);
                     string name = stopGenerated?.Name ?? stopLeg.PhaseName;
                     reach.Add((name, stopAnchor));
                     if (stopAnchor is not null)
@@ -474,10 +478,11 @@ namespace ShinyBotHunter.Service
         }
 
         // FR-44a, FR-24 and FR-23 for one validated leg on the file: the leg hunted from its anchor, and the anchor, or null.
-        private (EventLeg Leg, MilestoneAnchor? Anchor) AnchoredLeg(IBot bot, EventLeg leg, Milestone? generated, GameFile gameFile)
+        private (EventLeg Leg, MilestoneAnchor? Anchor) AnchoredLeg(IBot bot, EventLeg leg, Milestone? generated, GameFile gameFile,
+            uint? trainerId, IReadOnlyList<CaughtPokemon> caught)
         {
             RefuseLinked(bot, gameFile, leg.PhaseName);
-            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated);
+            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated, trainerId, caught);
             if (anchor is not null && generated is { Modality: Modality.Land }
                 && AnchorTileStop(generated, anchor.Anchor, bot.Profile.Maps!, bot.Profile.LandTileKind!(generated)) is { } notOfTheKind)
             {
@@ -487,9 +492,64 @@ namespace ShinyBotHunter.Service
             {
                 leg = leg with { EncounterParams = AnchorLeg(leg.EncounterParams, anchor.Anchor) };
                 Console.WriteLine($"[BotService] {generated?.Name ?? leg.PhaseName}: hunting from the anchor map {anchor.Anchor.Map} ({anchor.Anchor.X}, {anchor.Anchor.Y}), "
-                    + $"{HowHunted(leg.EncounterParams)} ({(anchor.Facing == Direction.None ? "generated" : "set on this file")})");
+                    + $"{HowHunted(leg.EncounterParams)} ({(gameFile.Anchors.Any(a => a.Milestone == leg.PhaseName) ? "set on this file" : "generated")})");
+            }
+            else if (generated is { Modality: Modality.Headbutt })
+            {
+                Console.WriteLine($"[BotService] {generated.Name}: no generated headbutt stand for this file; hunting where the bot stands");
             }
             return (leg, anchor);
+        }
+
+        internal const string TrainerIdUnreadable = "The trainer ID could not be read; start the hunt once the game is in the field.";
+
+        // FR-21 and FR-42: the trainer ID and the catches are read only when a leg is a generated headbutt milestone with no
+        // replacement on the file. A stored phase's generated milestone is null (RefuseMilestone), so it reads nothing new.
+        internal static bool NeedsTrainerId(IEnumerable<Milestone?> generated, GameFile gameFile)
+            => generated.Any(m => m is { Modality: Modality.Headbutt } && gameFile.Anchors.All(a => a.Milestone != m.Id));
+
+        // The ID is a local of this Start, never kept. The party is the one the Headbutt check read, which a headbutt leg
+        // always has.
+        private async Task<(uint? TrainerId, IReadOnlyList<CaughtPokemon> Caught)> HeadbuttTreeInputsAsync(IBot bot, GameFile gameFile,
+            IEnumerable<Milestone?> generated, PokemonState? party)
+        {
+            if (!NeedsTrainerId(generated, gameFile))
+            {
+                return (null, []);
+            }
+            uint trainerId = await ReadTrainerIdAsync(bot, (HgssPointerService)bot.Addresses, CancellationToken.None)
+                ?? throw new InvalidOperationException(TrainerIdUnreadable);
+            var (compared, refusal) = CrossCheckTrainerId(trainerId, party!);
+            if (refusal is not null)
+            {
+                throw new InvalidOperationException(refusal);
+            }
+            Console.WriteLine($"[BotService] Trainer ID {trainerId} (visible {(ushort)trainerId}), "
+                + (compared ? "matching the party's own Pokémon" : "not cross-checked: no party Pokémon has the visible ID"));
+            return (trainerId, await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor));
+        }
+
+        // The full 32-bit trainer ID (profile->id), 4 bytes at [[FieldSystem + 0x0C] + 0x84]: the visible ID in the low half
+        // (observed, HgssPrimoEggEvent.ReadTrainerIdAsync), the secret ID in the high half, which is from the source, not
+        // observed. Null when the chain does not read, as at the title screen.
+        internal static async Task<uint?> ReadTrainerIdAsync(IMemoryClient memory, HgssPointerService addresses, CancellationToken ct)
+        {
+            ChainBlockResult read = (await memory.ReadChainBlocksAsync(
+                new[] { new ChainBlockRequest(addresses.Anchor, new[] { addresses.SaveDataOffset, addresses.TrainerIdOffset }, 4) }, ct: ct))[0];
+            return read.Status == ChainBlockStatus.Ok ? BitConverter.ToUInt32(read.Bytes, 0) : null;
+        }
+
+        // The check of the unobserved high half: a party Pokémon whose OT ID has the read ID's visible half is the player's own,
+        // so its full OT ID (decoded by the party parser, which shiny detection relies on) must be the read ID. Compared is
+        // false when no party Pokémon has the visible half (traded ones and eggs with another OT are skipped); Refusal names
+        // both values when one differs.
+        internal static (bool Compared, string? Refusal) CrossCheckTrainerId(uint trainerId, PokemonState party)
+        {
+            var own = party.PartyPokemon.Take(party.PartySize).Select(p => p!.OTId).Where(ot => (ushort)ot == (ushort)trainerId).ToList();
+            uint? differing = own.Where(ot => ot != trainerId).Select(ot => (uint?)ot).FirstOrDefault();
+            return (own.Count > 0, differing is { } ot
+                ? $"The trainer ID read as {trainerId}, but a party Pokémon with the visible ID {(ushort)trainerId} has the full ID {ot}; no headbutt tree can be chosen until the read is fixed."
+                : null);
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
@@ -950,13 +1010,14 @@ namespace ShinyBotHunter.Service
 
         /// <summary>
         /// Throws the Headbutt reason, then the Pickup reason, for the checks asked for. A fresh read,
-        /// not the cached one, which may predate a party change; no read when neither is asked.
+        /// not the cached one, which may predate a party change; no read when neither is asked. The party read, never null
+        /// once either check passed.
         /// </summary>
-        private async Task RefuseFromFreshPartyAsync(IBot bot, bool headbutt, bool pickup)
+        private async Task<PokemonState?> RefuseFromFreshPartyAsync(IBot bot, bool headbutt, bool pickup)
         {
             if (!headbutt && !pickup)
             {
-                return;
+                return null;
             }
             PokemonState? party = await ReadPartyAsync(bot);
             if (headbutt && HeadbuttRefusal(party) is { } headbuttReason)
@@ -967,6 +1028,7 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException(pickupReason);
             }
+            return party;
         }
 
         // FR-15a: a generated milestone no EncounterType hunts (surf, the rods, rock smash) is refused before anything is read. A
@@ -1042,9 +1104,13 @@ namespace ShinyBotHunter.Service
                 ? versionMilestones
                 : [];
             var gameFileDao = provider.GetRequiredService<MongoGameFileDao>();
+            // FR-21: the 4-byte read alone, no party read; a failed read (the title screen) gives no headbutt anchor.
+            uint? trainerId = bot.Profile.Capabilities.HasHeadbuttTrees
+                ? await ReadTrainerIdAsync(bot, (HgssPointerService)bot.Addresses, CancellationToken.None)
+                : null;
             var list = MilestonePicker.List(generated, provider.GetRequiredService<PhaseInfoService>().GetAllPhases([bot.GameFlavor])[bot.GameFlavor],
                 await gameFileDao.LoadAsync(bot.GameFileName), await gameFileDao.AssignedPhasesAsync(),
-                await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor));
+                await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor), trainerId);
             return new BotMilestones(bot.GameFileName, list);
         }
 
