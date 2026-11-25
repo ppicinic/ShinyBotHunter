@@ -477,7 +477,7 @@ namespace ShinyBotHunter.Service
         private (EventLeg Leg, MilestoneAnchor? Anchor) AnchoredLeg(IBot bot, EventLeg leg, Milestone? generated, GameFile gameFile)
         {
             RefuseLinked(bot, gameFile, leg.PhaseName);
-            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated);
+            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated, null, []);
             if (anchor is not null && generated is { Modality: Modality.Land }
                 && AnchorTileStop(generated, anchor.Anchor, bot.Profile.Maps!, bot.Profile.LandTileKind!(generated)) is { } notOfTheKind)
             {
@@ -1044,7 +1044,7 @@ namespace ShinyBotHunter.Service
             var gameFileDao = provider.GetRequiredService<MongoGameFileDao>();
             var list = MilestonePicker.List(generated, provider.GetRequiredService<PhaseInfoService>().GetAllPhases([bot.GameFlavor])[bot.GameFlavor],
                 await gameFileDao.LoadAsync(bot.GameFileName), await gameFileDao.AssignedPhasesAsync(),
-                await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor));
+                await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor), null);
             return new BotMilestones(bot.GameFileName, list);
         }
 

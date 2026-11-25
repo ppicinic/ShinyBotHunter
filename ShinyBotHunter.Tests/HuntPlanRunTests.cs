@@ -379,7 +379,7 @@ namespace ShinyBotHunter.Tests
         private static (string Name, MilestoneAnchor? Anchor) Stop(string id)
         {
             Milestone milestone = Find(RomVersion.SoulSilver, id);
-            return (milestone.Name, new GameFile().AnchorFor(id, milestone));
+            return (milestone.Name, new GameFile().AnchorFor(id, milestone, null, []));
         }
 
         private static readonly (int Map, int X, int Y, Direction Facing) OnRoute32sAnchor = (36, 458, 339, Direction.Down);
@@ -419,7 +419,7 @@ namespace ShinyBotHunter.Tests
             var stops = plan.Milestones.Select(id =>
             {
                 Milestone? milestone = PhaseTarget.FindMilestone(milestones, version, id);
-                return (milestone!.Name, new GameFile { Id = $"{version}.nds" }.AnchorFor(id, milestone));
+                return (milestone!.Name, new GameFile { Id = $"{version}.nds" }.AnchorFor(id, milestone, null, []));
             }).ToList();
 
             Assert.All(stops, s => Assert.NotNull(s.Item2));

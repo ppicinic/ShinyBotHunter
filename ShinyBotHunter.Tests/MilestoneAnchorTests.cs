@@ -37,13 +37,13 @@ namespace ShinyBotHunter.Tests
             var replacement = new MilestoneAnchor("34-land", new Anchor(34, 546, 300, 0, 0), Direction.Left);
             var file = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("33-land", new Anchor(33, 1, 2, 0, 0), Direction.Up), replacement] };
 
-            Assert.Equal(replacement, file.AnchorFor("34-land", Route30));
+            Assert.Equal(replacement, file.AnchorFor("34-land", Route30, null, []));
         }
 
         [Fact]
         public void AnchorFor_Generated_NoReplacement()
         {
-            Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None), new GameFile().AnchorFor("34-land", Route30));
+            Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None), new GameFile().AnchorFor("34-land", Route30, null, []));
         }
 
         // The acceptance "a custom milestone with no anchor starts where the bot stands": null, and UseAnchor changes nothing.
@@ -52,8 +52,8 @@ namespace ShinyBotHunter.Tests
         {
             var noGeneratedAnchor = SoulSilver.First(m => m.Modality == Modality.Land && m.Anchor is null);
 
-            Assert.Null(new GameFile().AnchorFor("my custom phase", null));
-            Assert.Null(new GameFile().AnchorFor(noGeneratedAnchor.Id, noGeneratedAnchor));
+            Assert.Null(new GameFile().AnchorFor("my custom phase", null, null, []));
+            Assert.Null(new GameFile().AnchorFor(noGeneratedAnchor.Id, noGeneratedAnchor, null, []));
         }
 
         // FR-42: with no replacement stored, none of production's 20 phases has an anchor, so each is hunted where the bot
@@ -65,7 +65,7 @@ namespace ShinyBotHunter.Tests
                 File.ReadAllText(Path.Combine(RepoPaths.Root, "ShinyBotHunter.Tests", "Fixtures", "production-phases.json")));
 
             Assert.Equal(20, phases.Count);
-            Assert.All(phases, p => Assert.Null(new GameFile { Id = "file" }.AnchorFor(p.Name, null)));
+            Assert.All(phases, p => Assert.Null(new GameFile { Id = "file" }.AnchorFor(p.Name, null, null, [])));
         }
 
         [Fact]
