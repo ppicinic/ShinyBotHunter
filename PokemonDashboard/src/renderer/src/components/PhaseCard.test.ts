@@ -121,6 +121,18 @@ describe('PhaseCard', () => {
 
     expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
   })
+
+  it('keeps the table when every shown row is at a zero share and a hidden one has the share', () => {
+    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true }), row('#19', null, { name: 'Rattata', share: 0 })], 1)
+
+    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
+  })
+
+  it('says there are no Pokémon when every row is hidden', () => {
+    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true })], 1)
+
+    expect([html.includes('<table'), html.includes('No Pokémon defined for this milestone.')]).toEqual([false, true])
+  })
 })
 
 describe('phaseCardRows', () => {

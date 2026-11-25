@@ -193,8 +193,8 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       </div>
 
       <div ref={bodyRef} className="flex-1 overflow-hidden px-2 py-1">
-        {/* A Repel that blocks every species leaves no row at a share: the table stays, empty */}
-        {rows.length === 0 && survive !== 0 ? (
+        {/* A milestone whose shown rows are all at a zero share now keeps its table, empty */}
+        {rows.length === 0 && !(milestone?.rows.some((r) => !r.hidden) ?? false) ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
             {notFound
               ? `Milestone "${phase}" was not found.`

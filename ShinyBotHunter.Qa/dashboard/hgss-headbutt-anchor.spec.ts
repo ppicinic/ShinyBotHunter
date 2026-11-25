@@ -8,7 +8,7 @@ import {
   startFrame, startWild, subscribe, teardown, teachMove, TRAINER_ID, writeLeadExtension, type Frame
 } from './milestones'
 
-// #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6; B1h-c) and a headbutt card with no Share column.
+// #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6; B1h-c) and a headbutt card with no share.
 const HANDLE = 'HG-Headbutt2'
 const HEADBUTT = '36-headbutt'
 const CARD = `HGSS — ${HEADBUTT} (${HANDLE})`

@@ -26,11 +26,11 @@ const TABLE: Record<string, Record<number, number>> = {
 // (morning, night); the radio's species never have a share (FR-30).
 const REASON: Record<number, string> = { 194: 'night only', 187: 'morning and day only', 41: 'morning and night only' }
 const SOUND: Record<number, string> = { 293: 'needs Hoenn Sound', 264: 'needs Hoenn Sound', 418: 'needs Sinnoh Sound', 399: 'needs Sinnoh Sound' }
-const NAMES: Record<number, string> = { 194: 'wooper', 187: 'hoppip', 41: 'zubat' }
+const NAMES: Record<number, string> = { 194: 'wooper', 187: 'hoppip', 41: 'zubat', 69: 'bellsprout' }
 const CASES = {
   '20': { start: '2026-11-29T19:54:00', boundary: 20, before: 'Day', after: 'Night', live: [194], gone: [187] },
   '4': { start: '2026-11-30T03:54:00', boundary: 4, before: 'Night', after: 'Morning', live: [187], gone: [194] },
-  '10': { start: '2026-11-30T09:54:00', boundary: 10, before: 'Morning', after: 'Day', live: [], gone: [41] }
+  '10': { start: '2026-11-30T09:54:00', boundary: 10, before: 'Morning', after: 'Day', live: [69], gone: [41] }
 } as const
 const DECIDE = /\[Orchestrator\] State: DecideOverworldAction\s*$/
 const FOE = /(\S+), isShiny: (True|False)\s*$/
