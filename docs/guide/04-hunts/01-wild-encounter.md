@@ -100,7 +100,7 @@ A plan is saved by name and shared by every HeartGold and SoulSilver game file. 
 - **Rules, first match wins**: each rule has **When** (Morning, Day, Night), **Days** (Su to Sa) and **Go to**, a milestone. The first rule, from the top, whose time and day both match the game's clock is hunted. A rule with no When chip on matches any time, and one with no Days chip on matches any day; the editor says so beside the row.
 - The game's time of day: morning 4:00 to 10:00, day 10:00 to 20:00, night 20:00 to 4:00.
 
-At each decision between encounters the hunt reads the game's clock. When the plan names another milestone, the bot walks to that milestone's anchor and hunts there, from the next decision after the rule stops matching. A milestone already complete on the game file is skipped. When the default is complete and no rule matches the hour, the hunt ends.
+At each decision between encounters the hunt reads the game's clock. When the plan names another milestone, the bot walks to that milestone's anchor and hunts there, from the next decision after the rule stops matching. A milestone already complete on the game file is skipped. When the default is complete and no rule matches the hour, the first rule from the top whose milestone is not complete is hunted, whatever its When and Days. The hunt ends only when every milestone of the plan is complete.
 
 ### Make, change, rename or delete a plan
 
@@ -218,7 +218,7 @@ Catch it first. On **Resume** the bot looks in your party and boxes. If the Pok�
 
 ## How does it stop?
 
-- **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough. With a [hunt plan](#hunt-plans-move-by-the-in-game-clock), it finishes when the default milestone is complete and no rule names a milestone still needed at this hour.
+- **It finishes.** The milestone's shiny Pokémon are all caught in this game file, and any Target Level is reached. The bot walks home and the hunt completes. With NoTarget, reaching the Target Level is enough. With a [hunt plan](#hunt-plans-move-by-the-in-game-clock), it finishes only when every milestone of the plan is complete.
 - **It finishes where it stands.** It could not find a way home, or a way to a Pokémon Center.
 - **It waits for you.** It found a Pokémon you are hunting for (see above). Or the Pokémon fighting fainted: take over in the emulator, then press **Resume**. Or the game stopped changing for too long while the bot waited for it. Or your character is off the run line, or off the tile it turns on. Or the field stayed locked for 15 s with no battle. Or it found no way to the milestone's anchor. Or, with Headbutt, the tree gave no Pokémon, there was no headbutt tree in front of you, or the bot could not get you back to the tile you started on. Or, with Pickup, a Pokémon still held an item after a trip, or a step of the trip took too long (see [If it stops early](#if-it-stops-early)).
 - **You cancel it** from the dashboard, as [the dashboard page](../03-dashboard.md) describes.
