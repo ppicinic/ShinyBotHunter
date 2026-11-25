@@ -236,6 +236,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(before.Where(e => e.Id != "34-land"), after.Where(e => e.Id != "34-land"));
         }
 
+        // FR-21 (#567): the owner's HG-Headbutt ID (15613, 35374) wanting Heracross gets the file's Azalea tree; no ID, no anchor.
+        [Fact]
+        public void List_HeadbuttMilestone_AnchorIsTheFilesTree()
+        {
+            const int heracross = 214;
+            const uint ownersId = 2318286077;
+            var generated = Hgss[RomVersion.HeartGold];
+            var azalea = generated.Single(m => m.Id == "74-headbutt");
+            var file = new GameFile { Id = File, Entries = [new GoalEntry(heracross, null, 1)] };
+
+            var entry = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], ownersId).Single(e => e.Id == "74-headbutt");
+            var noId = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], null).Single(e => e.Id == "74-headbutt");
+
+            Assert.NotNull(entry.Anchor);
+            Assert.Equal((HeadbuttTrees.AnchorFor(azalea, ownersId, new HashSet<int> { heracross })!.Anchor, false), (entry.Anchor, entry.AnchorSet));
+            Assert.Equal((null, false), (noId.Anchor, noId.AnchorSet));
+        }
+
         [Fact]
         public void Picker_Order_LabelsFirstNaturalThenName()
         {
