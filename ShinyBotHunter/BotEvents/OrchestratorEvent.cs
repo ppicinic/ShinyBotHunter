@@ -3,11 +3,13 @@ using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -402,6 +404,12 @@ namespace ShinyBotHunter.BotEvents
             // thrown away every time.
             var pokeState = await reader.GetPartyState(state.Bot);
             var lead = pokeState.PartyPokemon[0]!;
+            // FR-26 on HGSS, in one request beside the party read; RS's counter is B3r's.
+            if (state.Bot.Addresses is HgssPointerService)
+            {
+                (int weekday, int hour, int? repelSteps) = await ((HgssFieldSystemStateReader)state.Bot.State).ReadClockAndRepelAsync(cancellationToken);
+                state.RatesSeen = RateInputs.Of(weekday, hour, repelSteps, pokeState);
+            }
             bool training = state.TrainType != TrainType.None;
 
             // No battle is in flight here, so a switch that aborted mid-encounter can't leak into the next one.
