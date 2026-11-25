@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Dispatch } from 'react'
-import type { AdminMetadata, EmulatorState, EventArgumentOptions, PartySlotInfo } from '../../types/api'
+import type { BotMilestones, EventArgumentOptions, PartySlotInfo } from '../../types/api'
 import { requiredParamsFilled } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
 import type { BotPositionsAction } from './botPositions'
@@ -8,8 +8,8 @@ import type { BotPositionsAction } from './botPositions'
 export function EmulatorCard({
   pos,
   name,
-  emState,
-  metadata,
+  milestones,
+  onMilestonesChanged,
   actions: availableActions,
   params: posParams,
   legs: posLegs,
@@ -27,8 +27,8 @@ export function EmulatorCard({
 }: {
   pos: number
   name: string
-  emState: EmulatorState | undefined
-  metadata: AdminMetadata | null
+  milestones: BotMilestones | undefined
+  onMilestonesChanged: () => void
   actions: EventArgumentOptions[]
   params: Record<string, Record<string, string>>
   legs: Record<string, Record<string, string>[]>
@@ -45,8 +45,7 @@ export function EmulatorCard({
   feedback: JSX.Element | null
 }): JSX.Element {
   const selectedActionName = selected ?? availableActions[0]?.name
-  const gameName = emState ? emState.gameFlavor : ''
-  const availablePhases = gameName ? (metadata?.games[gameName]?.phases ?? []) : []
+  const availablePhases = milestones?.milestones ?? []
   return (
     <li
       data-testid={`emulator-card-${pos}`}
@@ -151,6 +150,8 @@ export function EmulatorCard({
                         params={leg}
                         onChange={(param, value) => dispatch({ type: 'legParamChanged', pos, actionName: action.name, legIndex, param, value })}
                         availablePhases={availablePhases}
+                        gameFileName={milestones?.gameFileName}
+                        onMilestonesChanged={onMilestonesChanged}
                         party={party}
                         onReloadParty={onReloadParty}
                         partyLoading={partyLoading}
@@ -163,6 +164,8 @@ export function EmulatorCard({
                     params={params}
                     onChange={(param, value) => dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })}
                     availablePhases={availablePhases}
+                    gameFileName={milestones?.gameFileName}
+                    onMilestonesChanged={onMilestonesChanged}
                     party={party}
                     onReloadParty={onReloadParty}
                     partyLoading={partyLoading}
