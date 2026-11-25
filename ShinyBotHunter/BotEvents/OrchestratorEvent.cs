@@ -53,11 +53,14 @@ namespace ShinyBotHunter.BotEvents
         private readonly MilestoneAnchor? anchor;
         // True from the Init that walks to the anchor until that walk ends; one orchestrator runs one bot loop in sequence, no lock.
         private bool walkingToAnchor;
+        // The saved plan the hunt moves by (FR-33), or null; its own fields say how they are protected.
+        private readonly HuntPlanRun? plan;
 
-        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null)
+        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null, HuntPlanRun? plan = null)
         {
             this.encounterParams = encounterParams;
             this.anchor = anchor;
+            this.plan = plan;
             this.provider = provider;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
@@ -95,11 +98,14 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Orchestrator] State: {topState}");
                 if(topState == EventState.DecideOverworldAction)
                 {
-                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken);
+                    // With a plan, the step's answer sets walkingToAnchor: true from the walk it starts until that walk ends.
+                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken,
+                        plan is null ? null : async s => walkingToAnchor = await plan.StepAsync(s,
+                            m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState, cancellationToken));
                 }
                 else if(topState == EventState.Encountering)
                 {
-                    await BuildEncounter(state.Bot, encounterParams).ExecuteAsync(state, cancellationToken);
+                    await BuildEncounter(state.Bot, plan?.Stops[state.Milestone].Leg.EncounterParams ?? encounterParams).ExecuteAsync(state, cancellationToken);
                 }
                 else if(topState == EventState.BattleStart)
                 {
@@ -122,8 +128,14 @@ namespace ShinyBotHunter.BotEvents
                     await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
                     if (walkingToAnchor)
                     {
-                        walkingToAnchor = AnchorWalkGoesOn(state, anchor!.Anchor, PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
-                            provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone);
+                        walkingToAnchor = plan?.Pending is { } next
+                            ? AnchorWalkGoesOn(state, plan.Stops[next].Anchor.Anchor, plan.Stops[next].Name)
+                            : AnchorWalkGoesOn(state, anchor!.Anchor, PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                                provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone);
+                        if (plan is not null && state.State.Peek() == EventState.DecideOverworldAction)
+                        {
+                            plan.WalkEnded = true;
+                        }
                     }
                 }
             }
@@ -301,18 +313,38 @@ namespace ShinyBotHunter.BotEvents
                 // MilestoneComplete is not read for these targets.
                 return;
             }
-            var phaseInfo = phaseInfoService.GetPhaseInfo(state.GameFlavor, state.Milestone);
+            if (plan is null)
+            {
+                state.MilestoneComplete = await IsCompleteAsync(state, state.Milestone);
+                return;
+            }
+            // FR-34: the plan skips a complete stop; read here, at Init, the catch check and the plan's switch of milestone, never
+            // on a decision that keeps its milestone.
+            var complete = new HashSet<string>();
+            foreach (string stop in plan.Stops.Keys)
+            {
+                if (await IsCompleteAsync(state, stop))
+                {
+                    complete.Add(stop);
+                }
+            }
+            plan.Complete = complete;
+            state.MilestoneComplete = complete.Contains(state.Milestone);
+        }
+
+        private async Task<bool> IsCompleteAsync(GameState state, string milestone)
+        {
+            var phaseInfo = phaseInfoService.GetPhaseInfo(state.GameFlavor, milestone);
             if (phaseInfo is null)
             {
                 // A generated milestone is complete by its rows whatever the target (FR-14).
-                var milestone = PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
-                    provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone);
-                state.MilestoneComplete = IsGeneratedComplete(milestone, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(state.Bot.GameFileName),
+                var generated = PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                    provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, milestone);
+                return IsGeneratedComplete(generated, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(state.Bot.GameFileName),
                     await persistenceService.GetCaughtPokemonAsync(state.GameFlavor));
-                return;
             }
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(state.GameFlavor)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
-            state.MilestoneComplete = IsPhaseComplete(phaseInfo, caughtPokemon);
+            return IsPhaseComplete(phaseInfo, caughtPokemon);
         }
 
         // FR-14: complete when none of the milestone's rows is a target. A name that is neither a phase nor a milestone of the
@@ -397,7 +429,7 @@ namespace ShinyBotHunter.BotEvents
 
         // Static with its services passed in, so a test can drive the decisions without the services that open a database.
         internal static async Task DecideOverworldAction(GameState state, PokemonStateReader reader, Func<int, PokemonMoveMetadata> moveMetadata,
-            PickupTally pickupTally, CancellationToken cancellationToken)
+            PickupTally pickupTally, CancellationToken cancellationToken, Func<GameState, Task<bool>>? followPlan = null)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -409,6 +441,11 @@ namespace ShinyBotHunter.BotEvents
             {
                 (int weekday, int hour, int? repelSteps) = await ((HgssFieldSystemStateReader)state.Bot.State).ReadClockAndRepelAsync(cancellationToken);
                 state.RatesSeen = RateInputs.Of(weekday, hour, repelSteps, pokeState);
+            }
+            // FR-33: a saved plan's step, on the clock just read; true when it took the stack to walk or to park.
+            if (followPlan is not null && await followPlan(state))
+            {
+                return;
             }
             bool training = state.TrainType != TrainType.None;
 
