@@ -7,6 +7,7 @@ using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Games.Hgss
 {
@@ -57,6 +58,8 @@ namespace ShinyBotHunter.Games.Hgss
                 await bot.WaitForMacroAsync();
             },
             createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>(),
+            // A land milestone with grass is hunted in its grass; one without is a cave, hunted on its floor.
+            landTileKind: m => m.HasGrass ? Constant.MAP_Grass : Constant.MAP_Free,
             rates: HgssRates.Compute,
             milestones: milestones);
     }
