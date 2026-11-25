@@ -92,6 +92,11 @@ export function getSubscriptionPhaseInfo(apiUrl: string, game: string, phase: st
   return request('GET', gameName ? `${base}/${encodeURIComponent(gameName)}` : base)
 }
 
+// A generated milestone's rows seen through the game file's goal, with the encounter data; 404 when the file's version has no such milestone.
+export function getMilestoneRows(apiUrl: string, game: string, milestoneId: string, gameFileName: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/milestone/${encodeURIComponent(game)}/${encodeURIComponent(milestoneId)}/${encodeURIComponent(gameFileName)}`)
+}
+
 export function getEncounterRate(apiUrl: string, game: string, phase: string, gameName?: string | null): Promise<Response> {
   const base = `${apiUrl}/api/phaseinfo/encounterRate/${game}/${encodeURIComponent(phase)}`
   return request('GET', gameName ? `${base}/${encodeURIComponent(gameName)}` : base)
