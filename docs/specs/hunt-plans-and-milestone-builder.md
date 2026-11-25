@@ -307,6 +307,14 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 
 - 2026-11-24, from the owner ("why so much QA while working through this. can we QA at the end please"): emulator and window QA runs once, on the feature branch tip, in Q1 (#525). Task PRs merge on the review and the local checks; the checks each task would have run are listed on #525.
 
+- 2026-11-25 (B2, #519, #549), decided by the orchestrator at plan review:
+  - B2 is two tasks: B2a the backend (#519) and B2b the dashboard and guide (#549).
+  - FR-24 is checked at Start against the committed map data at the anchor's tile, before any walk, not "at the anchor": no memory read gives a tile's kind, so a check after the walk would read the same data. The sentence is unchanged.
+  - FR-22 and FR-23: the anchor decides Run or Spin and the range, over the form's choice; "Set anchor here" stores the form's, and the form shows that the anchor decides.
+  - FR-23: a hunt that finds no path to its anchor stops with "{milestone}: no path to the anchor ({x}, {y})."; it does not end Complete.
+  - Start refuses Headbutt at a land milestone and Run or Spin at a headbutt one.
+  - Route 111 gets no item rule; what happens there with and without the Go-Goggles is checked in Q1 (#525).
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.
