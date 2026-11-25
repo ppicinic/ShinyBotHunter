@@ -37,7 +37,7 @@ Ruby and Sapphire get the milestone builder in the same feature, with their own 
 - G4: forms are first-class: a row can be the species in any form, or one form (female, male, an Unown letter).
 - G5: the dashboard shows what the game will give right now: the rows available at this in-game hour, and the expected share of each, with Repel and the lead's ability counted.
 - G6: nothing about the game's state is a checkbox the operator must keep true. The clock, Repel and the lead are read from memory.
-- G7: a hunt can change place by in-game time of day and weekday without the operator, and the dashboard follows in the same window.
+- G7: a hunt can change place by in-game time of day and weekday without the operator, and a card that follows the hunt shows the new place in the same window.
 - G8: the milestone picker shows what is relevant to the game file in front of the operator.
 - G9: every encounter already logged keeps its place: old names are mapped, never rewritten.
 
@@ -73,6 +73,10 @@ From the owner, 2026-11-24:
 - Time comes from the in-game clock, never the PC's. Swarms are ignored.
 - The map names in the appendix are the names milestones are built from.
 - One spec for both features.
+
+From the owner, 2026-11-25:
+
+- A card either shows one fixed milestone, as today, with any number of them per game file, or follows the hunt on its game file. A hunt plan is defined once, saved by name and shared.
 
 ## Requirements
 
@@ -149,6 +153,9 @@ From the owner, 2026-11-24:
 | FR-35 | Start refuses a plan with a milestone that has no anchor, or whose anchor the pathfinder cannot reach with the party and badges as they are, naming the milestone. | Must | Unit test. |
 | FR-36 | An encounter on the walk is logged under the milestone being left until the bot stands on the new anchor. | Must | Unit test. |
 | FR-37 | The dashboard's form shows the rules, the in-game clock, and a 24-hour preview for a chosen weekday (the mock in the session of 2026-11-24). | Should | QA. |
+| FR-37a | A plan is defined once and saved by name, per game: its default milestone and its rules. Wild Encounter picks a saved plan by name; the same plan can be used on any game file of that game. Plans are stored in Mongo, in their own collection. | Must | Unit test: a plan saved once is started on two game files. |
+| FR-37b | The dashboard lists the saved plans and can add, edit, rename and delete one. A plan in use by a running hunt cannot be deleted. Editing a plan does not change a hunt already running on it; the hunt reads the plan at Start. | Must | Unit test; QA. |
+| FR-37c | A card does not follow a plan by itself: with no hunt running, the in-game clock is not known. A plan reaches a card only through the hunt, by FR-39b. | Must | By design; no test. |
 
 ### The navigator at a side door
 
@@ -167,9 +174,12 @@ The spike's workaround (one more step in the last walked direction when the walk
 
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
-| FR-39 | A phase window that names a game file is that file's one window: its name, title, place and size do not change when the milestone does. The new milestone is shown in it. | Must | QA: the window handle and bounds before and after a move. |
+| FR-38d | A card is one of two kinds. A **fixed card** shows one milestone, as every card does today: its own window, any number of them for one game file, unchanged by this feature. A **follows-the-hunt card** belongs to one game file and shows whatever milestone the bot on that file is hunting. A game file has at most one follows-the-hunt card and can have fixed cards beside it. | Must | QA: one game file with a fixed card and a follows-the-hunt card is two windows. |
+| FR-39 | A follows-the-hunt card is the game file's one window: its name, title, place and size do not change when the milestone does. The new milestone is shown in it. | Must | QA: the window handle and bounds before and after a move. |
+| FR-39b | A follows-the-hunt card changes when a hunt starts on its game file at another milestone and when a plan moves the hunt. With no hunt running it keeps showing the last milestone hunted, which is stored with the subscription. | Must | Unit test; QA. |
+| FR-39c | Existing subscriptions are fixed cards and are read as stored (FR-42). The operator adds a follows-the-hunt card from the dashboard configuration, where a fixed card is added today. | Must | QA: `hgss-existing-unchanged`. |
 | FR-39a | A phase window is painted while another window covers it, so a capture of it never shows a blank or stale card. | Must | QA: a swap with the window fully covered, captured, shows the new milestone. |
-| FR-40 | A move replaces the game file's milestone in the dashboard configuration in one push. | Must | Unit test. |
+| FR-40 | A change of milestone replaces the follows-the-hunt card's milestone in the dashboard configuration in one push; a game file with no such card gets no push and no window. | Must | Unit test. |
 | FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows dim and its shares change at 4:00, 10:00 and 20:00 in-game without a move. | Must | QA. |
 
 ### Existing milestones and the backfill
@@ -188,7 +198,7 @@ The spike's workaround (one more step in the last walked direction when the walk
 
 - NFR-1: reading the clock, the Repel counter and the lead adds no read to the flee-only hunt beyond one block; encounters per hour do not fall on either game (the Route 33 speed check; `rs-wild-speed` at 265 an hour or more).
 - NFR-2: the rate computation is pure and has no emulator in it.
-- NFR-3: no new package, no new store, no ApiHawk change. New data files and one Mongo collection are listed in the PR.
+- NFR-3: no new package, no new store, no ApiHawk change. New data files and two Mongo collections (`GameFiles`, one document per game file; the saved plans) are listed in the PR.
 - NFR-4: a plan's move is as safe as a heal trip: every wait bounded, a stop naming what it saw.
 
 ## Design notes
@@ -243,9 +253,9 @@ Three slices, each useful alone, in this order.
 
 **Slice C: plans.**
 - C1 the navigator at a side door (FR-38 to FR-38c). Can start at once, and is worth merging on its own.
-- C2 the one window per game file (FR-39, FR-40). Can start at once.
-- C3 the plan in the hunt (FR-31 to FR-36, FR-33a). After B2.
-- C4 the plan's form (FR-37).
+- C2 the cards: the follows-the-hunt card and its one window (FR-38d, FR-39 to FR-39c, FR-40). Can start at once.
+- C3 the plan in the hunt (FR-31 to FR-36, FR-33a) and the saved plan's storage (FR-37a). After B2.
+- C4 the plan's form and the saved plans' editor (FR-37, FR-37b).
 
 Q1 the scenarios; D1 the guide pages, the architecture doc, the close-out.
 
@@ -277,6 +287,11 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - A milestone's id is the first map's id and the modality in lower case: `34-land`, `34-oldrod`, `74-headbutt`.
 
 - 2026-11-25 (B3, #520): FR-26's Repel level skips eggs as well as fainted members, as the game's source does. On HGSS Repel cancels land and surf encounters only, not fishing, rock smash or headbutt. Headbutt shares are computed by tree kind. `GameProfile.Rates` is the profile's rate rule, HGSS's answer first.
+
+- 2026-11-25, from the owner ("There should be a way to define the milestone card to switch between multiple milestones by times/day or assign multiple different cards. Maybe a way to define it once and share. Or to get a display card based on the bot run."), written up by the orchestrator and confirmed by the owner the same day:
+  - Cards are of two kinds: fixed, as today, any number per game file; and one follows-the-hunt card per game file (FR-38d, FR-39 to FR-39c). FR-39 no longer makes every card that names a game file that file's one window.
+  - Plans are saved by name and shared between game files (FR-37a to FR-37c), in a second Mongo collection (NFR-3 amended from one collection to two).
+  - Not built: a card that switches by a plan with no hunt running (FR-37c).
 
 ## Appendix: the maps and their names
 
