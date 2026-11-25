@@ -5,7 +5,10 @@ using ShinyBotHunter.Service;
 namespace ShinyBotHunter.Milestones
 {
     // One entry of the bot control's milestone picker: a generated milestone, or a custom phase with Modality null and its name as Id.
-    public record PickerMilestone(string Id, string Name, Modality? Modality, bool Huntable, bool Complete, bool Archived, string? Order);
+    // Anchor is where its hunt starts on this file (GameFile.AnchorFor), null when hunted where the bot stands; AnchorSet is true
+    // when the file stores a replacement.
+    public record PickerMilestone(string Id, string Name, Modality? Modality, bool Huntable, bool Complete, bool Archived, string? Order,
+        Anchor? Anchor, bool AnchorSet);
 
     public static class MilestonePicker
     {
@@ -16,8 +19,8 @@ namespace ShinyBotHunter.Milestones
         {
             var fileCaught = caught.Where(c => c.GameFileName == file.Id).ToList();
             var custom = phases.Where(p => file.Assigned.Contains(p.Name) || !assignedAnywhere.Contains(p.Name))
-                .Select(p => Entry(file, p.Name, p.Name, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught)));
-            var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught)));
+                .Select(p => Entry(file, p.Name, p.Name, null, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught)));
+            var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught)));
             return custom.Concat(milestones)
                 .OrderBy(e => e.Order is null)
                 .ThenBy(e => e.Order, Natural)
@@ -25,8 +28,9 @@ namespace ShinyBotHunter.Milestones
                 .ToList();
         }
 
-        private static PickerMilestone Entry(GameFile file, string id, string name, Modality? modality, bool huntable, bool complete)
-            => new(id, name, modality, huntable, complete, file.Archived.Contains(id), file.Order.FirstOrDefault(l => l.Milestone == id)?.Label);
+        private static PickerMilestone Entry(GameFile file, string id, string name, Modality? modality, Milestone? milestone, bool huntable, bool complete)
+            => new(id, name, modality, huntable, complete, file.Archived.Contains(id), file.Order.FirstOrDefault(l => l.Milestone == id)?.Label,
+                file.AnchorFor(id, milestone)?.Anchor, file.Anchors.Any(a => a.Milestone == id));
 
         private static readonly NaturalComparer Natural = new();
 

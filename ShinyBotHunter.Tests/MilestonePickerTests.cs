@@ -2,6 +2,7 @@ using MongoDB.Bson.Serialization;
 using PKHeX.Core;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -196,6 +197,22 @@ namespace ShinyBotHunter.Tests
             var pidgey = new PokemonData { Species = Pidgey, FormCode = "pidgey" };
             Assert.True(PhaseTarget.IsGeneratedTarget("34-land", plain, caught, pidgey));
             Assert.True(PhaseTarget.IsGeneratedTarget("34-land", archived, caught, pidgey));
+        }
+
+        [Fact]
+        public void Picker_Anchor_GeneratedAndReplaced()
+        {
+            var generated = Hgss[RomVersion.SoulSilver];
+            var replacement = new Anchor(34, 546, 300, 2, 0);
+            var replaced = new GameFile { Id = File, Anchors = [new MilestoneAnchor("34-land", replacement, Direction.Left)] };
+
+            var before = MilestonePicker.List(generated, [Phase("X")], new GameFile { Id = File }, new HashSet<string>(), []);
+            var after = MilestonePicker.List(generated, [Phase("X")], replaced, new HashSet<string>(), []);
+
+            Assert.Equal((new Anchor(34, 547, 304, 0, 6), false), (before.Single(e => e.Id == "34-land").Anchor, before.Single(e => e.Id == "34-land").AnchorSet));
+            Assert.Equal((replacement, true), (after.Single(e => e.Id == "34-land").Anchor, after.Single(e => e.Id == "34-land").AnchorSet));
+            Assert.Equal((null, false), (before.Single(e => e.Id == "X").Anchor, before.Single(e => e.Id == "X").AnchorSet));
+            Assert.Equal(before.Where(e => e.Id != "34-land"), after.Where(e => e.Id != "34-land"));
         }
 
         [Fact]
