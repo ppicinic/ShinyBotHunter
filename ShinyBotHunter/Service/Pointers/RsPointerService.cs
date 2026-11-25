@@ -231,6 +231,11 @@ namespace ShinyBotHunter.Service.Pointers
         // the length of Vars in bytes: VARS_COUNT 256 u16s (include/constants/global.h:47); QA: none yet: rs-nav-heal-return
         public int VarBytes => 0x200;
 
+        // gSaveBlock1 + 0x1382, script variable 0x4021 VAR_REPEL_STEP_COUNT (u16): 0 with no Repel, one down per step; root
+        // (absolute; Vars + 0x42); observed on Ruby 1.2 and Sapphire 1.0 (docs/research/milestone-builder.md "B3r: the
+        // Repel counter on Ruby and Sapphire"); QA: none yet: rs-rates-repel
+        public uint RepelStepCount => 0x02026AB6;
+
         // gTrainerBattleOpponent (u16), the trainer id from the first locked frame of a trainer's approach; root
         // (absolute; pret symbols line 210); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet: rs-nav-trainer
         public uint TrainerBattleOpponent => 0x0202FF5E;

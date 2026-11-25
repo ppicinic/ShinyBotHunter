@@ -29,7 +29,7 @@ namespace ShinyBotHunter.Milestones
         internal async Task<bool> StepAsync(GameState state, Func<string, Task> follow, Func<GameState, Task> updateMilestone, Func<string, Task> tell,
             CancellationToken ct)
         {
-            string? pick = Plan.Pick((DayOfWeek)state.RatesSeen!.Weekday, state.RatesSeen.Hour, Complete);
+            string? pick = Plan.Pick((DayOfWeek)state.RatesSeen!.Weekday!.Value, state.RatesSeen.Hour!.Value, Complete);
             if (told is null)
             {
                 told = [.. Complete];
