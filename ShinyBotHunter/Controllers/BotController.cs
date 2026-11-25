@@ -53,6 +53,10 @@ namespace ShinyBotHunter.Controllers
             return Ok((await botService.GetBotActionsAsync(pos)).ToArray());
         }
 
+        [HttpGet("bot/milestones/{pos}")]
+        public async Task<ActionResult<BotMilestones>> GetMilestones(int pos)
+            => await botService.GetMilestonesAsync(pos) is { } milestones ? Ok(milestones) : NotFound();
+
         [HttpGet("bot/getParty/{pos}")]
         public async Task<ActionResult<List<PartySlotInfo>>> GetParty(int pos)
         {

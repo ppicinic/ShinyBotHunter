@@ -8,7 +8,9 @@ using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Util;
 using System.Runtime.CompilerServices;
@@ -801,6 +803,25 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException(pickupReason);
             }
+        }
+
+        // FR-15: the milestone picker for the bot's game file, worked out on each request; null when no bot is at the position.
+        public async Task<BotMilestones?> GetMilestonesAsync(int pos)
+        {
+            if (GetBotAt(pos) is not { } bot)
+            {
+                return null;
+            }
+            RomVersion? version = romInfoService.GetByHandle(bot.GameFileName)?.Version;
+            var milestones = profiles.Get(bot.GameFlavor).Milestones;
+            IReadOnlyList<Milestone> generated = version is not null && milestones is not null && milestones.TryGetValue(version.Value, out var versionMilestones)
+                ? versionMilestones
+                : [];
+            var gameFileDao = provider.GetRequiredService<MongoGameFileDao>();
+            var list = MilestonePicker.List(generated, provider.GetRequiredService<PhaseInfoService>().GetAllPhases([bot.GameFlavor])[bot.GameFlavor],
+                await gameFileDao.LoadAsync(bot.GameFileName), await gameFileDao.AssignedPhasesAsync(),
+                await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor));
+            return new BotMilestones(bot.GameFileName, list);
         }
 
         /// <summary>
