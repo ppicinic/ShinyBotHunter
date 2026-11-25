@@ -80,12 +80,31 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void Pick_DefaultCompleteAndNoOpenRule_IsNull()
+        public void Pick_EveryMilestoneComplete_IsNull()
         {
             var plan = Plan(Rule("34-land", [SlotCondition.Night], []));
 
-            Assert.Null(plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land" }));
             Assert.Null(plan.Pick(DayOfWeek.Monday, 21, new HashSet<string> { "36-land", "34-land" }));
+            Assert.Null(plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land", "34-land" }));
+        }
+
+        [Fact]
+        public void Pick_DefaultCompleteNoRuleMatches_IsFirstOpenRule()
+        {
+            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("Union Cave", [], [DayOfWeek.Friday]),
+                Rule("33-land", [SlotCondition.Night], []));
+
+            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land" }));
+            Assert.Equal("Union Cave", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land", "34-land" }));
+        }
+
+        [Fact]
+        public void Pick_DefaultComplete_MatchingOpenRuleBeatsStandIn()
+        {
+            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("Union Cave", [], [DayOfWeek.Friday]));
+
+            Assert.Equal("Union Cave", plan.Pick(DayOfWeek.Friday, 12, new HashSet<string> { "36-land" }));
+            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land" }));
         }
 
         [Fact]

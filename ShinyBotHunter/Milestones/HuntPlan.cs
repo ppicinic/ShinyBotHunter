@@ -22,15 +22,16 @@ namespace ShinyBotHunter.Milestones
         // Every milestone the plan names, the default first.
         public IEnumerable<string> Milestones => Rules.Select(r => r.Milestone).Prepend(Default).Distinct();
 
-        // The first matching rule whose milestone is not complete wins, then the default if it is not complete; null when
-        // neither is left, which ends the hunt (FR-34).
+        // The first matching rule whose milestone is not complete wins, then the default if it is not complete, then the first
+        // rule in order whose milestone is not complete, whatever its times and weekdays; null only when every milestone is
+        // complete, which ends the hunt (FR-34).
         public string? Pick(DayOfWeek weekday, int hour, IReadOnlySet<string> complete)
         {
             var time = TimeOfDay(hour);
             var rule = Rules.FirstOrDefault(r => (r.Times.Count == 0 || r.Times.Contains(time))
                 && (r.Weekdays.Count == 0 || r.Weekdays.Contains(weekday))
                 && !complete.Contains(r.Milestone));
-            return rule?.Milestone ?? (complete.Contains(Default) ? null : Default);
+            return rule?.Milestone ?? Milestones.FirstOrDefault(m => !complete.Contains(m));
         }
     }
 }
