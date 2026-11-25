@@ -47,10 +47,13 @@ namespace ShinyBotHunter.BotEvents
         private PokemonPersistenceService persistenceService;
         private PhaseInfoService phaseInfoService;
         private PickupTally pickupTally;
+        // The hunt's anchor, or null to hunt where the bot stands (FR-23).
+        private readonly MilestoneAnchor? anchor;
 
-        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams)
+        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null)
         {
             this.encounterParams = encounterParams;
+            this.anchor = anchor;
             this.provider = provider;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
