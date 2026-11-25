@@ -53,7 +53,7 @@ namespace ShinyBotHunter.BotEvents
             long seekMs = 0;
             try
             {
-                toBattle = await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
+                (toBattle, _) = await SpinEncounterEvent.SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
                 seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)
