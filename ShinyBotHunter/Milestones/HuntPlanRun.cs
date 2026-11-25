@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Pathfinding;
 
 namespace ShinyBotHunter.Milestones
 {
@@ -71,6 +72,34 @@ namespace ShinyBotHunter.Milestones
             state.SwapState(EventState.ReturnToStart);
             Console.WriteLine($"[Orchestrator] Plan: {(DayOfWeek)state.RatesSeen.Weekday} {state.RatesSeen.Hour}h names {name}; walking from {state.Milestone} to map {anchor.Map} ({anchor.X}, {anchor.Y})");
             return true;
+        }
+
+        // FR-35, at Start: every stop has an anchor, and the navigator's no-HM walk reaches each from the bot's tile and from
+        // every other stop's anchor (a ledge is one-way). Null when the plan can run.
+        internal static async Task<string?> ReachRefusalAsync(string plan, PathfindingService pathfinding, (int Map, int X, int Y, Direction Facing) here,
+            IReadOnlyList<(string Name, MilestoneAnchor? Anchor)> stops)
+        {
+            if (stops.FirstOrDefault(s => s.Anchor is null) is { Name: { } anchorless })
+            {
+                return $"{plan}: {anchorless} has no anchor.";
+            }
+            foreach (var (name, stop) in stops)
+            {
+                Anchor to = stop!.Anchor;
+                if (await pathfinding.FindNodePath(here.Map, here.X, here.Y, to.Map, to.X, to.Y, new Capability(), (byte)here.Facing) is null)
+                {
+                    return $"{plan}: {name}'s anchor ({to.X}, {to.Y}) cannot be reached from here without an HM.";
+                }
+                foreach (var (fromName, from) in stops.Where(s => s.Name != name))
+                {
+                    Anchor at = from!.Anchor;
+                    if (await pathfinding.FindNodePath(at.Map, at.X, at.Y, to.Map, to.X, to.Y, new Capability(), (byte)Direction.Down) is null)
+                    {
+                        return $"{plan}: {name}'s anchor ({to.X}, {to.Y}) cannot be reached from {fromName} without an HM.";
+                    }
+                }
+            }
+            return null;
         }
 
         private async Task SwitchToAsync(GameState state, string pick, Func<string, Task> follow, Func<GameState, Task> updateMilestone)
