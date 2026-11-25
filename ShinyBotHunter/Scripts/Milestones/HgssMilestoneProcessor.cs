@@ -25,7 +25,7 @@ namespace ShinyBotHunter.Scripts.Milestones
         // The Safari Zone entrance and the Bug-Catching Contest, the spec's non-goals.
         private static readonly HashSet<int> Dropped = [357, 487];
         private static readonly RomVersion[] Versions = [RomVersion.HeartGold, RomVersion.SoulSilver];
-        private const int CellSize = 32;
+        internal const int CellSize = 32;
 
         // Bank is the encounter table's name in gs_enc_data.json, null for ENCDATA_NA. Overworld: on matrix 0.
         private record Header(int Id, string Internal, string? Bank, string Mapsec, bool Overworld);
