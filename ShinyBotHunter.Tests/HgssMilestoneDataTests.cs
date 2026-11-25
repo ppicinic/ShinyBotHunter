@@ -1,10 +1,17 @@
 using Newtonsoft.Json.Linq;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
 {
     // The committed Data/HGSS/milestones.json.gz, as --generatemilestoneshgss wrote it from pokeheartgold at 8946577.
+    // In the collection because MapService opens maps.bin without read sharing, as MapServiceTests says.
+    [Collection("macro-registry")]
     public class HgssMilestoneDataTests
     {
         private const int Caterpie = 10, Metapod = 11, Weedle = 13, Kakuna = 14, Pidgey = 16, Rattata = 19, Poliwag = 60;
@@ -39,6 +46,60 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(new Dictionary<int, int> { [Weedle] = 50, [Ledyba] = 30, [Kakuna] = 10, [Pidgey] = 10 }, Shares(route30, SlotCondition.Morning));
             Assert.Equal(new Dictionary<int, int> { [Pidgey] = 50, [Weedle] = 35, [Kakuna] = 15 }, Shares(route30, SlotCondition.Day));
             Assert.Equal(new Dictionary<int, int> { [Hoothoot] = 60, [Rattata] = 40 }, Shares(route30, SlotCondition.Night));
+        }
+
+        [Fact]
+        public void Route30Grass_Anchor()
+        {
+            Assert.Equal(new Anchor(34, 547, 304, 0, 6), Find(RomVersion.HeartGold, "34-land").Anchor);
+            Assert.Equal(new Anchor(34, 547, 304, 0, 6), Find(RomVersion.SoulSilver, "34-land").Anchor);
+        }
+
+        [Fact]
+        public void Route32Grass_Anchor()
+        {
+            Assert.Equal(new Anchor(36, 458, 339, 0, 7), Find(RomVersion.HeartGold, "36-land").Anchor);
+            Assert.Equal(new Anchor(36, 458, 339, 0, 7), Find(RomVersion.SoulSilver, "36-land").Anchor);
+        }
+
+        [Fact]
+        public async Task UnionCave1F_AnchorIsReachedByThePathfinder()
+        {
+            var anchor = Find(RomVersion.HeartGold, "99-land").Anchor!;
+            var maps = new MapService(DataDirectory);
+            var pointers = new HgssPointerService();
+            var pathfinding = new PathfindingService(maps, new GraphService(DataDirectory), pointers.TrainerX, pointers.TrainerY, pointers.Anchor, pointers.MapIdOffset);
+
+            var toCenter = await pathfinding.FindClosestPokemonCenter(anchor.Map, anchor.X, anchor.Y, new Capability(), (byte)Direction.Down);
+            Assert.NotNull(toCenter);
+            var center = toCenter.Last().Node;
+            var back = await pathfinding.FindNodePath(center.MapId, center.X, center.Y, anchor.Map, anchor.X, anchor.Y, new Capability(), (byte)Direction.Down, startInternalId: true);
+
+            Assert.Equal(Constant.MAP_Free, maps.GetMap(anchor.Map)[anchor.Y, anchor.X]);
+            Assert.NotNull(back);
+        }
+
+        [Fact]
+        public void LandAnchors_LieOnTheirKind()
+        {
+            var versions = Load();
+            var maps = new MapService(DataDirectory);
+
+            foreach (var milestone in versions[RomVersion.HeartGold].Where(m => m.Modality == Modality.Land && m.Anchor is not null))
+            {
+                var anchor = milestone.Anchor!;
+                Assert.Contains(anchor.Map, milestone.Maps);
+                byte kind = milestone.HasGrass ? Constant.MAP_Grass : Constant.MAP_Free;
+                var map = maps.GetMap(anchor.Map);
+                for (int dx = -anchor.XRange; dx <= anchor.XRange; dx++)
+                {
+                    for (int dy = -anchor.YRange; dy <= anchor.YRange; dy++)
+                    {
+                        Assert.True(map[anchor.Y + dy, anchor.X + dx] == kind, $"{milestone.Id} ({anchor.X + dx}, {anchor.Y + dy})");
+                    }
+                }
+            }
+            Assert.Equal(versions[RomVersion.HeartGold].Select(m => m.Anchor), versions[RomVersion.SoulSilver].Select(m => m.Anchor));
         }
 
         [Fact]

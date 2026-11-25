@@ -70,7 +70,7 @@ namespace ShinyBotHunter.Tools
                         Environment.ExitCode = 1;
                         return true;
                     }
-                    new HgssMilestoneProcessor(args[1], args[2]).Generate();
+                    await new HgssMilestoneProcessor(args[1], args[2]).Generate();
                     return true;
                 case "--generatemilestoners":
                     if (args.Length < 3)

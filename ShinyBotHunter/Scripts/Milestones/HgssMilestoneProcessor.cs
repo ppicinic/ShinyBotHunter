@@ -3,8 +3,11 @@ using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
 using ShinyBotHunter.Util;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -25,7 +28,7 @@ namespace ShinyBotHunter.Scripts.Milestones
         // The Safari Zone entrance and the Bug-Catching Contest, the spec's non-goals.
         private static readonly HashSet<int> Dropped = [357, 487];
         private static readonly RomVersion[] Versions = [RomVersion.HeartGold, RomVersion.SoulSilver];
-        private const int CellSize = 32;
+        internal const int CellSize = 32;
 
         // Bank is the encounter table's name in gs_enc_data.json, null for ENCDATA_NA. Overworld: on matrix 0.
         private record Header(int Id, string Internal, string? Bank, string Mapsec, bool Overworld);
@@ -47,13 +50,16 @@ namespace ShinyBotHunter.Scripts.Milestones
                 .ToDictionary(match => match.Groups[1].Value, match => int.Parse(match.Groups[2].Value));
         }
 
-        public void Generate()
+        public async Task Generate()
         {
+            var stopwatch = Stopwatch.StartNew();
             var encounters = JObject.Parse(File.ReadAllText(Path.Combine(decompDir, "files", "fielddata", "encountdata", "gs_enc_data.json")))["encounters"]!
                 .Cast<JObject>().ToDictionary(e => (string)e["map"]!);
             var headbutt = JObject.Parse(File.ReadAllText(Path.Combine(decompDir, "files", "arc", "headbutt.json")))["tables"]!
                 .Cast<JObject>().ToDictionary(t => (string)t["Map"]!);
             var maps = new MapService(outputDir);
+            var pointers = new HgssPointerService();
+            var pathfinding = new PathfindingService(maps, new GraphService(outputDir), pointers.TrainerX, pointers.TrainerY, pointers.Anchor, pointers.MapIdOffset);
             var owners = ReadOverworldOwners();
 
             var entries = new List<Entry>();
@@ -108,8 +114,15 @@ namespace ShinyBotHunter.Scripts.Milestones
             }
             groups = groups.OrderBy(g => g[0].Header.Id).ThenBy(g => g[0].Modality).ToList();
 
+            var finder = new HgssAnchorFinder(decompDir, maps, pathfinding, owners);
+            var anchors = new Dictionary<List<Entry>, Anchor?>();
+            foreach (var group in groups.Where(g => g[0].Modality == Modality.Land))
+            {
+                anchors[group] = await finder.FindAsync(group.Select(e => (e.Header.Id, e.Header.Internal, e.Header.Overworld)).ToList(), group.Any(e => e.HasGrass));
+            }
+
             var file = Versions.ToDictionary(v => v, v => groups.Select(g => new Milestone(
-                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], g[0].Trees)).ToList());
+                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], g[0].Trees, anchors.GetValueOrDefault(g))).ToList());
             byte[] raw = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(file, new StringEnumConverter()));
             var compressed = new MemoryStream();
             using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
@@ -137,7 +150,13 @@ namespace ShinyBotHunter.Scripts.Milestones
                 .Where(e => e.Modality == Modality.Land && !e.HasGrass && (e.Header.Overworld || e.Header.Mapsec.Contains("FOREST")))
                 .Select(e => $"{e.Header.Id} {e.Header.Internal}");
             Console.WriteLine($"Land without grass on an overworld or forest map: {string.Join(", ", caves)}");
-            Console.WriteLine($"milestones.json.gz: {raw.Length} bytes raw, {compressed.Length} gzipped");
+            Console.WriteLine($"Land anchors: run left-right {anchors.Values.Count(a => a?.XRange > 0)}, run up-down {anchors.Values.Count(a => a?.YRange > 0)}, "
+                + $"spin {anchors.Values.Count(a => a is { XRange: 0, YRange: 0 })}, none {anchors.Values.Count(a => a is null)}");
+            foreach (var (group, anchor) in anchors.Where(a => a.Value is null or { XRange: 0, YRange: 0 }))
+            {
+                Console.WriteLine($"  {group[0].Header.Id}-land {group[0].Header.Internal}: {(anchor is null ? "none" : $"spin at {anchor.Map} ({anchor.X}, {anchor.Y})")}");
+            }
+            Console.WriteLine($"milestones.json.gz: {raw.Length} bytes raw, {compressed.Length} gzipped, generated in {stopwatch.Elapsed:mm\\:ss}");
         }
 
         private static Entry Make(Header header, Modality modality, bool hasGrass, Func<RomVersion, Slot[]> slots)
