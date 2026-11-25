@@ -1,4 +1,5 @@
 ﻿using ShinyBotHunter.Macro;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -31,6 +32,12 @@ namespace ShinyBotHunter.BotEvents.Target
                 return false;
             }
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(game)).Where(x => x.GameFileName == gameFileName);
+            return IsPhaseTarget(phaseInfo, caughtPokemon, pokemon);
+        }
+
+        // Today's phase rule, unchanged (FR-42): rows matched by name, and caught counted without an IsShiny filter.
+        internal static bool IsPhaseTarget(PhaseInfo phaseInfo, IEnumerable<CaughtPokemon> caughtPokemon, PokemonData pokemon)
+        {
             foreach (var targetPokemon in phaseInfo.Pokemon.Where(x => x.Name == pokemon.Name))
             {
                 if (targetPokemon.RequireSpecificForm)
