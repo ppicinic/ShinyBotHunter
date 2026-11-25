@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Context;
@@ -9,6 +10,8 @@ using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
@@ -253,13 +256,17 @@ namespace ShinyBotHunter.Tests
         private static readonly GameProfile EggProfile = new(
             GameFlavor.HGSS, new GameCapabilities(false, false, false, true, false, false, false, false), [0], (_, _) => Table, new StubParser(), battleParser: null);
 
-        // A launched bot at position 0 with the given party, and the service whose Run checks see it.
-        private static async Task<(BotService Service, FakeBot Bot)> LaunchWithParty(int partySize)
+        // A launched bot at position 0 with the given party, and the service whose Run checks see it; the file is the game file
+        // Run reads for its links (FR-44a), unlinked unless given.
+        private static async Task<(BotService Service, FakeBot Bot)> LaunchWithParty(int partySize, GameFile? file = null)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, EggProfile);
-            var provider = new ServiceCollection().AddSingleton(new PokemonStateReader()).BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            var provider = new ServiceCollection()
+                .AddSingleton(new PokemonStateReader())
+                .AddSingleton(new MongoGameFileDao(_ => Task.FromResult(file ?? new GameFile { Id = "fake.nds" })))
+                .BuildServiceProvider();
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(EggProfile));
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
             FakeBot bot = factory.Bots[0];
             bot.PartyBlocks = Enumerable.Range(0, partySize).Select(_ => new byte[0xEC]).ToArray();
@@ -294,6 +301,23 @@ namespace ShinyBotHunter.Tests
             var content = Assert.IsType<ContentResult>(result.Result);
             Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
             Assert.Contains("Party is full (6/6)", content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public async Task RunWithALinkedPhaseIs400WithTheLinkSentence()
+        {
+            var file = new GameFile { Id = "fake.nds", Links = [new MilestoneLink("Slugma", "31-land")] };
+            var (service, bot) = await LaunchWithParty(5, file);
+            FakeMemoryClient memory = new();
+            Stand(memory, 158, 12, 12, Direction.Up);
+            bot.Overworld = new HgssOverworldReader(memory, Table);
+
+            var result = await new BotController(service).StartAction(0, RunPrimo);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal("Slugma is linked to 31-land on fake.nds; start 31-land, or remove the link.", content.Content);
             Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
     }

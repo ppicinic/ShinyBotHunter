@@ -710,6 +710,7 @@ namespace ShinyBotHunter.Service
             {
                 throw new InvalidOperationException(NoPathToTheCircle);
             }
+            RefuseLinked(bot, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName), args.PhaseName);
             var staticEvent = new HgssStaticEncounterEvent(bot, config, encounter, walkMacro, x, y, facing, provider, this);
             slots.Entries[pos].GameState = new GameState()
             {
