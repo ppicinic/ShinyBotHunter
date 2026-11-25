@@ -72,6 +72,15 @@ namespace ShinyBotHunter.Tools
                     }
                     new HgssMilestoneProcessor(args[1], args[2]).Generate();
                     return true;
+                case "--generatemilestoners":
+                    if (args.Length < 3)
+                    {
+                        Console.Error.WriteLine("Usage: --generatemilestoners <pokerubyDir> <outputDir>");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+                    new RsMilestoneProcessor(args[1], args[2]).Generate();
+                    return true;
                 default:
                     return false;
             }
