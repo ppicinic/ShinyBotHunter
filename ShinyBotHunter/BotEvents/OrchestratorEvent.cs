@@ -92,52 +92,63 @@ namespace ShinyBotHunter.BotEvents
                 await UpdateMilestoneState(state);
                 state.SwapState(walkingToAnchor ? EventState.ReturnToStart : EventState.DecideOverworldAction);
             }
-            while(state.State.Count != 0 && state.State.Peek() != EventState.Complete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
+            try
             {
-                EventState topState = state.State.Peek();
-                Console.WriteLine($"[Orchestrator] State: {topState}");
-                if(topState == EventState.DecideOverworldAction)
+                while(state.State.Count != 0 && state.State.Peek() != EventState.Complete && state.State.Peek() != EventState.Waiting && !cancellationToken.IsCancellationRequested)
                 {
-                    // With a plan, the step's answer sets walkingToAnchor: true from the walk it starts until that walk ends.
-                    await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken,
-                        plan is null ? null : async s => walkingToAnchor = await plan.StepAsync(s,
-                            m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState, cancellationToken));
-                }
-                else if(topState == EventState.Encountering)
-                {
-                    await BuildEncounter(state.Bot, plan?.Stops[state.Milestone].Leg.EncounterParams ?? encounterParams).ExecuteAsync(state, cancellationToken);
-                }
-                else if(topState == EventState.BattleStart)
-                {
-                    await (battleEvent ??= state.Bot.Profile.CreateBattleEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
-                }
-                else if(topState == EventState.BattleComplete)
-                {
-                    // Pop BattleComplete and let the previous state resume.
-                    // If the stack empties (normal encounter path), restart at DecideOverworldAction.
-                    state.State.Pop();
-                    if (state.State.Count == 0)
+                    EventState topState = state.State.Peek();
+                    Console.WriteLine($"[Orchestrator] State: {topState}");
+                    if(topState == EventState.DecideOverworldAction)
                     {
-                        state.State.Push(EventState.DecideOverworldAction);
-                    }
-                }
-                else if(topState == EventState.GoToPokemonCenter
-                     || topState == EventState.HealAtPokemonCenter
-                     || topState == EventState.ReturnToStart)
-                {
-                    await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
-                    if (walkingToAnchor)
-                    {
-                        walkingToAnchor = plan?.Pending is { } next
-                            ? AnchorWalkGoesOn(state, plan.Stops[next].Anchor.Anchor, plan.Stops[next].Name)
-                            : AnchorWalkGoesOn(state, anchor!.Anchor, PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
-                                provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone);
-                        if (plan is not null && state.State.Peek() == EventState.DecideOverworldAction)
+                        // With a plan, the step's answer sets walkingToAnchor: true from the walk it starts until that walk ends.
+                        await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken,
+                            plan is null ? null : async s => walkingToAnchor = await plan.StepAsync(s,
+                                m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState, cancellationToken));
+                        if (state.RatesSeen is { } seen)
                         {
-                            plan.WalkEnded = true;
+                            phaseInfoService.RecordLive(state.Bot.GameFileName, seen);
+                        }
+                    }
+                    else if(topState == EventState.Encountering)
+                    {
+                        await BuildEncounter(state.Bot, plan?.Stops[state.Milestone].Leg.EncounterParams ?? encounterParams).ExecuteAsync(state, cancellationToken);
+                    }
+                    else if(topState == EventState.BattleStart)
+                    {
+                        await (battleEvent ??= state.Bot.Profile.CreateBattleEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
+                    }
+                    else if(topState == EventState.BattleComplete)
+                    {
+                        // Pop BattleComplete and let the previous state resume.
+                        // If the stack empties (normal encounter path), restart at DecideOverworldAction.
+                        state.State.Pop();
+                        if (state.State.Count == 0)
+                        {
+                            state.State.Push(EventState.DecideOverworldAction);
+                        }
+                    }
+                    else if(topState == EventState.GoToPokemonCenter
+                         || topState == EventState.HealAtPokemonCenter
+                         || topState == EventState.ReturnToStart)
+                    {
+                        await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
+                        if (walkingToAnchor)
+                        {
+                            walkingToAnchor = plan?.Pending is { } next
+                                ? AnchorWalkGoesOn(state, plan.Stops[next].Anchor.Anchor, plan.Stops[next].Name)
+                                : AnchorWalkGoesOn(state, anchor!.Anchor, PhaseTarget.FindMilestone(provider.GetRequiredService<GameProfiles>().Get(state.GameFlavor).Milestones,
+                                    provider.GetRequiredService<RomInfoService>().GetByHandle(state.Bot.GameFileName)?.Version, state.Milestone)?.Name ?? state.Milestone);
+                            if (plan is not null && state.State.Peek() == EventState.DecideOverworldAction)
+                            {
+                                plan.WalkEnded = true;
+                            }
                         }
                     }
                 }
+            }
+            finally
+            {
+                phaseInfoService.EndLive(state.Bot.GameFileName);
             }
             return state.State.Count == 0 ? EventState.NotStarted : state.State.Peek();
         }

@@ -1,6 +1,7 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
 using ShinyBotHunter.Controllers;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -166,6 +167,137 @@ namespace ShinyBotHunter.Tests
 
             Assert.False(MilestoneRows.Build(route30, goal, []).All(r => !r.IsTarget));
             Assert.True(MilestoneRows.Build(route30, goal, [Caught(Caterpie, "caterpie", File)]).All(r => !r.IsTarget));
+        }
+
+        private const int Ekans = 23, Zubat = 41, Bellsprout = 69, Mareep = 179, Hoppip = 187, Wooper = 194, Azurill = 298;
+
+        private static Milestone Route32SoulSilver => Hgss[RomVersion.SoulSilver].Single(m => m.Id == "36-land");
+
+        // A live hunt's inputs at the hour, Repel level and lead; weekday and Repel steps do not change a share.
+        private static (RateInputs, bool) Seen(int hour, int? repelLevel = null, Ability lead = Ability.None, bool live = true)
+            => (new RateInputs(1, hour, repelLevel is null ? 0 : 100, repelLevel, (byte)lead, 20, false), live);
+
+        [Fact]
+        public void Shares_SoulSilverRoute32NightRepel6()
+        {
+            var shares = MilestoneRows.Shares(Route32SoulSilver, HgssRates.Compute, Seen(21, repelLevel: 6))!.Value;
+
+            Assert.Equal(0.65, shares.Survive, 6);
+            Assert.Equal(35.0 / 65, shares.Species[Wooper].Share, 6);
+            Assert.Equal(20.0 / 65, shares.Species[Bellsprout].Share, 6);
+            Assert.Equal(10.0 / 65, shares.Species[Mareep].Share, 6);
+            Assert.Null(shares.Species[Wooper].Reason);
+            Assert.Equal((0.0, "blocked by Repel"), shares.Species[Ekans]);
+            Assert.Equal((0.0, "blocked by Repel"), shares.Species[Zubat]);
+            Assert.Equal((0.0, "morning and day only"), shares.Species[Hoppip]);
+        }
+
+        [Fact]
+        public void Shares_HeartGoldRoute30Morning_NightSpeciesSayNightOnly()
+        {
+            var shares = MilestoneRows.Shares(Route30(RomVersion.HeartGold), HgssRates.Compute, Seen(6))!.Value;
+
+            Assert.Equal(0.5, shares.Species[Caterpie].Share, 6);
+            Assert.Equal(0.4, shares.Species[Pidgey].Share, 6);
+            Assert.Equal(0.1, shares.Species[Metapod].Share, 6);
+            Assert.All(new[] { Rattata, Spinarak, Hoothoot }, s => Assert.Equal((0.0, "night only"), shares.Species[s]));
+            Assert.Equal(1, shares.Survive, 6);
+        }
+
+        [Fact]
+        public void Shares_NotLive_LastSeenHourNoRepelNoLead()
+        {
+            var shares = MilestoneRows.Shares(Route32SoulSilver, HgssRates.Compute, Seen(21, repelLevel: 6, lead: Ability.KeenEye, live: false))!.Value;
+
+            var (expected, survive) = HgssRates.Compute(Route32SoulSilver, SlotCondition.Night, null, 0, 1, false);
+            Assert.Equal(survive, shares.Survive, 6);
+            Assert.All(expected, e => Assert.Equal(e.Value, shares.Species[e.Key].Share, 6));
+            Assert.Null(shares.Species[Ekans].Reason);
+        }
+
+        [Fact]
+        public void Shares_NeverSeen_TimedSlots_Null()
+        {
+            Assert.Null(MilestoneRows.Shares(Route32SoulSilver, HgssRates.Compute, null));
+        }
+
+        [Fact]
+        public void Shares_NeverSeen_UntimedSlots_PlainShares()
+        {
+            const int Wurmple = 265, Zigzagoon = 263, Poochyena = 261;
+            // Sapphire's Route 101 land, as RsRatesTests has it.
+            var route101 = new Milestone([16], Modality.Land, true,
+            [
+                new(0, Wurmple, 2, 2, 20, SlotCondition.None), new(1, Zigzagoon, 2, 2, 20, SlotCondition.None),
+                new(2, Wurmple, 2, 2, 10, SlotCondition.None), new(3, Wurmple, 3, 3, 10, SlotCondition.None),
+                new(4, Zigzagoon, 3, 3, 10, SlotCondition.None), new(5, Zigzagoon, 3, 3, 10, SlotCondition.None),
+                new(6, Wurmple, 3, 3, 5, SlotCondition.None), new(7, Zigzagoon, 3, 3, 5, SlotCondition.None),
+                new(8, Poochyena, 2, 2, 4, SlotCondition.None), new(9, Poochyena, 2, 2, 4, SlotCondition.None),
+                new(10, Poochyena, 3, 3, 1, SlotCondition.None), new(11, Poochyena, 3, 3, 1, SlotCondition.None)
+            ], []);
+
+            var shares = MilestoneRows.Shares(route101, RsRates.Compute, null)!.Value;
+
+            Assert.Equal(1, shares.Survive, 6);
+            Assert.Equal(0.45, shares.Species[Wurmple].Share, 6);
+            Assert.Equal(0.45, shares.Species[Zigzagoon].Share, 6);
+            Assert.Equal(0.10, shares.Species[Poochyena].Share, 6);
+        }
+
+        [Fact]
+        public void Shares_NoRateRule_Null()
+        {
+            Assert.Null(MilestoneRows.Shares(Route32SoulSilver, null, Seen(21)));
+        }
+
+        [Fact]
+        public void Shares_Headbutt_Null()
+        {
+            Assert.Null(MilestoneRows.Shares(Hgss[RomVersion.SoulSilver].Single(m => m.Id == "74-headbutt"), HgssRates.Compute, Seen(12)));
+        }
+
+        [Fact]
+        public void Shares_SoundOnlySpecies_NeedsHoennSound()
+        {
+            Slot[] night = [new(0, Wooper, 6, 6, 100, SlotCondition.Night)];
+            Slot[] sounds = [new(1, Azurill, 6, 6, 100, SlotCondition.HoennSound)];
+            var milestone = new Milestone([32], Modality.Land, true, [.. night, .. sounds], []);
+
+            var shares = MilestoneRows.Shares(milestone, HgssRates.Compute, Seen(21))!.Value;
+
+            Assert.Equal((0.0, "needs Hoenn Sound"), shares.Species[Azurill]);
+            Assert.Equal((1.0, (string?)null), shares.Species[Wooper]);
+        }
+
+        private const int Staryu = 120, Corsola = 222;
+
+        private static Milestone SuperRod38HeartGold => Hgss[RomVersion.HeartGold].Single(m => m.Id == "38-superrod");
+
+        [Fact]
+        public void Shares_SuperRodNight_ReplacedSpeciesSaysMorningAndDayOnly()
+        {
+            var shares = MilestoneRows.Shares(SuperRod38HeartGold, HgssRates.Compute, Seen(21))!.Value;
+
+            Assert.Equal((0.0, "morning and day only"), shares.Species[Corsola]);
+            Assert.Equal((0.3, (string?)null), (Math.Round(shares.Species[Staryu].Share, 6), shares.Species[Staryu].Reason));
+        }
+
+        [Fact]
+        public void Shares_RodWithRepel_NeverBlockedByRepel()
+        {
+            var shares = MilestoneRows.Shares(SuperRod38HeartGold, HgssRates.Compute, Seen(21, repelLevel: 50))!.Value;
+
+            Assert.Equal((0.0, "morning and day only"), shares.Species[Corsola]);
+            Assert.Equal(1, shares.Survive, 6);
+        }
+
+        [Fact]
+        public void Shares_FormRowsShareTheSpecies()
+        {
+            var shares = MilestoneRows.Shares(Hgss[RomVersion.SoulSilver].Single(m => m.Id == "315-land"), HgssRates.Compute, Seen(12))!.Value;
+
+            Assert.Equal([Unown], shares.Species.Keys);
+            Assert.Equal((1.0, (string?)null), shares.Species[Unown]);
         }
 
         [Fact]
