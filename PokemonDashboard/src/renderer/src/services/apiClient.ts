@@ -169,3 +169,22 @@ export function getBackfillOffer(apiUrl: string, game: string, gameFileName: str
 export function copyAmounts(apiUrl: string, game: string, gameFileName: string, phase: string, species: number[]): Promise<Response> {
   return request('POST', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/copy/${encodeURIComponent(phase)}`, species)
 }
+
+export function getPlans(apiUrl: string, game: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/plans/${encodeURIComponent(game)}`)
+}
+
+// Saved under the route's game and name whatever the body says, but the body must carry a name; 400 with the reason.
+export function savePlan(apiUrl: string, game: string, name: string, plan: import('../types/api').HuntPlan): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/plans/${encodeURIComponent(game)}/${encodeURIComponent(name)}`, plan)
+}
+
+// 400 with the reason when the plan is in use or there is no such plan.
+export function deletePlan(apiUrl: string, game: string, name: string): Promise<Response> {
+  return request('DELETE', `${apiUrl}/api/plans/${encodeURIComponent(game)}/${encodeURIComponent(name)}`)
+}
+
+// 400 with the reason when the plan is in use, the new name is blank or already taken.
+export function renamePlan(apiUrl: string, game: string, name: string, to: string): Promise<Response> {
+  return request('POST', `${apiUrl}/api/plans/${encodeURIComponent(game)}/${encodeURIComponent(name)}/rename?to=${encodeURIComponent(to)}`)
+}
