@@ -81,6 +81,7 @@ export function DashboardConfigTab(): JSX.Element {
         followsHunt: addFollowsHunt
       })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      setFollowsHunt(false)
       showFeedback(`Subscribed to ${selectedGame} / ${selectedPhase}${selectedGameName ? ` (${selectedGameName})` : ''}`)
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
@@ -208,7 +209,10 @@ export function DashboardConfigTab(): JSX.Element {
           </select>
           <select
             value={selectedGameName}
-            onChange={(e) => setSelectedGameName(e.target.value)}
+            onChange={(e) => {
+              setSelectedGameName(e.target.value)
+              setFollowsHunt(false)
+            }}
             className="bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
           >
             <option value="">No game file</option>

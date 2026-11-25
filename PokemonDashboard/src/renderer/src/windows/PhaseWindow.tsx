@@ -14,10 +14,11 @@ interface PhaseWindowProps {
 export function PhaseWindow({ game, phase, gameName }: PhaseWindowProps): JSX.Element {
   const { subscriptions, dashboardConfig } = useAppContext()
   const followsHunt = phase === ''
+  const title = phaseWindowTitle({ game, phase, gameName, followsHunt })
 
   useEffect(() => {
-    document.title = phaseWindowTitle({ game, phase, gameName, followsHunt })
-  }, [game, phase, gameName, followsHunt])
+    document.title = title
+  }, [title])
 
   // A follows-the-hunt card shows the milestone its subscription has now; a new one re-renders this window (FR-39).
   const shown = followsHunt
@@ -34,7 +35,7 @@ export function PhaseWindow({ game, phase, gameName }: PhaseWindowProps): JSX.El
       <div className="window-root h-screen">
         <div className="dashboard-card h-full">
           <div className="card-header window-drag-region">
-            <span className="card-header-title">{shown}</span>
+            <span className="card-header-title">{followsHunt ? title : phase}</span>
             <WindowCloseButton />
           </div>
           <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
