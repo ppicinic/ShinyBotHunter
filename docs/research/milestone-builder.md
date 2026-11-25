@@ -320,3 +320,100 @@ Feebas and mass outbreaks are not table slots and are not in the file.
 | 459-surf, 459-goodrod, 459-superrod | 459, 462, 463, 464 | Mt. Silver Cave (upper mountainside), (Moltres chamber), 2F and 3F |
 
 **Land written "cave" on an overworld or forest map:** Ilex Forest (117) only. Its encounter tiles are not kind 3 in the committed map data; B1 (#517) finds them, and the name corrects itself when the data does.
+
+## The clock, the save section table and the Repel counter, read on the emulator (2026-11-24, B4 and B3r research round)
+
+Run on `feature/hunt-plans-milestones` at `b66a79c`, with no backend and no database: EmuHawk was started directly with ApiHawk (`--open-ext-tool-dll=BotServer`, ports 20000 and 20001) and its own config copy (`UseRealTime: false` and an `InitialTime`), on throwaway copies of the ROM and the save, and probed with Python over ApiHawk. Everything below was observed unless it says "from the source".
+
+| Game | ROM | Save used |
+|---|---|---|
+| HeartGold (USA, rev 0, `IPKE`) | a copy of `HG-Route32.nds` | a copy of the pristine `hgss.qa-route32` (Route 32 grass, map 36, (474, 294)) |
+| SoulSilver (USA, rev 0, `IPGE`) | a copy of `Pokemon SoulSilver.nds` | a copy of the owner's old SoulSilver save (Route 30 grass, map 34, (556, 374); six Pokémon, no egg). There is no SoulSilver QA save on this machine. |
+| Ruby (USA, rev 2, `AXVE`) | a copy of `RU-Wild.gba` | a copy of the pristine `rs.qa-route101` |
+| Sapphire (USA, rev 0, `AXPE`) | a copy of `Pokemon Sapphire.gba` | the same save |
+
+### R1, R2: the live clock (HGSS)
+
+**`0x021D1058` on both versions, with the second copy at `0x021D1074`.** Seven `u32`s:
+
+| Offset | Value | Encoding seen |
+|---|---|---|
+| + `0x00` | year | years since 2000 (26) |
+| + `0x04` | month | 1 to 12 (11, 12) |
+| + `0x08` | day | day of the month |
+| + `0x0C` | weekday | **0 = Sunday**: 0 on Sunday 2026-11-29, 5 on Friday 2026-12-04, 6 on Saturday 2026-12-05 |
+| + `0x10` | hour | **0 to 23**: 19, then 20; 23, then 0 |
+| + `0x14` | minute | 0 to 59 |
+| + `0x18` | second | 0 to 59 |
+
+- HeartGold, `InitialTime` Sunday 2026-11-29 19:57: `(26, 11, 29, 0, 19, 57, 15)` during the intro, `(26, 11, 29, 0, 19, 59, 27)` still before Continue, `(26, 11, 29, 0, 20, 1, 0)` on the field. The 19:59:59 to 20:00:00 second itself was not sampled on HeartGold.
+- SoulSilver, `InitialTime` Friday 2026-12-04 19:58:30: `(26, 12, 4, 5, 19, 59, 59)` then `(26, 12, 4, 5, 20, 0, 0)` on the field. In a wild battle (battle app state 9) it went on, one second per second: `20:01:07, 08, 10, 11, 12`, while the save block copy (save data + `0x20`) stayed at `20:00:56`.
+- SoulSilver, `InitialTime` Saturday 2026-12-05 23:59:15, at the intro: `(26, 12, 5, 6, 23, 59, 59)` then `(26, 12, 6, 0, 0, 0, 0)`. The weekday, the day and the hour roll together at midnight.
+- The clock runs before a save is loaded (intro and title, where the anchor `[0x021D4158]` reads 0), on the field and in battle. Twelve seconds of wall time were twelve emulated seconds.
+- So the block the plan reads, 8 bytes at `0x021D1058 + 0x0C`, is weekday `u32` then hour `u32`, on both versions.
+
+### R3: the save section table (HGSS)
+
+At save data + `0x23014`, save data being `[[0x021D4158] + 0x0C]`. **Identical on HeartGold and SoulSilver** in every id, size and offset.
+
+- **42 entries of 16 bytes** (672 bytes): ids 0 to 41, and **entry n has id n**. The `u32` before the table (save data + `0x23010`) is the save counter. The two slot records follow the table at + `0x232B4`.
+- **An entry:** id `u32` at + `0x00`, size `u32` at + `0x04`, **offset `u32` at + `0x08`**, checksum `u16` at + `0x0C`, slot `u16` at + `0x0E` (0 for ids 0 to 40, 1 for id 41, the PC boxes). This is `struct SaveArrayHeader` in the decomp's `include/save.h`.
+- **Section 21 (the roamers): size `0x6C`, offset `0x68A4`**, so its data is at save data + `0x10` + `0x68A4` = save data + `0x68B4`, on both versions.
+- For reference: section 0 offset `0x0`, size `0x60`; section 2 (the party) offset `0x90`, size `0x5B4`; section 5 offset `0x1234`; section 41 offset `0xF700`, size `0x12300`. The full list is in `hg-run1.log` and `ss-run1.log`.
+- **Across an in-game save** (HeartGold; the save counter went 19 to 20): the 672 bytes and the slot records were byte for byte the same.
+- **Across a soft reset and Continue** (HeartGold): every id, size, offset and slot was the same. The checksum field changed in 12 entries (0, 1, 4, 5, 7, 10, 14, 16, 19, 21, 34, 41), so the checksum is refreshed on load, not on save. **The save data itself moved**: `0x0227C1F4` before the reset, `0x0227C244` after (the field system moved from `0x022A01DC` to `0x022A022C`). An offset cached once per launch stays good; an absolute address would not.
+- **On the title screen and the intro the anchor `[0x021D4158]` is 0** (both versions, and again after the soft reset), so FS + `0x0C` cannot be read at all: the chain ends in a null pointer at its first hop. The table was filled at the first read on the field after Continue.
+
+### R4: the Repel counter (HGSS)
+
+**One byte, `u8`, at the roamer section + `0x65`** (save data + `0x6919`), on both versions.
+
+- It reads 0 with no Repel, and stays 0 over steps.
+- Width: with + `0x65` written to 3 and + `0x66` to 1, three steps took + `0x65` to 2, 1, 0, the message came on the third, and + `0x66` still read 1 (HeartGold; the same with 2 and 1 on SoulSilver). A two-byte counter would have read 259 and shown no message. From the source, `RoamerSaveData.repelSteps` is a `u8` with `outbreak` at + `0x64`, `unk_66` at + `0x66` and `flutePlayed` at + `0x67`.
+- It goes down by one on each completed step, at the tile change. A step into something solid does not count (SoulSilver, Up from (556, 374): the tile and the counter, at 3, did not change in two tries).
+
+### R5: "Repel's effect wore off..." (HGSS, rule 16)
+
+HeartGold on Route 32, the counter written to a small value and the player stepped or paced in the grass. SoulSilver on Route 30 gave the same script, native and bytes.
+
+| What | Seen |
+|---|---|
+| Task | `Task_RunScripts`, `0x0203FF45` |
+| `env.script` | **2022** (`std_repel_wore_off` in the decomp's `std_script.h`) |
+| Context | context 0 only; `ctx.mode` 2 (waiting in a native) |
+| `env.printer` (env + `0x05`) | 0, so slot 0, the one the reader reads |
+| While the text prints (about 0.5 s) | native `0x021EF349` (the printing native), printer slot 0 live with `pr.state` 0 and the current character moving |
+| **While the box waits** | **native `0x02041001`** (`WaitABPressNative`, already in `HgssPointerService`), and **printer slot 0 is gone** (`[0x021D1F74]` reads 0). There is no arrow: no `pr.state`, no cursor. The snapshot is `FieldTask`, script 2022, native `0x02041001`, `TextPrinter` null. |
+| **What one A changes** | **`ctx.mode`, the byte at context 0 + `0x01`, goes 2 to 1** about 100 ms after the press was sent (the native word at + `0x04` still reads `0x02041001`, stale), and about a frame later the task manager pointer at FS + `0x10` is 0: the field is free. So the snapshot's `Native` leaves `0x02041001` and the next state is `FieldFree`. On a slower poll one sample between the two showed the script task still set with its environment already freed, which the reader gives as `Transitioning`. Traced at this grain once on each version, with the same result. |
+| After one A | Field free, no second box, every time: 25 boxes on HeartGold, 2 on SoulSilver. Free about 170 ms after the press was sent. In the 22 single-step trials it then stayed free for the 1.2 s watched with no input. |
+| A held direction | The pacing macro (`RP_M.Up.292…;M.Down.294…`) kept holding its direction for 5 s with the box up: the box stayed, the player did not move, the counter stayed 0. A direction does not close it. With Up held for 20 frames and then A pressed for 3 frames while Up stayed held, the box closed as fast as with A alone, so **a held direction neither drops nor delays the A** (one trial). The player then walked on at once, and a wild battle started on that next step. |
+| A battle on the step that ends the Repel | **Not seen: in 27 Repel endings (25 on HeartGold, 22 of them single-step trials in the grass, and 2 on SoulSilver) the message always came, never a battle.** From the source, not observed as a rule: `FieldSystem_ProcessStep` returns as soon as the Repel step event starts its script (`field_control.c:675`), before the wild encounter check further down the same function (`:487`), so that step makes no encounter roll. A battle can start on the first step after the box is closed (seen once). |
+
+The press sent was `H.A.3;W.20`, which is what the backend sends for `T.A;W.20` (`CommandPreprocessor` turns a tap into a hold of `DefaultTapFrames`, 3 by default). A raw `T.A` sent straight to ApiHawk is never applied, so a probe script must send `H.A.3`.
+
+For the plan: the wait before the press is "script 2022 and native `0x02041001`", not an arrow state, and the press is confirmed by the snapshot no longer being "script 2022 with native `0x02041001`" (the mode byte), then `FieldFree`.
+
+### R6: an egg in the party
+
+**Not run.** No HGSS save on this machine has an egg in the party: every `.SaveRAM` in the two BizHawk save folders and the QA saves folder was decoded offline (`scan-saves.log`), and the level 1 Togepi in several of them is hatched. `hgss.qa-togepi-egg` does not exist. From the source: `PokemonData.IsEgg` is bit 30 of the IV word (`PokemonData.cs:98`), and the Primo and Togepi hunts already rely on it.
+
+### B3r: the Repel counter on Ruby and Sapphire
+
+**`gSaveBlock1 + 0x1382` = `0x02026AB6`, a `u16`, on Ruby rev 2 and Sapphire rev 0** (`gSaveBlock1` is `0x02025734`; the script variables start at `0x02026A74` and this is variable `0x4021`).
+
+- It reads 0 with no Repel and stays 0 over steps.
+- Width: with the bytes `03 01` written (259 as a `u16`), three steps read 258, 257, 256 and no message came at a low byte of 0 (Ruby; Sapphire the same from 258). So both bytes are the counter.
+- Written to 3 (Ruby) or 2 (Sapphire), it went down by one per step, and on the step that reached 0 "REPEL's effect wore off..." came up.
+- At the message: `FieldControlsLock` (`0x030006A4`) 1, script context mode (`0x030005B9`) 2, script native (`0x030005BC`) `0x080670E1` on Ruby rev 2 and `0x080670C5` on Sapphire rev 0 once the text has printed (`0x08064CA5` and `0x08064C89` while it prints). One A (`H.A.5`) gave lock 0 and mode 0 within 100 ms and no second box. Seen once per version, so not enough to name a gate.
+
+### Not established
+
+- The 04:00 and 10:00 boundaries, and the HeartGold clock at the exact 20:00 second.
+- Whether a battle can ever start on the step that ends the Repel: not in 27 endings, and the source says no.
+- R6.
+- The Repel message during a navigator walk or while surfing; a Repel that ends on a step that also triggers something else (a trainer's sight, a warp, poison).
+- European or other revisions of any of the four ROMs.
+
+### Evidence
+
+`ShinyBotHunter.Qa/dashboard/qa-runs/20261125-b4-research/` (gitignored): `hg-run1.log`, `ss-run1.log`, `ss-run2.log`, `rs-run1.log`, `rs-run2.log` (every read above), `hg-table-*.bin` and `ss-table.bin` (the table before and after the save and the reset), `scan-saves.log`, `hg.py`, `rs.py`, `pk.py`, `mkconfig.py`, `launch.ps1` (the probe, the config copy, the launch), `shots/`.
