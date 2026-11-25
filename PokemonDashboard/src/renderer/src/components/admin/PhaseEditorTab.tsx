@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
 import type { AdminMetadata, PhaseInfo, PhasePokemonInfo } from '../../types/api'
+import { MilestoneFiles } from './MilestoneFiles'
 
 const EMPTY_POKEMON = (): PhasePokemonInfo => ({
   name: '',
@@ -334,6 +335,7 @@ export function PhaseEditorTab(): JSX.Element {
               </button>
             </div>
           )}
+          {!isNewPhase && <MilestoneFiles game={selectedGame} phase={form} />}
         </div>
       ) : null}
 
