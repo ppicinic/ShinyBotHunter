@@ -1,6 +1,7 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -96,9 +97,21 @@ namespace ShinyBotHunter.Tests
         public void ProductionPhases_ResolveToThePhasePath()
         {
             var phases = ProductionPhases(Metadata());
+            var rs = MilestoneFile.Load(Path.Combine(RepoPaths.AppProject, "Data", "RS"));
+            var versions = new Dictionary<GameFlavor, (IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> Milestones, RomVersion[] Versions)>
+            {
+                [GameFlavor.HGSS] = (Hgss, [RomVersion.HeartGold, RomVersion.SoulSilver]),
+                [GameFlavor.RS] = (rs, [RomVersion.Ruby, RomVersion.Sapphire])
+            };
 
-            // No stored phase name is a generated id, so no stored phase can leave today's path whichever lookup came first.
-            Assert.All(phases, p => Assert.All(Hgss.Keys, v => Assert.Null(PhaseTarget.FindMilestone(Hgss, v, p.Name))));
+            // No stored phase name is a generated id of its own game's versions, so no stored phase can leave today's path
+            // whichever lookup came first.
+            Assert.Equal(versions.Keys.ToHashSet(), phases.Select(p => p.Game).ToHashSet());
+            Assert.All(phases, p => Assert.All(versions[p.Game].Versions, v =>
+            {
+                Assert.NotEmpty(versions[p.Game].Milestones[v]);
+                Assert.Null(PhaseTarget.FindMilestone(versions[p.Game].Milestones, v, p.Name));
+            }));
             Assert.Equal("34-land", PhaseTarget.FindMilestone(Hgss, RomVersion.SoulSilver, "34-land")!.Id);
             Assert.Null(PhaseTarget.FindMilestone(Hgss, null, "34-land"));
             Assert.Null(PhaseTarget.FindMilestone(null, RomVersion.SoulSilver, "34-land"));
