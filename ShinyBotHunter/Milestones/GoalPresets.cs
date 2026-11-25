@@ -5,13 +5,14 @@ namespace ShinyBotHunter.Milestones
 {
     public enum GoalPreset
     {
+        None,
         LivingDex,
         FemaleForms,
         VersionExclusives
     }
 
-    // FR-8's fills. A preset fills entries once: Apply adds only species the goal has no entry for, so every filled entry and
-    // amount stays the owner's to edit.
+    // FR-8's fills. A game file has one preset, which supplies the default amounts: a change of preset gives every species the
+    // owner has not edited the new preset's entries and leaves every hand-edited species as the owner left it.
     public static class GoalPresets
     {
         private const ushort Unown = 201;
@@ -33,6 +34,8 @@ namespace ShinyBotHunter.Milestones
 
             return preset switch
             {
+                GoalPreset.None => [],
+
                 // Unown is one of each letter, not its line's size (Decided).
                 GoalPreset.LivingDex => species.SelectMany(s => s == Unown
                     ? Enumerable.Range(0, UnownLetters).Select(i => new GoalEntry(Unown, metadata.GetFormCode(Unown, 0, i), 1))
@@ -57,10 +60,31 @@ namespace ShinyBotHunter.Milestones
             };
         }
 
-        public static List<GoalEntry> Apply(IReadOnlyList<GoalEntry> goal, IEnumerable<GoalEntry> preset)
+        // A species is unedited when its goal entries are the old preset's for it (none in both counts); it takes the new preset's.
+        // Any other species was edited, added or removed by hand and keeps its goal entries. Per species, not per entry, so a
+        // species' entries always come from one source and the result passes GoalError. Changed and Kept count species.
+        public static (List<GoalEntry> Entries, int Changed, int Kept) Change(IReadOnlyList<GoalEntry> goal,
+            IReadOnlyList<GoalEntry> from, IReadOnlyList<GoalEntry> to)
         {
-            var wanted = goal.Select(e => e.Species).ToHashSet();
-            return goal.Concat(preset.Where(e => !wanted.Contains(e.Species))).ToList();
+            ILookup<int, GoalEntry> mine = goal.ToLookup(e => e.Species), old = from.ToLookup(e => e.Species), next = to.ToLookup(e => e.Species);
+            var entries = new List<GoalEntry>();
+            int changed = 0, kept = 0;
+            foreach (var species in goal.Concat(from).Concat(to).Select(e => e.Species).Distinct().Order())
+            {
+                var current = mine[species].ToHashSet();
+                bool differs = !current.SetEquals(next[species]);
+                if (current.SetEquals(old[species]))
+                {
+                    entries.AddRange(next[species]);
+                    changed += differs ? 1 : 0;
+                }
+                else
+                {
+                    entries.AddRange(mine[species]);
+                    kept += differs ? 1 : 0;
+                }
+            }
+            return (entries, changed, kept);
         }
 
         // The species' whole evolution family within the version's dex: back to the base, then every evolution forward.

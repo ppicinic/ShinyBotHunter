@@ -67,8 +67,8 @@ namespace ShinyBotHunter.Tests
             var goal = new GameFile
             {
                 Id = File,
-                Entries = GoalPresets.Apply(phaseRows.Select(r => new GoalEntry(r.Species, r.FormCode, r.Amount)).ToList(),
-                    GoalPresets.Entries(preset, version, Hgss, metadata))
+                Entries = GoalPresets.Change(phaseRows.Select(r => new GoalEntry(r.Species, r.FormCode, r.Amount)).ToList(), [],
+                    GoalPresets.Entries(preset, version, Hgss, metadata)).Entries
             };
 
             var rows = MilestoneRows.Build(Route30(version), goal, []);
