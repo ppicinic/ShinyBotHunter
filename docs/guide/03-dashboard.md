@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}/archived, goal/{gameFileName}/order), docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -90,6 +90,29 @@ Every entry under **Active Emulators** shows the actions that emulator can take 
 
 You see a green message such as `Started "Wild Encounter" on bot #1`, or a red message saying why it did not start.
 
+### The Milestone field
+
+On an emulator's form, **Milestone** lists the milestones of that emulator's game file, in this order: the ones you gave an order label, by label, then the rest by name. Numbers in a name or label count as numbers, so `1-4` comes before `1-10`. A game file you have set nothing on lists every milestone you made, as before.
+
+- **Wild Encounter** and each leg of **Chained Encounter** list two kinds: the milestones you made in the [Milestone Editor](#make-a-milestone), and one generated milestone for each wild place and way of meeting Pokémon in the game, named like `Route 30 · grass`.
+- **HGSS Togepi Egg**, **HGSS Primo Egg** and **HGSS Static Encounter** list only the milestones you made.
+
+Above the list:
+
+- **Filter**: type part of a name, an order label or a generated id such as `34-land`. Upper and lower case match alike.
+- The second box, shown when there are generated milestones: **All**, **Custom** (the ones you made), or one way of meeting Pokémon (**Land**, **Surf**, **OldRod**, **GoodRod**, **SuperRod**, **RockSmash**, **Headbutt**).
+- **Incomplete only**: hides the milestones that are complete for this game file.
+- **Show archived**: shows the milestones you archived. They are hidden otherwise.
+
+A milestone the bot cannot hunt yet reads `(no hunt yet)` after its name: surf, the three rods and rock smash. You can pick it, but Run is refused with the reason. An archived one reads `(archived)`.
+
+Once a milestone is picked, two controls appear under the list:
+
+- **Archive** hides it from this game file's list; **Unarchive** brings it back. Archiving changes no count and no encounter.
+- **Order**: type a label such as `1-4` and click elsewhere to save it. Empty the box to remove the label.
+
+Both are saved for this game file and the list reloads.
+
 An emulator offers only the actions its game supports, and only while it is not busy. While an action is running, the entry shows no actions; you can only cancel it.
 
 While a Ruby or Sapphire wild hunt runs, its entry can show small grey lines under its name, each naming something in your save that slows the hunt. These are the [speed lines](04-hunts/08-rs-wild-encounter.md#the-speed-lines).
@@ -104,11 +127,11 @@ The actions, in the order the dashboard lists them. "Start Action" is the list o
 | Launch Bot + Continue | Start Action | **Game**; optional **Sound On** | [Launch an emulator](#launch-an-emulator) |
 | Shiny Starter Hunt | Start Action | **Game** (HeartGold / SoulSilver or Ruby / Sapphire). For Ruby / Sapphire only: **Milestone**, **Emulators**, and one or more **Starter** entries, each with **Game**, **Starter**, optional **RecordingName** and optional **RequireFemale** | [HGSS starter](04-hunts/02-hgss-starter.md), [RS starter](04-hunts/03-rs-starter.md) |
 | Wishmaker Jirachi Hunt | Start Action | **Game**, **Milestone** | [Wishmaker Jirachi](04-hunts/05-wishmaker-jirachi.md) |
-| Wild Encounter | Emulator | **Milestone**; **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it. For Ruby and Sapphire, Headbutt and Pickup are greyed out with the reason in brackets | [Wild and chained encounters](04-hunts/01-wild-encounter.md), [RS wild encounters](04-hunts/08-rs-wild-encounter.md) |
+| Wild Encounter | Emulator | **Milestone** (made and generated; see [The Milestone field](#the-milestone-field)); **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it. For Ruby and Sapphire, Headbutt and Pickup are greyed out with the reason in brackets | [Wild and chained encounters](04-hunts/01-wild-encounter.md), [RS wild encounters](04-hunts/08-rs-wild-encounter.md) |
 | Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works. HeartGold and SoulSilver only | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
-| HGSS Togepi Egg | Emulator | **Milestone** | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
-| HGSS Primo Egg | Emulator | **Milestone** | [Primo egg hunt](04-hunts/06-primo-egg.md) |
-| HGSS Static Encounter | Emulator | **Milestone**, **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
+| HGSS Togepi Egg | Emulator | **Milestone** (only the milestones you made) | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
+| HGSS Primo Egg | Emulator | **Milestone** (only the milestones you made) | [Primo egg hunt](04-hunts/06-primo-egg.md) |
+| HGSS Static Encounter | Emulator | **Milestone** (only the milestones you made), **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
 | Resume | Emulator | None | [Resume a hunt that is waiting](#resume-a-hunt-that-is-waiting) |
 
 ## Make a milestone
@@ -256,6 +279,7 @@ Move and resize the windows with the mouse; positions and sizes are saved as you
 ## If something on this screen goes wrong
 
 - **You see** Start or Run greyed out. **It means** a field the action needs is empty. **Do** fill in every field.
+- **You see** a red message "NAME: no hunt yet." after Run. **It means** the milestone is met by surfing, fishing or rock smash, which the bot cannot do yet. **Do** pick a grass, cave or headbutt milestone; the **Land** and **Headbutt** filters show only those.
 - **You see** "Pick a game first" in **Milestone**. **It means** no game is chosen yet. **Do** pick the game first.
 - **You see** a red box under **Start Action**. **It means** the dashboard could not reach the bot. **Do** see [When something goes wrong](07-when-something-goes-wrong.md).
 - **You see** a red message after Start or Run. **It means** the bot refused, and the message is its reason, word for word. For example, a message of the form "ACTION needs CAPABILITY, which GAME does not have." means that action does not exist for that game. **Do** what the message asks, then try again.

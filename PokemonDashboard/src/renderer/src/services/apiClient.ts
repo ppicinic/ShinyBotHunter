@@ -45,6 +45,20 @@ export function getBotActions(apiUrl: string, pos: number): Promise<Response> {
   return request('GET', `${apiUrl}/api/bot/getBotActions/${pos}`)
 }
 
+// 404 when no bot is at the position.
+export function getBotMilestones(apiUrl: string, pos: number): Promise<Response> {
+  return request('GET', `${apiUrl}/api/bot/milestones/${pos}`)
+}
+
+export function setMilestoneArchived(apiUrl: string, gameFileName: string, milestone: string, archived: boolean): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}/archived?milestone=${encodeURIComponent(milestone)}&archived=${archived}`)
+}
+
+// An empty label clears the milestone's label.
+export function setMilestoneOrder(apiUrl: string, gameFileName: string, milestone: string, label: string): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}/order`, { milestone, label })
+}
+
 export function getParty(apiUrl: string, pos: number): Promise<Response> {
   return request('GET', `${apiUrl}/api/bot/getParty/${pos}`)
 }

@@ -187,6 +187,31 @@ export interface AdminMetadata {
 }
 
 // ============================================================
+// Milestone picker (GET /api/bot/milestones/{pos})
+// Matches C# PickerMilestone (MilestonePicker.cs) and BotMilestones (BotDtos.cs)
+// ============================================================
+
+export type Modality = 'Land' | 'Surf' | 'OldRod' | 'GoodRod' | 'SuperRod' | 'RockSmash' | 'Headbutt'
+
+export interface PickerMilestone {
+  // A generated milestone's id ("34-land"), or a custom phase's name. Sent as PhaseName at Start.
+  id: string
+  name: string
+  // Null for a custom phase.
+  modality: Modality | null
+  huntable: boolean
+  complete: boolean
+  archived: boolean
+  order: string | null
+}
+
+export interface BotMilestones {
+  gameFileName: string
+  // In the server's order: labelled entries first, then by name.
+  milestones: PickerMilestone[]
+}
+
+// ============================================================
 // Detected ROMs (GET /api/getAllGames, POST /api/refreshGames)
 // Matches C# GameRomInfo in AdminController.cs
 // ============================================================
