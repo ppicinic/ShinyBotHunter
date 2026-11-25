@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
+import type { GameEncounterResponseBase, MilestoneCardRow, PhaseEncounterResponse, PhasePokemonInfo, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import * as api from '../services/apiClient'
 import { PokemonSprite } from './PokemonSprite'
@@ -13,6 +13,77 @@ function getGameDisplayName(game: string): string {
   return GAME_DISPLAY_NAMES[game] ?? game
 }
 
+// The one row shape the table draws, from a stored phase or from a generated milestone's rows
+interface CardRow {
+  // The count key, unique per row: a female and a male row, or Unown's 28, share a species
+  key: string
+  name: string
+  sprite: string
+  genderSymbol: string
+  amount: number
+  caught: number
+  encountersHere: number
+  encountersOnFile: number
+  missed: number
+}
+
+export function phaseCardRows(
+  pokemon: PhasePokemonInfo[],
+  phaseData: PhaseEncounterResponse | undefined,
+  scopedData: GameEncounterResponseBase | null | undefined
+): CardRow[] {
+  return pokemon.map((pkmn) => {
+    // A row that pins a form counts only that form (male and female, or Unown's 28,
+    // stay separate); a row that accepts any form counts the whole species. Must match
+    // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
+    const countKey = pkmn.requireSpecificForm ? pkmn.formCode : `#${pkmn.speciesId}`
+    const phaseCounts = phaseData?.pokemonEncounters?.[countKey]
+    const totalCounts = scopedData?.pokemonEncounters?.[countKey]
+    const shiniesCaught = totalCounts?.shiniesCaught ?? 0
+    const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
+    // Missed = shiny encounters that were not caught
+    const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
+    // Only shown when the row actually pins a form -- otherwise it accepts either
+    // gender and marking it would be a lie. Within a pinned row, ";f" is the only thing
+    // ever encoded, so a plain code means male when the species has a female form.
+    const genderSymbol = !pkmn.requireSpecificForm
+      ? ''
+      : pkmn.formCode.endsWith(';f')
+        ? '♀'
+        : pkmn.hasFemaleForm
+          ? '♂'
+          : ''
+    return {
+      key: countKey,
+      name: pkmn.name,
+      sprite: pkmn.formCode,
+      genderSymbol,
+      amount: pkmn.amount,
+      caught: shiniesCaught,
+      encountersHere: phaseCounts?.encounters ?? 0,
+      encountersOnFile: totalCounts?.encounters ?? 0,
+      missed: shiniesMissed
+    }
+  })
+}
+
+// A hidden row is not drawn (FR-12). The gender rule is a stored row's: an any-form row (no form code) is not marked.
+export function milestoneCardRows(rows: MilestoneCardRow[]): CardRow[] {
+  return rows
+    .filter((row) => !row.hidden)
+    .map((row) => ({
+      key: row.key,
+      name: row.name,
+      sprite: row.sprite,
+      genderSymbol: row.formCode === null ? '' : row.formCode.endsWith(';f') ? '♀' : row.hasFemaleForm ? '♂' : '',
+      amount: row.wanted,
+      caught: row.caught,
+      encountersHere: row.encountersHere,
+      encountersOnFile: row.encountersOnFile,
+      missed: Math.max(0, row.shinyEncountersOnFile - row.caught)
+    }))
+}
+
 interface PhaseCardProps {
   subscription: SubscriptionState
   windowChrome?: boolean
@@ -20,7 +91,7 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
   const { config, connectionState } = useAppContext()
-  const { game, phase, gameName, encounterData, phaseInfo } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo, milestone, notFound } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
   const scopedData: GameEncounterResponseBase | null | undefined = gameName
@@ -32,7 +103,9 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
   const phaseCount = phaseData?.phaseCount ?? null
 
-  const pokemonList: PhasePokemonInfo[] = phaseInfo?.pokemon ?? []
+  const rows: CardRow[] = milestone
+    ? milestoneCardRows(milestone.rows)
+    : phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData)
 
   // The phase card sizes its rows to the space available rather than scrolling: the whole point is
   // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
@@ -47,19 +120,19 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
   useLayoutEffect(() => {
     const body = bodyRef.current
-    if (!body || pokemonList.length === 0) {
+    if (!body || rows.length === 0) {
       setRowHeight(null)
       return
     }
     const measure = (): void => {
       const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0)
-      setRowHeight(Math.max(ROW_MIN, Math.floor(available / pokemonList.length)))
+      setRowHeight(Math.max(ROW_MIN, Math.floor(available / rows.length)))
     }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(body)
     return () => observer.disconnect()
-  }, [pokemonList.length])
+  }, [rows.length])
 
   // Leave room for the row's own vertical padding so sprites never force a row taller than its slot.
   const spriteSize = rowHeight === null
@@ -95,7 +168,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       <div className={`card-header ${windowChrome ? 'window-drag-region' : ''}`}>
         <div>
           <span className="text-xs text-slate-500 mr-2">{gameName ?? getGameDisplayName(game)}</span>
-          <span className="card-header-title">{phase}</span>
+          <span className="card-header-title">{milestone?.name ?? phase}</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-400">
           <span>
@@ -114,9 +187,13 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       </div>
 
       <div ref={bodyRef} className="flex-1 overflow-hidden px-2 py-1">
-        {pokemonList.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
-            {phaseInfo === null ? 'Loading milestone requirements...' : 'No Pokémon defined for this milestone.'}
+            {notFound
+              ? `Milestone "${phase}" was not found.`
+              : phaseInfo === null && milestone === null
+                ? 'Loading milestone requirements...'
+                : 'No Pokémon defined for this milestone.'}
           </div>
         ) : (
           <table className="w-full border-collapse">
@@ -130,48 +207,27 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
               </tr>
             </thead>
             <tbody>
-              {pokemonList.map((pkmn) => {
-                // A row that pins a form counts only that form (male and female, or Unown's 28,
-                // stay separate); a row that accepts any form counts the whole species. Must match
-                // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
-                const countKey = pkmn.requireSpecificForm ? pkmn.formCode : `#${pkmn.speciesId}`
-                const phaseCounts = phaseData?.pokemonEncounters?.[countKey]
-                const totalCounts = scopedData?.pokemonEncounters?.[countKey]
-                const shiniesCaught = totalCounts?.shiniesCaught ?? 0
-                const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
-                // Missed = shiny encounters that were not caught
-                const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
-                const amountRequired = pkmn.amount
+              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed }) => {
                 // Amount 0 means "track this pokemon's encounters but don't require it". Without the
                 // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
                 const isTrackedOnly = amountRequired === 0
                 const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
-                // Phase card shows target (shiny) sprites since these are the pokemon being hunted
-                // Only shown when the row actually pins a form -- otherwise it accepts either
-                // gender and marking it would be a lie. Within a pinned row, ";f" is the only thing
-                // ever encoded, so a plain code means male when the species has a female form.
-                const genderSymbol = !pkmn.requireSpecificForm
-                  ? ''
-                  : pkmn.formCode.endsWith(';f')
-                    ? '♀'
-                    : pkmn.hasFemaleForm
-                      ? '♂'
-                      : ''
 
                 return (
                   <tr
-                    key={pkmn.speciesId}
+                    key={key}
                     className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''}`}
                     style={rowHeight === null ? undefined : { height: rowHeight }}
                   >
                     {/* Sprite */}
                     <td className="py-0 pr-3 text-center">
-                      <PokemonSprite formCode={pkmn.formCode} isShiny name={pkmn.name} size={spriteSize} />
+                      {/* Phase card shows target (shiny) sprites since these are the pokemon being hunted */}
+                      <PokemonSprite formCode={sprite} isShiny name={name} size={spriteSize} />
                     </td>
 
                     {/* Name */}
                     <td className="py-0 pr-3 text-center">
-                      <span className="text-white font-semibold text-sm capitalize">{pkmn.name}</span>
+                      <span className="text-white font-semibold text-sm capitalize">{name}</span>
                       {genderSymbol && (
                         <span className={`ml-1 text-sm ${genderSymbol === '♀' ? 'text-pink-400' : 'text-sky-400'}`}>{genderSymbol}</span>
                       )}
@@ -182,12 +238,12 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
                     {/* Phase encounters */}
                     <td className="py-0 pr-3 text-center text-white font-medium text-sm">
-                      {(phaseCounts?.encounters ?? 0).toLocaleString()}
+                      {encountersHere.toLocaleString()}
                     </td>
 
                     {/* Game encounters */}
                     <td className="py-0 pr-3 text-center text-white font-medium text-sm">
-                      {(totalCounts?.encounters ?? 0).toLocaleString()}
+                      {encountersOnFile.toLocaleString()}
                     </td>
 
                     {/* Shinies caught / needed */}
