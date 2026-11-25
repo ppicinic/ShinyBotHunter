@@ -328,6 +328,18 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - The picker reads the 4 bytes alone, with no party read; a failed read gives no headbutt anchor, so the picker works at the title screen as before.
   - Headbutt shares on the card stay off; turning them on is a later task after B4b and B4c.
 
+- 2026-11-25, decided by the orchestrator at plan review and in review cycles, for the tasks that have no entry above:
+  - B4a (#522): the HGSS snapshot request already sends 16 blocks, ApiHawk's limit, so the clock and the Repel counter are NOT on the snapshot. The decision makes one small chain request beside its party read (clock, Repel counter, and the save section table until section 21's offset is known). The first decision after a launch has no Repel reading. The Run hunt closes "The Repel's effect wore off" with one A gated on script 2022 waiting in `WaitABPressNative` (NFR-1 is met by the snapshot being untouched; the cost is one request per encounter).
+  - B3r (#521): RS's rate rule only. RS's Repel counter and message are B3r2 (#556), which waits on an emulator research round.
+  - A6 (#553): the card showing a generated milestone was owned by no task and became one. `phaseinfo` answers 404 only for an unknown phase; a failure is a 500.
+  - A4 (#515): the link, the copy and the Start refusal as FR-43 to FR-46 say. The linked name leaves the picker (FR-44). Completion never uses encounter counts, so a link cannot end or prolong a hunt.
+  - C3b (#550): a planned hunt starts on the plan's default and the clock's pick replaces it at the first decision, before any walk; every later move is logged under the milestone being left until the bot arrives. A walk that ends off the anchor parks with a sentence. FR-34 as built: the hunt ends when the default is complete and no rule matches the hour, even if another rule's milestone is incomplete.
+  - B4b and B4c (#552, #563): shares are computed from the inputs last seen at a decision, kept in memory per game file. During a hunt they change at the first encounter after 4:00, 10:00 or 20:00, not on the hour with no encounter. RS shows plain shares marked not live until #556. No shares on a headbutt card.
+  - A5a and A5b (#516, #566): a fifth Admin tab, Goals; hidden rows on Bot Control; assignment, link and copy in the Milestone Editor. A preset adds species the goal lacks and keeps existing entries, so presets do not stack on a species.
+  - C4a and C4b (#564, #524): rename and delete are refused while a hunt uses the plan (a hunt parked in Waiting counts). The mock's in-game clock chip is not built: nothing the dashboard can read exposes the weekday and hour. The mock's footer line is qualified: a Follows the hunt window follows the bot.
+  - A7 (#574): Static Encounter refuses a linked name too, through a test seam on the game-file store (the one new seam of the feature, AGENTS rule 2's exception).
+  - Not built in this feature and open: B3r2 (#556) and C5 (#562, the navigator closing the Repel message mid-walk; until then such a walk parks in Waiting), both waiting on emulator research; the missing Route 1 to Viridian City edge in the HGSS graph (#578); the shares on a headbutt card.
+
 ## Appendix: the maps and their names
 
 Generated in the spike from the decomps' map constants and, for HGSS, the game's own location names. "land" is the walking table: grass, or the floor of a cave or tower. This table is what FR-3 commits as data.
