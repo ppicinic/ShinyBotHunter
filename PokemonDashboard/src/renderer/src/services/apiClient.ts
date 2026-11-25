@@ -145,3 +145,27 @@ export function applyGoalPreset(apiUrl: string, game: string, gameFileName: stri
 export function getSpeciesNames(apiUrl: string, game: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/species/${encodeURIComponent(game)}`)
 }
+
+// Always sends the flag: the server reads a missing one as false.
+export function setRowHidden(apiUrl: string, gameFileName: string, row: import('../types/api').HiddenRow, hidden: boolean): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}/hidden?hidden=${hidden}`, row)
+}
+
+// A milestone you made, assigned to no file, is listed on every file.
+export function setMilestoneAssigned(apiUrl: string, gameFileName: string, phase: string, assigned: boolean): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(gameFileName)}/assigned?phase=${encodeURIComponent(phase)}&assigned=${assigned}`)
+}
+
+// 404 when the file's version has no such milestone; 400 with the reason when the phase is linked to another one.
+export function setMilestoneLink(apiUrl: string, game: string, gameFileName: string, link: import('../types/api').MilestoneLink, linked: boolean): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/link?linked=${linked}`, link)
+}
+
+export function getBackfillOffer(apiUrl: string, game: string, gameFileName: string, phase: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/backfill/${encodeURIComponent(phase)}`)
+}
+
+// Replaces the goal's entries for the chosen species with the phase's and returns the goal; 400 with the reason it is refused.
+export function copyAmounts(apiUrl: string, game: string, gameFileName: string, phase: string, species: number[]): Promise<Response> {
+  return request('POST', `${apiUrl}/api/goal/${encodeURIComponent(game)}/${encodeURIComponent(gameFileName)}/copy/${encodeURIComponent(phase)}`, species)
+}

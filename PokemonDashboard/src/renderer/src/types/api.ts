@@ -454,3 +454,21 @@ export interface SpeciesName {
   species: number
   name: string
 }
+
+// ============================================================
+// Linking a milestone you made on a game file (GET /api/goal/{game}/{gameFileName}/backfill/{phase})
+// Matches C# CopyOffer (Backfill.cs) and the response of GetBackfillAsync in PhaseMetadataController.cs
+// ============================================================
+
+// One species of the phase: what a copy would write beside what the goal has for it now.
+export interface CopyOffer {
+  species: number
+  phase: GoalEntry[]
+  goal: GoalEntry[]
+}
+
+export interface BackfillOffer {
+  // The generated milestone the research doc maps the phase to on this file's version; null when there is none.
+  suggested: { id: string; name: string } | null
+  copy: CopyOffer[]
+}
