@@ -11,6 +11,7 @@ export function DashboardConfigTab(): JSX.Element {
   const [selectedGame, setSelectedGame] = useState<string>('')
   const [selectedPhase, setSelectedPhase] = useState<string>('')
   const [selectedGameName, setSelectedGameName] = useState<string>('')
+  const [followsHunt, setFollowsHunt] = useState(false)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [recentCount, setRecentCount] = useState<number>(dashboardConfig.recentEncounterCount)
   const [loading, setLoading] = useState(false)
@@ -73,8 +74,14 @@ export function DashboardConfigTab(): JSX.Element {
     if (!selectedGame || !selectedPhase) return
     setLoading(true)
     try {
-      const res = await api.subscribeGamePhase(apiUrl, { game: selectedGame, phase: selectedPhase, gameName: selectedGameName || null })
+      const res = await api.subscribeGamePhase(apiUrl, {
+        game: selectedGame,
+        phase: selectedPhase,
+        gameName: selectedGameName || null,
+        followsHunt: addFollowsHunt
+      })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      setFollowsHunt(false)
       showFeedback(`Subscribed to ${selectedGame} / ${selectedPhase}${selectedGameName ? ` (${selectedGameName})` : ''}`)
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Unknown error', true)
@@ -83,10 +90,15 @@ export function DashboardConfigTab(): JSX.Element {
     }
   }
 
-  const handleRemoveSubscription = async (game: string, phase: string, gameName?: string | null): Promise<void> => {
+  const handleRemoveSubscription = async (
+    game: string,
+    phase: string,
+    gameName: string | null | undefined,
+    followsHunt: boolean
+  ): Promise<void> => {
     setLoading(true)
     try {
-      const res = await api.unsubscribeGamePhase(apiUrl, { game, phase, gameName: gameName ?? null })
+      const res = await api.unsubscribeGamePhase(apiUrl, { game, phase, gameName: gameName ?? null, followsHunt })
       if (!res.ok) throw new Error(`Server returned ${res.status}`)
       showFeedback(`Unsubscribed from ${game} / ${phase}`)
     } catch (err) {
@@ -123,6 +135,12 @@ export function DashboardConfigTab(): JSX.Element {
 
   const availableGames = Object.keys(metadata?.games ?? {})
   const availablePhases = selectedGame ? (metadata?.games[selectedGame]?.phases ?? []) : []
+  // One follows-the-hunt card per game file (FR-38d); it needs a game file to follow.
+  const fileHasFollowsHunt = dashboardConfig.gamePhases.some(
+    (gp) => gp.followsHunt && gp.game === selectedGame && gp.gameName === selectedGameName
+  )
+  const canFollowHunt = selectedGameName !== '' && !fileHasFollowsHunt
+  const addFollowsHunt = followsHunt && canFollowHunt
 
   return (
     <div className="p-3 space-y-4">
@@ -137,9 +155,9 @@ export function DashboardConfigTab(): JSX.Element {
           <p className="text-slate-500 text-sm">No active subscriptions.</p>
         ) : (
           <ul className="space-y-1">
-            {dashboardConfig.gamePhases.map(({ game, phase, gameName }) => (
+            {dashboardConfig.gamePhases.map(({ game, phase, gameName, followsHunt: follows = false }) => (
               <li
-                key={`${game}_${phase}_${gameName ?? ''}`}
+                key={`${game}_${phase}_${gameName ?? ''}_${follows}`}
                 className="flex items-center justify-between bg-card-border/30 rounded px-3 py-1.5"
               >
                 <span className="text-sm text-white">
@@ -148,9 +166,10 @@ export function DashboardConfigTab(): JSX.Element {
                   {gameName && (
                     <span className="text-slate-400 text-xs ml-2">({gameName})</span>
                   )}
+                  {follows && <span className="text-slate-400 text-xs ml-2">· follows the hunt</span>}
                 </span>
                 <button
-                  onClick={() => handleRemoveSubscription(game, phase, gameName)}
+                  onClick={() => handleRemoveSubscription(game, phase, gameName, follows)}
                   disabled={loading}
                   className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
                 >
@@ -190,7 +209,10 @@ export function DashboardConfigTab(): JSX.Element {
           </select>
           <select
             value={selectedGameName}
-            onChange={(e) => setSelectedGameName(e.target.value)}
+            onChange={(e) => {
+              setSelectedGameName(e.target.value)
+              setFollowsHunt(false)
+            }}
             className="bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
           >
             <option value="">No game file</option>
@@ -198,6 +220,15 @@ export function DashboardConfigTab(): JSX.Element {
               <option key={g.handle} value={g.handle}>{romLabel(g)}</option>
             ))}
           </select>
+          <label className="flex items-center gap-2 text-sm text-white">
+            <input
+              type="checkbox"
+              checked={addFollowsHunt}
+              disabled={loading || !canFollowHunt}
+              onChange={(e) => setFollowsHunt(e.target.checked)}
+            />
+            {fileHasFollowsHunt ? 'Follows the hunt (this file has one)' : 'Follows the hunt'}
+          </label>
           <button
             onClick={handleAddSubscription}
             disabled={loading || !selectedGame || !selectedPhase}

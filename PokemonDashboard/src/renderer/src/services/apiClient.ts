@@ -17,11 +17,11 @@ export function getAllGames(apiUrl: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/getAllGames`)
 }
 
-export function subscribeGamePhase(apiUrl: string, body: { game: string; phase: string; gameName: string | null }): Promise<Response> {
+export function subscribeGamePhase(apiUrl: string, body: { game: string; phase: string; gameName: string | null; followsHunt: boolean }): Promise<Response> {
   return request('POST', `${apiUrl}/api/subcribeGamePhase`, body)
 }
 
-export function unsubscribeGamePhase(apiUrl: string, body: { game: string; phase: string; gameName: string | null }): Promise<Response> {
+export function unsubscribeGamePhase(apiUrl: string, body: { game: string; phase: string; gameName: string | null; followsHunt: boolean }): Promise<Response> {
   return request('POST', `${apiUrl}/api/unsubcribeGamePhase`, body)
 }
 

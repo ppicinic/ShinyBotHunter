@@ -216,7 +216,7 @@ Risks found are in the [review](../reviews/2026-10-code-review.md#5-architecture
 
 ## 9. Dashboard
 
-Electron, one `BrowserWindow` per card (admin, recent encounters, one per subscribed game+phase), as laid out in `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md`. Bounds persist to `window-layout.json` so windows can be placed for OBS capture.
+Electron, one `BrowserWindow` per card (admin, recent encounters, one per fixed card's game+phase and optional game file, and one per game file whose card follows the hunt), as laid out in `PokemonDashboard/docs/MULTI_WINDOW_EXECUTION_PLAN.md`. Bounds persist to `window-layout.json` so windows can be placed for OBS capture. A follows-the-hunt window is named `phase:{game}::{file}`, with no phase, so its name, title and bounds survive a change of milestone; it reads the milestone from the pushed `gamePhases` and re-renders, never reloads. Phase windows run with `backgroundThrottling` off so a covered one still paints for capture.
 
 - **SignalR** lives only in the main process (`src/main/signalRClient.ts`) and is fanned out to every window over IPC. Reconnect and resubscribe are handled with backoff.
 - **REST** goes through the main process. Every renderer request is a function in `services/apiClient.ts`, which calls `window.api.request` (the `api-request` IPC channel); main forwards it with `net.fetch` only when the URL's origin is the configured `apiUrl` and returns the status and body. Windows run with the Electron defaults (`webSecurity` and `sandbox` on); sprites come from the `sprite://` scheme served by main. The backend has no CORS configuration and needs none.
