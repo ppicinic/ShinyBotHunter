@@ -1,8 +1,16 @@
+using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Controllers;
+using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Pokemon;
+using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Tests
 {
@@ -123,6 +131,66 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("The plan has no default milestone", PhaseMetadataController.PlanError(Plan() with { Default = " " }));
             Assert.Equal("Rule 2 names no milestone",
                 PhaseMetadataController.PlanError(Plan(Rule("34-land", [SlotCondition.Night], []), Rule("", [], [DayOfWeek.Friday]))));
+        }
+
+        // The in-use check reads only the entry's event, bot and name, so the event never runs.
+        private sealed class IdleEvent : IBotEvent
+        {
+            public Task ExecuteAsync(GameState state, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        private static KeyValuePair<int, BotAndOrEvent> Hunt(int pos, string? eventName, bool hasEvent = true, GameProfile? profile = null)
+            => new(pos, new BotAndOrEvent(new FakeBot(Task.CompletedTask, profile)) { BotPosition = pos, Event = hasEvent ? new IdleEvent() : null, EventName = eventName });
+
+        [Fact]
+        public void PlanInUse_RunningHunt_RefusedWithTheSentence()
+        {
+            var running = Hunt(2, BotService.PlanEventName("Johto"));
+            running.Value.EventTask = new TaskCompletionSource().Task;
+
+            Assert.Equal("Johto is in use by the hunt on bot #2; cancel that hunt first.",
+                BotService.PlanInUseRefusal([Hunt(0, null, hasEvent: false), running], GameFlavor.HGSS, "Johto"));
+        }
+
+        [Fact]
+        public void PlanInUse_ParkedHunt_Refused()
+        {
+            var parked = Hunt(2, BotService.PlanEventName("Johto"));
+            parked.Value.GameState = new GameState();
+            parked.Value.GameState.State.Push(EventState.Waiting);
+
+            Assert.Equal("Johto is in use by the hunt on bot #2; cancel that hunt first.",
+                BotService.PlanInUseRefusal([parked], GameFlavor.HGSS, "Johto"));
+        }
+
+        [Fact]
+        public void PlanInUse_FinishedOrOtherPlanOrOtherGame_IsNull()
+        {
+            var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+
+            // A finished hunt keeps its name but not its event.
+            Assert.Null(BotService.PlanInUseRefusal([Hunt(0, BotService.PlanEventName("Johto"), hasEvent: false)], GameFlavor.HGSS, "Johto"));
+            Assert.Null(BotService.PlanInUseRefusal([Hunt(0, BotService.PlanEventName("Kanto"))], GameFlavor.HGSS, "Johto"));
+            Assert.Null(BotService.PlanInUseRefusal([Hunt(0, "Johto")], GameFlavor.HGSS, "Johto"));
+            Assert.Null(BotService.PlanInUseRefusal([Hunt(0, BotService.PlanEventName("Johto"), profile: rs)], GameFlavor.HGSS, "Johto"));
+        }
+
+        [Fact]
+        public async Task RenamePlan_BlankName_Refused()
+        {
+            var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
+            // No provider: the name is refused before the gate and before Mongo.
+            var service = new BotService(settings, new FakeBotFactory(settings, Task.CompletedTask, null), null!, null!, null!, null!);
+
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.RenamePlanAsync(GameFlavor.HGSS, "Johto", " "));
+
+            Assert.Equal("The plan needs a name.", ex.Message);
+        }
+
+        [Fact]
+        public void PlanEventName_IsWhatStartNames()
+        {
+            Assert.Equal("Plan Johto", BotService.PlanEventName("Johto"));
         }
     }
 }
