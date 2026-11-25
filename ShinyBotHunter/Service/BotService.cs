@@ -537,6 +537,7 @@ namespace ShinyBotHunter.Service
             // error on the start request instead of faulting a background task the dashboard
             // cannot report on.
             await EnsurePartyHasRoomForEggAsync(pos);
+            RefuseLinked(slots.Entries[pos].Bot!, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(slots.Entries[pos].Bot!.GameFileName), args.PhaseName);
             // Constructing the event loads and validates its config, so a corridor or a touch
             // coordinate that was never measured fails here with a message rather than after the
             // dashboard has already reported the hunt as running.
@@ -570,6 +571,7 @@ namespace ShinyBotHunter.Service
             {
                 throw new InvalidOperationException(HgssPrimoEggEvent.StandFacingPrimo(config));
             }
+            RefuseLinked(bot, await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName), args.PhaseName);
             var eggEvent = new HgssPrimoEggEvent(bot, args.PhaseName, config, provider, this);
             slots.Entries[pos].GameState = new GameState()
             {

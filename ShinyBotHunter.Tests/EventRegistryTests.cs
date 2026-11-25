@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.BotEvents;
@@ -113,6 +114,23 @@ namespace ShinyBotHunter.Tests
             var actions = await service.GetBotActionsAsync(0);
 
             Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
+        }
+
+        // FR-44a: the egg hunt reads the game file for links before it starts. LinkedRefusal's sentence is BackfillTests'; a
+        // provider with no game file store shows the read is made, and that nothing started.
+        [Fact]
+        public async Task StartTogepiEgg_ReadsTheGameFileForLinksBeforeStarting()
+        {
+            var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
+            var service = new BotService(settings, new FakeBotFactory(settings, Task.CompletedTask, null), new ServiceCollection().BuildServiceProvider(), null!, null!, null!);
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var result = await new BotController(service).StartAction(0, new NewEventArguments { EventName = "HGSS Togepi Egg", PhaseName = "2-1c Togepi" });
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Contains(nameof(Persistence.MongoDb.MongoGameFileDao), content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
         [Fact]
