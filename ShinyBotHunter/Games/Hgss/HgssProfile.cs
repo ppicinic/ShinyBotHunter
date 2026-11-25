@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
@@ -53,6 +54,7 @@ namespace ShinyBotHunter.Games.Hgss
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
                 await bot.WaitForMacroAsync();
             },
-            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>());
+            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>(),
+            rates: HgssRates.Compute);
     }
 }
