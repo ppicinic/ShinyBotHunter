@@ -36,9 +36,10 @@ const R32_MACRO = /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/
 const R30_MACRO = /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/
 
 const hhmm = (c: Clock): string => `${WEEKDAYS[c.weekday]} ${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}`
-function walkOf(line: string): { fields: string[]; hour: number } {
+// The walk line's weekday, milestone and destination; the map and x it walks from (a run line's y varies); the hour.
+function walkOf(line: string): { fields: string[]; from: string[]; hour: number } {
   const m = PLAN_WALK.exec(line)!
-  return { fields: [m[1], m[3], m[4], m[5], m[6], m[7]], hour: Number(m[2]) }
+  return { fields: [m[1], m[3], m[7], m[8], m[9]], from: [m[4], m[5]], hour: Number(m[2]) }
 }
 const battles = (): number => backendLog().filter((l) => BATTLE.test(l)).length
 /** The Run lines logged after the n-th (1-based) `Plan: now hunting` line. */
@@ -77,7 +78,8 @@ test(`hgss-plan-morning-back ${which}: Route 30 in the morning, back at 10:00`, 
     const now1 = await seen(PLAN_NOW, 1, 2 * MINUTE)
     expect(PLAN_NOW.exec(now1.line)![1], 'the morning pick').toBe(R30.name)
     const walk1 = walkOf((await seen(PLAN_WALK, 1, MINUTE)).line)
-    expect(walk1.fields, 'the first walk').toEqual([WEEKDAYS[launchClock.weekday], R30.name, R30.id, ...R30.at])
+    expect(walk1.fields, 'the first walk').toEqual([WEEKDAYS[launchClock.weekday], R30.name, ...R30.at])
+    expect(walk1.from, 'the first walk from the save\'s tile').toEqual(R32.at.slice(0, 2))
     expect(walk1.hour >= 4 && walk1.hour < 10, `the first walk's hour ${walk1.hour} is not in the morning`).toBe(true)
     const arrived1 = await seen(ARRIVED, 1, 10 * MINUTE)
     const battlesAtR30 = battles()
@@ -104,7 +106,8 @@ test(`hgss-plan-morning-back ${which}: Route 30 in the morning, back at 10:00`, 
         .toBeGreaterThanOrEqual(3)
     }
     for (const row of morning) expect(R30_MORNING_DAY, `a ${row.species} at Route 30's anchor in the morning`).toContain(row.species)
-    expect(walk2.fields, 'the walk at 10:00').toEqual([WEEKDAYS[launchClock.weekday], R32.name, R30.id, ...R32.at])
+    expect(walk2.fields, 'the walk at 10:00').toEqual([WEEKDAYS[launchClock.weekday], R32.name, ...R32.at])
+    expect(walk2.from, 'the walk at 10:00 from Route 30\'s run line').toEqual(R30.at.slice(0, 2))
     expect(walk2.hour, 'the walk\'s hour').toBe(10)
     const now2 = await seen(PLAN_NOW, 2, 15 * MINUTE)
     expect(PLAN_NOW.exec(now2.line)![1], 'the switch on arrival at Route 32').toBe(R32.name)
@@ -124,7 +127,8 @@ test(`hgss-plan-morning-back ${which}: Route 30 in the morning, back at 10:00`, 
       // The switch's read finds Route 32 complete: one message naming Route 30, the walk back logged under Route 32, the
       // switch there, and Route 30's day species from its anchor. The hunt is not complete.
       const walk3 = walkOf((await seen(PLAN_WALK, 3, 2 * MINUTE)).line)
-      expect(walk3.fields, 'the walk back to the first incomplete rule').toEqual([WEEKDAYS[launchClock.weekday], R30.name, R32.id, ...R30.at])
+      expect(walk3.fields, 'the walk back to the first incomplete rule').toEqual([WEEKDAYS[launchClock.weekday], R30.name, ...R30.at])
+      expect(walk3.from, 'the walk back from Route 32\'s anchor').toEqual(R32.at.slice(0, 2))
       expect(walk3.hour, 'the walk back\'s hour').toBe(10)
       await expect.poll(async () => (await milestoneMessages(runStart)).filter((m) => m.endsWith(MESSAGE)).length,
         { message: `the message "${MESSAGE}"`, timeout: 3 * MINUTE, intervals: [5000] }).toBe(1)

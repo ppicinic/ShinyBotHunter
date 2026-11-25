@@ -43,9 +43,10 @@ const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\
 const BATTLE = /, isShiny: (True|False)\s*$/
 
 const hhmm = (c: Clock): string => `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][c.weekday]} ${c.hour}:${String(c.minute).padStart(2, '0')}`
+// The walk line's weekday, hour, milestone, the map and x it walks from (a run line's y varies), and the destination.
 function walkOf(line: string): string[] {
   const m = PLAN_WALK.exec(line)!
-  return [m[1], m[2], m[3], m[4], m[5], m[6], m[7]]
+  return [m[1], m[2], m[3], m[4], m[5], m[7], m[8], m[9]]
 }
 
 test(`hgss-plan-weekday ${which}: Thursday 23:50 to Friday, a weekday rule not matching, then matching after midnight`, async () => {
@@ -82,7 +83,7 @@ test(`hgss-plan-weekday ${which}: Thursday 23:50 to Friday, a weekday rule not m
     let thursdayFrom = runStart
     if (which === 'ss') {
       expect(walkOf((await seen(PLAN_WALK, 1, 2 * MINUTE)).line), 'the Thursday walk')
-        .toEqual(['Thursday', '23', run.before.name, run.before.id, ...run.before.at])
+        .toEqual(['Thursday', '23', run.before.name, '34', '556', ...run.before.at])
       thursdayFrom = new Date((await seen(ARRIVED, 1, 10 * MINUTE)).at).toISOString()
     }
     const walksThursday = which === 'ss' ? 1 : 0
@@ -92,7 +93,7 @@ test(`hgss-plan-weekday ${which}: Thursday 23:50 to Friday, a weekday rule not m
 
     // Midnight: Friday 0h names the rule's milestone, walked to under the default, switched to on arrival.
     const walk2At = await seen(PLAN_WALK, walksThursday + 1, 20 * MINUTE)
-    expect(walkOf(walk2At.line), 'the Friday walk').toEqual(['Friday', '0', run.after.name, run.before.id, ...run.after.at])
+    expect(walkOf(walk2At.line), 'the Friday walk').toEqual(['Friday', '0', run.after.name, ...run.before.at.slice(0, 2), ...run.after.at])
     const thursday = rowsFor(run.handle, run.before.id, thursdayFrom).filter((r) => r.at < walk2At.at)
     expect(thursday.length, `no encounter at ${run.before.name}'s anchor before midnight (launched at ${hhmm(launchClock)}); set QA_CLOCK_START earlier`)
       .toBeGreaterThanOrEqual(1)

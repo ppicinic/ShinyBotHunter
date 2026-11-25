@@ -60,10 +60,10 @@ async function countedHere(file: string): Promise<number> {
   expect(res.status, `GET milestone for ${file}`).toBe(200)
   return (res.json.rows as { encountersHere: number }[]).reduce((sum, r) => sum + r.encountersHere, 0)
 }
-/** The walk lines' fields after the hour, and the hour. */
-function walkOf(line: string): { fields: string[]; hour: number } {
+/** The walk line's weekday, milestone and destination; the tile it walks from; the hour. */
+function walkOf(line: string): { fields: string[]; from: string[]; hour: number } {
   const m = PLAN_WALK.exec(line)!
-  return { fields: [m[1], m[3], m[4], m[5], m[6], m[7]], hour: Number(m[2]) }
+  return { fields: [m[1], m[3], m[7], m[8], m[9]], from: [m[4], m[5], m[6]], hour: Number(m[2]) }
 }
 
 test(`hgss-plan-night ${which}: three milestones in one follows window, the switch at 20:00, the plan in use, the message`, async () => {
@@ -148,7 +148,8 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       const before20 = rowsFor(HANDLE, R32.id, runStart).filter((r) => r.at < walk2At.at)
       expect(before20.length, `${before20.length} encounters at Route 32's anchor before 20:00 (Run at ${hhmm(runClock)}, launched at ${hhmm(launchClock)}); set QA_CLOCK_START earlier`)
         .toBeGreaterThanOrEqual(2)
-      expect(walk2.fields, 'the walk at 20:00').toEqual([WEEKDAYS[runClock.weekday], R30.name, R32.id, ...R30.at])
+      expect(walk2.fields, 'the walk at 20:00').toEqual([WEEKDAYS[runClock.weekday], R30.name, ...R30.at])
+      expect(walk2.from.slice(0, 2), 'the walk at 20:00 starts on Route 32\'s run line').toEqual(R32.at.slice(0, 2))
       expect(walk2.hour, 'the walk\'s hour').toBe(20)
       const now = await seen(PLAN_NOW, 1, 15 * MINUTE)
       expect(PLAN_NOW.exec(now.line)![1], 'the switch on arrival').toBe(R30.name)
@@ -204,7 +205,8 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       const now = await seen(PLAN_NOW, 1, 2 * MINUTE)
       expect(PLAN_NOW.exec(now.line)![1], 'the first pick').toBe(R30.name)
       const walk = walkOf((await seen(PLAN_WALK, 1, MINUTE)).line)
-      expect(walk.fields, 'the walk from the start tile').toEqual([WEEKDAYS[launchClock.weekday], R30.name, R30.id, ...R30.at])
+      expect(walk.fields, 'the walk to Route 30').toEqual([WEEKDAYS[launchClock.weekday], R30.name, ...R30.at])
+      expect(walk.from, 'the walk from the start tile').toEqual(['36', '474', '294'])
       const log = backendLog()
       expect(log.findIndex((l) => PLAN_NOW.test(l)), '"the first pick before any walk"').toBeLessThan(log.findIndex((l) => PLAN_WALK.test(l)))
       // The follows card is on Route 32 for that one decision at most.
