@@ -9,14 +9,26 @@ namespace ShinyBotHunter.Persistence.MongoDb
     {
         // Set once in the constructor; IMongoCollection is thread-safe.
         private readonly IMongoCollection<GameFile> collection;
+        // Set once in a constructor.
+        private readonly Func<string, Task<GameFile>> load;
 
         public MongoGameFileDao(MongoDbConnection dbConnection)
         {
             collection = dbConnection.GetDatabase().GetCollection<GameFile>("GameFiles");
+            load = FindAsync;
         }
 
+        // The test seam for the MongoDB boundary, reads only: collection is null, so a write through it fails.
+        internal MongoGameFileDao(Func<string, Task<GameFile>> load)
+        {
+            collection = null!;
+            this.load = load;
+        }
+
+        public Task<GameFile> LoadAsync(string gameFileName) => load(gameFileName);
+
         // A file with no document has an empty goal; the read writes nothing.
-        public async Task<GameFile> LoadAsync(string gameFileName)
+        private async Task<GameFile> FindAsync(string gameFileName)
             => await collection.Find(f => f.Id == gameFileName).FirstOrDefaultAsync() ?? new GameFile { Id = gameFileName };
 
         public Task SetEntriesAsync(string gameFileName, List<GoalEntry> entries)
