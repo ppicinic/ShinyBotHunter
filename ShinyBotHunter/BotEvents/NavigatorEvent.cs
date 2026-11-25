@@ -76,6 +76,8 @@ namespace ShinyBotHunter.BotEvents
             PoisonEvent,
             Blocked,
             Sign,
+            // "Repel's effect wore off..." stopped the walk mid-segment.
+            RepelMessage,
         }
 
         public NavigatorEvent(PokemonStateReader reader)
@@ -260,10 +262,11 @@ namespace ShinyBotHunter.BotEvents
             => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask
                 && (s.Native == addresses.SignWaitNative || s.Native == addresses.SignPrintingNative);
 
-        // The overworld-ready wait that also stops at a sign; a warp, a poison script or a battle behaves as in
-        // Overworld.WaitForReadyAsync.
+        // The overworld-ready wait that also stops at a sign, or at "Repel's effect wore off..." printing or waiting (FR-29); a warp,
+        // a poison script or a battle behaves as in Overworld.WaitForReadyAsync.
         internal static Task<GameSnapshot> WaitForFieldFreeOrSignAsync(IGameStateReader game, HgssPointerService addresses, CancellationToken ct)
-            => GameStateWait.UntilAsync(game, "the overworld ready", s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses),
+            => GameStateWait.UntilAsync(game, "the overworld ready",
+                s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses) || RunEncounterEvent.IsRepelMessage(s, addresses),
                 TimeSpan.FromSeconds(10), ct);
 
         /// <summary>
@@ -532,7 +535,10 @@ namespace ShinyBotHunter.BotEvents
                 await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
-                return (await stallTask) is null ? SegmentOutcome.Blocked : SegmentOutcome.Sign;
+                GameSnapshot? stopped = await stallTask;
+                return stopped is null ? SegmentOutcome.Blocked
+                    : RunEncounterEvent.IsRepelMessage(stopped.Value, (HgssPointerService)state.Bot.Addresses) ? SegmentOutcome.RepelMessage
+                    : SegmentOutcome.Sign;
             }
 
             return SegmentOutcome.Completed;
@@ -544,7 +550,7 @@ namespace ShinyBotHunter.BotEvents
         /// coordinate reaches its target, so anything that blocks movement holds that direction forever
         /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
         /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait. Returns null on a
-        /// stall, and the sign's snapshot when the held wait ends at a sign (<see cref="IsSign"/>).
+        /// stall, and the snapshot when the held wait ends at a sign (<see cref="IsSign"/>) or the Repel message.
         /// </summary>
         private async Task<GameSnapshot?> WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -560,7 +566,7 @@ namespace ShinyBotHunter.BotEvents
                     GameSnapshot ready = await WaitForFieldFreeOrSignAsync(bot.State, (HgssPointerService)bot.Addresses, cancellationToken);
                     if (ready.Screen != GameScreen.FieldFree)
                     {
-                        Console.WriteLine($"[Navigator] Sign seen: {ready}");
+                        Console.WriteLine($"[Navigator] Stopped at: {ready}");
                         return ready;
                     }
                     (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
