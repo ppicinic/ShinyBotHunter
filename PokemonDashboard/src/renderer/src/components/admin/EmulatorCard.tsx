@@ -2,13 +2,15 @@ import React, { useState } from 'react'
 import type { Dispatch } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { Anchor, BotMilestones, EventArgumentOptions, PartySlotInfo } from '../../types/api'
+import type { Anchor, BotMilestones, EventArgumentOptions, Modality, PartySlotInfo } from '../../types/api'
 import { requiredParamsFilled } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
 import type { BotPositionsAction } from './botPositions'
 
-// Matches BotService.HowHunted's wording, so the card and the backend log read the same.
-function anchorHunt(anchor: Anchor): string {
+// Matches BotService.HowHunted's wording, so the card and the backend log read the same: a headbutt milestone is headbutted
+// from its anchor whatever the range.
+function anchorHunt(anchor: Anchor, modality: Modality | null): string {
+  if (modality === 'Headbutt') return 'headbutt'
   if (anchor.xRange > 0) return `run left-right ±${anchor.xRange}`
   if (anchor.yRange > 0) return `run up-down ±${anchor.yRange}`
   return 'spin'
@@ -190,7 +192,10 @@ export function EmulatorCard({
                   <ActionParamFields
                     schema={action}
                     params={params}
-                    onChange={(param, value) => dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })}
+                    onChange={(param, value) => {
+                      if (param === 'PhaseName') setAnchorError(null)
+                      dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })
+                    }}
                     availablePhases={availablePhases}
                     gameFileName={milestones?.gameFileName}
                     onMilestonesChanged={onMilestonesChanged}
@@ -204,7 +209,7 @@ export function EmulatorCard({
                     <div className="flex items-center gap-2">
                       <span className="flex-1 text-xs text-slate-400">
                         {anchorMilestone.anchor
-                          ? `Anchor: map ${anchorMilestone.anchor.map} (${anchorMilestone.anchor.x}, ${anchorMilestone.anchor.y}), ${anchorHunt(anchorMilestone.anchor)}, ${anchorMilestone.anchorSet ? 'set on this file' : 'generated'}`
+                          ? `Anchor: map ${anchorMilestone.anchor.map} (${anchorMilestone.anchor.x}, ${anchorMilestone.anchor.y}), ${anchorHunt(anchorMilestone.anchor, anchorMilestone.modality)}, ${anchorMilestone.anchorSet ? 'set on this file' : 'generated'}`
                           : 'No anchor: hunted where the bot stands'}
                       </span>
                       {/* The form's Run or Spin and range become the anchor's; Headbutt keeps no range. A Run with no range would
@@ -230,9 +235,9 @@ export function EmulatorCard({
                       )}
                     </div>
                     {/* The server still checks the form's range, then the anchor's replaces it (B2a). */}
-                    {anchorMilestone.anchor && encounterType !== 'Headbutt' && (
+                    {anchorMilestone.anchor && anchorMilestone.modality !== 'Headbutt' && encounterType !== 'Headbutt' && (
                       <div className="text-xs text-amber-400">
-                        The anchor decides Run or Spin and the range: this hunt will {anchorHunt(anchorMilestone.anchor)}, whatever the form says.
+                        The anchor decides Run or Spin and the range: this hunt will {anchorHunt(anchorMilestone.anchor, anchorMilestone.modality)}, whatever the form says.
                       </div>
                     )}
                     {anchorError && <div className="text-xs text-red-400">{anchorError}</div>}

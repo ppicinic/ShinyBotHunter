@@ -69,11 +69,11 @@ Under the Wild Encounter settings, the card shows the picked milestone's anchor:
 
 | The card shows | It means |
 |---|---|
-| `Anchor: map 34 (547, 304), run up-down ±6, generated` | The milestone's own anchor: game map 34, tile (547, 304), walking up and down 6 tiles each way. `run left-right ±<n>` and `spin` are the other two ways. |
+| `Anchor: map 34 (547, 304), run up-down ±6, generated` | The milestone's own anchor: game map 34, tile (547, 304), walking up and down 6 tiles each way. `run left-right ±<n>` and `spin` are the other two ways; a headbutt milestone's anchor reads `headbutt`. |
 | The same ending `set on this file` | An anchor you set for this game file. It replaces the generated one on this file only. |
 | `No anchor: hunted where the bot stands` | The hunt starts where your character stands. |
 
-With an anchor (and Encounter Type other than Headbutt), an orange line under it says what the hunt will do, for example `The anchor decides Run or Spin and the range: this hunt will run up-down ±6, whatever the form says.`
+With an anchor at a grass or cave milestone (and Encounter Type other than Headbutt), an orange line under it says what the hunt will do, for example `The anchor decides Run or Spin and the range: this hunt will run up-down ±6, whatever the form says.`
 
 ### Set or clear an anchor
 
