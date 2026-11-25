@@ -9,7 +9,11 @@ namespace ShinyBotHunter.Service
 {
     public class PhaseInfoService
     {
-        public record GamePhase(GameFlavor game, string phase, string? gameFileName);
+        public record GamePhase(GameFlavor game, string phase, string? gameFileName)
+        {
+            // FR-39c: a stored subscription has no such element and loads as a fixed card; a fixed card is saved without it.
+            [BsonIgnoreIfDefault] public bool followsHunt { get; init; }
+        }
         // Set once in the constructor; thread-safe for concurrent use.
         private PokemonMetadataService metadataService;
         // Guards phaseInfos and gamePhases after startup. Held only around dictionary reads, writes and the GetAllPhases copy, never across an await.

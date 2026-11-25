@@ -76,20 +76,42 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        public async Task SubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
+        // FR-38d: a game file has at most one follows-the-hunt card, so a second one replaces the first's milestone.
+        public async Task SubscribeGamePhaseAsync(string game, string phase, string? gameFileName, bool followsHunt = false)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName) { followsHunt = followsHunt };
             lock (gamePhasesLock)
             {
+                if (followsHunt)
+                {
+                    gamePhases.RemoveWhere(x => x.followsHunt && x.game == gp.game && x.gameFileName == gameFileName);
+                }
                 gamePhases.Add(gp);
             }
             await UpdateDashboardsAsync();
             await SaveAsync(saveShared);
         }
 
-        public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
+        // FR-40: the file's follows-the-hunt card moves to the hunted milestone in one push and one save; with no such card, or one already there, nothing happens.
+        public async Task FollowHuntAsync(GameFlavor game, string gameFileName, string phase)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            lock (gamePhasesLock)
+            {
+                GamePhase? card = gamePhases.FirstOrDefault(x => x.followsHunt && x.game == game && x.gameFileName == gameFileName);
+                if (card == null || card.phase == phase)
+                {
+                    return;
+                }
+                gamePhases.Remove(card);
+                gamePhases.Add(card with { phase = phase });
+            }
+            await UpdateDashboardsAsync();
+            await SaveAsync(saveShared);
+        }
+
+        public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName, bool followsHunt = false)
+        {
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName) { followsHunt = followsHunt };
             bool removed;
             lock (gamePhasesLock)
             {
