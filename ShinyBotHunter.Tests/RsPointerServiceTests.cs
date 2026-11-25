@@ -112,6 +112,8 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0x0809E281u, table.SummaryMoveInputTask);
             Assert.Equal(0x0809E15Du, table.SummaryDestroyTask);
             Assert.Equal(0x0202F38Fu, table.PaletteFadeActive);
+            Assert.Equal(0x030005B8u, table.ScriptContext);
+            Assert.Equal(0x02026AB6u, table.RepelStepCount);
         }
 
         // pret symbols, commit 78b1990, line 24455: BattleScript_AskToLearnMove + 0x11 and + 0x20, script addresses
@@ -174,6 +176,7 @@ namespace ShinyBotHunter.Tests
             Assert.Null(table.StopLearningYesNo);
             Assert.Null(table.UseNextPokemonYesNo);
             Assert.Null(table.PartyMenuMainCallback2);
+            Assert.Null(table.RepelWoreOffReturn);
         }
 
         // pret symbols, commit 78b1990, line 4647: CB2_PartyMenuMain, + 1 for the Thumb bit.
@@ -269,6 +272,20 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(table.TrainerX, table.RunWatchX);
             Assert.Equal(table.TrainerY, table.RunWatchY);
+        }
+
+        // docs/research/milestone-builder.md, "The Repel message on Ruby and Sapphire": S_RepelWoreOff + 8, observed at
+        // rev 2; rev 1 equal to rev 2 in the symbol tables.
+        [Theory]
+        [InlineData("AXPE", 2, 0x081C3394u)]
+        [InlineData("AXPE", 1, 0x081C3394u)]
+        [InlineData("AXVE", 2, 0x081C3404u)]
+        [InlineData("AXVE", 1, 0x081C3404u)]
+        public void EachGameHasItsRepelWoreOffReturn(string gameCode, int revision, uint stack0)
+        {
+            var table = (RsPointerService)Profile.Addresses(gameCode, revision);
+
+            Assert.Equal(stack0, table.RepelWoreOffReturn);
         }
     }
 }
