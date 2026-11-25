@@ -76,6 +76,8 @@ What is different on Ruby and Sapphire:
 - While your character is free to walk, there is no time limit.
 - If the field stops being free (a message, a script, a trainer), the bot stops turning or running after 4 s and looks at what locked it. A trainer stops the bot at once (see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume)). Anything else that does not become a battle stops the bot about 15 s after the field locked.
 
+On a Run hunt with a US Ruby or Sapphire ROM, the bot closes "REPEL's effect wore off..." itself, about 4 s after it appears: once the text has finished and the box waits, it presses A once, waits for your character to be free to walk, and runs on. Nothing else is pressed while the box is up. On other ROMs the message stops the bot as other messages do. Spin takes no steps, so a Repel never wears off on it.
+
 ## What happens in each encounter?
 
 1. The bot presses A at "Wild … appeared!".
@@ -199,6 +201,7 @@ The backend's window also shows:
 - `[RsBattle] legality OK` or `[RsBattle] legality FAIL` for each shiny, with PKHeX's report after a FAIL.
 - `[Spin] seek:` or `[Run] seek:`: how long it took to find the battle.
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
+- `[Run] REPEL's effect wore off: closed with <n> A, confirmed by lock 0 (<script state>)` each time the bot closes the Repel message on a Run hunt, and `[Run] lock handed over: not the Repel message (<script state>)` when a lock that lasted 4 s was something else.
 - When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves. Party slots and move slots in these lines count from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1, and a Pokémon's first move is move 0.
 - `[Orchestrator] heal trip: …` when the bot goes to heal. Its `switch slot <n>` is the dashboard's number, from 2 to 6.
 - `[Navigator]` lines for each walk: `plan to <place> from <place>` with its cost and number of segments, one line per segment, `arrived on <place>`, and at the Pokémon Center the nurse's presses and `nurse: party HP … (full)`.
@@ -254,6 +257,9 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[Run] The player is off the run line. At (<x>, <y>); the line is <x or y> +-<range> from (<x>, <y>).`
 **It means** before a run, your character was not on the line, or was past one of its ends.
 
+**You see** `[Run] The Repel message did not close. Waited for <what>; the script state stayed <state>`, or the same ending `the game state stayed <state>`.
+**It means** on a Run hunt, "REPEL's effect wore off..." came up, and pressing A did not close it, or the box never reached the point where it waits for A, or your character was not free to walk afterwards. `<what>` is `the Repel message to wait for A`, `the Repel message to take the A` or `the field free after the Repel message`. You can close the box yourself, or simply press **Resume**: the B that Run holds closes it.
+
 **You see** `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
 **It means** the game left the field for something other than a message or a script, such as a loading screen, and no battle started within 15 s.
 
@@ -261,7 +267,7 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **It means** a trainer challenged your character. See [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 
 **You see** `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>`.
-**It means** the field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one (a Safari Zone battle, for example).
+**It means** the field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one (a Safari Zone battle, for example). On a Run hunt with a US ROM, the Repel message is not one of these: the bot closes it.
 
 **You see** `[RsBattle] stopped: The first Pokémon fainted. <state>`
 **It means** your first Pokémon fainted in the battle.
