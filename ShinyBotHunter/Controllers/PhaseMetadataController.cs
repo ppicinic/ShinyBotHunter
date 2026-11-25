@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
@@ -11,12 +14,19 @@ namespace ShinyBotHunter.Controllers
         private PokemonPersistenceService pokemonPersistenceService;
         private IEncounterDao encounterDao;
         private PokemonMetadataService pokemonMetadataService;
-        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao, PokemonMetadataService pokemonMetadataService)
+        private readonly MongoGameFileDao gameFileDao;
+        private readonly GameProfiles gameProfiles;
+        private readonly RomInfoService romInfoService;
+        public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao, PokemonMetadataService pokemonMetadataService,
+            MongoGameFileDao gameFileDao, GameProfiles gameProfiles, RomInfoService romInfoService)
         {
             this.phaseInfoService = phaseInfoService;
             this.pokemonPersistenceService = pokemonPersistenceService;
             this.encounterDao = encounterDao;
             this.pokemonMetadataService = pokemonMetadataService;
+            this.gameFileDao = gameFileDao;
+            this.gameProfiles = gameProfiles;
+            this.romInfoService = romInfoService;
         }
 
         /// <summary>
@@ -85,6 +95,111 @@ namespace ShinyBotHunter.Controllers
         {
             double result = await encounterDao.GetEncountersPerHour(Enum.Parse<GameFlavor>(game), phase, gameFileName);
             return Ok(result);
+        }
+
+        [HttpGet("goal/{gameFileName}")]
+        public async Task<ActionResult<GameFile>> GetGoalAsync(string gameFileName) => Ok(await gameFileDao.LoadAsync(gameFileName));
+
+        [HttpPut("goal/{gameFileName}")]
+        public async Task<ActionResult> PutGoalAsync(string gameFileName, [FromBody] List<GoalEntry> entries)
+        {
+            string? error = GoalError(entries);
+            if (error is not null)
+            {
+                return BadRequest(error);
+            }
+            await gameFileDao.SetEntriesAsync(gameFileName, entries);
+            return NoContent();
+        }
+
+        [HttpPost("goal/{game}/{gameFileName}/preset/{preset}")]
+        public async Task<ActionResult<List<GoalEntry>>> ApplyPresetAsync(string game, string gameFileName, GoalPreset preset)
+        {
+            var flavor = Enum.Parse<GameFlavor>(game);
+            RomVersion? version = romInfoService.GetByHandle(gameFileName)?.Version;
+            var milestones = gameProfiles.Get(flavor).Milestones;
+            if (version is null || milestones is null || !milestones.ContainsKey(version.Value))
+            {
+                return NotFound();
+            }
+            IReadOnlyList<GoalEntry> presetEntries;
+            try
+            {
+                presetEntries = GoalPresets.Entries(preset, version.Value, milestones, pokemonMetadataService);
+            }
+            catch (ArgumentException e)
+            {
+                // Ruby and Sapphire have no female forms preset.
+                return BadRequest(e.Message);
+            }
+            var entries = GoalPresets.Apply((await gameFileDao.LoadAsync(gameFileName)).Entries, presetEntries);
+            await gameFileDao.SetEntriesAsync(gameFileName, entries);
+            return Ok(entries);
+        }
+
+        [HttpPut("goal/{gameFileName}/hidden")]
+        public async Task<ActionResult> SetHiddenAsync(string gameFileName, [FromBody] HiddenRow row, [FromQuery] bool hidden)
+        {
+            await gameFileDao.SetHiddenAsync(gameFileName, row, hidden);
+            return NoContent();
+        }
+
+        // A generated milestone of the file's version seen through the file's goal: its rows with wanted, caught (FR-9) and the
+        // encounters at this milestone and on the file (FR-11).
+        [HttpGet("milestone/{game}/{milestoneId}/{gameFileName}")]
+        public async Task<ActionResult> GetMilestoneRowsAsync(string game, string milestoneId, string gameFileName)
+        {
+            var flavor = Enum.Parse<GameFlavor>(game);
+            RomVersion? version = romInfoService.GetByHandle(gameFileName)?.Version;
+            var milestones = gameProfiles.Get(flavor).Milestones;
+            var milestone = version is not null && milestones is not null && milestones.TryGetValue(version.Value, out var versionMilestones)
+                ? versionMilestones.SingleOrDefault(m => m.Id == milestoneId)
+                : null;
+            if (milestone is null)
+            {
+                return NotFound();
+            }
+            var rows = MilestoneRows.Build(milestone, await gameFileDao.LoadAsync(gameFileName), await pokemonPersistenceService.GetCaughtPokemonAsync(flavor));
+            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(flavor, rows.Select(r => r.Key).ToList(), [milestoneId], [gameFileName]));
+            var file = rsp.GameSpecificResponse[gameFileName];
+            return Ok(new
+            {
+                milestone.Id,
+                milestone.Name,
+                milestone.Modality,
+                milestone.Slots,
+                Rows = rows.Select(r => new
+                {
+                    r.Species,
+                    r.Key,
+                    r.FormCode,
+                    r.Wanted,
+                    r.Caught,
+                    r.Complete,
+                    r.Hidden,
+                    r.IsTarget,
+                    EncountersHere = file.PhaseEncounters[milestoneId].PokemonEncounters[r.Key].Encounters,
+                    EncountersOnFile = file.PokemonEncounters[r.Key].Encounters
+                })
+            });
+        }
+
+        // PUT goal is the boundary for entries: a species is wanted in any form or by its forms, never both, each key once.
+        internal static string? GoalError(IReadOnlyList<GoalEntry> entries)
+        {
+            if (entries.FirstOrDefault(e => e.Amount < 0) is { } negative)
+            {
+                return $"{negative.Key} has a negative amount";
+            }
+            if (entries.GroupBy(e => e.Key).FirstOrDefault(g => g.Count() > 1) is { } repeated)
+            {
+                return $"{repeated.Key} is listed more than once";
+            }
+            if (entries.GroupBy(e => e.Species).FirstOrDefault(g => g.Any(e => e.FormCode is null) && g.Any(e => e.FormCode is not null)) is { } mixed)
+            {
+                return $"Species {mixed.Key} has both an any-form entry and form entries";
+            }
+            return null;
         }
     }
 

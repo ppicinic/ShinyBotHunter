@@ -1,5 +1,6 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
@@ -165,6 +166,15 @@ namespace ShinyBotHunter.Tests
 
             Assert.False(MilestoneRows.Build(route30, goal, []).All(r => !r.IsTarget));
             Assert.True(MilestoneRows.Build(route30, goal, [Caught(Caterpie, "caterpie", File)]).All(r => !r.IsTarget));
+        }
+
+        [Fact]
+        public void PutGoal_RejectsAnyFormAndFormEntriesForOneSpecies()
+        {
+            Assert.Null(PhaseMetadataController.GoalError([new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 0), new GoalEntry(Pidgey, null, 3)]));
+            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Rattata, null, 2), new GoalEntry(Rattata, "rattata;f", 2)]));
+            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Pidgey, null, 3), new GoalEntry(Pidgey, null, 1)]));
+            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Pidgey, null, -1)]));
         }
     }
 }
