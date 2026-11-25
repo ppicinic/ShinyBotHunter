@@ -49,6 +49,17 @@ namespace ShinyBotHunter.Persistence.MongoDb
             }
         }
 
+        // Two updates, as SetOrderAsync, so a milestone holds one replacement.
+        public async Task SetAnchorAsync(string gameFileName, MilestoneAnchor anchor)
+        {
+            await ClearAnchorAsync(gameFileName, anchor.Milestone);
+            await collection.UpdateOneAsync(f => f.Id == gameFileName, Builders<GameFile>.Update.Push(f => f.Anchors, anchor));
+        }
+
+        public Task ClearAnchorAsync(string gameFileName, string milestone)
+            => collection.UpdateOneAsync(f => f.Id == gameFileName, Builders<GameFile>.Update.PullFilter(f => f.Anchors, a => a.Milestone == milestone),
+                new UpdateOptions { IsUpsert = true });
+
         // The phase names assigned to any file: a phase in none of them is on every file (FR-16).
         public async Task<HashSet<string>> AssignedPhasesAsync()
             => (await (await collection.DistinctAsync<string>(nameof(GameFile.Assigned), Builders<GameFile>.Filter.Empty)).ToListAsync()).ToHashSet();

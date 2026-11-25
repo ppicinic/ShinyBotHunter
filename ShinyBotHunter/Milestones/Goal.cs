@@ -1,4 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -20,6 +21,14 @@ namespace ShinyBotHunter.Milestones
         public List<MilestoneLabel> Order { get; set; } = new List<MilestoneLabel>();
         // Custom phase names assigned to this file (FR-16).
         public List<string> Assigned { get; set; } = new List<string>();
+        // The owner's replacement anchors (FR-22).
+        public List<MilestoneAnchor> Anchors { get; set; } = new List<MilestoneAnchor>();
+
+        // FR-22 and FR-23: the file's replacement, else the generated anchor with the facing the bot has, else null, which is
+        // hunted where the bot stands.
+        public MilestoneAnchor? AnchorFor(string milestone, Milestone? generated)
+            => Anchors.FirstOrDefault(a => a.Milestone == milestone)
+                ?? (generated?.Anchor is { } anchor ? new MilestoneAnchor(milestone, anchor, Direction.None) : null);
     }
 
     // A wanted species in any form (FormCode null) or in one form, at Amount; an amount of 0 is a row that is never a target.
@@ -41,4 +50,8 @@ namespace ShinyBotHunter.Milestones
     // A milestone's order label on one file ("1-4"). A list of these rather than a dictionary, as HiddenRow is, because a phase
     // name can hold a "." and a dictionary key would become a Mongo field name.
     public record MilestoneLabel(string Milestone, string Label);
+
+    // A milestone's replacement anchor on one file (FR-22), a list entry as MilestoneLabel is. Facing is the one the player had
+    // when it was set; None keeps the facing the bot has at Start.
+    public record MilestoneAnchor(string Milestone, Anchor Anchor, Direction Facing);
 }

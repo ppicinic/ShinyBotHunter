@@ -305,6 +305,17 @@ namespace ShinyBotHunter.Service
                 }
             }
             RefuseNoHuntYet(bot, args.PhaseName);
+            // A stored phase of the same name wins, as it does in PhaseTarget, so with no replacement stored a stored phase has
+            // no anchor and is hunted where the bot stands (FR-42).
+            Milestone? generated = args.PhaseName is null ? null : PhaseTarget.FindMilestone(bot.Profile.Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, args.PhaseName);
+            if (generated is not null && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, args.PhaseName!) is not null)
+            {
+                generated = null;
+            }
+            if (EncounterTypeRefusal(generated, args.EncounterType) is { } wrongType)
+            {
+                throw new ArgumentException(wrongType);
+            }
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -321,8 +332,20 @@ namespace ShinyBotHunter.Service
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
             var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
+            MilestoneAnchor? anchor = (await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName)).AnchorFor(leg.PhaseName, generated);
+            if (anchor is not null && generated is { Modality: Modality.Land }
+                && AnchorTileStop(generated, anchor.Anchor, bot.Profile.Maps!, bot.Profile.LandTileKind!(generated)) is { } notOfTheKind)
+            {
+                throw new InvalidOperationException(notOfTheKind);
+            }
+            if (anchor is not null)
+            {
+                leg = leg with { EncounterParams = AnchorLeg(leg.EncounterParams, anchor.Anchor) };
+                Console.WriteLine($"[BotService] {generated?.Name ?? leg.PhaseName}: hunting from the anchor map {anchor.Anchor.Map} ({anchor.Anchor.X}, {anchor.Anchor.Y}), "
+                    + $"{HowHunted(leg.EncounterParams)} ({(anchor.Facing == Direction.None ? "generated" : "set on this file")})");
+            }
 
-            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams);
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
             slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
             if (lead is not null)
             {
@@ -822,6 +845,32 @@ namespace ShinyBotHunter.Service
             }
         }
 
+        // Decided at B2's plan review: Headbutt hunts a headbutt milestone, and Run and Spin a land one.
+        internal static string? EncounterTypeRefusal(Milestone? generated, EncounterType? type) => (generated?.Modality, type) switch
+        {
+            (Modality.Land, EncounterType.Headbutt) or (Modality.Headbutt, EncounterType.Run or EncounterType.Spin) => $"{generated!.Name} is not hunted with {type}.",
+            _ => null,
+        };
+
+        // FR-24, checked at Start against the committed map data at the anchor's tile, before any walk: no memory read gives a
+        // tile's kind, so a check after the walk would read the same data.
+        internal static string? AnchorTileStop(Milestone milestone, Anchor anchor, MapService maps, byte kind)
+            => maps.GetMap(anchor.Map)[anchor.Y, anchor.X] == kind ? null : $"{milestone.Name}: the anchor ({anchor.X}, {anchor.Y}) is not {MilestoneFile.Word(milestone)}.";
+
+        // The anchor decides Run or Spin and the range over the form's choice; Headbutt is left as asked. The anchor's ranges
+        // passed the leg's range rules where they were made, by the generator or by SetAnchorAsync.
+        internal static EncounterParams AnchorLeg(EncounterParams encounter, Anchor anchor) => encounter.type == EncounterType.Headbutt
+            ? encounter
+            : new EncounterParams(anchor.XRange == 0 && anchor.YRange == 0 ? EncounterType.Spin : EncounterType.Run, anchor.YRange, anchor.XRange);
+
+        private static string HowHunted(EncounterParams encounter) => encounter switch
+        {
+            { type: EncounterType.Run, xRange: > 0 } => $"run left-right ±{encounter.xRange}",
+            { type: EncounterType.Run } => $"run up-down ±{encounter.yRange}",
+            { type: EncounterType.Spin } => "spin",
+            _ => "headbutt",
+        };
+
         internal static string? NoHuntYet(Milestone? generated) => generated is { Huntable: false } ? $"{generated.Name}: no hunt yet." : null;
 
         // FR-15: the milestone picker for the bot's game file, worked out on each request; null when no bot is at the position.
@@ -841,6 +890,46 @@ namespace ShinyBotHunter.Service
                 await gameFileDao.LoadAsync(bot.GameFileName), await gameFileDao.AssignedPhasesAsync(),
                 await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor));
             return new BotMilestones(bot.GameFileName, list);
+        }
+
+        // FR-22: the milestone's anchor on the bot's game file becomes where the bot stands and how it faces, hunted with the
+        // form's range under the leg's range rules. Reads only; nothing is pressed.
+        public async Task<MilestoneAnchor> SetAnchorAsync(int pos, string milestone, int xRange, int yRange)
+        {
+            if (GetBotAt(pos) is not { } bot)
+            {
+                throw new ArgumentException($"There is not bot at position: {pos}");
+            }
+            if (!bot.Profile.Capabilities.HasOverworldNavigation)
+            {
+                throw new ArgumentException($"{bot.GameFlavor} cannot walk to an anchor.");
+            }
+            if (xRange < 0 || yRange < 0)
+            {
+                throw new ArgumentException($"X and Y range must be non-negative values");
+            }
+            if (xRange > 0 && yRange > 0)
+            {
+                throw new ArgumentException($"Only x or y range must be supplied, not both.");
+            }
+            if ((await bot.State.ReadAsync(CancellationToken.None)).Screen != GameScreen.FieldFree)
+            {
+                throw new InvalidOperationException(StandInTheField);
+            }
+            int map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
+            var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
+            var anchor = new MilestoneAnchor(milestone, new Anchor(map, x, y, xRange, yRange), await bot.Overworld.GetFacingAsync(CancellationToken.None));
+            await provider.GetRequiredService<MongoGameFileDao>().SetAnchorAsync(bot.GameFileName, anchor);
+            return anchor;
+        }
+
+        public async Task ClearAnchorAsync(int pos, string milestone)
+        {
+            if (GetBotAt(pos) is not { } bot)
+            {
+                throw new ArgumentException($"There is not bot at position: {pos}");
+            }
+            await provider.GetRequiredService<MongoGameFileDao>().ClearAnchorAsync(bot.GameFileName, milestone);
         }
 
         /// <summary>
