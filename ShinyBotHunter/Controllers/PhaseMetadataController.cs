@@ -292,7 +292,7 @@ namespace ShinyBotHunter.Controllers
                 }),
                 Survive = shares?.Survive,
                 Live = seen?.Live ?? false,
-                TimeOfDay = seen is { } s ? HuntPlan.TimeOfDay(s.Inputs.Hour) : (SlotCondition?)null,
+                TimeOfDay = seen?.Inputs.Hour is int h ? HuntPlan.TimeOfDay(h) : (SlotCondition?)null,
                 Data = rsp
             });
         }

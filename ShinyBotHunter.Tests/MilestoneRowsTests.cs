@@ -221,22 +221,51 @@ namespace ShinyBotHunter.Tests
             Assert.Null(MilestoneRows.Shares(Route32SoulSilver, HgssRates.Compute, null));
         }
 
+        private const int Wurmple = 265, Zigzagoon = 263, Poochyena = 261;
+
+        // Sapphire's Route 101 land, as RsRatesTests has it.
+        private static readonly Milestone Route101 = new([16], Modality.Land, true,
+        [
+            new(0, Wurmple, 2, 2, 20, SlotCondition.None), new(1, Zigzagoon, 2, 2, 20, SlotCondition.None),
+            new(2, Wurmple, 2, 2, 10, SlotCondition.None), new(3, Wurmple, 3, 3, 10, SlotCondition.None),
+            new(4, Zigzagoon, 3, 3, 10, SlotCondition.None), new(5, Zigzagoon, 3, 3, 10, SlotCondition.None),
+            new(6, Wurmple, 3, 3, 5, SlotCondition.None), new(7, Zigzagoon, 3, 3, 5, SlotCondition.None),
+            new(8, Poochyena, 2, 2, 4, SlotCondition.None), new(9, Poochyena, 2, 2, 4, SlotCondition.None),
+            new(10, Poochyena, 3, 3, 1, SlotCondition.None), new(11, Poochyena, 3, 3, 1, SlotCondition.None)
+        ], []);
+
+        // RS as the decision reads it (FR-26a): no clock, the Repel counter, and the lead's level as the Repel level.
+        private static (RateInputs, bool) RsSeen(int repelLevel, bool live) => (new RateInputs(null, null, 100, repelLevel, 0, repelLevel, false), live);
+
         [Fact]
         public void Shares_NeverSeen_UntimedSlots_PlainShares()
         {
-            const int Wurmple = 265, Zigzagoon = 263, Poochyena = 261;
-            // Sapphire's Route 101 land, as RsRatesTests has it.
-            var route101 = new Milestone([16], Modality.Land, true,
-            [
-                new(0, Wurmple, 2, 2, 20, SlotCondition.None), new(1, Zigzagoon, 2, 2, 20, SlotCondition.None),
-                new(2, Wurmple, 2, 2, 10, SlotCondition.None), new(3, Wurmple, 3, 3, 10, SlotCondition.None),
-                new(4, Zigzagoon, 3, 3, 10, SlotCondition.None), new(5, Zigzagoon, 3, 3, 10, SlotCondition.None),
-                new(6, Wurmple, 3, 3, 5, SlotCondition.None), new(7, Zigzagoon, 3, 3, 5, SlotCondition.None),
-                new(8, Poochyena, 2, 2, 4, SlotCondition.None), new(9, Poochyena, 2, 2, 4, SlotCondition.None),
-                new(10, Poochyena, 3, 3, 1, SlotCondition.None), new(11, Poochyena, 3, 3, 1, SlotCondition.None)
-            ], []);
+            var shares = MilestoneRows.Shares(Route101, RsRates.Compute, null)!.Value;
 
-            var shares = MilestoneRows.Shares(route101, RsRates.Compute, null)!.Value;
+            Assert.Equal(1, shares.Survive, 6);
+            Assert.Equal(0.45, shares.Species[Wurmple].Share, 6);
+            Assert.Equal(0.45, shares.Species[Zigzagoon].Share, 6);
+            Assert.Equal(0.10, shares.Species[Poochyena].Share, 6);
+        }
+
+        // A Repel at level 3 cancels the level 2 slots: 42 of 100 rolls survive.
+        [Fact]
+        public void Shares_RsLive_NoClock_RepelCounts()
+        {
+            var shares = MilestoneRows.Shares(Route101, RsRates.Compute, RsSeen(3, live: true))!.Value;
+
+            Assert.Equal(0.42, shares.Survive, 6);
+            Assert.Equal(15.0 / 42, shares.Species[Wurmple].Share, 6);
+            Assert.Equal(25.0 / 42, shares.Species[Zigzagoon].Share, 6);
+            Assert.Equal(2.0 / 42, shares.Species[Poochyena].Share, 6);
+            Assert.All(shares.Species.Values, s => Assert.Null(s.Reason));
+        }
+
+        // Not live, the Repel is not counted and no hour is needed: the plain shares.
+        [Fact]
+        public void Shares_RsNotLive_NoClock_PlainShares()
+        {
+            var shares = MilestoneRows.Shares(Route101, RsRates.Compute, RsSeen(3, live: false))!.Value;
 
             Assert.Equal(1, shares.Survive, 6);
             Assert.Equal(0.45, shares.Species[Wurmple].Share, 6);

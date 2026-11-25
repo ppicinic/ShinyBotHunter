@@ -481,11 +481,17 @@ namespace ShinyBotHunter.BotEvents
             // thrown away every time.
             var pokeState = await reader.GetPartyState(state.Bot);
             var lead = pokeState.PartyPokemon[0]!;
-            // FR-26 on HGSS, in one request beside the party read; RS's counter is B3r2's (#556).
+            // FR-26, in one request beside the party read: HGSS's clock and Repel counter; RS's Repel counter alone, one block
+            // (FR-26a; RS has no clock).
             if (state.Bot.Addresses is HgssPointerService)
             {
                 (int weekday, int hour, int? repelSteps) = await ((HgssFieldSystemStateReader)state.Bot.State).ReadClockAndRepelAsync(cancellationToken);
                 state.RatesSeen = RateInputs.Of(weekday, hour, repelSteps, pokeState);
+            }
+            else if (state.Bot.Addresses is RsPointerService rs)
+            {
+                ChainBlockResult[] repel = await state.Bot.ReadChainBlocksAsync([new(rs.RepelStepCount, [], 2)], ct: cancellationToken);
+                state.RatesSeen = RateInputs.Of(null, null, BitConverter.ToUInt16(repel[0].Bytes, 0), pokeState);
             }
             // FR-33: a saved plan's step, on the clock just read; true when it took the stack to walk or to park.
             if (followPlan is not null && await followPlan(state))
