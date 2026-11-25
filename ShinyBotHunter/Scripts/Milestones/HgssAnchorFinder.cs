@@ -12,6 +12,7 @@ namespace ShinyBotHunter.Scripts.Milestones
     // the decomp's zone events. The longest straight run whose middle tile reaches a Pokémon Center and back wins, left
     // and right before up and down at equal length, and among equal runs the cheapest to the Pokémon Center. Under three
     // tiles it is a spin on the cheapest tile. With no HM first, and only when nothing is reached, with every HM.
+    // A headbutt tree's stand (FR-21) is chosen the same way, from the tiles beside the tree.
     public class HgssAnchorFinder
     {
         private static readonly Direction[] AllDirections = [Direction.Up, Direction.Down, Direction.Left, Direction.Right];
@@ -37,6 +38,71 @@ namespace ShinyBotHunter.Scripts.Milestones
             byte kind = grass ? Constant.MAP_Grass : Constant.MAP_Free;
             var tiles = milestoneMaps.Select(m => (m.Id, Tiles(m.Id, m.Internal, m.Overworld, kind))).ToList();
             return await FindAsync(tiles, new Capability()) ?? await FindAsync(tiles, new Capability { CapabilityMask = 0xFF });
+        }
+
+        // Each tree of one headbutt map with the stand beside it that is cheapest to a Pokémon Center and reached back from
+        // it, with no HM first, then with every HM; a tree with no such stand is returned unchanged.
+        public async Task<HeadbuttTree[]> StandAsync(HeadbuttTree[] trees, int id, string internalName, bool overworld)
+        {
+            var map = maps.GetMap(id);
+            var excluded = Unsafe(JObject.Parse(File.ReadAllText(zoneEvents[internalName])));
+            var treeTiles = trees.SelectMany(t => t.Tiles).Select(t => (t[0], t[1])).ToHashSet();
+            bool InMap(int x, int y) => x >= 0 && y >= 0 && x < map.Width && y < map.Height;
+            bool Blocked(int x, int y) => InMap(x, y) && map[y, x] == Constant.MAP_Blocked;
+            bool Allowed(int x, int y) => InMap(x, y) && (!overworld || owners[y / HgssMilestoneProcessor.CellSize, x / HgssMilestoneProcessor.CellSize] == id)
+                && !excluded.Contains((x, y));
+            var costs = new Dictionary<(int X, int Y, bool Hms), int?>();
+            var result = new HeadbuttTree[trees.Length];
+            for (int i = 0; i < trees.Length; i++)
+            {
+                var stands = Stands(trees[i], treeTiles, Blocked, Allowed);
+                result[i] = trees[i];
+                foreach (bool hms in new[] { false, true })
+                {
+                    var capability = hms ? new Capability { CapabilityMask = 0xFF } : new Capability();
+                    (int X, int Y, Direction Facing)? best = null;
+                    int bestCost = int.MaxValue;
+                    foreach (var stand in stands)
+                    {
+                        if (!costs.TryGetValue((stand.X, stand.Y, hms), out int? cost))
+                        {
+                            cost = costs[(stand.X, stand.Y, hms)] = await CenterCost(id, stand.X, stand.Y, capability);
+                        }
+                        if (cost < bestCost)
+                        {
+                            best = stand;
+                            bestCost = cost.Value;
+                        }
+                    }
+                    if (best is { } found)
+                    {
+                        result[i] = trees[i] with { Anchor = new Anchor(id, found.X, found.Y, 0, 0), Facing = found.Facing, Cost = bestCost };
+                        break;
+                    }
+                }
+            }
+            return result;
+        }
+
+        // Each tile beside a tree tile, facing it, in tile then Up, Down, Left, Right order. The tree tile is blocked, so the
+        // hunt's turn press toward it only turns; the stand is no tree's tile and is allowed (on the map, out of sight).
+        internal static List<(int X, int Y, Direction Facing)> Stands(HeadbuttTree tree, IReadOnlySet<(int X, int Y)> treeTiles,
+            Func<int, int, bool> blocked, Func<int, int, bool> allowed)
+        {
+            var stands = new List<(int X, int Y, Direction Facing)>();
+            foreach (var tile in tree.Tiles.Where(t => blocked(t[0], t[1])))
+            {
+                foreach (var facing in AllDirections)
+                {
+                    var (stepX, stepY) = facing switch { Direction.Up => (0, -1), Direction.Down => (0, 1), Direction.Left => (-1, 0), _ => (1, 0) };
+                    int x = tile[0] - stepX, y = tile[1] - stepY;
+                    if (!treeTiles.Contains((x, y)) && allowed(x, y))
+                    {
+                        stands.Add((x, y, facing));
+                    }
+                }
+            }
+            return stands;
         }
 
         // A trainer (an object of type other than 0) sees param0 tiles: along its facing for movement 0 and 14 to 17,

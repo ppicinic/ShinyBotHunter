@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
@@ -100,6 +101,43 @@ namespace ShinyBotHunter.Tests
                 }
             }
             Assert.Equal(versions[RomVersion.HeartGold].Select(m => m.Anchor), versions[RomVersion.SoulSilver].Select(m => m.Anchor));
+        }
+
+        [Fact]
+        public void HeadbuttStands_BesideTheirTreeFacingIt()
+        {
+            var versions = Load();
+            var maps = new MapService(DataDirectory);
+
+            foreach (var milestone in versions[RomVersion.HeartGold].Where(m => m.Modality == Modality.Headbutt))
+            {
+                var treeTiles = milestone.Trees.SelectMany(t => t.Tiles).Select(t => (t[0], t[1])).ToHashSet();
+                var map = maps.GetMap(milestone.Maps[0]);
+                foreach (var tree in milestone.Trees.Where(t => t.Anchor is not null))
+                {
+                    var stand = tree.Anchor!;
+                    var (stepX, stepY) = tree.Facing switch { Direction.Up => (0, -1), Direction.Down => (0, 1), Direction.Left => (-1, 0), Direction.Right => (1, 0), _ => (0, 0) };
+                    int x = stand.X + stepX, y = stand.Y + stepY;
+                    string where = $"{milestone.Id} stand ({stand.X}, {stand.Y}) {tree.Facing}";
+                    Assert.Equal(milestone.Maps[0], stand.Map);
+                    Assert.True(tree.Tiles.Any(t => t[0] == x && t[1] == y), where);
+                    Assert.True(map[y, x] == Constant.MAP_Blocked, where);
+                    Assert.DoesNotContain((stand.X, stand.Y), treeTiles);
+                }
+            }
+            // The tiles are arrays, which records compare by reference, so the versions' trees are compared as JSON.
+            Assert.Equal(JsonConvert.SerializeObject(versions[RomVersion.HeartGold].Select(m => m.Trees)),
+                JsonConvert.SerializeObject(versions[RomVersion.SoulSilver].Select(m => m.Trees)));
+        }
+
+        [Fact]
+        public void HeadbuttStands_Counts()
+        {
+            var headbutt = Load()[RomVersion.HeartGold].Where(m => m.Modality == Modality.Headbutt).ToList();
+
+            Assert.Equal(843, headbutt.Sum(m => m.Trees.Count(t => t.Anchor is not null)));
+            Assert.Equal(872, headbutt.Sum(m => m.Trees.Length));
+            Assert.Equal(["460-headbutt"], headbutt.Where(m => m.Trees.All(t => t.Anchor is null)).Select(m => m.Id));
         }
 
         [Fact]

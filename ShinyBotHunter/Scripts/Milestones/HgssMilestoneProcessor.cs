@@ -120,9 +120,14 @@ namespace ShinyBotHunter.Scripts.Milestones
             {
                 anchors[group] = await finder.FindAsync(group.Select(e => (e.Header.Id, e.Header.Internal, e.Header.Overworld)).ToList(), group.Any(e => e.HasGrass));
             }
+            var stood = new Dictionary<List<Entry>, HeadbuttTree[]>();
+            foreach (var group in groups.Where(g => g[0].Modality == Modality.Headbutt))
+            {
+                stood[group] = await finder.StandAsync(group[0].Trees, group[0].Header.Id, group[0].Header.Internal, group[0].Header.Overworld);
+            }
 
             var file = Versions.ToDictionary(v => v, v => groups.Select(g => new Milestone(
-                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], g[0].Trees, anchors.GetValueOrDefault(g))).ToList());
+                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], stood.GetValueOrDefault(g, g[0].Trees), anchors.GetValueOrDefault(g))).ToList());
             byte[] raw = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(file, new StringEnumConverter()));
             var compressed = new MemoryStream();
             using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
@@ -156,6 +161,9 @@ namespace ShinyBotHunter.Scripts.Milestones
             {
                 Console.WriteLine($"  {group[0].Header.Id}-land {group[0].Header.Internal}: {(anchor is null ? "none" : $"spin at {anchor.Map} ({anchor.X}, {anchor.Y})")}");
             }
+            var standless = stood.Where(t => t.Value.All(tree => tree.Anchor is null)).Select(t => $"{t.Key[0].Header.Id} {t.Key[0].Header.Internal}");
+            Console.WriteLine($"Headbutt stands: {stood.Values.Sum(t => t.Count(tree => tree.Anchor is not null))} of {stood.Values.Sum(t => t.Length)} trees; "
+                + $"headbutt milestones with none: {string.Join(", ", standless)}");
             Console.WriteLine($"milestones.json.gz: {raw.Length} bytes raw, {compressed.Length} gzipped, generated in {stopwatch.Elapsed:mm\\:ss}");
         }
 
