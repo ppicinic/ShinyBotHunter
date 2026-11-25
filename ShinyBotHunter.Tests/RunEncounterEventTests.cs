@@ -2,7 +2,11 @@
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
@@ -31,12 +35,23 @@ namespace ShinyBotHunter.Tests
             public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(queue.Count > 1 ? queue.Dequeue() : queue.Peek());
         }
 
-        private static FakeBot HgssBot(int x, int y)
+        // Each read asks the function; for a state that answers a press.
+        private sealed class FuncReader(Func<GameSnapshot> read) : IGameStateReader
+        {
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(read());
+        }
+
+        private static FakeBot HgssBot(int x, int y, Action<string>? pressed = null)
         {
             FakeMemoryClient memory = new();
             memory.Place(Hgss.TrainerX, BitConverter.GetBytes((uint)x << 16));
             memory.Place(Hgss.TrainerY, BitConverter.GetBytes((uint)y << 16));
-            return new FakeBot(Task.CompletedTask) { State = new ScriptedReader(Free, Battle), Overworld = new HgssOverworldReader(memory, Hgss) };
+            return new FakeBot(Task.CompletedTask)
+            {
+                State = new ScriptedReader(Free, Battle),
+                Overworld = new HgssOverworldReader(memory, Hgss),
+                Pressed = pressed ?? (_ => { }),
+            };
         }
 
         private static GameState Encountering(int startX, int startY)
@@ -165,6 +180,122 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(EventState.BattleStart, state.State.Peek());
             Assert.Equal(["RP:M.Up.18.35497724;M.Down.22.35497724", "clear"], bot.Macros);
+        }
+
+        // docs/research/milestone-builder.md R5: std_repel_wore_off (2022) prints, then waits in WaitABPressNative with no
+        // printer; one A takes ctx.mode 2 to 1, the native leaves the snapshot, and the field is free.
+        private static readonly GameSnapshot RepelPrinting = new(GameScreen.FieldTask, null, 2022, null, 0x0203FF45, 0x021EF349, TextPrinter: 0);
+        private static readonly GameSnapshot RepelWaiting = new(GameScreen.FieldTask, null, 2022, null, 0x0203FF45, 0x02041001);
+        private static readonly GameSnapshot RepelTaken = new(GameScreen.Transitioning, null, null, null, null);
+
+        // The message until takenAfter presses, then what one A gives (the freed environment, the free field), then a battle.
+        private static (FakeBot Bot, List<string> Presses) RepelBot(int takenAfter)
+        {
+            List<string> presses = [];
+            FakeBot bot = HgssBot(10, 20, presses.Add);
+            int reads = 0;
+            int afterTaken = 0;
+            bot.State = new FuncReader(() =>
+            {
+                reads++;
+                if (presses.Count < takenAfter) return reads == 1 ? Free : reads == 2 ? RepelPrinting : RepelWaiting;
+                afterTaken++;
+                return afterTaken switch { 1 => RepelTaken, 2 => Free, _ => Battle };
+            });
+            return (bot, presses);
+        }
+
+        // FR-29, rule 16: one A at the wait, confirmed by the native leaving it, then the Run macro again from the line.
+        [Fact]
+        public async Task Execute_RepelMessage_ClosedWithOneAAndTheRunResumes()
+        {
+            (FakeBot bot, List<string> presses) = RepelBot(takenAfter: 1);
+            GameState state = Encountering(10, 20);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal(["T.A;W.20"], presses);
+            Assert.Equal(["RP:M.Up.18.35497724;M.Down.22.35497724", "clear", "RP:M.Up.18.35497724;M.Down.22.35497724", "clear"], bot.Macros);
+            Assert.Equal(EventState.BattleStart, state.State.Peek());
+        }
+
+        // A press the snapshot shows still waiting was dropped: sent again, once.
+        [Fact]
+        public async Task Execute_RepelMessage_DroppedPressSentAgain()
+        {
+            (FakeBot bot, List<string> presses) = RepelBot(takenAfter: 2);
+            GameState state = Encountering(10, 20);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)) { RepelPressConfirm = TimeSpan.FromMilliseconds(100) }
+                .ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal(["T.A;W.20", "T.A;W.20"], presses);
+            Assert.Equal(EventState.BattleStart, state.State.Peek());
+        }
+
+        [Fact]
+        public async Task Execute_RepelMessage_PressNeverTaken_ParksNamingTheSnapshot()
+        {
+            (FakeBot bot, List<string> presses) = RepelBot(takenAfter: int.MaxValue);
+            GameState state = Encountering(10, 20);
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)) { RepelPressConfirm = TimeSpan.FromMilliseconds(50) }
+                    .ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.Equal(3, presses.Count);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+            Assert.Contains($"[Run] The Repel message did not close. Waited for the Repel message to take the A; the game state stayed {RepelWaiting}", log.ToString());
+        }
+
+        // Nothing is pressed while the message prints; a message that never reaches its wait parks after the stale.
+        [Fact]
+        public async Task Execute_RepelMessage_NoPressBeforeTheWait()
+        {
+            List<string> presses = [];
+            FakeBot bot = HgssBot(10, 20, presses.Add);
+            bot.State = new ScriptedReader(Free, RepelPrinting);
+            GameState state = Encountering(10, 20);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 2)) { RepelStale = TimeSpan.FromMilliseconds(100) }
+                .ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Empty(presses);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+        }
+
+        // RS's Repel message is B3r's: the same snapshot is a lock like any other there, and nothing is pressed.
+        [Fact]
+        public async Task Execute_Rs_NoRepelStop()
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(0x02025734, [.. BitConverter.GetBytes((short)14), .. BitConverter.GetBytes((short)4)]);
+            GameProfile rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()));
+            List<string> presses = [];
+            FakeBot bot = new(Task.CompletedTask, new GameProfile(rs.Flavor, rs.Capabilities, [0], (_, _) => new RsPointerService(), rs.Parser,
+                rs.BattleParser, rs.CreateOverworldReader, rs.Maps, rs.Graph, rs.Pathfinding, rs.CreateStateReader, rs.CreateBattleEvent, rs.SaveGame,
+                createNavigatorEvent: rs.CreateNavigatorEvent))
+            {
+                State = new ScriptedReader(Free, RepelWaiting),
+                Overworld = new RsOverworldReader(memory, new RsPointerService()),
+                Pressed = presses.Add,
+            };
+            GameState state = Encountering(14, 4);
+
+            await new RunEncounterEvent(bot, new EncounterParams(EncounterType.Run, yRange: 1)) { NoBattleWithin = TimeSpan.FromMilliseconds(100) }
+                .ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Empty(presses);
+            Assert.Equal(EventState.Waiting, state.State.Peek());
+            Assert.Equal(["RP:M.Up.3.33707828:H.B.1;M.Down.5.33707828", "clear"], bot.Macros);
         }
 
         // A change for HGSS: from off the line the macro used to hold a direction for ever.
