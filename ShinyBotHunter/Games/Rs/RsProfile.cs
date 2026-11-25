@@ -72,6 +72,7 @@ namespace ShinyBotHunter.Games.Rs
                 PartyMenuMainCallback2: not null }
                 ? null
                 : NoTrainingAddresses,
+            rates: RsRates.Compute,
             milestones: milestones);
     }
 }
