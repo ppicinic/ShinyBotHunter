@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}/archived, goal/{gameFileName}/order, milestone/{game}/{milestoneId}/{gameFileName}), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}, goal/{game}/{gameFileName}/preset/{preset}, species/{game}, goal/{gameFileName}/archived, goal/{gameFileName}/order, milestone/{game}/{milestoneId}/{gameFileName}), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -16,14 +16,15 @@ The dashboard is a set of separate windows:
 
 Each is its own window. Move and resize them like any other window; the dashboard remembers where they were and puts them back the next time you open it.
 
-The Admin window has four tabs, in this order:
+The Admin window has five tabs, in this order:
 
 1. **Dashboard Config**: the look of the windows (themes), which counts windows are open, how many recent encounters to show, and the Pickup items windows.
 2. **Bot Control**: launch emulators, and start, resume and cancel hunts.
 3. **Milestone Editor**: make and change milestones.
-4. **Window Layout**: set window positions and sizes by number.
+4. **Goals**: set what each game file is collecting (see [Set a game file's goal](#set-a-game-files-goal)).
+5. **Window Layout**: set window positions and sizes by number.
 
-A fifth tab, **Dev Mode**, appears only when macro recording is switched on in the bot's settings. It is for changing the bot, not for running hunts, and this guide does not cover it.
+A sixth tab, **Dev Mode**, appears only when macro recording is switched on in the bot's settings. It is for changing the bot, not for running hunts, and this guide does not cover it.
 
 ## Launch an emulator
 
@@ -160,6 +161,31 @@ You see `Saved "NAME" successfully`, with your milestone's name, and the name is
 - A milestone that shows "This milestone is static (loaded from disk) and cannot be edited." came with the bot. Make a new one instead.
 
 Milestones are stored in the bot's database; see [Your data](06-your-data.md). Always make and change them here.
+
+## Set a game file's goal
+
+A game file's goal is what that file is collecting: for each Pokémon, or one form of it, how many. You set it once per game file, and every generated milestone, such as `Route 30 · grass`, shows its rows on that file through it. The milestones you made in the Milestone Editor keep their own amounts.
+
+1. In the Admin window, click the **Goals** tab.
+2. In **Game file**, pick the game file. Its goal is shown; a file with no goal yet shows none, and nothing is saved until you save or apply a preset.
+3. Optional: under **Start from a preset**, click one:
+   - **Living dex**: every species, as many as there are Pokémon in its evolution line; Unown is one of each of its 28 letters.
+   - **Female forms** (HeartGold and SoulSilver only): every species with a female form, the female form at the number of its line that have one, and the male form at 0.
+   - **Version exclusives**: one of each species found in this game's wild places and not in the other game's.
+
+   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. A species the goal already has an entry for is kept as it is, so an amount you changed survives a preset applied later. The presets are greyed out while you have edits not yet saved.
+4. Change the entries:
+   - **Filter**: type part of a name, a number such as `190`, or a form code to show only those entries.
+   - Each entry shows the Pokémon, its number, the form (or "any form") and its **Amount**. An amount of 0 reads "tracked, never a target": the Pokémon is shown and counted, but the bot never stops for it.
+   - The cross at the end of an entry removes it.
+   - To add one, type a species name or number in **Species** (the list suggests names), an optional **Form code**, and an **Amount**, then click **+ Add**.
+5. Click **Save goal**.
+
+You see `Saved the goal of FILE`. If the bot refuses the goal, a red message says why, for example `Species 201 has both an any-form entry and form entries`: a species is wanted either in any form or by its forms, never both, and each form only once. While you have edits not yet saved, **Game file** is greyed out; save them first, or leave the tab to drop them.
+
+If a preset says "No generated milestones for this game file's version: restart the bot so it scans the game folder again", the bot no longer finds that game file among the ones it scanned at start. Restart the bot and try again.
+
+Goals are stored in the bot's database; see [Your data](06-your-data.md).
 
 ## Watch the counts
 
