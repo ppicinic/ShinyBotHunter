@@ -201,6 +201,10 @@ export interface SubscriptionState {
   gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
+  // Set instead of phaseInfo for a generated milestone
+  milestone: MilestoneRowsResponse | null
+  // Neither endpoint knows the milestone, so the card says so instead of loading forever
+  notFound: boolean
 }
 
 // ============================================================

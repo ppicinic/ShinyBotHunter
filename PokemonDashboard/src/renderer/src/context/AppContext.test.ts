@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponse, SubscriptionState } from '../types/api'
-import { applyEncounters, syncSubscriptions } from './AppContext'
+import type { GameEncounterResponse, MilestoneRowsResponse, SubscriptionState } from '../types/api'
+import { applyEncounters, milestonesToReread, syncSubscriptions } from './AppContext'
 
 function sub(phase: string, gameName: string | null, withData = false): SubscriptionState {
   return {
@@ -8,8 +8,14 @@ function sub(phase: string, gameName: string | null, withData = false): Subscrip
     phase,
     gameName,
     encounterData: withData ? ({ gameSpecificResponse: {} } as unknown as GameEncounterResponse) : null,
-    phaseInfo: null
+    phaseInfo: null,
+    milestone: null,
+    notFound: false
   }
+}
+
+function generated(phase: string, gameName: string): SubscriptionState {
+  return { ...sub(phase, gameName), milestone: { id: phase, rows: [] } as unknown as MilestoneRowsResponse }
 }
 
 describe('syncSubscriptions', () => {
@@ -76,5 +82,24 @@ describe('applyEncounters', () => {
     expect(result[1]).toBe(pB)
     expect(result[2].encounterData).toBe(response)
     expect(result[3]).toBe(qA)
+  })
+})
+
+describe('milestonesToReread', () => {
+  it('re-reads the rows of a generated milestone on a push to its file', () => {
+    const mA = generated('M', 'A')
+    const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
+
+    const result = milestonesToReread([mA, sub('P', 'A'), generated('M', 'B')], response, 'HGSS', 'M')
+
+    expect(result).toEqual([mA])
+  })
+
+  it('does not re-read a stored phase', () => {
+    const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
+
+    const result = milestonesToReread([sub('P', 'A'), sub('P', null), generated('M', 'A')], response, 'HGSS', 'P')
+
+    expect(result).toEqual([])
   })
 })
