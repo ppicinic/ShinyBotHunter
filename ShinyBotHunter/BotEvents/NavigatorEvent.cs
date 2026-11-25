@@ -78,6 +78,8 @@ namespace ShinyBotHunter.BotEvents
             Sign,
             // "Repel's effect wore off..." stopped the walk mid-segment.
             RepelMessage,
+            // The macro finished with that message up.
+            CompletedUnderRepelMessage,
         }
 
         public NavigatorEvent(PokemonStateReader reader)
@@ -541,7 +543,20 @@ namespace ShinyBotHunter.BotEvents
                     : SegmentOutcome.Sign;
             }
 
-            return SegmentOutcome.Completed;
+            // The macro can answer done with the Repel message already up (docs/research/milestone-builder.md, "HeartGold: the
+            // message during a navigator walk"), and a battle, a sign or the poison script can start on the last step too, so
+            // the segment ends on the state the field settles in, not on the reply. The Repel message is taken at its wait, so
+            // the close sees it in its wait already.
+            var hgss = (HgssPointerService)state.Bot.Addresses;
+            GameSnapshot end = await GameStateWait.UntilAsync(state.Bot.State, "the field after the segment",
+                s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp) || IsSign(s, hgss)
+                    || s.Script == hgss.SurvivePoisoningScript || (RunEncounterEvent.IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative),
+                TimeSpan.FromSeconds(10), cancellationToken);
+            if (end.Screen == GameScreen.FieldFree) return SegmentOutcome.Completed;
+            if (RunEncounterEvent.IsRepelMessage(end, hgss)) return SegmentOutcome.CompletedUnderRepelMessage;
+            if (IsSign(end, hgss)) return SegmentOutcome.Sign;
+            if (end.Script == hgss.SurvivePoisoningScript) return SegmentOutcome.PoisonEvent;
+            return SegmentOutcome.Battle;
         }
 
         /// <summary>
