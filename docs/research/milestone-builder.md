@@ -188,3 +188,41 @@ Run on Sapphire (a copy of `rs.qa-route101`, 2026-11-24): the navigator walked f
 ## Evidence
 
 `ShinyBotHunter.Qa/dashboard/qa-runs/20261124-milestones-spike/` (gitignored): `build.py` (the milestones, per version), `templates.json`, `anchors.py`, `anchors.json`, `rates.py`, `names.py` and `rs_build.py` (the name tables in the spec's appendix and the Ruby and Sapphire milestones), `backend7.log` (the Route 30 anchor run). The decomp checkout was in the session scratchpad and is not kept.
+
+## The generated file (2026-11-24)
+
+`--generatemilestoneshgss` (#511) run against `pret/pokeheartgold` at `8946577` wrote `ShinyBotHunter/Data/HGSS/milestones.json.gz` (1,186,194 bytes of JSON, 70,208 gzipped). Maps of one location (`mapsec`) are one milestone per modality when their slots for it are identical in both versions, levels included; headbutt never merges. The Safari Zone entrance (357) and the Bug-Catching Contest (487) are left out. This supersedes the 466 above, which counted every map on its own.
+
+**Counts, the same in both versions and with the same ids:** 398 milestones: land 90, surf 63, Old Rod 58, Good Rod 59, Super Rod 59, rock smash 9, headbutt 60. The Old Rod has one fewer than the other rods because all five Mt. Silver Cave maps share one Old Rod table, while their Good and Super Rod tables split 122 from the other four.
+
+**Route 30 land** (weight per species, from the decomp's slots):
+
+| | Morning | Day | Night |
+|---|---|---|---|
+| HeartGold | Caterpie 50, Pidgey 40, Metapod 10 | Pidgey 50, Caterpie 35, Metapod 15 | Rattata 40, Spinarak 30, Hoothoot 30 |
+| SoulSilver | Weedle 50, Ledyba 30, Kakuna 10, Pidgey 10 | Pidgey 50, Weedle 35, Kakuna 15 | Hoothoot 60, Rattata 40 |
+
+**The merged milestones** and their names in `Data/HGSS/map-names.json`'s `Groups`: the location alone when the group holds every map of the location that has the modality, otherwise the members' names joined.
+
+| Id | Maps | Name |
+|---|---|---|
+| 99-surf, 99-oldrod, 99-goodrod, 99-superrod | 99, 153 | Union Cave 1F and B1F |
+| 107-land | 107, 448 | Mt. Moon |
+| 119-surf | 119, 252 | Mt. Mortar (1F entrance) and B1F |
+| 119-oldrod, 119-goodrod, 119-superrod | 119, 251, 252 | Mt. Mortar |
+| 120-land | 120, 237 | Ice Path 1F and B1F |
+| 121-land | 121, 242, 243 | Whirl Islands 1F, B1F and B2F |
+| 121-oldrod, 121-goodrod, 121-superrod | 121, 243 | Whirl Islands |
+| 122-oldrod | 122, 459, 462, 463, 464 | Mt. Silver Cave |
+| 123-surf, 123-oldrod, 123-goodrod, 123-superrod | 123, 176 | Dark Cave |
+| 124-land | 124, 178, 179 | Victory Road |
+| 145-surf, 145-oldrod, 145-goodrod, 145-superrod | 145, 450, 451 | Cerulean Cave |
+| 145-rocksmash | 145, 451 | Cerulean Cave |
+| 155-land | 155, 156 | Sprout Tower |
+| 177-oldrod, 177-goodrod, 177-superrod | 177, 181 | Slowpoke Well |
+| 238-land | 238, 239 | Ice Path B2F and B3F |
+| 315-land | 315, 490, 491, 492 | Ruins of Alph (underground hall) (the owner's name, an exception to the rule) |
+| 332-land | 332 to 339, 341 | Bell Tower |
+| 459-surf, 459-goodrod, 459-superrod | 459, 462, 463, 464 | Mt. Silver Cave (upper mountainside), (Moltres chamber), 2F and 3F |
+
+**Land written "cave" on an overworld or forest map:** Ilex Forest (117) only. Its encounter tiles are not kind 3 in the committed map data; B1 (#517) finds them, and the name corrects itself when the data does.

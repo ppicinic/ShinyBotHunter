@@ -3,6 +3,7 @@ using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Scripts;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Scripts.Milestones;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tools
@@ -61,6 +62,15 @@ namespace ShinyBotHunter.Tools
                         return true;
                     }
                     new RsMapProcessor(args[1], args[2]).Generate();
+                    return true;
+                case "--generatemilestoneshgss":
+                    if (args.Length < 3)
+                    {
+                        Console.Error.WriteLine("Usage: --generatemilestoneshgss <pokeheartgoldDir> <outputDir>");
+                        Environment.ExitCode = 1;
+                        return true;
+                    }
+                    new HgssMilestoneProcessor(args[1], args[2]).Generate();
                     return true;
                 default:
                     return false;
