@@ -1,11 +1,16 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
+using ShinyBotHunter.Pathfinding;
+using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
 
 namespace ShinyBotHunter.Tests
 {
-    // The press loop over scripted snapshots; values from pointer-discovery.md, "Field scripts".
+    // The press loop over scripted snapshots; values from pointer-discovery.md, "Field scripts". In the collection because
+    // the walk tests' MapService opens maps.bin without read sharing.
+    [Collection("macro-registry")]
     public class NavigatorEventTests
     {
         private static readonly HgssPointerService Table = new();
@@ -257,6 +262,8 @@ namespace ShinyBotHunter.Tests
             { Script(null, 9), false },
             { Script(Printing, 2003, 2), false },
             { Script(Printing, 1, 2), false },
+            { RepelPrinting, false },
+            { RepelWaiting, false },
             { Script(MenuChoice), false },
             { Script(0x02041075), false },
             { new GameSnapshot(GameScreen.FieldTask, null, 9, null, FadeTask, SignWait), false },
@@ -411,6 +418,242 @@ namespace ShinyBotHunter.Tests
             await WaitForGatehouse(StandingOn(97, 1, 7), presses);
 
             Assert.Equal(["W.60"], presses);
+        }
+
+        // "Repel's effect wore off..." (docs/research/milestone-builder.md, "HeartGold: the message during a navigator walk").
+        private static readonly GameSnapshot RepelPrinting = Script(Printing, 2022, 0);
+        private static readonly GameSnapshot RepelWaiting = Script(0x02041001, 2022);
+        private static readonly GameSnapshot RepelTaken = new(GameScreen.Transitioning, null, null, null, null);
+        private static readonly GameSnapshot Battle = new(GameScreen.BattleTurn, null, null, null, null);
+
+        // Each read asks the function; for a state that answers a press.
+        private sealed class FuncReader(Func<GameSnapshot> read) : IGameStateReader
+        {
+            public Task<GameSnapshot> ReadAsync(CancellationToken ct) => Task.FromResult(read());
+        }
+
+        [Fact]
+        public async Task HeldWatchEndsOnTheRepelMessageWhilePrinting()
+        {
+            ScriptedReader reader = new(ChildTask(FadeTask), RepelPrinting, RepelWaiting);
+
+            GameSnapshot end = await NavigatorEvent.WaitForFieldFreeOrSignAsync(reader, Table, CancellationToken.None);
+
+            Assert.Equal(RepelPrinting, end);
+        }
+
+        private static Task CloseRepel(IGameStateReader reader, List<string> presses, TimeSpan confirm)
+            => RunEncounterEvent.CloseRepelMessageAsync(new FakeBot(Task.CompletedTask) { State = reader, Pressed = presses.Add }, Table, Stale, confirm,
+                CancellationToken.None);
+
+        [Fact]
+        public async Task RepelMessageGetsOneAAtItsWaitAndNoneWhilePrinting()
+        {
+            List<string> presses = [];
+
+            await CloseRepel(new ScriptedReader(RepelPrinting, RepelPrinting, RepelWaiting, RepelTaken, Free), presses, TimeSpan.FromSeconds(1));
+
+            Assert.Equal([A], presses);
+        }
+
+        [Fact]
+        public async Task RepelMessageThatNeverWaitsStopsNamingWhatItSaw()
+        {
+            List<string> presses = [];
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(
+                () => CloseRepel(new ScriptedReader(RepelPrinting), presses, TimeSpan.FromSeconds(1)));
+
+            Assert.Equal("the Repel message to wait for A", e.WaitingFor);
+            Assert.Equal(RepelPrinting, e.Last);
+            Assert.Empty(presses);
+        }
+
+        [Fact]
+        public async Task RepelPressDroppedIsSentOnceMore()
+        {
+            List<string> presses = [];
+            int afterTaken = 0;
+            FuncReader reader = new(() => presses.Count < 2 ? RepelWaiting : ++afterTaken == 1 ? RepelTaken : Free);
+
+            await CloseRepel(reader, presses, TimeSpan.FromMilliseconds(100));
+
+            Assert.Equal([A, A], presses);
+        }
+
+        [Fact]
+        public async Task RepelPressNeverTakenStopsAfterThreeNamingTheWait()
+        {
+            List<string> presses = [];
+
+            GameStateTimeoutException e = await Assert.ThrowsAsync<GameStateTimeoutException>(
+                () => CloseRepel(new ScriptedReader(RepelWaiting), presses, TimeSpan.FromMilliseconds(50)));
+
+            Assert.Equal([A, A, A], presses);
+            Assert.Equal("the Repel message to take the A", e.WaitingFor);
+            Assert.Equal(RepelWaiting, e.Last);
+        }
+
+        // The research's Route 32 segment on the committed maps: (474, 294) up to (474, 292), then left to (471, 292).
+        private static readonly string DataDirectory = Path.Combine(RepoPaths.AppProject, "Data", "HGSS");
+        private const int Route32 = 36;
+
+        private static FakeMemoryClient OnRoute32(int x, int y)
+        {
+            const uint anchorTarget = 0x02300000;
+            FakeMemoryClient memory = new();
+            memory.Place(Table.Anchor, BitConverter.GetBytes(anchorTarget));
+            memory.Place((uint)(anchorTarget + Table.MapIdOffset), BitConverter.GetBytes((ushort)Route32));
+            MoveTo(memory, x, y);
+            return memory;
+        }
+
+        private static void MoveTo(FakeMemoryClient memory, int x, int y)
+        {
+            memory.Place(Table.TrainerX, BitConverter.GetBytes((uint)x << 16));
+            memory.Place(Table.TrainerY, BitConverter.GetBytes((uint)y << 16));
+        }
+
+        private static FakeBot Route32Bot(FakeMemoryClient memory, RepelWalk walk, Func<FakeBot, Task>? macroDone = null)
+        {
+            GameProfile hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(DataDirectory), new GraphService());
+            FakeBot bot = null!;
+            bot = new FakeBot(Task.CompletedTask, hgss)
+            {
+                State = new FuncReader(walk.Read),
+                Overworld = new HgssOverworldReader(memory, Table),
+                Pressed = walk.Pressed,
+                MacroDone = () => macroDone is null ? Task.CompletedTask : macroDone(bot),
+            };
+            return bot;
+        }
+
+        // A return to start along the nodes, so no graph search runs.
+        private static GameState Returning(FakeBot bot, params (int X, int Y)[] nodes)
+        {
+            GameState state = new()
+            {
+                Bot = bot,
+                Profile = bot.Profile,
+                NavigationPath = nodes.Select(n => new NodePoint { Node = new Node { MapId = Route32, X = n.X, Y = n.Y } }).ToList(),
+            };
+            state.State.Push(EventState.ReturnToStart);
+            return state;
+        }
+
+        // The facing is never placed, so it reads 0 as in the walk.
+        private static string Segment(FakeBot bot, int fromX, int fromY, int toX, int toY)
+            => bot.Profile.Pathfinding!.Pathfind(Route32, fromX, fromY, toX, toY, new Capability(), 0)!;
+
+        // Each segment macro moves the trainer to the next of tiles. The box comes up with the segment numbered boxWith: printing
+        // twice, then waiting until an A, then the freed environment, then the free field (or a battle once the next segment
+        // is sent, when BattleNext).
+        private sealed class RepelWalk((int X, int Y)[] tiles, FakeMemoryClient memory, int boxWith)
+        {
+            private enum Phase { Free, Box, Taken, After }
+
+            // Written and read by the test's one async flow and the racers it awaits; no lock.
+            private Phase phase = Phase.Free;
+            private int boxReads;
+            private int segments;
+
+            public List<string> Presses { get; } = [];
+            public bool BattleNext { get; init; }
+
+            public void Pressed(string macro)
+            {
+                Presses.Add(macro);
+                if (macro == A)
+                {
+                    if (phase == Phase.Box) phase = Phase.Taken;
+                    return;
+                }
+                segments++;
+                MoveTo(memory, tiles[segments].X, tiles[segments].Y);
+                if (segments == boxWith) phase = Phase.Box;
+            }
+
+            public GameSnapshot Read()
+            {
+                switch (phase)
+                {
+                    case Phase.Box:
+                        return boxReads++ < 2 ? RepelPrinting : RepelWaiting;
+                    case Phase.Taken:
+                        phase = Phase.After;
+                        return RepelTaken;
+                    case Phase.After:
+                        return BattleNext && segments > boxWith ? Battle : Free;
+                    default:
+                        return Free;
+                }
+            }
+        }
+
+        [Fact]
+        public async Task WalkClosesTheRepelMessageAtArrivalThenHandsBack()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            RepelWalk walk = new([(474, 294), (471, 292)], memory, boxWith: 1);
+            FakeBot bot = Route32Bot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+
+            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 471, 292), A], walk.Presses);
+            Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
+            Assert.Null(state.NavigationPath);
+            Assert.Equal(((short)471, (short)292), await bot.Overworld.GetPositionAsync(CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task WalkClosesTheRepelMessageAtASegmentsEndBeforeTheNext()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            RepelWalk walk = new([(474, 294), (474, 292), (471, 292)], memory, boxWith: 1);
+            FakeBot bot = Route32Bot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
+
+            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 474, 292), A, Segment(bot, 474, 292, 471, 292)], walk.Presses);
+            Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
+            Assert.Empty(state.TilePenalties);
+        }
+
+        // Nothing is pressed between the free field and the next segment, and a battle on its first step is the walk's battle.
+        [Fact]
+        public async Task BattleOnTheFirstStepAfterTheCloseIsTheWalksBattle()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            RepelWalk walk = new([(474, 294), (474, 292), (471, 292)], memory, boxWith: 1) { BattleNext = true };
+            FakeBot bot = Route32Bot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
+
+            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 474, 292), A, Segment(bot, 474, 292, 471, 292)], walk.Presses);
+            Assert.Equal(EventState.BattleStart, state.State.Peek());
+            Assert.Equal(1, state.NavigationPathIndex);
+        }
+
+        // The box comes up one tile into the segment while its macro is held: the macro is cleared, one A closes the box, and the
+        // segment is walked again from the tile the box came up on, with no tile penalty.
+        [Fact]
+        public async Task WalkRetriesTheSegmentFromTheTileAfterTheRepelMessage()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            RepelWalk walk = new([(474, 294), (474, 293), (471, 292)], memory, boxWith: 1);
+            // The first segment's macro holds until it is cleared; every wait after that is done at once.
+            FakeBot bot = Route32Bot(memory, walk, b => b.Macros.Count > 0 ? Task.CompletedTask : new TaskCompletionSource().Task);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+
+            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 471, 292), A, Segment(bot, 474, 293, 471, 292)], walk.Presses);
+            Assert.Equal(["clear"], bot.Macros);
+            Assert.Empty(state.TilePenalties);
+            Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
         }
     }
 }

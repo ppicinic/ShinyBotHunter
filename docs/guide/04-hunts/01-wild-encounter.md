@@ -133,7 +133,7 @@ Run is refused when the plan cannot be hunted from this game file, naming the mi
 | "Johto: Union Cave's anchor (12, 7) cannot be reached from here without an HM." or "... from Route 32 without an HM." | The bot cannot walk from where it stands, or from another stop, to that anchor with the party and badges as they are. |
 | The milestone refusals of a plain hunt, such as "Route 30 · headbutt is not hunted with Run." | The form's Encounter Type does not suit one of the plan's milestones. |
 
-The "Repel's effect wore off..." message during a walk between two milestones stops the walk, and about 10 s later the hunt waits for you. The bot presses nothing into the message: close it in the emulator and press **Resume**. The walk is planned again from where your character stands, to the anchor of whatever milestone the clock picks now, which can be another milestone than the one it was walking to.
+When "Repel's effect wore off..." comes up during a walk between two milestones, a walk to a Pokémon Center or the walk to the anchor, the bot closes it with A and walks on from where your character stands. If the message does not close, the hunt waits; see [When something goes wrong](../07-when-something-goes-wrong.md).
 
 ## Start a chained hunt
 
