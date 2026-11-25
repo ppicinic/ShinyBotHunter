@@ -298,7 +298,7 @@ Each item is recorded in the changelog on its date; this list does not restate t
 12. FR-37: the mock's in-game clock chip is not built. The editor shows only the fixed times line (`HuntPlanEditor.tsx:332`), because nothing the dashboard reads exposes the weekday and hour (C4a and C4b, 2026-11-25).
 13. FR-37b: rename is refused while the plan is in use too, not only delete (C4a and C4b, 2026-11-25).
 14. FR-38a: the door's direction is derived from the door tile and the wall (`PathfindingService.ExitDirection`), not from regenerated data (C1).
-15. FR-42a: the note on a stored phase's card is not drawn. `PhaseCard.tsx` has no Share column or footer for a stored phase (`:114`, `:211`, `:289-298`), and no scenario asserts a note.
+15. FR-42a: the note on a stored phase's card is not drawn. `PhaseCard.tsx` has no Share column and no footer note for a stored phase (`:115`, `:211`, `:288-298`), and no scenario asserts a note.
 16. FR-44: the linked name is refused at Start on every hunt type (A4 and A7, 2026-11-25).
 17. Design notes, "the reads are the profile's": as built, the rate-input read and both Repel closes are chosen by the address table's type (`state.Bot.Addresses is HgssPointerService` / `is RsPointerService`, `OrchestratorEvent.cs:486`, `:491`; `RunEncounterEvent.cs:59`, `:107`), not through a profile part.
 18. Not built: shares on a headbutt card, the clock chip, the "do nothing until the rule's time" choice, the Route 1 edge (#578).

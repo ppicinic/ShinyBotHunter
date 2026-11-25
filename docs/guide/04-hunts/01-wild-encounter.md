@@ -151,7 +151,7 @@ For example, a chain can switch-train a Pokémon to level 20 in its first leg, t
 ## What happens in each encounter?
 
 1. The bot walks or turns until a wild battle starts. With Headbutt, it presses A at the tree, answers Yes, and presses through the text until the battle starts. After every battle or heal it walks back to the tile you started on and turns to face the tree before the next headbutt.
-   On a Run hunt, when "Repel's effect wore off..." comes up, the bot closes it itself: it waits for the message to wait for A, presses A once, waits until your character is free to walk, and walks on along the line. The backend's window shows `[Repel] Repel's effect wore off: closed with <n> A, confirmed by <state>`. Spin takes no steps, so the message does not come up while turning.
+   On a Run hunt, when "Repel's effect wore off..." comes up, the bot closes it itself: it waits for the message to wait for A, presses A once (and again only if the game shows the press was dropped), waits until your character is free to walk, and walks on along the line. The backend's window shows `[Repel] Repel's effect wore off: closed with <n> A, confirmed by <state>`. Spin takes no steps, so the message does not come up while turning.
 2. It reads the wild Pokémon and writes it to the encounter log.
 3. If it is a Pokémon you are hunting for, the bot stops and waits for you, and sends a shiny alert to [Discord](../05-discord.md). See [When it finds a target](#when-it-finds-a-target-catch-it-and-press-resume).
 4. Otherwise, with Train Type None, it runs away.
