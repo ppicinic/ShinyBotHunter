@@ -132,7 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   // Refs so async callbacks always have the latest values without stale closures
   const configRef = useRef<AppConfig | null>(null)
   const dashboardConfigRef = useRef<DashboardConfig>(emptyDashboardConfig)
-  // Written only by the effect below, read by the SignalR callbacks
+  // Written only by the effect below, read by the SignalR callbacks and the rows' re-read timer
   const subscriptionsRef = useRef<SubscriptionState[]>([])
 
   // Load static config on mount

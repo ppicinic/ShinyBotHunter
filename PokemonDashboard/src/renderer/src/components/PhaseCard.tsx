@@ -287,7 +287,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       {/* Footer: phase count + encounter rate */}
       <div className="flex items-center justify-end gap-4 px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
         {survive !== null && survive < 1 && (
-          <span className="text-xs text-slate-400">{Math.round(survive * 100)} % of encounters survive</span>
+          <span className="text-xs text-slate-400">{Math.min(99, Math.round(survive * 100))} % of encounters survive</span>
         )}
         {milestone && survive !== null && !milestone.live && (
           <span className="text-xs text-slate-400">
