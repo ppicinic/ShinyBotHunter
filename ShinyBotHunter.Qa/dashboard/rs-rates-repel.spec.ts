@@ -1,7 +1,7 @@
 // rs-rates-repel (docs/specs/hunt-plans-and-milestone-builder.md, QA row rs-rates-repel; FR-26a, FR-29 on RS; #525 Q1d), on
 // SA-Wild (Sapphire rev 2) with the pristine rs.qa-route101 save and rs-wild.ts's frame. With the bot idle the lead's level is
-// written to 4 and the Repel counter to 30: every Route 101 slot (Lv 2 or 3) is cancelled, so the card shows all three rows
-// "blocked by Repel" and live. A Run hunt from an anchor set on the start tile (y range 1) closes "REPEL's effect wore off" with
+// written to 4 and the Repel counter to 30: every Route 101 slot (Lv 2 or 3) is cancelled, so the endpoint gives all three rows
+// "blocked by Repel" and live, and the card draws none of them. A Run hunt from an anchor set on the start tile (y range 1) closes "REPEL's effect wore off" with
 // one A and carries on (PR #592); then a battle, and the card back at 45, 45 and 10. Run line: `npx playwright test rs-rates-repel`.
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { shotAll, step, windowByTitle } from './driver'
@@ -38,22 +38,22 @@ async function route101(): Promise<Rows> {
 const blocked = (r: Rows): boolean => r.live && r.survive === 0 && r.rows.every((x) => x.share === 0 && x.reason === BLOCKED)
 const plain = (r: Rows): boolean => r.live && r.survive === 1 && SHARES.every(([s, share], i) => r.rows[i]?.species === s && Math.abs((r.rows[i].share ?? -1) - share) < 1e-9)
 
-type CardView = { rows: { line: string; dimmed: boolean }[]; footer: string }
+// table: the card has drawn its table (an empty tbody is not the loading line).
+type CardView = { table: boolean; rows: string[]; footer: string }
 async function readCard(page: Page): Promise<CardView> {
   return page.evaluate(() => {
     const t = (e: Element | null | undefined): string => (e?.textContent ?? '').replace(/\s+/g, ' ').trim()
     const card = document.querySelector('.dashboard-card')
-    const share = Array.from(document.querySelectorAll('thead th')).map(t).indexOf('Share')
     const rows = Array.from(document.querySelectorAll('tbody tr')).map((tr) => {
-      const td = tr.querySelectorAll('td')
-      return { line: `${t(td[1]).replace('✓', '').trim().toLowerCase()} ${share < 0 ? '-' : t(td[share])}`, dimmed: tr.classList.contains('opacity-50') }
+      const name = tr.querySelectorAll('td')[1]
+      const share = name?.querySelector('[data-testid="row-share"]')
+      return `${Array.from(name?.querySelectorAll('span') ?? []).map(t).join('').replace('✓', '').trim().toLowerCase()} ${share ? t(share) : '-'}`
     })
-    return { rows, footer: t(card?.lastElementChild) }
+    return { table: document.querySelector('table') !== null, rows, footer: t(card?.lastElementChild) }
   })
 }
-// The card for a server answer (PhaseCard): each row's Share cell, dimmed at a zero share, and the footer's survive line.
-const drawn = (r: Rows): { line: string; dimmed: boolean }[] =>
-  r.rows.map((x) => ({ line: `${x.name.toLowerCase()} ${x.share === 0 && x.reason !== null ? x.reason : `${((x.share ?? 0) * 100).toFixed(1)} %`}`, dimmed: x.share === 0 }))
+// The card for a server answer (PhaseCard): a row at a zero share is not drawn, the others with their share under the name.
+const drawn = (r: Rows): string[] => r.rows.filter((x) => x.share !== 0).map((x) => `${x.name.toLowerCase()} ${((x.share ?? 0) * 100).toFixed(1)} %`)
 
 /** The RS card's one form: Route 101 · grass, ShinyTarget, Run with y range 1, then Run; returns the click's ISO time. */
 async function runRs(card: Locator): Promise<string> {
@@ -109,8 +109,8 @@ test('rs-rates-repel: lead Lv 4 and the Repel at 30: every Route 101 row blocked
     const repelled = await route101()
     step(`the rows with the Repel on: ${JSON.stringify(repelled)}`)
     // The card rereads on an encounter's push or the 60 s poll; the decision after the first battle reads the counter at 0.
-    await expect.poll(async () => readCard(cardPage), { message: 'the card: every row dimmed "blocked by Repel"', timeout: 3 * MINUTE, intervals: [1000] })
-      .toEqual({ rows: drawn(repelled), footer: expect.stringContaining('0 % of encounters survive') })
+    await expect.poll(async () => readCard(cardPage), { message: 'the card: no row while every one is "blocked by Repel"', timeout: 3 * MINUTE, intervals: [1000] })
+      .toEqual({ table: true, rows: drawn(repelled), footer: expect.any(String) })
     expect((await readCard(cardPage)).footer, 'the card with the Repel on: live').not.toContain('not live')
     await shotAll('02-blocked', pages)
 
@@ -122,7 +122,7 @@ test('rs-rates-repel: lead Lv 4 and the Repel at 30: every Route 101 row blocked
       .toBe(true)
     const back = await route101()
     await expect.poll(async () => readCard(cardPage), { message: '"the card back at 45/45/10, live"', timeout: 3 * MINUTE, intervals: [1000] })
-      .toEqual({ rows: drawn(back), footer: expect.not.stringMatching(/encounters survive|not live/) })
+      .toEqual({ table: true, rows: drawn(back), footer: expect.not.stringContaining('not live') })
     await shotAll('03-back', pages)
 
     await cancelEventAndBot(card)

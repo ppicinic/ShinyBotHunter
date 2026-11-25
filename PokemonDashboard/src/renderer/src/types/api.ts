@@ -183,8 +183,6 @@ export interface MilestoneCardRow {
   shinyEncountersOnFile: number
   // The species' expected share; null when the response has no shares (see survive)
   share: number | null
-  // Why a zero share is zero, such as "night only" or "blocked by Repel"
-  reason: string | null
 }
 
 export interface MilestoneRowsResponse {

@@ -6,6 +6,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import type { Locator } from '@playwright/test'
 import { readU16, readU32, repoDir, runDir, step, toS16 } from './driver'
+import { psql } from './static'
 
 export const X_ADDR = 0x21da6f4
 export const Y_ADDR = 0x21da6fc
@@ -16,7 +17,6 @@ const FACINGS = ['Up', 'Down', 'Left', 'Right']
 // Azalea's headbutt trees give Spearow, Heracross and Aipom.
 export const HEADBUTT_SPECIES = ['21', '214', '190']
 export const HEADBUTT_NAMES = ['Spearow', 'Heracross', 'Aipom']
-const PSQL = 'C:\\Tools\\pgsql\\bin\\psql.exe'
 
 /**
  * The offered milestone whose Pokémon include all three of Azalea's headbutt species, found by species, not by name,
@@ -112,11 +112,6 @@ export function pgEnv(): NodeJS.ProcessEnv {
     ...process.env, PGTZ: 'UTC', PGHOST: parts.host ?? parts.server, PGPORT: parts.port ?? '5432', PGDATABASE: parts.database,
     PGUSER: parts.username ?? parts['user id'], PGPASSWORD: parts.password
   }
-}
-function psql(env: NodeJS.ProcessEnv, sql: string): string[] {
-  const res = spawnSync(PSQL, ['-At', '-F', '|', '-c', sql], { env, encoding: 'utf8' })
-  if (res.status !== 0) throw new Error(`psql exited with ${res.status}: ${res.stderr}`)
-  return res.stdout.split(/\r?\n/).filter((l) => l !== '')
 }
 // psql prints timestamptz under PGTZ=UTC as "2026-10-25 13:34:29.123+00".
 const toMs = (text: string): number => Date.parse(text.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'))

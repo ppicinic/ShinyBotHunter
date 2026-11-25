@@ -13,7 +13,7 @@ import * as path from 'path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { emuHawkRunning, shotAll, step, stopRecorder } from './driver'
 import {
-  assertLocalStores, cancelBot, deletePlan, launchHgss, putPlan, renamePlan, saveOf, shutdown, stageCopy, startFrame, startWild,
+  assertLocalStores, cancelBot, deletePlan, launchHgss, putPlan, renamePlan, saveOf, shutdown, stageCopy, startFrame,
   teardown, WILD, type Frame, type Plan, type PlanRule
 } from './milestones'
 import { API, MINUTE, settings } from './static'
@@ -190,10 +190,16 @@ test('hgss-plan-editor: create, replace, preview, greyed while unsaved, refusals
       .toContainText(`Set by the plan "${JOHTO}": it starts on its default and follows the in-game clock.`)
     await expect(hg.getByTestId('milestone-anchor'), 'an anchor line with a plan').toHaveCount(0)
     await expect(hg.getByTestId('milestone-rows'), 'a Rows panel with a plan').toHaveCount(0)
+    // Target and mode are required (EventRegistry); the plan stands in for the milestone only.
+    await hg.getByTestId('param-TargetType').locator('select').selectOption('PhaseTarget')
+    await hg.getByTestId('param-EncounterType').locator('select').selectOption('Run')
+    await hg.getByTestId('param-yRange').locator('input').fill('1')
     await expect(button('Run', hg), 'Run with a plan and no milestone').toBeEnabled()
     await shotAll('07-plan-picked', pages)
-    await expect(startWild(hg, { plan: JOHTO, mode: 'Run', yRange: 1 }), 'Start with Sprout Tower in the plan')
-      .rejects.toThrow(`${JOHTO}: ${SPROUT.name} has no anchor.`)
+    // The form is filled, so Run is clicked here rather than through startWild, which would fill it again.
+    await button('Run', hg).click()
+    await expect(hg.locator('div[class~="bg-red-900/20"]'), 'Start with Sprout Tower in the plan')
+      .toContainText(`${JOHTO}: ${SPROUT.name} has no anchor.`, { timeout: 30_000 })
     await shotAll('08-refused-start', pages)
 
     // 9. The same plan on the SoulSilver bot at its title screen.

@@ -3,7 +3,8 @@
 // Plan QA Night: default Route 32 · grass, rule Night -> Route 30 · grass; goal Hoppip 1 (Route 32 only) and Spinarak 1
 // (Route 30 only, at night), on HG-Plan, from the save's tile on Route 32, (474, 294).
 // `night` (the default), 19:48 on a Sunday: a 2-encounter hunt at the custom Route 33 where the bot stands, then the plan:
-// Route 32 until 20:00 with the plan in use, Route 32 made complete and the follows window covered, then the walk to Route 30
+// Route 32 from the file's anchor on the save's tile (the walk south to the generated anchor meets a story trigger) until
+// 20:00 with the plan in use, Route 32 made complete and the follows window covered, then the walk to Route 30
 // with the covered window painting it, the milestone message at the next decision and Route 30's night species.
 // `start-on-rule`, 21:00: the first pick is Route 30 before any walk.
 // Run: `npx playwright test hgss-plan-night`; `$env:QA_HGSS_VARIANT = "start-on-rule"` for the second. A launch that leaves
@@ -13,7 +14,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { emuHawkRunning, shotAll, step, windowByTitle } from './driver'
 import {
   assertLocalStores, cancelEventAndBot, capture, clockConfig, cover, deletePlan, launchHgss, milestoneMessages, PLAN_NOW,
-  PLAN_STOP, PLAN_WALK, putGoal, putPlan, readClock, renamePlan, rows, rowsFor, RUN_FROM, saveOf, seen, shutdown, stageCopy,
+  PLAN_STOP, PLAN_WALK, putGoal, putPlan, readClock, renamePlan, rows, rowsFor, RUN_FROM, saveOf, seen, setAnchorHere, shutdown, stageCopy,
   startFrame, startWild, subscribe, teardown, uncover, unsubscribe, variant, WILD, windowInfo, writeLeadExtension,
   type Clock, type Frame, type Plan, type Subscription
 } from './milestones'
@@ -23,7 +24,8 @@ const which = variant(['night', 'start-on-rule'] as const)
 const HANDLE = 'HG-Plan'
 // An existing QA file's name, used only for a second card; nothing hunts on it.
 const OTHER_FILE = 'HG-Route32'
-const R32 = { id: '36-land', name: 'Route 32 · grass', at: ['36', '458', '339'] }
+// Route 32's anchor as the night variant sets it on the save's tile.
+const R32 = { id: '36-land', name: 'Route 32 · grass', at: ['36', '474', '294'] }
 const R30 = { id: '34-land', name: 'Route 30 · grass', at: ['34', '547', '304'] }
 const R29 = '33-land'
 const ROUTE33 = 'Route 33'
@@ -45,8 +47,8 @@ const OTHER_TITLE = `HGSS — ${R30.id} (${OTHER_FILE})`
 const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\)/
 const BATTLE = /, isShiny: (True|False)\s*$/
 const WARP_ANY = /\[Navigator\] Warp to map (\d+(?:\/\d+)*): on map (\d+), (.*)$/
-// The anchors' run lines: Route 32 up-down ±7 from (458, 339), Route 30 up-down ±6 from (547, 304).
-const R32_MACRO = /^M\.Up\.332\.\d+(:\S+)?;M\.Down\.346\.\d+$/
+// The anchors' run lines: Route 32 up-down ±1 from (474, 294), Route 30 up-down ±6 from (547, 304).
+const R32_MACRO = /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/
 const R30_MACRO = /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/
 
 const hhmm = (c: Clock): string => `${WEEKDAYS[c.weekday]} ${String(c.hour).padStart(2, '0')}:${String(c.minute).padStart(2, '0')}`
@@ -58,10 +60,10 @@ async function countedHere(file: string): Promise<number> {
   expect(res.status, `GET milestone for ${file}`).toBe(200)
   return (res.json.rows as { encountersHere: number }[]).reduce((sum, r) => sum + r.encountersHere, 0)
 }
-/** The walk lines' fields after the hour, and the hour. */
-function walkOf(line: string): { fields: string[]; hour: number } {
+/** The walk line's weekday, milestone and destination; the tile it walks from; the hour. */
+function walkOf(line: string): { fields: string[]; from: string[]; hour: number } {
   const m = PLAN_WALK.exec(line)!
-  return { fields: [m[1], m[3], m[4], m[5], m[6], m[7]], hour: Number(m[2]) }
+  return { fields: [m[1], m[3], m[7], m[8], m[9]], from: [m[4], m[5], m[6]], hour: Number(m[2]) }
 }
 
 test(`hgss-plan-night ${which}: three milestones in one follows window, the switch at 20:00, the plan in use, the message`, async () => {
@@ -112,16 +114,16 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       const left = 20 * 60 - (runClock.hour * 60 + runClock.minute)
       expect(runClock.hour < 20 && left >= 4, `${hhmm(runClock)} at Run (launched at ${hhmm(launchClock)}) leaves under 4 minutes of day; set QA_CLOCK_START earlier`).toBe(true)
 
-      // (b) The plan: the walk to Route 32's anchor, then two encounters there before 20:00 (checked at the switch below).
+      // (b) The plan: Route 32 hunted from its anchor, set here, so no walk; two encounters there before 20:00 (checked at
+      // the switch below).
+      const set = await setAnchorHere(0, R32.id, 0, 1)
+      expect(set.status, `Set anchor here: ${set.text}`).toBe(200)
+      const battlesAtR32 = backendLog().filter((l) => BATTLE.test(l)).length
       const runStart = await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
       await seen(PLAN_STOP, 2, MINUTE)
-      const walk1 = walkOf((await seen(PLAN_WALK, 1, 2 * MINUTE)).line)
-      expect(walk1.fields, 'the first walk').toEqual([WEEKDAYS[runClock.weekday], R32.name, R32.id, ...R32.at])
-      expect(walk1.hour >= 10 && walk1.hour < 20, `the first walk's hour ${walk1.hour} is not in the day`).toBe(true)
-      const arrived1 = await seen(ARRIVED, 1, 10 * MINUTE)
-      const battlesAtR32 = backendLog().filter((l) => BATTLE.test(l)).length
       const from1 = RUN_FROM.exec((await seen(RUN_FROM, 1, 2 * MINUTE)).line)!
-      expect([from1[1], from1[2]], 'the first Run after the walk starts on Route 32\'s anchor').toEqual(['458', '339'])
+      expect(backendLog().filter((l) => PLAN_WALK.test(l) || PLAN_NOW.test(l)), 'a walk or a switch on the anchor').toEqual([])
+      expect([from1[1], from1[2]], 'the first Run starts on Route 32\'s anchor').toEqual(R32.at.slice(1))
       expect(from1[3], 'Route 32\'s run line').toMatch(R32_MACRO)
       await seen(BATTLE, battlesAtR32 + 2, 8 * MINUTE)
       await expect(heading(follows), 'milestone 2 in the follows window').toHaveText(R32.name, { timeout: 30_000 })
@@ -141,18 +143,19 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       await cover(app, FOLLOWS_TITLE)
 
       // (f) 20:00: the walk to Route 30 (the plan as read at Start, not the edited Route 29), the door, the switch on arrival.
-      const walk2At = await seen(PLAN_WALK, 2, 20 * MINUTE)
+      const walk2At = await seen(PLAN_WALK, 1, 20 * MINUTE)
       const walk2 = walkOf(walk2At.line)
-      const before20 = rowsFor(HANDLE, R32.id, new Date(arrived1.at).toISOString()).filter((r) => r.at < walk2At.at)
+      const before20 = rowsFor(HANDLE, R32.id, runStart).filter((r) => r.at < walk2At.at)
       expect(before20.length, `${before20.length} encounters at Route 32's anchor before 20:00 (Run at ${hhmm(runClock)}, launched at ${hhmm(launchClock)}); set QA_CLOCK_START earlier`)
         .toBeGreaterThanOrEqual(2)
-      expect(walk2.fields, 'the walk at 20:00').toEqual([WEEKDAYS[runClock.weekday], R30.name, R32.id, ...R30.at])
+      expect(walk2.fields, 'the walk at 20:00').toEqual([WEEKDAYS[runClock.weekday], R30.name, ...R30.at])
+      expect(walk2.from.slice(0, 2), 'the walk at 20:00 starts on Route 32\'s run line').toEqual(R32.at.slice(0, 2))
       expect(walk2.hour, 'the walk\'s hour').toBe(20)
       const now = await seen(PLAN_NOW, 1, 15 * MINUTE)
       expect(PLAN_NOW.exec(now.line)![1], 'the switch on arrival').toBe(R30.name)
       const battlesAtR30 = backendLog().filter((l) => BATTLE.test(l)).length
       const log = backendLog()
-      const walk2Index = log.flatMap((l, i) => (PLAN_WALK.test(l) ? [i] : []))[1]
+      const walk2Index = log.findIndex((l) => PLAN_WALK.test(l))
       const walkLines = log.slice(walk2Index, log.findIndex((l) => PLAN_NOW.test(l)))
       const warps = walkLines.filter((l) => WARP_ANY.test(l))
       expect(warps.length, '"the door crossed": no warp wait on the walk to Route 30').toBeGreaterThan(0)
@@ -202,7 +205,8 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       const now = await seen(PLAN_NOW, 1, 2 * MINUTE)
       expect(PLAN_NOW.exec(now.line)![1], 'the first pick').toBe(R30.name)
       const walk = walkOf((await seen(PLAN_WALK, 1, MINUTE)).line)
-      expect(walk.fields, 'the walk from the start tile').toEqual([WEEKDAYS[launchClock.weekday], R30.name, R30.id, ...R30.at])
+      expect(walk.fields, 'the walk to Route 30').toEqual([WEEKDAYS[launchClock.weekday], R30.name, ...R30.at])
+      expect(walk.from, 'the walk from the start tile').toEqual(['36', '474', '294'])
       const log = backendLog()
       expect(log.findIndex((l) => PLAN_NOW.test(l)), '"the first pick before any walk"').toBeLessThan(log.findIndex((l) => PLAN_WALK.test(l)))
       // The follows card is on Route 32 for that one decision at most.

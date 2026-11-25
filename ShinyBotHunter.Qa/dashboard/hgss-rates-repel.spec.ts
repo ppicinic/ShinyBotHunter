@@ -111,10 +111,10 @@ test(`HGSS rates and Repel (${VARIANT}): the card follows the counter, the messa
       expectShares(blocked, BLOCKED, 0.65, 'the second decision')
       expect([blocked.reason[19], blocked.reason[41]], 'Rattata\'s and Zubat\'s reasons').toEqual(['blocked by Repel', 'blocked by Repel'])
       expect(blocked.live, 'not live while hunting').toBe(true)
-      const rattata = cardWindow.locator('tbody tr', { hasText: /rattata/i }).first()
-      await expect(rattata, 'Rattata not dimmed on the card').toHaveClass(/opacity-50/, { timeout: CARD_POLL })
-      await expect(rattata).toContainText('blocked by Repel')
-      await expect(cardWindow.getByText('65 % of encounters survive')).toBeVisible({ timeout: CARD_POLL })
+      // On the card the blocked species are not drawn and the rest show their rescaled share under the name (PhaseCard).
+      await expect(cardWindow.locator('tbody tr', { hasText: /wooper/i }).getByTestId('row-share'), 'Wooper rescaled on the card')
+        .toHaveText(`${(BLOCKED[194] * 100).toFixed(1)} %`, { timeout: CARD_POLL })
+      await expect(cardWindow.locator('tbody tr', { hasText: /rattata|zubat/i }), 'Rattata or Zubat on the card while blocked by Repel').toHaveCount(0)
       await shotAll('01-blocked-by-repel', pages)
 
       // 4. The counter runs out on the run line: one close with one A, then the hunt goes on to a battle.

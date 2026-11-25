@@ -136,7 +136,7 @@ From the owner, 2026-11-25:
 | FR-25b | RS. No lead ability changes which species appears. Stench and Illuminate change only how often an encounter comes and are not part of the share. | Must | Unit test: the shares are the same for every lead ability. |
 | FR-26 | The inputs are read from memory while a hunt runs, never entered: the in-game time of day; the Repel counter; the lead's ability, level and egg flag, and the level of the first member that has not fainted and is not an egg (the Repel level). | Must | QA: the rate changes when the Repel counter is written. |
 | FR-26a | RS. The Repel counter is save variable `0x4021` at `gSaveBlock1 + 0x1382` (`u16`), from the decomp's layout; it is confirmed on the emulator before B3r's plan is approved. The Repel level is taken from the party read the bot already makes. | Must | The emulator round in the research doc; QA: `rs-rates-repel`. |
-| FR-27 | The phase card shows each row's expected share now, and the survive share when it is below 100 %. A row whose share is zero now (wrong time of day, cancelled by Repel) is dimmed and says why: "night only", "blocked by Repel". | Must | QA. |
+| FR-27 | The phase card shows each row's expected share now, and the survive share when it is below 100 %. A row whose share is zero now (wrong time of day, cancelled by Repel) is dimmed and says why: "night only", "blocked by Repel". (Changed 2026-11-25, see the changelog: the share is drawn under the Pokémon's name, not in a Share column; a row at a zero share is not drawn; the survive share is not shown.) | Must | QA. |
 | FR-28 | With no hunt running on the game file, the card shows the shares for the time of day the game file was last seen in, with no Repel and no lead effect, marked as not live. | Should | QA. |
 | FR-29 | A Spin hunt is expected never to run a Repel out. A Run hunt and a plan's walk do spend steps: when "Repel's effect wore off..." comes up during a hunt, the bot closes it with A, confirmed by the field being free, and carries on. | Should | QA: the counter is unchanged across thirty spins; the message is closed on a Run hunt. |
 | FR-30 | The radio sounds are a condition a row can have and a rate input, but the playing sound is not read: a milestone's sound rows are shown as "needs Hoenn Sound" and counted as off. | Should | Unit test. |
@@ -181,7 +181,7 @@ The spike's workaround (one more step in the last walked direction when the walk
 | FR-39c | Existing subscriptions are fixed cards and are read as stored (FR-42). The operator adds a follows-the-hunt card from the dashboard configuration, where a fixed card is added today. | Must | QA: `hgss-existing-unchanged`. |
 | FR-39a | A phase window is painted while another window covers it, so a capture of it never shows a blank or stale card. | Must | QA: a swap with the window fully covered, captured, shows the new milestone. |
 | FR-40 | A change of milestone replaces the follows-the-hunt card's milestone in the dashboard configuration in one push; a game file with no such card gets no push and no window. | Must | Unit test. |
-| FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows dim and its shares change at 4:00, 10:00 and 20:00 in-game without a move. | Must | QA. |
+| FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows dim and its shares change at 4:00, 10:00 and 20:00 in-game without a move. (Changed 2026-11-25, see the changelog: a row is left out rather than dimmed.) | Must | QA. |
 
 ### Existing milestones and the backfill
 
@@ -458,6 +458,10 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - "There should be a ping in discord if any hunt part completes." New FR-34a.
   - #578 (no on-foot edge between Route 1 and Viridian City): "There should be? Route 1 is very far off in end game though." It stays an open issue outside this feature.
   - The order of PR #506 and #556 is the orchestrator's to coordinate.
+- **2026-11-25, the owner on the counts window** ("Route 32 · grass" with a Repel on). His words: "nota fan. the percentage can be below the mon. the greyed out rows can just not show. only show active mons." And on the footer line: "so we're basiaclyl showing that there are encounters that skip. no human would know this. should not be included. [...] either way i would remove it." FR-27 and FR-41 as built from #508's card task:
+  - The Share column is gone; each share is drawn small under the Pokémon's name.
+  - A row whose share is zero now is not drawn, so the reasons ("night only", "blocked by Repel", "needs Hoenn Sound") are shown nowhere on the card. A card without shares (a stored phase, a headbutt milestone, a file not seen since the backend started) draws every row. The header's encounter count, the footer's Phase and Rate, and completion still count every row. A Repel that blocks every species leaves the table with no rows.
+  - The footer's "NN % of encounters survive" is removed. The endpoint still gives `survive` and each row's `reason`; the card does not read the reason.
 - 2026-11-25, close-out (#526):
   - Since #590 (#556), RS shares are live from the first encounter: the decision reads the RS Repel counter (`OrchestratorEvent.cs:491-495`), so B4b and B4c's "RS shows plain shares marked not live until #556" no longer holds.
   - Since #591 (#562), the HGSS navigator closes the Repel message mid-walk (`NavigatorEvent.cs:466`, `:520`), so "until then such a walk parks in Waiting" no longer holds; since #592 (#589), a US RS Run hunt closes it too.

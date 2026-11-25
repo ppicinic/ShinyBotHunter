@@ -65,7 +65,8 @@ test(`hgss-plan-ending ${which}: a complete default gives way to the first incom
       expect(PLAN_NOW.exec(now.line)![1], '"the first incomplete rule stands in": the milestone switched to').toBe(R30.name)
       const walk = PLAN_WALK.exec((await seen(PLAN_WALK, 1, MINUTE)).line)!
       const hour = Number(walk[2])
-      expect([walk[1], walk[3], walk[4], walk[5], walk[6], walk[7]], 'the walk line').toEqual([WEEKDAYS[clock.weekday], R30.name, R30.id, ...R30.at])
+      expect([walk[1], walk[3], walk[4], walk[5], walk[6], walk[7], walk[8], walk[9]], 'the walk line, from the save\'s tile')
+        .toEqual([WEEKDAYS[clock.weekday], R30.name, '36', '474', '294', ...R30.at])
       expect(hour >= 10 && hour < 20, `the walk line's hour ${hour} is not in the day`).toBe(true)
       const log = backendLog()
       expect(log.findIndex((l) => PLAN_NOW.test(l)), 'the switch before the walk').toBeLessThan(log.findIndex((l) => PLAN_WALK.test(l)))

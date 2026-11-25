@@ -26,11 +26,11 @@ const TABLE: Record<string, Record<number, number>> = {
 // (morning, night); the radio's species never have a share (FR-30).
 const REASON: Record<number, string> = { 194: 'night only', 187: 'morning and day only', 41: 'morning and night only' }
 const SOUND: Record<number, string> = { 293: 'needs Hoenn Sound', 264: 'needs Hoenn Sound', 418: 'needs Sinnoh Sound', 399: 'needs Sinnoh Sound' }
-const NAMES: Record<number, string> = { 194: 'wooper', 187: 'hoppip', 41: 'zubat' }
+const NAMES: Record<number, string> = { 194: 'wooper', 187: 'hoppip', 41: 'zubat', 69: 'bellsprout' }
 const CASES = {
-  '20': { start: '2026-11-29T19:54:00', boundary: 20, before: 'Day', after: 'Night', live: [194], dimmed: [187] },
-  '4': { start: '2026-11-30T03:54:00', boundary: 4, before: 'Night', after: 'Morning', live: [187], dimmed: [194] },
-  '10': { start: '2026-11-30T09:54:00', boundary: 10, before: 'Morning', after: 'Day', live: [], dimmed: [41] }
+  '20': { start: '2026-11-29T19:54:00', boundary: 20, before: 'Day', after: 'Night', live: [194], gone: [187] },
+  '4': { start: '2026-11-30T03:54:00', boundary: 4, before: 'Night', after: 'Morning', live: [187], gone: [194] },
+  '10': { start: '2026-11-30T09:54:00', boundary: 10, before: 'Morning', after: 'Day', live: [69], gone: [41] }
 } as const
 const DECIDE = /\[Orchestrator\] State: DecideOverworldAction\s*$/
 const FOE = /(\S+), isShiny: (True|False)\s*$/
@@ -94,13 +94,15 @@ test(`HGSS rates and the clock (${VARIANT}): the rows change at the first decisi
     step(`${c.after} seen with ${count(FOE)} encounters and ${count(DECIDE)} decisions logged since the launch`)
     expect(after.live, 'not live after the boundary').toBe(true)
     expectTime(after, c.after, 'after the boundary')
+    // The card draws only the species met now, each with its share under its name (PhaseCard).
     for (const species of c.live) {
-      await expect(cardWindow.locator('tbody tr', { hasText: new RegExp(NAMES[species], 'i') }).first(), `${NAMES[species]} dimmed on the card`).not.toHaveClass(/opacity-50/, { timeout: CARD_POLL })
+      const share = `${(TABLE[c.after][species] * 100).toFixed(1)} %`
+      await expect(cardWindow.locator('tbody tr', { hasText: new RegExp(NAMES[species], 'i') }).getByTestId('row-share'), `${NAMES[species]} on the card at ${share}`)
+        .toHaveText(share, { timeout: CARD_POLL })
     }
-    for (const species of c.dimmed) {
-      const row = cardWindow.locator('tbody tr', { hasText: new RegExp(NAMES[species], 'i') }).first()
-      await expect(row, `${NAMES[species]} not dimmed on the card`).toHaveClass(/opacity-50/, { timeout: CARD_POLL })
-      await expect(row).toContainText(REASON[species])
+    for (const species of c.gone) {
+      await expect(cardWindow.locator('tbody tr', { hasText: new RegExp(NAMES[species], 'i') }), `${NAMES[species]} (${REASON[species]}) still on the card`)
+        .toHaveCount(0, { timeout: CARD_POLL })
     }
     await shotAll('02-after', pages)
 
@@ -120,7 +122,7 @@ test(`HGSS rates and the clock (${VARIANT}): the rows change at the first decisi
       expect(rod.rows.find((r) => r.species === 120)?.share, 'Staryu\'s share at night').toBeCloseTo(0.1, 3)
       const rodWindow = await windowByTitle(frame.app!, ROD_CARD, MINUTE)
       pages.rod = rodWindow
-      await expect(rodWindow.locator('tbody tr', { hasText: /staryu/i }).first()).toContainText('10.0 %', { timeout: CARD_POLL })
+      await expect(rodWindow.locator('tbody tr', { hasText: /staryu/i }).getByTestId('row-share')).toHaveText('10.0 %', { timeout: CARD_POLL })
       await expect(rodWindow.getByText('not live (last seen night)')).toBeVisible({ timeout: CARD_POLL })
       await shotAll('03-not-live', pages)
 

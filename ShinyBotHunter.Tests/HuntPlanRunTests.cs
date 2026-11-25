@@ -200,6 +200,27 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Route30, run.Pending);
         }
 
+        // The walk line names where the bot stands: on the first decision the milestone already holds the pick.
+        [Fact]
+        public async Task Step_Walk_LogsTheTileItWalksFrom()
+        {
+            HuntPlanRun run = Run();
+            GameState state = StateAt(StandingAt(36, 450, 330), run, Route32, 21);
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                Assert.True(await StepAsync(run, state, new Calls([], [], [])));
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            Assert.Contains("[Orchestrator] Plan: Thursday 21h names Route 30 · grass; walking from map 36 (450, 330) to map 34 (547, 304)", log.ToString());
+        }
+
         // FR-36: the first decision walks to the default's anchor; the rule that matches when that walk ends is a move, so Route
         // 32 stays the milestone until the walk to Route 30 commits.
         [Fact]
