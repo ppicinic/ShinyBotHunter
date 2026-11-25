@@ -130,6 +130,43 @@ namespace ShinyBotHunter.Tests
                 JsonConvert.SerializeObject(versions[RomVersion.SoulSilver].Select(m => m.Trees)));
         }
 
+        // No stand on water, a Cut tile or a Rock Smash tile: headbutt while surfing is not run, and an HM tile is no stand.
+        [Fact]
+        public void HeadbuttStands_OnFreeOrGrass()
+        {
+            var maps = new MapService(DataDirectory);
+
+            foreach (var milestone in Load()[RomVersion.HeartGold].Where(m => m.Modality == Modality.Headbutt))
+            {
+                foreach (var stand in milestone.Trees.Select(t => t.Anchor).OfType<Anchor>())
+                {
+                    byte kind = maps.GetMap(stand.Map)[stand.Y, stand.X];
+                    Assert.True(kind is Constant.MAP_Free or Constant.MAP_Grass, $"{milestone.Id} ({stand.X}, {stand.Y}) kind {kind}");
+                }
+            }
+        }
+
+        // Tree 22's cheapest stand was (471, 439), a Rock Smash tile reached only with every HM; it now has none.
+        [Fact]
+        public async Task HeadbuttStands_Route32_ReachedWithNoHm()
+        {
+            var route32 = Find(RomVersion.HeartGold, "36-headbutt");
+            var maps = new MapService(DataDirectory);
+            var pointers = new HgssPointerService();
+            var pathfinding = new PathfindingService(maps, new GraphService(DataDirectory), pointers.TrainerX, pointers.TrainerY, pointers.Anchor, pointers.MapIdOffset);
+
+            foreach (var stand in route32.Trees.Select(t => t.Anchor).OfType<Anchor>())
+            {
+                var toCenter = await pathfinding.FindClosestPokemonCenter(stand.Map, stand.X, stand.Y, new Capability(), (byte)Direction.Down);
+                Assert.NotNull(toCenter);
+                var center = toCenter.Last().Node;
+                var back = await pathfinding.FindNodePath(center.MapId, center.X, center.Y, stand.Map, stand.X, stand.Y, new Capability(), (byte)Direction.Down, startInternalId: true);
+                Assert.NotNull(back);
+            }
+            Assert.Null(route32.Trees[22].Anchor);
+            Assert.Equal(29, route32.Trees.Count(t => t.Anchor is not null));
+        }
+
         [Fact]
         public void HeadbuttStands_Counts()
         {
