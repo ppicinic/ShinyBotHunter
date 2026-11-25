@@ -435,3 +435,76 @@ For the plan: the wait before the press is "script 2022 and native `0x02041001`"
 ### Evidence
 
 `ShinyBotHunter.Qa/dashboard/qa-runs/20261125-b4-research/` (gitignored): `hg-run1.log`, `ss-run1.log`, `ss-run2.log`, `rs-run1.log`, `rs-run2.log` (every read above), `hg-table-*.bin` and `ss-table.bin` (the table before and after the save and the reset), `scan-saves.log`, `hg.py`, `rs.py`, `pk.py`, `mkconfig.py`, `launch.ps1` (the probe, the config copy, the launch), `shots/`.
+
+## The Repel message on Ruby and Sapphire, and during an HGSS navigator walk (2026-11-25, research round for #556 and #562)
+
+Run as the round above: EmuHawk started directly with ApiHawk and its own config copy, no backend and no database, on throwaway copies of the ROMs and the pristine QA saves, probed at one sample per emulated frame (all values of a sample from one frame). Everything below was observed unless it says "from the source" or "from the symbol tables".
+
+| Session | ROM | Save |
+|---|---|---|
+| Ruby (`AXVE`, rev 2) | a copy of `RU-Wild.gba` | a copy of `rs.qa-route101` |
+| Sapphire (`AXPE`, rev 0) | a copy of `Pokemon Sapphire.gba` | the same |
+| Sapphire (`AXPE`, rev 2) | a copy of `SA-Wild.gba`, the QA ROM | the same |
+| HeartGold (`IPKE`) | a copy of `HG-Route32.nds` | a copy of `hgss.qa-route32` |
+
+### Ruby and Sapphire: "REPEL's effect wore off..."
+
+104 endings on Route 101's grass (Ruby rev 2 53, Sapphire rev 0 37, Sapphire rev 2 14). The three ROMs behaved the same frame for frame; only ROM addresses differ.
+
+RAM addresses, the same on all three: `FieldControlsLock` `0x030006A4`; script context at `0x030005B8` (stack depth + 0, mode `0x030005B9`, native `0x030005BC`, stack[0] `0x030005C4`); field message window state `0x0202E892`.
+
+| | Ruby rev 2 | Sapphire rev 0 | Sapphire rev 2 | Function (symbol tables) |
+|---|---|---|---|---|
+| native while the text prints | `0x08064CA5` | `0x08064C89` | `0x08064CA9` | `IsFieldMessageBoxHidden` + 1 |
+| **native while the box waits** | **`0x080670E1`** | **`0x080670C5`** | **`0x080670E5`** | `WaitForAorBPress` + 1 |
+| script stack[0] at depth 1 | `0x081C3404` | `0x081C337E` | `0x081C3394` | `S_RepelWoreOff` + 8 |
+
+From the symbol tables only: Ruby rev 1 equals rev 2 and Sapphire rev 1 equals rev 2; Ruby rev 0's `WaitForAorBPress` is `0x080670C0`. So the "Sapphire native mismatch" of the earlier round was the ROM revision: `Pokemon Sapphire.gba` is rev 0, the QA ROM is rev 2. `RsPointerService.For("AXPE")` holds the rev 1/2 value only, and the game code alone does not tell revisions apart.
+
+**The frames** (27 traces, identical; frame 0 is the first with the lock at 1, and the counter reads 0 on it):
+
+| Frame | lock | mode | native | window `0x0202E892` |
+|---|---|---|---|---|
+| 0, 1 | 1 | 2, then 1 | `lockall`'s | 0 |
+| 2 to 29 | 1 | 2 | `IsFieldMessageBoxHidden` | 1, then 3 while the text prints (26 frames) |
+| 30, 31 | 1 | 2, then 1 | the same | 0 |
+| **32 on** | 1 | **2** | **`WaitForAorBPress`** | 0 |
+| the frame A is new | 1 | **1** | the same | 0 |
+| one frame later | **0** | 0 | the same, stale | 0 |
+
+- **The wait is: lock 1, mode 2, native `WaitForAorBPress`.** Stable from frame 32 for as long as watched (90 frames; 5 s under the Run macro) and never present while the text prints. What names the box as the Repel one is stack depth 1 with stack[0] = `S_RepelWoreOff` + 8, on every waiting sample of all 104.
+- **The window state cannot gate it**: it is 0 while the box waits, as in the free field. **The native alone cannot either**: it still reads `WaitForAorBPress` after the close.
+- **One A**: the mode byte goes 2 to 1 on the frame the A is new (17 ms after the send) and the lock reads 0 one frame later. 99 presses sent after a read that showed the wait: 99 taken, none needing a second, never a second box, and the lock never read 1 again in 3,040 following frames.
+- **An A before the wait is eaten** (20 trials, sent 1 to 31 frames after the lock, and once new on frame 32 itself): the text is no faster, the box does not close and it is still waiting 240 frames later. A held A is not taken; the wait needs a new press. So the wait before the press matters.
+- **Under the real Run macro** (`RP_M.Right.15…:H.B.1;M.Left.13…`, 15 trials): the box comes up on a tile of the line on the frame the step ends; the macro goes on holding B and its direction and nothing moves, the counter stays 0 and the box stays. A held direction or B neither drops nor delays the A.
+- **B closes this box too.** The same `RP_` macro re-sent over the running one never makes B new and the box stays (2 of 2); **a clear, then the `RP_` macro, makes B new and closes the box with no A sent (2 of 2)**; a plain `H.B.3` after a clear closes it (1). So nothing carrying `H.B.1` may start after a clear while the box waits: it would be an ungated press.
+- The A sent as a macro replaces the Run macro, so the Run macro is restarted after the field is free.
+- **A battle on the step that ends the Repel: never, 0 of 104** (52 of them single steps with the counter at 1; the same grass with no Repel gave 5 battles in 30 steps). From the source, `ProcessPlayerFieldInput` returns from the step script before the wild check. **A battle can start on the first step after the close: 10 of 52.**
+- **What `RsStateReader` gives** (from the source, mapped onto the bytes; the reader was not run): the flee reader gives `FieldTask` from frame 0 to the close and cannot tell printing from waiting; with the training reads it gives `FieldTask` with `Native == WaitForAorBPress`, text printer 0, at the wait. Neither reads the mode byte or the script stack, so neither tells this box from any other sign-style message at its wait.
+
+**The gate, RS:** wait for lock 1, mode 2 and the ROM's `WaitForAorBPress`, with stack depth 1 and stack[0] = `S_RepelWoreOff` + 8 to know it is this box; press A once; confirm by the lock reading 0.
+
+### HeartGold: the message during a navigator walk (R-C3b-1)
+
+Route 32, with the segment `PathfindingService.CreateMacro` writes, sent as `ExecuteSegmentMacroAsync` sends it (`macro_string_M.Up.292.…;M.Left.471.…` from (474, 294)): two steps up in grass, a turn, three steps left onto bare ground. 48 endings (35 on grass, 13 on bare ground; 37 running, 11 walking): 48 messages, no battle on the ending step. The navigator's own code was not run; the probe sent the same strings.
+
+- **It is the same box as on a Run hunt**: script 2022, printing in native `0x021EF349`, then from about 560 ms native `0x02041001`, mode 2, no printer, until A. The same at both gaits. (The pristine Route 32 save has the Running Shoes toggle on, so a plain `M` runs.)
+- **The held direction changes nothing**: 3 s under the macro with the box up, the tile and counter unchanged (17 segments). A new d-pad press does not close it. When the Repel ends on the tile where one `M` ends and the next begins, the next direction is held under the box and nothing moves.
+- **The player stands on the tile the step ended on**, all 48: the tile coordinate is the new tile from the box's first sample and does not change until after the close.
+- **One A, sent in the wait**: mode 2 to 1 in 17 to 35 ms, field free in 75 to 103 ms, the same with the direction held, released, or B held. All 48 closed with exactly one A; never a second box. (The earlier round's "about 100 ms" and "about 170 ms" were a slower poll.) **An A before the wait is eaten** (4 trials).
+- **What happens to the segment depends on how the A is sent.** As a macro (`macro_string_H.A.3;W.20`, what `RunMacroString` sends) it replaces the segment: the player stands on the tile the box came up on (5 trials) and the segment is retried from there, as the poison branch does. Pushed above the queued segment (`hold_A_3`), the segment resumed and reached its end (6 of 6 with no battle).
+- **When the Repel ends on the segment's last tile, the macro completes with the box up**: `wait-macro` answered done while the box waited (2 of 2). From the source, the macro then wins the race and the segment counts as completed with the message on screen. So the box is checked when a segment completes as well as in the stall check.
+- **A battle can start on the first movement after the close**: 4 times (3 of 22 single-step trials and once in a segment, where it started 200 ms after the field was free and before the tile changed).
+
+**The gate, HGSS navigator:** the one `CloseRepelMessageAsync` already has: wait for script 2022 in native `0x02041001`, press A once, confirm by the snapshot leaving that state, then the free field.
+
+### Not established
+
+- Ruby rev 0, Ruby rev 1 and Sapphire rev 1 on the emulator (symbol tables only); non-US releases; RS at another text speed (26 frames of text in all 104).
+- RS: the message during a navigator route, surfing or on the bike.
+- HGSS: the navigator's own code against the message; a Repel ending on a warp tile, a sign tile, in a trainer's sight or on a poison tick; SoulSilver this round.
+- A battle on the ending step is not proved impossible on the emulator (0 of 152 over both games; the RS source says it cannot happen).
+
+### Evidence
+
+`ShinyBotHunter.Qa/dashboard/qa-runs/20261125-repel-research/` (gitignored): `ru-run1.log`, `sa0-run1.log`, `sa2-run1.log`, `hg-run1.log` (every sample of every traced trial), the probe scripts, the config copy and `shots/`. Two probe errors are in the logs and are not game behaviour: the Ruby E4 summary's "battle 0 of N" (a detector error; the count above is from the "battle: fleeing" lines) and HeartGold's `N1 (held)` trials (a batch whose clear wiped the A; redone as `N3`).
