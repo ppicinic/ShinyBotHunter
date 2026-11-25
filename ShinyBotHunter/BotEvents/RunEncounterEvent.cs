@@ -87,7 +87,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     try
                     {
-                        await CloseRepelMessageAsync(hgss!, cancellationToken);
+                        await CloseRepelMessageAsync(bot, hgss!, RepelStale, RepelPressConfirm, cancellationToken);
                     }
                     catch (GameStateTimeoutException ex)
                     {
@@ -107,27 +107,27 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // std_repel_wore_off running, printing or waiting for A.
-        private static bool IsRepelMessage(GameSnapshot s, HgssPointerService hgss)
+        internal static bool IsRepelMessage(GameSnapshot s, HgssPointerService hgss)
             => s.Screen == GameScreen.FieldTask && s.Script == hgss.RepelMessageScript;
 
         // Rule 16, from docs/research/milestone-builder.md R5: the message waits in WaitABPressNative in context 0 with no
         // printer, and one A takes ctx.mode 2 to 1, so the snapshot leaves that native. The A is sent only there; a snapshot
-        // still waiting there after RepelPressConfirm shows the press was dropped, and only then is it sent again. Every wait
-        // throws, naming the snapshot it saw, when that snapshot stays unchanged for RepelStale.
-        private async Task CloseRepelMessageAsync(HgssPointerService hgss, CancellationToken ct)
+        // still waiting there after pressConfirm shows the press was dropped, and only then is it sent again. Every wait
+        // throws, naming the snapshot it saw, when that snapshot stays unchanged for stale.
+        internal static async Task CloseRepelMessageAsync(IBot bot, HgssPointerService hgss, TimeSpan stale, TimeSpan pressConfirm, CancellationToken ct)
         {
             IGameStateReader game = bot.State;
             Func<GameSnapshot, bool> waitingForA = s => IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative;
-            await GameStateWait.UntilAsync(game, "the Repel message to wait for A", waitingForA, RepelStale, ct);
+            await GameStateWait.UntilAsync(game, "the Repel message to wait for A", waitingForA, stale, ct);
             int presses = 0;
             GameSnapshot taken = await GameStateWait.PressUntilAsync(game, async () =>
             {
                 presses++;
                 bot.RunMacroString(PressA);
                 await bot.WaitForMacroAsync(ct);
-            }, "the Repel message to take the A", s => !waitingForA(s), RepelPressConfirm, RepelPressAttempts, ct);
-            await GameStateWait.UntilAsync(game, "the field free after the Repel message", s => s.Screen == GameScreen.FieldFree, RepelStale, ct);
-            Console.WriteLine($"[Run] Repel's effect wore off: closed with {presses} A, confirmed by {taken}");
+            }, "the Repel message to take the A", s => !waitingForA(s), pressConfirm, RepelPressAttempts, ct);
+            await GameStateWait.UntilAsync(game, "the field free after the Repel message", s => s.Screen == GameScreen.FieldFree, stale, ct);
+            Console.WriteLine($"[Repel] Repel's effect wore off: closed with {presses} A, confirmed by {taken}");
         }
 
         // Up then Down, or Right then Left, on both games. RunHold (RS) is joined to the first move with ":" so the move
