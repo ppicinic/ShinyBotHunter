@@ -194,19 +194,28 @@ namespace ShinyBotHunter.Controllers
                 milestone.Name,
                 milestone.Modality,
                 milestone.Slots,
-                Rows = rows.Select(r => new
+                Rows = rows.Select(r =>
                 {
-                    r.Species,
-                    r.Key,
-                    r.FormCode,
-                    r.Wanted,
-                    r.Caught,
-                    r.Complete,
-                    r.Hidden,
-                    r.IsTarget,
-                    EncountersHere = file.PhaseEncounters[milestoneId].PokemonEncounters[r.Key].Encounters,
-                    EncountersOnFile = file.PokemonEncounters[r.Key].Encounters
-                })
+                    var metadata = pokemonMetadataService.GetPokemonMetadata(r.Species);
+                    return new
+                    {
+                        r.Species,
+                        r.Key,
+                        r.FormCode,
+                        Name = metadata.PokemonName,
+                        Sprite = r.FormCode ?? metadata.PokeApiName,
+                        metadata.HasFemaleForm,
+                        r.Wanted,
+                        r.Caught,
+                        r.Complete,
+                        r.Hidden,
+                        r.IsTarget,
+                        EncountersHere = file.PhaseEncounters[milestoneId].PokemonEncounters[r.Key].Encounters,
+                        EncountersOnFile = file.PokemonEncounters[r.Key].Encounters,
+                        ShinyEncountersOnFile = file.PokemonEncounters[r.Key].ShinyEncounters
+                    };
+                }),
+                Data = rsp
             });
         }
 
