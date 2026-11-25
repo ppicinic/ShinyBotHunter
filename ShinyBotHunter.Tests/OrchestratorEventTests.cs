@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
@@ -451,8 +452,12 @@ namespace ShinyBotHunter.Tests
             return block;
         }
 
-        // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip.
-        private static FakeBot RsBot(params byte[][] party)
+        // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip; chain reads
+        // answer zeroed blocks (no Repel).
+        private static FakeBot RsBot(params byte[][] party) =>
+            RsBot(blocks => blocks.Select(b => new ChainBlockResult(ChainBlockStatus.Ok, 0, new byte[b.Length])).ToArray(), party);
+
+        private static FakeBot RsBot(Func<IReadOnlyList<ChainBlockRequest>, ChainBlockResult[]> chainBlocks, params byte[][] party)
         {
             PokemonMetadataService metadata = Moves();
             metadata.Seed(new PokemonMetadata { Id = 258, PokemonName = "Mudkip", PokeApiName = "mudkip" });
@@ -462,6 +467,7 @@ namespace ShinyBotHunter.Tests
                 createNavigatorEvent: rs.CreateNavigatorEvent))
             {
                 PartyBlocks = party,
+                ChainBlocks = chainBlocks,
             };
         }
 
@@ -616,14 +622,23 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.Encountering], state.State);
         }
 
+        // FR-26a and NFR-1: on RS each decision reads the Repel counter as one 2-byte block, with no clock.
         [Fact]
-        public async Task Decide_Rs_NoRateInputs()
+        public async Task Decide_Rs_KeepsTheRepelCounterFromOneBlock()
         {
-            GameState state = Training(RsBot(Gen3Mon(40)), TrainType.Standard);
+            List<IReadOnlyList<ChainBlockRequest>> requests = [];
+            FakeBot bot = RsBot(blocks =>
+            {
+                requests.Add(blocks);
+                return [new ChainBlockResult(ChainBlockStatus.Ok, 0, BitConverter.GetBytes((ushort)3))];
+            }, Gen3Mon(40));
+            GameState state = Training(bot, TrainType.Standard);
 
             await DecideAsync(state);
 
-            Assert.Null(state.RatesSeen);
+            Assert.Equal(new RateInputs(null, null, 3, 10, 0, 10, false), state.RatesSeen);
+            ChainBlockRequest block = Assert.Single(Assert.Single(requests));
+            Assert.Equal((0x02026AB6u, 0, 2), (block.Anchor, block.Hops.Length, block.Length));
         }
 
         // FR-34a with no plan: told when the milestone becomes complete after Init's read, never at Start, never twice.
