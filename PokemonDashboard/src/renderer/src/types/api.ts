@@ -25,6 +25,7 @@ export interface ActiveSubscription {
   game: string
   phase: string
   gameName?: string | null
+  followsHunt?: boolean
 }
 
 export interface DashboardConfig {

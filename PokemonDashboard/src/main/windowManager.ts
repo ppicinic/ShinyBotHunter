@@ -236,7 +236,8 @@ export function syncPhaseWindows(requests: PhaseWindowRequest[]): void {
       query: {
         card: 'phase',
         game: request.game,
-        phase: request.phase,
+        // A follows-the-hunt window reads its milestone from the pushed config, so its URL holds none.
+        ...(request.followsHunt ? {} : { phase: request.phase }),
         ...(request.gameName ? { gameName: request.gameName } : {})
       }
     })

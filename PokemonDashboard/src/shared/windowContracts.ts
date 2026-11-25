@@ -19,6 +19,7 @@ export interface PhaseWindowRequest {
   game: string
   phase: string
   gameName?: string | null
+  followsHunt?: boolean
 }
 
 // The dashboard themes (docs/specs/dashboard-alive.md FR-12); mirrors C# Appearance in IElectronClient.cs.
@@ -92,12 +93,15 @@ export const IPC = {
   pickupItems: 'pickup-items'
 } as const
 
+// A follows-the-hunt card's name has no phase, so it stays the same window across milestones (FR-39).
+// A phase name is never empty, so it cannot collide with a fixed card's name.
 export function phaseWindowName(r: PhaseWindowRequest): string {
   const enc = encodeURIComponent
-  return `phase:${enc(r.game)}:${enc(r.phase)}:${enc(r.gameName ?? '')}`
+  return `phase:${enc(r.game)}:${r.followsHunt ? '' : enc(r.phase)}:${enc(r.gameName ?? '')}`
 }
 
 export function phaseWindowTitle(r: PhaseWindowRequest): string {
+  if (r.followsHunt) return `${r.game} — ${r.gameName}`
   return `${r.game} — ${r.phase}${r.gameName ? ` (${r.gameName})` : ''}`
 }
 
