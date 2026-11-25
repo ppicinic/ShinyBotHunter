@@ -23,5 +23,8 @@ namespace ShinyBotHunter.Persistence.MongoDb
 
         public Task SaveAsync(HuntPlan plan)
             => collection.ReplaceOneAsync(p => p.Game == plan.Game && p.Name == plan.Name, plan, new ReplaceOptions { IsUpsert = true });
+
+        public async Task<bool> DeleteAsync(GameFlavor game, string name)
+            => (await collection.DeleteOneAsync(p => p.Game == game && p.Name == name)).DeletedCount > 0;
     }
 }

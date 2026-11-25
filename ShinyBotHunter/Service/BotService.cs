@@ -391,9 +391,68 @@ namespace ShinyBotHunter.Service
                 slots.Entries[pos].GameState!.LeadLevel = lead.Level;
             }
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
-            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, plan is null ? leg.PhaseName : $"Plan {plan.Name}", removeWhenDone: false);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, plan is null ? leg.PhaseName : PlanEventName(plan.Name), removeWhenDone: false);
 
             return GetBotDashboardState();
+        }
+
+        // Start names a plan's hunt with this, and the in-use check looks for it.
+        internal static string PlanEventName(string plan) => "Plan " + plan;
+
+        // FR-37b: a plan is in use while a hunt of it holds its event, running or parked in Waiting, which resumes the same plan.
+        internal static string? PlanInUseRefusal(IEnumerable<KeyValuePair<int, BotAndOrEvent>> entries, GameFlavor game, string name)
+            => entries.FirstOrDefault(e => e.Value.Event is not null && e.Value.Bot?.GameFlavor == game && e.Value.EventName == PlanEventName(name)) is { Value: not null } inUse
+                ? $"{name} is in use by the hunt on bot #{inUse.Key}; cancel that hunt first."
+                : null;
+
+        // Under the gate, as Start reads the plan, so a delete never lands between Start's read and its hunt's event name.
+        public async Task DeletePlanAsync(GameFlavor game, string name)
+        {
+            await slots.Gate.WaitAsync();
+            try
+            {
+                if (PlanInUseRefusal(slots.Entries, game, name) is { } inUse)
+                {
+                    throw new InvalidOperationException(inUse);
+                }
+                if (!await provider.GetRequiredService<MongoHuntPlanDao>().DeleteAsync(game, name))
+                {
+                    throw new ArgumentException($"No hunt plan named {name}.");
+                }
+            }
+            finally
+            {
+                slots.Gate.Release();
+            }
+        }
+
+        // Refused while in use: the hunt's name would then name no plan, and a delete of the new name would not see the hunt.
+        public async Task RenamePlanAsync(GameFlavor game, string name, string to)
+        {
+            if (string.IsNullOrWhiteSpace(to))
+            {
+                throw new ArgumentException("The plan needs a name.");
+            }
+            await slots.Gate.WaitAsync();
+            try
+            {
+                if (PlanInUseRefusal(slots.Entries, game, name) is { } inUse)
+                {
+                    throw new InvalidOperationException(inUse);
+                }
+                var plans = provider.GetRequiredService<MongoHuntPlanDao>();
+                HuntPlan plan = await plans.LoadAsync(game, name) ?? throw new ArgumentException($"No hunt plan named {name}.");
+                if (await plans.LoadAsync(game, to) is not null)
+                {
+                    throw new ArgumentException($"A plan named {to} already exists.");
+                }
+                await plans.SaveAsync(plan with { Name = to });
+                await plans.DeleteAsync(game, name);
+            }
+            finally
+            {
+                slots.Gate.Release();
+            }
         }
 
         // FR-15a and B2's type rule for one milestone, before anything is read; the generated milestone, or null for a stored phase.
