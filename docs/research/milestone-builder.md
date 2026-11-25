@@ -67,6 +67,15 @@ Worked examples (SoulSilver, the hunts production runs today):
 
 The third row is the point of showing rates: a Repel that looks helpful removes the target.
 
+### Repel, corrected (2026-11-24, read while building the rate computation)
+
+Two things above are wrong about Repel, read from `pokeheartgold` at `8946577`:
+
+- **Repel applies to land and surf only.** The Repel flag is set only in `FieldSystem_PerformLandOrSurfEncounterCheck` (`src/field/encounter_check.c:239-242`). The fishing, rock smash and headbutt checks call `EncounterGenState_Init`, which clears it (`:1384`), and never set it. On those modalities a Repel cancels nothing.
+- **The Repel level skips eggs as well as fainted members.** It is the level of the first party member that is neither fainted nor an egg: `GetFirstAliveMonInParty_CrashIfNone` checks `MonNotFaintedOrEgg` (`src/script_pokemon_util.c:109-123`). It is not necessarily the lead.
+
+The worked examples are land, so they stand.
+
 ## What the bot has to read
 
 | Value | Where | Status |
