@@ -60,6 +60,12 @@ namespace ShinyBotHunter.Games.Hgss
         private readonly HgssPointerService addresses;
         private readonly ChainBlockRequest[] blocks;
 
+        // The roamer section's offset after the sections' start, set by the first decision read that finds it in the
+        // save's section table; per launch, since the reader is made once per Bot. The offset, not an address: the save
+        // data moves across a soft reset. Read and written only by ReadClockAndRepelAsync, which the decision calls on
+        // the bot loop's thread, one call at a time.
+        private int? roamerSectionOffset;
+
         public HgssFieldSystemStateReader(IMemoryClient memory, HgssPointerService addresses)
         {
             this.memory = memory;
@@ -89,6 +95,37 @@ namespace ShinyBotHunter.Games.Hgss
         // One request, every block from one frame (FR-2); no retry count (NFR-3).
         public async Task<GameSnapshot> ReadAsync(CancellationToken ct)
             => Classify(await memory.ReadChainBlocksAsync(blocks, ct: ct));
+
+        // The clock and the Repel counter for the decision (FR-26), in one request of their own beside its party read: the
+        // snapshot's request is at ApiHawk's 16 blocks. Until the roamer section's offset is known the second block is the
+        // save's section table instead of the counter, so RepelSteps is null on that read; a table that does not read (on
+        // the title screen the first hop is NULL) or has no roamer entry yet is asked for again on the next read.
+        public async Task<(int Weekday, int Hour, int? RepelSteps)> ReadClockAndRepelAsync(CancellationToken ct)
+        {
+            HgssPointerService a = addresses;
+            int? section = roamerSectionOffset;
+            ChainBlockRequest[] request =
+            [
+                new(a.LiveClock + (uint)a.LiveClockWeekdayOffset, [], 8),
+                section is int offset
+                    ? new(a.Anchor, [a.SaveDataOffset, a.SaveSectionDataOffset + offset + a.RepelStepsOffset], a.RepelStepsSize)
+                    : new(a.Anchor, [a.SaveDataOffset, a.SaveSectionTableOffset], a.SaveSectionCount * a.SaveSectionEntrySize),
+            ];
+            ChainBlockResult[] r = await memory.ReadChainBlocksAsync(request, ct: ct);
+            if (!Ok(r[0])) throw new InvalidOperationException($"The live clock at 0x{request[0].Anchor:X8} did not read: {r[0].Status}.");
+            int weekday = (int)U32(r[0].Bytes, 0);
+            int hour = (int)U32(r[0].Bytes, 4);
+            if (section is not null) return (weekday, hour, Ok(r[1]) ? r[1].Bytes[0] : null);
+            if (Ok(r[1]))
+            {
+                for (int entry = 0; entry < a.SaveSectionCount; entry++)
+                {
+                    int at = entry * a.SaveSectionEntrySize;
+                    if (U32(r[1].Bytes, at) == a.RoamerSection) roamerSectionOffset = (int)U32(r[1].Bytes, at + a.SaveSectionOffsetField);
+                }
+            }
+            return (weekday, hour, null);
+        }
 
         private GameSnapshot Classify(ChainBlockResult[] r)
         {
