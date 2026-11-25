@@ -19,8 +19,9 @@ namespace ShinyBotHunter.Controllers
         private readonly MongoHuntPlanDao huntPlanDao;
         private readonly GameProfiles gameProfiles;
         private readonly RomInfoService romInfoService;
+        private readonly BotService botService;
         public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao, PokemonMetadataService pokemonMetadataService,
-            MongoGameFileDao gameFileDao, MongoHuntPlanDao huntPlanDao, GameProfiles gameProfiles, RomInfoService romInfoService)
+            MongoGameFileDao gameFileDao, MongoHuntPlanDao huntPlanDao, GameProfiles gameProfiles, RomInfoService romInfoService, BotService botService)
         {
             this.phaseInfoService = phaseInfoService;
             this.pokemonPersistenceService = pokemonPersistenceService;
@@ -30,6 +31,7 @@ namespace ShinyBotHunter.Controllers
             this.huntPlanDao = huntPlanDao;
             this.gameProfiles = gameProfiles;
             this.romInfoService = romInfoService;
+            this.botService = botService;
         }
 
         /// <summary>
@@ -309,6 +311,35 @@ namespace ShinyBotHunter.Controllers
             }
             await huntPlanDao.SaveAsync(plan with { Game = Enum.Parse<GameFlavor>(game), Name = name });
             return NoContent();
+        }
+
+        // FR-37b: refused while a hunt uses the plan, with the same mapping as BotController.StartAction.
+        [HttpDelete("plans/{game}/{name}")]
+        public async Task<ActionResult> DeletePlanAsync(string game, string name)
+        {
+            try
+            {
+                await botService.DeletePlanAsync(Enum.Parse<GameFlavor>(game), name);
+                return NoContent();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = ex.Message, ContentType = "text/plain" };
+            }
+        }
+
+        [HttpPost("plans/{game}/{name}/rename")]
+        public async Task<ActionResult> RenamePlanAsync(string game, string name, [FromQuery] string? to)
+        {
+            try
+            {
+                await botService.RenamePlanAsync(Enum.Parse<GameFlavor>(game), name, to);
+                return NoContent();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = ex.Message, ContentType = "text/plain" };
+            }
         }
 
         // PUT plans is the boundary for a plan: the default and every rule name a milestone.
