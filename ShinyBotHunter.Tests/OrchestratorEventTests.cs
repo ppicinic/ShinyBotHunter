@@ -549,5 +549,81 @@ namespace ShinyBotHunter.Tests
             Assert.False(OrchestratorEvent.CanFightNextEncounter(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
             Assert.Equal(line, OrchestratorEvent.HealTripLine(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
         }
+
+        // A party block for RateInputs: level, HP, ability, and 1 for an egg.
+        private sealed class RateFieldsParser : IPokemonParser
+        {
+            public PokemonData? Parse(byte[] raw) => new PokemonData { Level = raw[0], HP = raw[1], Ability = raw[2], IVs = raw[3] == 1 ? 1u << 30 : 0 };
+        }
+
+        private static PokemonState Party(params byte[][] members)
+        {
+            PokemonState party = new() { PartySize = members.Length };
+            for (int i = 0; i < members.Length; i++) party.PartyPokemon[i] = new RateFieldsParser().Parse(members[i]);
+            return party;
+        }
+
+        // The B3 note on #522: the Repel level skips eggs as well as fainted members.
+        [Fact]
+        public void RateInputsOf_RepelOn_SkipsFaintedAndEggs()
+        {
+            RateInputs inputs = RateInputs.Of(5, 20, 50, Party([1, 10, 0, 1], [30, 0, 0, 0], [12, 20, 0, 0]));
+
+            Assert.Equal(new RateInputs(5, 20, 50, 12, 0, 1, true), inputs);
+        }
+
+        // No Repel, or the save's section table not read yet: no Repel level.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(null)]
+        public void RateInputsOf_NoRepel_NoRepelLevel(int? repelSteps)
+        {
+            RateInputs inputs = RateInputs.Of(0, 4, repelSteps, Party([12, 20, 51, 0]));
+
+            Assert.Equal(new RateInputs(0, 4, repelSteps, null, 51, 12, false), inputs);
+        }
+
+        // HGSS with the rate-fields parser and only what the decision uses; the bot's state reader is the real one over placed
+        // memory.
+        private static (FakeBot Bot, FakeMemoryClient Memory) HgssDecisionBot(params byte[][] party)
+        {
+            HgssPointerService table = new();
+            FakeMemoryClient memory = new();
+            memory.Place(table.LiveClock + 0x0C, BitConverter.GetBytes(3u));
+            memory.Place(table.LiveClock + 0x10, BitConverter.GetBytes(21u));
+            GameProfile hgss = new(GameFlavor.HGSS,
+                new GameCapabilities(HasOverworldNavigation: false, HasWildEncounters: false, HasTraining: false, HasEggs: false,
+                    CanReadBoxes: true, HasSoftResetStarterHunt: false, HasShinyStarterHunt: false, HasWishmakerJirachi: false),
+                [0], (_, _) => table, new RateFieldsParser(), battleParser: null);
+            FakeBot bot = new(Task.CompletedTask, hgss) { PartyBlocks = party, State = new HgssFieldSystemStateReader(memory, table) };
+            return (bot, memory);
+        }
+
+        // FR-26: each decision makes one chain request beside the party read and keeps what it read as "last seen".
+        [Fact]
+        public async Task Decide_Hgss_KeepsTheRateInputsFromOneRequest()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state);
+            await DecideAsync(state);
+
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), state.RatesSeen);
+            Assert.Equal(2, memory.ChainReads.Count);
+            Assert.All(memory.ChainReads, read => Assert.Equal(2, read.Blocks.Count));
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        [Fact]
+        public async Task Decide_Rs_NoRateInputs()
+        {
+            GameState state = Training(RsBot(Gen3Mon(40)), TrainType.Standard);
+
+            await DecideAsync(state);
+
+            Assert.Null(state.RatesSeen);
+        }
     }
 }

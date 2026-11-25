@@ -274,6 +274,50 @@ namespace ShinyBotHunter.Service.Pointers
         // QA: hgss-primo-egg-hatch, hgss-togepi-egg-hatch
         public uint WaitABPressNative => 0x02041001;
 
+        // The clock, the save section table and the Repel counter, docs/research/milestone-builder.md "The clock, the save
+        // section table and the Repel counter, read on the emulator" (round 2026-11-24, HeartGold and SoulSilver rev 0).
+
+        // the live clock, seven u32s: year since 2000, month, day, weekday, hour, minute, second; runs on every screen, the
+        // save loaded or not; root (revision-dependent; static ARM9, rev 0, both versions); observed (R1); QA: hgss-rates-clock
+        public uint LiveClock => 0x021D1058;
+
+        // the clock's weekday (u32, 0 Sunday), the hour (u32, 0 to 23) at + 4 from it (clock + 0x0C); offset
+        // (revision-independent); observed (R2); QA: hgss-rates-clock
+        public int LiveClockWeekdayOffset => 0x0C;
+
+        // SaveArrayHeader[] (include/save.h), the save section table (saveData + 0x23014); offset (revision-independent);
+        // the same across an in-game save and a soft reset; observed (R3); QA: hgss-rates-repel
+        public int SaveSectionTableOffset => 0x23014;
+
+        // one SaveArrayHeader: id u32, size u32, offset u32, checksum u16, slot u16; constant; observed (R3); QA: hgss-rates-repel
+        public int SaveSectionEntrySize => 16;
+
+        // the table's entries, ids 0 to 41, entry n id n; constant; observed (R3); QA: hgss-rates-repel
+        public int SaveSectionCount => 42;
+
+        // SaveArrayHeader.offset (u32), the section's place after the sections' start (entry + 0x08); offset
+        // (revision-independent); observed (R3); QA: hgss-rates-repel
+        public int SaveSectionOffsetField => 0x08;
+
+        // the sections' start, a section's data at saveData + 0x10 + its offset (saveData + 0x10); offset
+        // (revision-independent); observed (R3); QA: hgss-rates-repel
+        public int SaveSectionDataOffset => 0x10;
+
+        // the roamer section's id, RoamerSaveData (offset 0x68A4, size 0x6C on both versions); constant; observed (R3);
+        // QA: hgss-rates-repel
+        public int RoamerSection => 21;
+
+        // RoamerSaveData.repelSteps (u8), 0 with no Repel, down one per completed step (roamer section + 0x65); offset
+        // (revision-independent); observed (R4); QA: hgss-rates-repel
+        public int RepelStepsOffset => 0x65;
+
+        // repelSteps' width, u8; constant; observed (R4); QA: hgss-rates-repel
+        public int RepelStepsSize => 1;
+
+        // std_repel_wore_off, env.script of "Repel's effect wore off..."; it waits in WaitABPressNative in context 0, and one
+        // A takes ctx.mode 2 to 1; constant; observed (R5); QA: hgss-rates-repel
+        public int RepelMessageScript => 2022;
+
         // OverlayManager.data, the sub-app's data, the easy-chat and hatch apps' blocks (app + 0x1C; the battle app's is
         // BattleSystemOffset); offset (revision-independent); observed; QA: hgss-primo-egg-password, hgss-primo-egg-hatch
         public int AppDataOffset => 0x1C;

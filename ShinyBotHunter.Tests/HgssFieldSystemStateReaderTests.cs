@@ -682,6 +682,129 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([0x70, 12, 8, 0x20, 0x17C, 4, 1, 0x66, 0x0C, 8, 8, 8, 4, 0x29, 1, 2], blocks.Select(block => block.Length));
         }
 
+        // ApiHawk's MaxChainBlocks: a request with more blocks is a 400 (docs/specs/hgss-state-reader.md, "Request").
+        private const int ApiHawkMaxChainBlocks = 16;
+
+        // The clock and the Repel counter are read at the decision, not here: the snapshot is at the limit.
+        [Fact]
+        public async Task SnapshotRequestStaysAtSixteenBlocks()
+        {
+            FakeMemoryClient memory = Memory();
+            HgssFieldSystemStateReader reader = new(memory, Table);
+
+            await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            await reader.ReadAsync(CancellationToken.None);
+
+            int count = memory.ChainReads[1].Blocks.Count;
+            Assert.Equal(16, count);
+            Assert.True(count <= ApiHawkMaxChainBlocks);
+        }
+
+        // Where the save data and its roamer section sit in the decision read's tests; the offset is the research round's.
+        private const uint SaveData = 0x02200000;
+        private const uint RoamerOffset = 0x68A4;
+
+        // The decision read's memory: the clock, and the section table with the roamer entry at index 21 (entry n has id n,
+        // unplaced entries read id 0). saveData 0 leaves FS + 0x0C NULL; fs 0 is the title screen.
+        private static FakeMemoryClient DecisionMemory(uint weekday = 5, uint hour = 20, uint fs = Fs, uint saveData = SaveData, byte repelSteps = 150)
+        {
+            FakeMemoryClient memory = new();
+            memory.Place(Table.LiveClock + 0x0C, BitConverter.GetBytes(weekday));
+            memory.Place(Table.LiveClock + 0x10, BitConverter.GetBytes(hour));
+            memory.Place(Table.Anchor, BitConverter.GetBytes(fs));
+            memory.Place(At(Fs, Table.SaveDataOffset), BitConverter.GetBytes(saveData));
+            uint roamerEntry = At(SaveData, 0x23014 + 21 * 16);
+            memory.Place(roamerEntry, BitConverter.GetBytes(21u));
+            memory.Place(roamerEntry + 0x08, BitConverter.GetBytes(RoamerOffset));
+            memory.Place(SaveData + 0x10 + RoamerOffset + 0x65, [repelSteps]);
+            return memory;
+        }
+
+        [Fact]
+        public async Task DecisionRead_CarriesTheLiveClock()
+        {
+            FakeMemoryClient memory = DecisionMemory(weekday: 5, hour: 20);
+
+            (int weekday, int hour, _) = await new HgssFieldSystemStateReader(memory, Table).ReadClockAndRepelAsync(CancellationToken.None);
+
+            Assert.Equal(5, weekday);
+            Assert.Equal(20, hour);
+            ChainBlockRequest clock = Assert.Single(memory.ChainReads).Blocks[0];
+            Assert.Equal(0x021D1058u + 0x0C, clock.Anchor);
+            Assert.Empty(clock.Hops);
+            Assert.Equal(8, clock.Length);
+        }
+
+        [Fact]
+        public async Task DecisionRead_RepelThroughTheSectionTable()
+        {
+            HgssFieldSystemStateReader reader = new(DecisionMemory(repelSteps: 150), Table);
+
+            (_, _, int? first) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            (_, _, int? second) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+
+            Assert.Null(first);
+            Assert.Equal(150, second);
+        }
+
+        [Fact]
+        public async Task DecisionRead_RepelZeroWithNoRepel()
+        {
+            HgssFieldSystemStateReader reader = new(DecisionMemory(repelSteps: 0), Table);
+
+            await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            (_, _, int? steps) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+
+            Assert.Equal(0, steps);
+        }
+
+        // One read of the table per launch: the reader is made once per Bot.
+        [Fact]
+        public async Task DecisionRead_SectionTableReadOncePerLaunch()
+        {
+            FakeMemoryClient memory = DecisionMemory();
+            HgssFieldSystemStateReader reader = new(memory, Table);
+
+            for (int i = 0; i < 5; i++) await reader.ReadClockAndRepelAsync(CancellationToken.None);
+
+            Assert.Equal(5, memory.ChainReads.Count);
+            Assert.All(memory.ChainReads, read => Assert.InRange(read.Blocks.Count, 2, ApiHawkMaxChainBlocks));
+            ChainBlockRequest table = memory.ChainReads[0].Blocks[1];
+            Assert.Equal((0x021D4158u, 42 * 16), (table.Anchor, table.Length));
+            Assert.Equal([0x0C, 0x23014], table.Hops);
+            Assert.All(memory.ChainReads.Skip(1), read =>
+            {
+                ChainBlockRequest repel = read.Blocks[1];
+                Assert.Equal((0x021D4158u, 1), (repel.Anchor, repel.Length));
+                Assert.Equal([0x0C, 0x10 + (int)RoamerOffset + 0x65], repel.Hops);
+            });
+        }
+
+        // FS + 0x0C NULL, then on the title screen the anchor itself NULL: no Repel steps, the clock still read, and the
+        // table asked for again until the save is there.
+        [Theory]
+        [InlineData(Fs, 0u)]
+        [InlineData(0u, SaveData)]
+        public async Task DecisionRead_NoSaveData_TableAskedAgain(uint fs, uint saveData)
+        {
+            FakeMemoryClient memory = DecisionMemory(fs: fs, saveData: saveData);
+            HgssFieldSystemStateReader reader = new(memory, Table);
+
+            (int weekday, int hour, int? first) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            (_, _, int? second) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            memory.Place(Table.Anchor, BitConverter.GetBytes(Fs));
+            memory.Place(At(Fs, Table.SaveDataOffset), BitConverter.GetBytes(SaveData));
+            await reader.ReadClockAndRepelAsync(CancellationToken.None);
+            (_, _, int? loaded) = await reader.ReadClockAndRepelAsync(CancellationToken.None);
+
+            Assert.Equal((5, 20), (weekday, hour));
+            Assert.Null(first);
+            Assert.Null(second);
+            Assert.Equal(42 * 16, memory.ChainReads[1].Blocks[1].Length);
+            Assert.Equal(42 * 16, memory.ChainReads[2].Blocks[1].Length);
+            Assert.Equal(150, loaded);
+        }
+
         // A null pointer is a state where the chain allows one (no app, no task, no getter); everywhere
         // else, and for every out-of-range pointer, the snapshot is Transitioning.
         [Theory]

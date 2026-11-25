@@ -69,7 +69,7 @@ namespace ShinyBotHunter.BotEvents
             long seekMs = 0;
             try
             {
-                toBattle = await SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
+                (toBattle, _) = await SeekAsync(bot.State, NoBattleWithin, LockedHandOff, cancellationToken);
                 seekMs = sinceMacro.ElapsedMilliseconds - (long)toBattle.TotalMilliseconds;
             }
             catch (GameStateTimeoutException ex)
@@ -103,11 +103,13 @@ namespace ShinyBotHunter.BotEvents
         // an RS field snapshot is the screen alone, so spinning in the free field looks unchanged, and an HGSS lock whose
         // task fields change would keep restarting a stale clock. Seeking in the free field stays unbounded; any other
         // non-battle screen (a field task, a load, an app) has 15 s to become a battle (FR-9, G7). With a lockedHandOff, a
-        // field task that lasts that long returns as a battle would, so the battle event reads what locked the field.
-        internal static async Task<TimeSpan> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, TimeSpan? lockedHandOff, CancellationToken ct)
+        // field task that lasts that long returns as a battle would, so the battle event reads what locked the field. A
+        // snapshot that matches stopAt returns at once, before the deadline. Returns the snapshot that ended the seek.
+        internal static async Task<(TimeSpan ToBattle, GameSnapshot At)> SeekAsync(IGameStateReader game, TimeSpan noBattleWithin, TimeSpan? lockedHandOff,
+            CancellationToken ct, Func<GameSnapshot, bool>? stopAt = null)
         {
             Stopwatch? sinceLeftFree = null;
-            await GameStateWait.UntilAsync(game, "a battle", s =>
+            GameSnapshot at = await GameStateWait.UntilAsync(game, "a battle", s =>
             {
                 if (s.Screen is not (GameScreen.Transitioning or GameScreen.FieldFree or GameScreen.FieldTask or GameScreen.OtherApp))
                 {
@@ -119,6 +121,10 @@ namespace ShinyBotHunter.BotEvents
                     return false;
                 }
                 sinceLeftFree ??= Stopwatch.StartNew();
+                if (stopAt?.Invoke(s) == true)
+                {
+                    return true;
+                }
                 if (lockedHandOff is not null && s.Screen == GameScreen.FieldTask && sinceLeftFree.Elapsed >= lockedHandOff)
                 {
                     return true;
@@ -130,7 +136,7 @@ namespace ShinyBotHunter.BotEvents
                 return false;
             }, stale: null, ct);
             // The time since the last poll that saw the field leave free; zero when no poll saw it before the battle screen.
-            return sinceLeftFree?.Elapsed ?? TimeSpan.Zero;
+            return (sinceLeftFree?.Elapsed ?? TimeSpan.Zero, at);
         }
 
         private string GetSpinMacro(Direction facing)
