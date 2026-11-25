@@ -132,7 +132,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   // Refs so async callbacks always have the latest values without stale closures
   const configRef = useRef<AppConfig | null>(null)
   const dashboardConfigRef = useRef<DashboardConfig>(emptyDashboardConfig)
-  // Written only by the effect below, read by the SignalR callbacks
+  // Written only by the effect below, read by the SignalR callbacks and the rows' re-read timer
   const subscriptionsRef = useRef<SubscriptionState[]>([])
 
   // Load static config on mount
@@ -154,6 +154,26 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     subscriptionsRef.current = subscriptions
   }, [subscriptions])
 
+  // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing
+  const rereadMilestones = (apiUrl: string, targets: SubscriptionState[]): void => {
+    targets.forEach(async (target) => {
+      const rows = await fetchMilestoneRows(apiUrl, target.game, target.phase, target.gameName as string)
+      if (rows !== null && rows !== 'notFound') {
+        setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, target) ? { ...sub, milestone: rows } : sub)))
+      }
+    })
+  }
+
+  // The rows' shares follow the bot's clock and the hunt ending, which push nothing, so they are also read on the rate poll's interval
+  useEffect(() => {
+    if (!config) return
+    const timer = setInterval(
+      () => rereadMilestones(config.apiUrl, subscriptionsRef.current.filter((sub) => sub.milestone !== null)),
+      config.encounterRatePollingIntervalMs ?? 60000
+    )
+    return () => clearInterval(timer)
+  }, [config])
+
   // Start SignalR once config is loaded
   useEffect(() => {
     if (!config) return
@@ -173,13 +193,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
       // Update subscription encounter data
       setSubscriptions((prev) => applyEncounters(prev, response, game, phase))
 
-      // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing
-      milestonesToReread(subscriptionsRef.current, response, game, phase).forEach(async (target) => {
-        const rows = await fetchMilestoneRows(config.apiUrl, target.game, target.phase, target.gameName as string)
-        if (rows !== null && rows !== 'notFound') {
-          setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, target) ? { ...sub, milestone: rows } : sub)))
-        }
-      })
+      rereadMilestones(config.apiUrl, milestonesToReread(subscriptionsRef.current, response, game, phase))
 
       // Extract latest encounters from the payload, trimmed to the configured count.
       // Use the ref to get the current recentEncounterCount without stale closure.

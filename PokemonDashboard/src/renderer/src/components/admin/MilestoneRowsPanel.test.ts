@@ -17,7 +17,9 @@ function row(species: number, formCode: string | null, hidden: boolean): Milesto
     isTarget: !hidden,
     encountersHere: 0,
     encountersOnFile: 0,
-    shinyEncountersOnFile: 0
+    shinyEncountersOnFile: 0,
+    share: null,
+    reason: null
   }
 }
 

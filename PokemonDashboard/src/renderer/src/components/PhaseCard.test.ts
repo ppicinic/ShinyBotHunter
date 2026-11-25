@@ -18,6 +18,8 @@ function row(key: string, formCode: string | null, changes: Partial<MilestoneCar
     encountersHere: 0,
     encountersOnFile: 0,
     shinyEncountersOnFile: 0,
+    share: null,
+    reason: null,
     ...changes
   }
 }
@@ -71,6 +73,12 @@ describe('milestoneCardRows', () => {
     expect(result[0]).toMatchObject({ encountersHere: 5, encountersOnFile: 9, caught: 1, missed: 2 })
     expect(result[1].missed).toBe(0)
   })
+
+  it("carries each row's share and reason", () => {
+    const result = milestoneCardRows([row('#1', null, { share: 0.25 }), row('#2', null, { share: 0, reason: 'night only' })])
+
+    expect(result.map((r) => [r.share, r.reason])).toEqual([[0.25, null], [0, 'night only']])
+  })
 })
 
 describe('phaseCardRows', () => {
@@ -92,5 +100,15 @@ describe('phaseCardRows', () => {
       { key: 'bidoof;f', name: 'Bidoof', sprite: 'bidoof;f', genderSymbol: '♀', amount: 1, caught: 1, encountersHere: 2, encountersOnFile: 6, missed: 0 },
       { key: 'bidoof', name: 'Bidoof', sprite: 'bidoof', genderSymbol: '♂', amount: 0, caught: 0, encountersHere: 0, encountersOnFile: 7, missed: 0 }
     ])
+  })
+
+  it("a stored phase's rows have no share", () => {
+    const pokemon: PhasePokemonInfo[] = [
+      { name: 'Spinarak', speciesId: 167, amount: 1, formCode: 'spinarak', requireSpecificForm: false, hasFemaleForm: false }
+    ]
+
+    const result = phaseCardRows(pokemon, undefined, undefined)
+
+    expect([result[0].share, result[0].reason]).toEqual([undefined, undefined])
   })
 })

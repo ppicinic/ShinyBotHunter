@@ -181,6 +181,10 @@ export interface MilestoneCardRow {
   encountersHere: number
   encountersOnFile: number
   shinyEncountersOnFile: number
+  // The species' expected share; null when the response has no shares (see survive)
+  share: number | null
+  // Why a zero share is zero, such as "night only" or "blocked by Repel"
+  reason: string | null
 }
 
 export interface MilestoneRowsResponse {
@@ -188,6 +192,12 @@ export interface MilestoneRowsResponse {
   name: string
   modality: Modality
   rows: MilestoneCardRow[]
+  // The share of encounters Repel lets through; null when no shares: no rate rule, a headbutt milestone, or never seen with timed slots
+  survive: number | null
+  // False when no hunt runs on the file: the shares are the last-seen time of day's, with no Repel and no lead
+  live: boolean
+  // The time of day the file was last seen in; null when never seen since the backend started
+  timeOfDay: 'Morning' | 'Day' | 'Night' | null
   data: GameEncounterResponse
 }
 

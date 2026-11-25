@@ -25,6 +25,9 @@ interface CardRow {
   encountersHere: number
   encountersOnFile: number
   missed: number
+  // A generated milestone's only; a stored phase's rows leave them out
+  share?: number | null
+  reason?: string | null
 }
 
 export function phaseCardRows(
@@ -80,7 +83,9 @@ export function milestoneCardRows(rows: MilestoneCardRow[]): CardRow[] {
       caught: row.caught,
       encountersHere: row.encountersHere,
       encountersOnFile: row.encountersOnFile,
-      missed: Math.max(0, row.shinyEncountersOnFile - row.caught)
+      missed: Math.max(0, row.shinyEncountersOnFile - row.caught),
+      share: row.share,
+      reason: row.reason
     }))
 }
 
@@ -106,6 +111,8 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const rows: CardRow[] = milestone
     ? milestoneCardRows(milestone.rows)
     : phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData)
+  // Null on a stored phase, a headbutt milestone, and a file never seen with timed slots
+  const survive = milestone?.survive ?? null
 
   // The phase card sizes its rows to the space available rather than scrolling: the whole point is
   // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
@@ -201,22 +208,24 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
               <tr className="border-b border-card-border">
                 <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3 w-24"></th>
                 <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Name</th>
+                {survive !== null && <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Share</th>}
                 <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Milestone Encounters</th>
                 <th className="text-center text-xs text-slate-400 font-medium pb-1 pr-3">Game Encounters</th>
                 <th className="text-center text-xs text-slate-400 font-medium pb-1">Shinies Caught</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed }) => {
+              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed, share, reason }) => {
                 // Amount 0 means "track this pokemon's encounters but don't require it". Without the
                 // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
                 const isTrackedOnly = amountRequired === 0
                 const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
+                const isZeroShare = survive !== null && share === 0
 
                 return (
                   <tr
                     key={key}
-                    className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''}`}
+                    className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''} ${isZeroShare ? 'opacity-50' : ''}`}
                     style={rowHeight === null ? undefined : { height: rowHeight }}
                   >
                     {/* Sprite */}
@@ -235,6 +244,13 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-700/50 text-green-300">✓</span>
                       )}
                     </td>
+
+                    {/* Expected share now */}
+                    {survive !== null && (
+                      <td className="py-0 pr-3 text-center text-white font-medium text-sm">
+                        {isZeroShare && reason !== null ? reason : `${((share ?? 0) * 100).toFixed(1)} %`}
+                      </td>
+                    )}
 
                     {/* Phase encounters */}
                     <td className="py-0 pr-3 text-center text-white font-medium text-sm">
@@ -270,6 +286,17 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
 
       {/* Footer: phase count + encounter rate */}
       <div className="flex items-center justify-end gap-4 px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
+        {survive !== null && survive < 1 && (
+          <span className="text-xs text-slate-400">{Math.min(99, Math.round(survive * 100))} % of encounters survive</span>
+        )}
+        {milestone && survive !== null && !milestone.live && (
+          <span className="text-xs text-slate-400">
+            {milestone.timeOfDay === null ? 'not live' : `not live (last seen ${milestone.timeOfDay.toLowerCase()})`}
+          </span>
+        )}
+        {milestone && survive === null && milestone.modality !== 'Headbutt' && (
+          <span className="text-xs text-slate-400">Shares: not seen since the backend started</span>
+        )}
         <span className="text-xs text-slate-400">
           Phase:{' '}
           <span className="text-white font-semibold">
