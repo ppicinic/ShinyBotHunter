@@ -338,8 +338,8 @@ namespace ShinyBotHunter.BotEvents
                 state.MilestoneComplete = milestoneComplete;
                 return;
             }
-            // FR-34: the plan skips a complete stop; read here, at Init, the catch check and the plan's switch of milestone, never
-            // on a decision that keeps its milestone.
+            // FR-34: the plan skips a complete stop; read here, at Init, the catch check, the plan's switch of milestone and a
+            // decision that finds no stop left, never on a decision that keeps its milestone.
             var complete = new HashSet<string>();
             foreach (string stop in plan.Stops.Keys)
             {

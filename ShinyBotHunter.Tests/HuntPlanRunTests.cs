@@ -415,6 +415,97 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.Complete], state.State);
         }
 
+        // Does what UpdateMilestoneState does with a plan: the database's set becomes Complete, and the hunted milestone's flag follows it.
+        private static Task<bool> StepAsync(HuntPlanRun run, GameState state, Calls calls, IReadOnlySet<string> database) => run.StepAsync(state,
+            m => { calls.Follows.Add(m); return Task.CompletedTask; },
+            s => { calls.Updates.Add(s.Milestone); run.Complete = database; s.MilestoneComplete = database.Contains(s.Milestone); return Task.CompletedTask; },
+            s => { calls.Told.Add(s); return Task.CompletedTask; }, CancellationToken.None);
+
+        // FR-34 and FR-34a: Route 30 was completed over REST during the walk; on its anchor the hunt commits, tells it once and walks on.
+        [Fact]
+        public async Task Step_ArrivesAtAStopCompletedOnTheWay_WalksOnToTheNext()
+        {
+            HuntPlanRun run = OnRoute32();
+            (run.Pending, run.WalkEnded) = (Route30, true);
+            GameState state = StateAt(StandingAt(34, 547, 304), run, Route32, 21);
+            Calls calls = new([], [], []);
+
+            Assert.True(await StepAsync(run, state, calls, new HashSet<string> { Route30 }));
+
+            Assert.Equal([EventState.ReturnToStart], state.State);
+            Assert.Equal(Route32, run.Pending);
+            Assert.Equal((36, 458, 339), (state.StartMapId, state.StartX, state.StartY));
+            Assert.False(run.WalkEnded);
+            Assert.Equal(Route30, state.Milestone);
+            Assert.Equal($"Night on 30: {run.Stops[Route30].Name} is complete on fake.nds. Next: {run.Stops[Route32].Name}.", Assert.Single(calls.Told));
+        }
+
+        // FR-34 and FR-34a: the last incomplete stop is found complete on arrival, so the plan is finished, each stop told once.
+        [Fact]
+        public async Task Step_ArrivesAtTheLastIncompleteStop_ItIsComplete_PlanFinishesOnce()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot();
+            Stand(memory, 34, 547, 304);
+            bot.Overworld = new HgssOverworldReader(memory, Table);
+            HuntPlanRun run = OnRoute32();
+            run.Pending = Route30;
+            GameState state = DecisionState(bot);
+            Calls calls = new([], [], []);
+            IReadOnlySet<string> database = new HashSet<string> { Route30, Route32 };
+            await DecideAsync(state, s => StepAsync(run, s, calls, new HashSet<string>()));
+            Assert.Empty(calls.Told);
+            run.Pending = Route30;
+            state.Milestone = Route32;
+            state.SwapState(EventState.DecideOverworldAction);
+
+            await DecideAsync(state, s => StepAsync(run, s, calls, database));
+            Assert.False(await StepAsync(run, state, calls, database));
+
+            Assert.True(state.MilestoneComplete);
+            Assert.Equal([EventState.Complete], state.State);
+            Assert.Equal([
+                $"Night on 30: {run.Stops[Route32].Name} is complete on fake.nds. The plan is finished.",
+                $"Night on 30: {run.Stops[Route30].Name} is complete on fake.nds. The plan is finished.",
+            ], calls.Told);
+        }
+
+        // FR-34 and FR-34a: Route 30 completed between Init's read and the first decision, which stands on Route 32's anchor.
+        [Fact]
+        public async Task Step_FirstDecisionSwitch_PickCompleteOnTheReRead_SwitchesToTheNext()
+        {
+            HuntPlanRun run = Run();
+            GameState state = StateAt(StandingAt(36, 458, 339), run, Route32, 21);
+            Calls calls = new([], [], []);
+
+            Assert.False(await StepAsync(run, state, calls, new HashSet<string> { Route30 }));
+
+            Assert.Equal([Route30, Route32], calls.Follows);
+            Assert.Equal(Route32, state.Milestone);
+            Assert.False(state.MilestoneComplete);
+            Assert.Null(run.Pending);
+            Assert.True(run.Started);
+            Assert.Equal($"Night on 30: {run.Stops[Route30].Name} is complete on fake.nds. Next: {run.Stops[Route32].Name}.", Assert.Single(calls.Told));
+            Assert.Equal([EventState.DecideOverworldAction], state.State);
+        }
+
+        // FR-34: a goal raised over REST made Route 32 incomplete again; the null pick re-reads once and hunts it instead of ending.
+        [Fact]
+        public async Task Step_NoPickLeft_StopIncompleteOnTheReRead_IsPicked()
+        {
+            HuntPlanRun run = OnRoute32();
+            run.Complete = new HashSet<string> { Route30, Route32 };
+            (FakeBot bot, _) = HgssDecisionBot();
+            GameState state = DecisionState(bot);
+            Calls calls = new([], [], []);
+
+            await DecideAsync(state, s => StepAsync(run, s, calls, new HashSet<string> { Route30 }));
+
+            Assert.Equal([Route32], calls.Updates);
+            Assert.False(state.MilestoneComplete);
+            Assert.Equal([EventState.Encountering], state.State);
+            Assert.Empty(calls.Told);
+        }
+
         // FR-34a: a milestone already complete when the hunt started is never told.
         [Fact]
         public async Task Step_CompleteAtStart_TellsNothing()

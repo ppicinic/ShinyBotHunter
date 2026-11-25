@@ -29,68 +29,88 @@ namespace ShinyBotHunter.Milestones
         internal async Task<bool> StepAsync(GameState state, Func<string, Task> follow, Func<GameState, Task> updateMilestone, Func<string, Task> tell,
             CancellationToken ct)
         {
-            string? pick = Plan.Pick((DayOfWeek)state.RatesSeen!.Weekday!.Value, state.RatesSeen.Hour!.Value, Complete);
-            if (told is null)
+            bool reread = false;
+            while (true)
             {
-                told = [.. Complete];
-            }
-            else
-            {
-                foreach (string done in Stops.Keys.Where(s => Complete.Contains(s) && !told.Contains(s)))
+                string? pick = Plan.Pick((DayOfWeek)state.RatesSeen!.Weekday!.Value, state.RatesSeen.Hour!.Value, Complete);
+                if (pick is null && !reread)
                 {
-                    told.Add(done);
-                    string sentence = $"{Plan.Name}: {Stops[done].Name} is complete on {state.Bot.GameFileName}.";
-                    await tell(pick is null ? $"{sentence} The plan is finished." : $"{sentence} Next: {Stops[pick].Name}.");
+                    // FR-34: a raised goal can make a stop incomplete again, so the hunt ends only on a fresh read.
+                    reread = true;
+                    await updateMilestone(state);
+                    continue;
                 }
-            }
-            if (pick is null)
-            {
-                // FR-34: nothing is left, so the decision's finish check ends the hunt.
-                state.MilestoneComplete = true;
-                return false;
-            }
-            if (!Started && pick != state.Milestone)
-            {
-                await SwitchToAsync(state, pick, follow, updateMilestone);
-            }
-            if (pick == state.Milestone && Pending is null)
-            {
-                return false;
-            }
-            var (_, stopAnchor, name) = Stops[pick];
-            Anchor anchor = stopAnchor.Anchor;
-            int map = await state.Bot.Overworld.GetMapIdAsync(ct);
-            var (x, y) = await state.Bot.Overworld.GetPositionAsync(ct);
-            if (map == anchor.Map && x == anchor.X && y == anchor.Y)
-            {
-                // FR-36: the walk's encounters were logged under the milestone left; from here they are this one's.
-                if (pick != state.Milestone)
+                if (told is null)
+                {
+                    told = [.. Complete];
+                }
+                else
+                {
+                    foreach (string done in Stops.Keys.Where(s => Complete.Contains(s) && !told.Contains(s)))
+                    {
+                        told.Add(done);
+                        string sentence = $"{Plan.Name}: {Stops[done].Name} is complete on {state.Bot.GameFileName}.";
+                        await tell(pick is null ? $"{sentence} The plan is finished." : $"{sentence} Next: {Stops[pick].Name}.");
+                    }
+                }
+                if (pick is null)
+                {
+                    // FR-34: nothing is left, so the decision's finish check ends the hunt.
+                    state.MilestoneComplete = true;
+                    return false;
+                }
+                if (!Started && pick != state.Milestone)
                 {
                     await SwitchToAsync(state, pick, follow, updateMilestone);
+                    if (Complete.Contains(pick))
+                    {
+                        // FR-34: the switch's read found the pick complete, so pick again on the fresh set.
+                        continue;
+                    }
                 }
-                OrchestratorEvent.UseAnchor(state, stopAnchor);
-                Pending = null;
+                if (pick == state.Milestone && Pending is null)
+                {
+                    return false;
+                }
+                var (_, stopAnchor, name) = Stops[pick];
+                Anchor anchor = stopAnchor.Anchor;
+                int map = await state.Bot.Overworld.GetMapIdAsync(ct);
+                var (x, y) = await state.Bot.Overworld.GetPositionAsync(ct);
+                if (map == anchor.Map && x == anchor.X && y == anchor.Y)
+                {
+                    // FR-36: the walk's encounters were logged under the milestone left; from here they are this one's.
+                    if (pick != state.Milestone)
+                    {
+                        await SwitchToAsync(state, pick, follow, updateMilestone);
+                        if (Complete.Contains(pick))
+                        {
+                            continue;
+                        }
+                    }
+                    OrchestratorEvent.UseAnchor(state, stopAnchor);
+                    Pending = null;
+                    Started = true;
+                    WalkEnded = false;
+                    return false;
+                }
+                if (Pending == pick && WalkEnded)
+                {
+                    Console.WriteLine($"[Orchestrator] {name}: the walk ended at map {map} ({x}, {y}), not on the anchor ({anchor.X}, {anchor.Y}).");
+                    state.SwapState(EventState.Waiting);
+                    WalkEnded = false;
+                    return true;
+                }
+                Pending = pick;
                 Started = true;
                 WalkEnded = false;
-                return false;
-            }
-            if (Pending == pick && WalkEnded)
-            {
-                Console.WriteLine($"[Orchestrator] {name}: the walk ended at map {map} ({x}, {y}), not on the anchor ({anchor.X}, {anchor.Y}).");
-                state.SwapState(EventState.Waiting);
-                WalkEnded = false;
+                OrchestratorEvent.UseAnchor(state, stopAnchor);
+                // A walk parked on the way left its route behind; this one is planned from where the player stands.
+                state.NavigationPath = null;
+                state.NavigationPathIndex = 0;
+                state.SwapState(EventState.ReturnToStart);
+                Console.WriteLine($"[Orchestrator] Plan: {(DayOfWeek)state.RatesSeen.Weekday} {state.RatesSeen.Hour}h names {name}; walking from {state.Milestone} to map {anchor.Map} ({anchor.X}, {anchor.Y})");
                 return true;
             }
-            Pending = pick;
-            Started = true;
-            WalkEnded = false;
-            OrchestratorEvent.UseAnchor(state, stopAnchor);
-            // A walk parked on the way left its route behind; this one is planned from where the player stands.
-            state.NavigationPath = null;
-            state.NavigationPathIndex = 0;
-            state.SwapState(EventState.ReturnToStart);
-            Console.WriteLine($"[Orchestrator] Plan: {(DayOfWeek)state.RatesSeen.Weekday} {state.RatesSeen.Hour}h names {name}; walking from {state.Milestone} to map {anchor.Map} ({anchor.X}, {anchor.Y})");
-            return true;
         }
 
         // FR-35, at Start: every stop has an anchor, and the navigator's no-HM walk reaches each from the bot's tile and from
