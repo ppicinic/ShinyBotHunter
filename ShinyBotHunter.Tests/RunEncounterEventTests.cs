@@ -272,7 +272,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(EventState.Waiting, state.State.Peek());
         }
 
-        // RS's Repel message is B3r's: the same snapshot is a lock like any other there, and nothing is pressed.
+        // RS's Repel message is B3r2's (#556): the same snapshot is a lock like any other there, and nothing is pressed.
         [Fact]
         public async Task Execute_Rs_NoRepelStop()
         {

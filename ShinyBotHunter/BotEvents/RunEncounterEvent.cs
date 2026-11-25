@@ -108,7 +108,7 @@ namespace ShinyBotHunter.BotEvents
 
         // std_repel_wore_off running, printing or waiting for A.
         private static bool IsRepelMessage(GameSnapshot s, HgssPointerService hgss)
-            => s.Screen == GameScreen.FieldTask && s.TaskFunction == hgss.RunScriptsTask && s.Script == hgss.RepelMessageScript;
+            => s.Screen == GameScreen.FieldTask && s.Script == hgss.RepelMessageScript;
 
         // Rule 16, from docs/research/milestone-builder.md R5: the message waits in WaitABPressNative in context 0 with no
         // printer, and one A takes ctx.mode 2 to 1, so the snapshot leaves that native. The A is sent only there; a snapshot

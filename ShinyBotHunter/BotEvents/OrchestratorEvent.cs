@@ -404,7 +404,7 @@ namespace ShinyBotHunter.BotEvents
             // thrown away every time.
             var pokeState = await reader.GetPartyState(state.Bot);
             var lead = pokeState.PartyPokemon[0]!;
-            // FR-26 on HGSS, in one request beside the party read; RS's counter is B3r's.
+            // FR-26 on HGSS, in one request beside the party read; RS's counter is B3r2's (#556).
             if (state.Bot.Addresses is HgssPointerService)
             {
                 (int weekday, int hour, int? repelSteps) = await ((HgssFieldSystemStateReader)state.Bot.State).ReadClockAndRepelAsync(cancellationToken);
