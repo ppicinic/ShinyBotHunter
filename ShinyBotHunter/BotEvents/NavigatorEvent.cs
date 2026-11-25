@@ -461,6 +461,15 @@ namespace ShinyBotHunter.BotEvents
                         // the loop re-reads our real position and recomputes the A* from there.
                         continue;
                     }
+                    if (outcome is SegmentOutcome.RepelMessage or SegmentOutcome.CompletedUnderRepelMessage)
+                    {
+                        await RunEncounterEvent.CloseRepelMessageAsync(state.Bot, (HgssPointerService)state.Bot.Addresses, ScriptStale, ScriptPressConfirm,
+                            cancellationToken);
+                        // Mid-segment the A replaced the walk macro, and the player stands on the tile the box came up on, so the
+                        // segment is walked again from the tile read next, as after poison. At the segment's end it is done.
+                        if (outcome == SegmentOutcome.RepelMessage)
+                            continue;
+                    }
                     if (outcome is SegmentOutcome.Blocked or SegmentOutcome.Sign)
                     {
                         // Closed before the cap check, so a route that gives up leaves no sign open.
