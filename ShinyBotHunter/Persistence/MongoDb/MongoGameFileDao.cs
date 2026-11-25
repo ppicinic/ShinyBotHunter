@@ -27,5 +27,30 @@ namespace ShinyBotHunter.Persistence.MongoDb
             => collection.UpdateOneAsync(f => f.Id == gameFileName,
                 hidden ? Builders<GameFile>.Update.AddToSet(f => f.Hidden, row) : Builders<GameFile>.Update.Pull(f => f.Hidden, row),
                 new UpdateOptions { IsUpsert = true });
+
+        public Task SetArchivedAsync(string gameFileName, string milestone, bool archived)
+            => collection.UpdateOneAsync(f => f.Id == gameFileName,
+                archived ? Builders<GameFile>.Update.AddToSet(f => f.Archived, milestone) : Builders<GameFile>.Update.Pull(f => f.Archived, milestone),
+                new UpdateOptions { IsUpsert = true });
+
+        public Task SetAssignedAsync(string gameFileName, string phase, bool assigned)
+            => collection.UpdateOneAsync(f => f.Id == gameFileName,
+                assigned ? Builders<GameFile>.Update.AddToSet(f => f.Assigned, phase) : Builders<GameFile>.Update.Pull(f => f.Assigned, phase),
+                new UpdateOptions { IsUpsert = true });
+
+        // Two updates, because Mongo refuses a pull and a push on one array in one update; an empty label only clears.
+        public async Task SetOrderAsync(string gameFileName, MilestoneLabel label)
+        {
+            await collection.UpdateOneAsync(f => f.Id == gameFileName, Builders<GameFile>.Update.PullFilter(f => f.Order, l => l.Milestone == label.Milestone),
+                new UpdateOptions { IsUpsert = true });
+            if (!string.IsNullOrEmpty(label.Label))
+            {
+                await collection.UpdateOneAsync(f => f.Id == gameFileName, Builders<GameFile>.Update.Push(f => f.Order, label));
+            }
+        }
+
+        // The phase names assigned to any file: a phase in none of them is on every file (FR-16).
+        public async Task<HashSet<string>> AssignedPhasesAsync()
+            => (await (await collection.DistinctAsync<string>(nameof(GameFile.Assigned), Builders<GameFile>.Filter.Empty)).ToListAsync()).ToHashSet();
     }
 }
