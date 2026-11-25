@@ -221,7 +221,7 @@ Run on Sapphire (a copy of `rs.qa-route101`, 2026-11-24): the navigator walked f
 | 155-land | 155, 156 | Sprout Tower |
 | 177-oldrod, 177-goodrod, 177-superrod | 177, 181 | Slowpoke Well |
 | 238-land | 238, 239 | Ice Path B2F and B3F |
-| 315-land | 315, 490, 491, 492 | Ruins of Alph (underground hall), (underground hall, Sinjoh event), (hall entrance, Sinjoh event) and (underground hall, Sinjoh event 2) |
+| 315-land | 315, 490, 491, 492 | Ruins of Alph (underground hall) (the owner's name, an exception to the rule) |
 | 332-land | 332 to 339, 341 | Bell Tower |
 | 459-surf, 459-goodrod, 459-superrod | 459, 462, 463, 464 | Mt. Silver Cave (upper mountainside), (Moltres chamber), 2F and 3F |
 
