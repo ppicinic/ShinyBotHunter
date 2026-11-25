@@ -1116,6 +1116,12 @@ namespace ShinyBotHunter.Service
             {
                 return actions;
             }
+            // FR-31: only a game with the in-game clock is offered a plan. A copy, so the registry's options and Chained Encounter's legs are untouched.
+            int wildIndex = actions.FindIndex(a => a.Name == "Wild Encounter");
+            if (wildIndex >= 0 && entry.Bot!.Profile.Capabilities.HasHuntPlans)
+            {
+                actions[wildIndex] = actions[wildIndex] with { OptionalParameters = [.. actions[wildIndex].OptionalParameters!, "HuntPlan"] };
+            }
             Task<PokemonState?>? read = entry.PartyRead;
             if (read is null)
             {

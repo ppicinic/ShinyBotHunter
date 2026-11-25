@@ -92,6 +92,30 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public async Task IdleHgssBot_WildEncounterOffersHuntPlan()
+        {
+            var service = Build();
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(["TrainType", "HuntPlan"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Chained Encounter").LegParameters!.OptionalParameters!);
+            Assert.Equal(["TrainType"], EventRegistry.Get("Wild Encounter").Options.OptionalParameters!);
+        }
+
+        [Fact]
+        public async Task RsBot_WildEncounterHasNoHuntPlan()
+        {
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())));
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
+        }
+
+        [Fact]
         public void PrimoEggEntryNeedsAMilestoneAndEggs()
         {
             EventRegistration entry = EventRegistry.Get("HGSS Primo Egg");
