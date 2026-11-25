@@ -374,6 +374,7 @@ export function BotControlTab(): JSX.Element {
                 key={pos}
                 pos={pos}
                 name={name}
+                game={positions.botState[pos].gameFlavor}
                 milestones={milestonesByPos[pos]}
                 onMilestonesChanged={() => loadMilestones(pos)}
                 actions={positions.botActions[pos] ?? []}
