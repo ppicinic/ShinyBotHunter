@@ -413,3 +413,44 @@ export type GameFlavor = 'HGSS' | 'RS'
 // Maps emulator position (int) -> EmulatorState
 // JSON keys are numbers serialized as strings by System.Text.Json
 export type BotDashboardState = Record<number, EmulatorState>
+
+// ============================================================
+// A game file's goal (GET /api/goal/{gameFileName}, GET /api/species/{game})
+// Matches C# GameFile, GoalEntry, HiddenRow, MilestoneLink (Goal.cs) and GoalPreset (GoalPresets.cs)
+// ============================================================
+
+// A species in any form (formCode null) or one form; an amount of 0 is a row that is never a target.
+export interface GoalEntry {
+  species: number
+  formCode: string | null
+  amount: number
+  // The count key: the form code, or "#<species>" for any form. Read only; PUT goal is not sent it.
+  key: string
+}
+
+export interface HiddenRow {
+  milestoneId: string
+  key: string
+}
+
+export interface MilestoneLink {
+  phase: string
+  milestoneId: string
+}
+
+// Only the fields the dashboard reads; the server's GameFile also has archived, order and anchors.
+export interface GameFile {
+  // The game file name
+  id: string
+  entries: GoalEntry[]
+  hidden: HiddenRow[]
+  assigned: string[]
+  links: MilestoneLink[]
+}
+
+export type GoalPreset = 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
+
+export interface SpeciesName {
+  species: number
+  name: string
+}
