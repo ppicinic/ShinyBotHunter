@@ -21,13 +21,21 @@ export interface GoalLine {
   name: string
   // An amount of 0: shown and counted, never a target
   tracked: boolean
+  // Not a whole number 0 or more, so the goal is not sent
+  badAmount: boolean
 }
+
+export function isWholeAmount(amount: number): boolean {
+  return Number.isInteger(amount) && amount >= 0
+}
+
+const BAD_AMOUNT = 'Amount is a whole number, 0 or more.'
 
 // The goal's entries matching the filter (name, dex number or form code), by species, then form with any form first.
 export function goalLines(entries: GoalEntry[], names: ReadonlyMap<number, string>, filter: string): GoalLine[] {
   const needle = filter.trim().toLowerCase()
   return entries
-    .map((entry, index) => ({ index, entry, name: names.get(entry.species) ?? `#${entry.species}`, tracked: entry.amount === 0 }))
+    .map((entry, index) => ({ index, entry, name: names.get(entry.species) ?? `#${entry.species}`, tracked: entry.amount === 0, badAmount: !isWholeAmount(entry.amount) }))
     .filter(({ entry, name }) => needle === ''
       || name.toLowerCase().includes(needle)
       || needle.replace(/^#/, '') === String(entry.species)
@@ -73,20 +81,25 @@ export function GoalEditorTab(): JSX.Element {
       .catch((err) => setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load game files', isError: true }))
   }, [apiUrl])
 
+  // A response for a game that is no longer selected is dropped.
   useEffect(() => {
     if (!apiUrl || !game) return
+    let current = true
     api.getSpeciesNames(apiUrl, game)
       .then((r) => {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: SpeciesName[]) => setNames(data))
-      .catch((err) => setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load species names', isError: true }))
+      .then((data: SpeciesName[]) => { if (current) setNames(data) })
+      .catch((err) => { if (current) setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load species names', isError: true }) })
+    return () => { current = false }
   }, [apiUrl, game])
 
-  // Reads only: a file with no goal stored shows an empty one, and nothing is written until Save or a preset (FR-42).
+  // Reads only: a file with no goal stored shows an empty one, and nothing is written until Save or a preset (FR-42). A response
+  // for a file that is no longer selected is dropped, so one file's goal is never shown, or saved, as another's.
   useEffect(() => {
     if (!apiUrl || !fileName) return
+    let current = true
     setEntries(null)
     setDirty(false)
     setPendingPreset(null)
@@ -96,8 +109,9 @@ export function GoalEditorTab(): JSX.Element {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: GameFile) => setEntries(data.entries))
-      .catch((err) => setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load the goal', isError: true }))
+      .then((data: GameFile) => { if (current) setEntries(data.entries) })
+      .catch((err) => { if (current) setFeedback({ msg: err instanceof Error ? err.message : 'Failed to load the goal', isError: true }) })
+    return () => { current = false }
   }, [apiUrl, fileName])
 
   const edit = (next: GoalEntry[]): void => {
@@ -155,7 +169,7 @@ export function GoalEditorTab(): JSX.Element {
     setFeedback(null)
     try {
       const res = await api.applyGoalPreset(apiUrl, game, fileName, preset)
-      if (res.status === 404) throw new Error("No generated milestones for this game file's version: restart the bot so it scans the game folder again")
+      if (res.status === 404) throw new Error('This game file is no longer in the game list: reopen the Goals tab.')
       if (!res.ok) throw new Error((await res.text()) || `Server returned ${res.status}`)
       setEntries(await res.json() as GoalEntry[])
       setFeedback({ msg: `${PRESET_LABELS[preset]} applied. Species already in the goal were kept.`, isError: false })
@@ -167,6 +181,8 @@ export function GoalEditorTab(): JSX.Element {
   }
 
   const lines = entries ? goalLines(entries, nameMap, filter) : []
+  // Checked on every entry, not only the filtered lines, so a bad amount out of view still holds the save.
+  const badAmounts = entries?.some((e) => !isWholeAmount(e.amount)) ?? false
 
   return (
     <div className="p-3 space-y-4">
@@ -206,8 +222,8 @@ export function GoalEditorTab(): JSX.Element {
             {pendingPreset && (
               <div className="mt-2 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1.5 space-y-1.5">
                 <p>
-                  {PRESET_LABELS[pendingPreset]} replaces the saved goal of {fileName} now with one that adds the preset&apos;s entries
-                  for every species the goal has none for. Entries already in the goal are kept as they are.
+                  {PRESET_LABELS[pendingPreset]} adds an entry for every species the goal does not have yet. Entries already in the
+                  goal are kept. This saves the goal of {fileName} now.
                 </p>
                 <div className="flex gap-2">
                   <button onClick={() => applyPreset(pendingPreset)} className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded">
@@ -250,7 +266,9 @@ export function GoalEditorTab(): JSX.Element {
                       onChange={(e) => setAmount(line.index, Number(e.target.value))}
                       className={`w-16 ${INPUT}`}
                     />
-                    <span className="w-36 text-xs text-slate-500">{line.tracked ? 'tracked, never a target' : ''}</span>
+                    {line.badAmount
+                      ? <span className="w-36 text-xs text-red-400">{BAD_AMOUNT}</span>
+                      : <span className="w-36 text-xs text-slate-500">{line.tracked ? 'tracked, never a target' : ''}</span>}
                     <button
                       onClick={() => remove(line.index)}
                       className="text-xs text-red-400 hover:text-red-300 transition-colors px-1"
@@ -303,16 +321,18 @@ export function GoalEditorTab(): JSX.Element {
             </div>
             <button
               onClick={add}
-              disabled={!addSpecies.trim()}
+              disabled={!addSpecies.trim() || !isWholeAmount(addAmount)}
               className="text-xs px-2 py-1 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white rounded transition-colors"
             >
               + Add
             </button>
           </div>
+          {!isWholeAmount(addAmount) && <p className="text-xs text-red-400">{BAD_AMOUNT}</p>}
 
+          {badAmounts && <p className="text-xs text-red-400">{BAD_AMOUNT} Fix the entries marked so before saving.</p>}
           <button
             onClick={save}
-            disabled={busy || !dirty}
+            disabled={busy || !dirty || badAmounts}
             className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded transition-colors font-medium"
           >
             {busy ? 'Saving...' : 'Save goal'}

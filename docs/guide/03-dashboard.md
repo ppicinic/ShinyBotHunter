@@ -173,17 +173,17 @@ A game file's goal is what that file is collecting: for each Pokémon, or one fo
    - **Female forms** (HeartGold and SoulSilver only): every species with a female form, the female form at the number of its line that have one, and the male form at 0.
    - **Version exclusives**: one of each species found in this game's wild places and not in the other game's.
 
-   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. A species the goal already has an entry for is kept as it is, so an amount you changed survives a preset applied later. The presets are greyed out while you have edits not yet saved.
+   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. A species the goal already has an entry for is kept as it is, so an amount you changed survives a preset applied later. Presets do not stack on a species: one the goal already has, including from an earlier preset, is left as it is. The presets are greyed out while you have edits not yet saved.
 4. Change the entries:
    - **Filter**: type part of a name, a number such as `190`, or a form code to show only those entries.
-   - Each entry shows the Pokémon, its number, the form (or "any form") and its **Amount**. An amount of 0 reads "tracked, never a target": the Pokémon is shown and counted, but the bot never stops for it.
+   - Each entry shows the Pokémon, its number, the form (or "any form") and its **Amount**. An amount of 0 reads "tracked, never a target": the Pokémon is shown and counted, but the bot never stops for it. An amount that is not a whole number, 0 or more, reads "Amount is a whole number, 0 or more." in red, and the goal cannot be saved until it is fixed.
    - The cross at the end of an entry removes it.
    - To add one, type a species name or number in **Species** (the list suggests names), an optional **Form code**, and an **Amount**, then click **+ Add**.
 5. Click **Save goal**.
 
 You see `Saved the goal of FILE`. If the bot refuses the goal, a red message says why, for example `Species 201 has both an any-form entry and form entries`: a species is wanted either in any form or by its forms, never both, and each form only once. While you have edits not yet saved, **Game file** is greyed out; save them first, or leave the tab to drop them.
 
-If a preset says "No generated milestones for this game file's version: restart the bot so it scans the game folder again", the bot no longer finds that game file among the ones it scanned at start. Restart the bot and try again.
+If a preset says "This game file is no longer in the game list: reopen the Goals tab.", the bot no longer has that game file in its list. Click another tab and then **Goals** again, and pick a file from the list it shows.
 
 Goals are stored in the bot's database; see [Your data](06-your-data.md).
 

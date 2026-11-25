@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GoalEntry } from '../../types/api'
-import { goalLines, presetsFor } from './GoalEditorTab'
+import { goalLines, isWholeAmount, presetsFor } from './GoalEditorTab'
 
 function entry(species: number, formCode: string | null, amount = 1): GoalEntry {
   return { species, formCode, amount, key: formCode ?? `#${species}` }
@@ -45,5 +45,16 @@ describe('goalLines', () => {
   it('marks a 0 amount line as tracked', () => {
     const lines = goalLines([entry(16, 'pidgey', 0), entry(16, 'pidgey;f', 2)], names, '')
     expect(lines.map((l) => l.tracked)).toEqual([true, false])
+  })
+
+  it('marks an amount that is not a whole number 0 or more', () => {
+    const lines = goalLines([entry(16, null, 1.5), entry(190, null, -1), entry(201, null, 0), entry(202, null, 3)], names, '')
+    expect(lines.map((l) => l.badAmount)).toEqual([true, true, false, false])
+  })
+})
+
+describe('isWholeAmount', () => {
+  it('admits 0 and whole numbers only', () => {
+    expect([0, 6, 1.5, -1, NaN].map(isWholeAmount)).toEqual([true, true, false, false, false])
   })
 })
