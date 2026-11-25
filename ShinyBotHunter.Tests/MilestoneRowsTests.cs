@@ -269,6 +269,28 @@ namespace ShinyBotHunter.Tests
             Assert.Equal((1.0, (string?)null), shares.Species[Wooper]);
         }
 
+        private const int Staryu = 120, Corsola = 222;
+
+        private static Milestone SuperRod38HeartGold => Hgss[RomVersion.HeartGold].Single(m => m.Id == "38-superrod");
+
+        [Fact]
+        public void Shares_SuperRodNight_ReplacedSpeciesSaysMorningAndDayOnly()
+        {
+            var shares = MilestoneRows.Shares(SuperRod38HeartGold, HgssRates.Compute, Seen(21))!.Value;
+
+            Assert.Equal((0.0, "morning and day only"), shares.Species[Corsola]);
+            Assert.Equal((0.3, (string?)null), (Math.Round(shares.Species[Staryu].Share, 6), shares.Species[Staryu].Reason));
+        }
+
+        [Fact]
+        public void Shares_RodWithRepel_NeverBlockedByRepel()
+        {
+            var shares = MilestoneRows.Shares(SuperRod38HeartGold, HgssRates.Compute, Seen(21, repelLevel: 50))!.Value;
+
+            Assert.Equal((0.0, "morning and day only"), shares.Species[Corsola]);
+            Assert.Equal(1, shares.Survive, 6);
+        }
+
         [Fact]
         public void Shares_FormRowsShareTheSpecies()
         {

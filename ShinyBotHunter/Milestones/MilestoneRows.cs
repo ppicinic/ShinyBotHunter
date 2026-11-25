@@ -46,23 +46,30 @@ namespace ShinyBotHunter.Milestones
             var (shares, survive) = live is null
                 ? rates(m, cond, null, 0, 1, false)
                 : rates(m, cond, live.RepelLevel, live.LeadAbility, live.LeadLevel, live.LeadIsEgg);
+            // Blocked by Repel only where the rule, run without Repel, gives the species a share.
+            var plain = live?.RepelLevel is null ? shares : rates(m, cond, null, live.LeadAbility, live.LeadLevel, live.LeadIsEgg).Shares;
+            int[] nightFishing = m.Slots.Where(s => s.Condition == SlotCondition.NightFishing).Select(s => s.Index).ToArray();
             return (m.Slots.GroupBy(s => s.Species).ToDictionary(g => g.Key, g =>
             {
                 double share = shares.GetValueOrDefault(g.Key);
-                return (share, share > 0 ? null : Reason(g.Select(x => x.Condition).ToHashSet(), cond, live?.RepelLevel is not null));
+                return (share, share > 0 ? null : plain.GetValueOrDefault(g.Key) > 0 ? "blocked by Repel" : Reason(g.ToList(), cond, nightFishing));
             }), survive);
         }
 
-        // Why a species' share is zero, from its slots' conditions.
-        private static string? Reason(HashSet<SlotCondition> conditions, SlotCondition cond, bool repel)
+        // Why a species' share is zero, from its slots. At night a None slot whose index has a NightFishing slot is replaced by
+        // it, as HgssRates takes the rods' slots, so such a slot counts for morning and day only.
+        private static string? Reason(List<Slot> slots, SlotCondition cond, int[] nightFishing)
         {
-            bool present = conditions.Contains(SlotCondition.None) || conditions.Contains(cond)
-                || (cond == SlotCondition.Night && conditions.Contains(SlotCondition.NightFishing));
+            bool present = slots.Any(s => s.Condition == cond
+                || (s.Condition == SlotCondition.None && !(cond == SlotCondition.Night && nightFishing.Contains(s.Index)))
+                || (cond == SlotCondition.Night && s.Condition == SlotCondition.NightFishing));
             if (present)
             {
-                return repel ? "blocked by Repel" : null;
+                return null;
             }
-            var times = new[] { SlotCondition.Morning, SlotCondition.Day, SlotCondition.Night }.Where(conditions.Contains).ToList();
+            var conditions = slots.Select(s => s.Condition).ToHashSet();
+            var times = new[] { SlotCondition.Morning, SlotCondition.Day, SlotCondition.Night }
+                .Where(t => conditions.Contains(t) || (t != SlotCondition.Night && conditions.Contains(SlotCondition.None))).ToList();
             if (times.Count > 0)
             {
                 return $"{string.Join(" and ", times.Select(t => t.ToString().ToLowerInvariant()))} only";
