@@ -625,5 +625,30 @@ namespace ShinyBotHunter.Tests
 
             Assert.Null(state.RatesSeen);
         }
+
+        // FR-34a with no plan: told when the milestone becomes complete after Init's read, never at Start, never twice.
+        [Theory]
+        [InlineData(null, true, true, 0)]
+        [InlineData(null, false, false, 0)]
+        [InlineData(false, false, false, 0)]
+        [InlineData(false, true, true, 1)]
+        [InlineData(true, true, true, 0)]
+        public async Task TellIfComplete_NoPlan(bool? told, bool complete, bool toldAfter, int sentences)
+        {
+            List<string> sent = [];
+
+            bool result = await OrchestratorEvent.TellIfCompleteAsync(told, complete, () => "Route 30 · grass is complete on fake.nds.",
+                s => { sent.Add(s); return Task.CompletedTask; });
+
+            Assert.Equal(toldAfter, result);
+            Assert.Equal(sentences, sent.Count);
+        }
+
+        // FR-34a: a failed send is logged and the hunt goes on.
+        [Fact]
+        public async Task Tell_SendThrows_TheHuntGoesOn()
+        {
+            await OrchestratorEvent.TellAsync(_ => throw new System.Threading.Channels.ChannelClosedException(), "Route 30 · grass is complete on fake.nds.");
+        }
     }
 }

@@ -11,8 +11,8 @@ namespace ShinyBotHunter.Milestones
         public HuntPlan Plan { get; } = plan;
         public IReadOnlyDictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)> Stops { get; } = stops;
 
-        // Pending, Complete, Started and WalkEnded are written and read only by the orchestrator's one loop, in sequence; Resume
-        // restarts that loop only after it has returned at Waiting, so there is no lock. Complete is replaced, never mutated.
+        // Pending, Complete, Started, WalkEnded and told are written and read only by the orchestrator's one loop, in sequence;
+        // Resume restarts that loop only after it has returned at Waiting, so there is no lock. Complete is replaced, never mutated.
         // The milestone a walk is owed to, null once the bot stands on the hunted milestone's anchor.
         public string? Pending { get; set; } = plan.Default;
         public IReadOnlySet<string> Complete { get; set; } = new HashSet<string>();
@@ -21,11 +21,28 @@ namespace ShinyBotHunter.Milestones
         public bool Started { get; set; }
         // Set when the navigator finished a plan walk, so a walk that ended off the anchor parks instead of walking again.
         public bool WalkEnded { get; set; }
+        // FR-34a: the milestones complete at Start and those told since; it only grows, so none is told twice in one hunt. Null
+        // until the first decision, whose Complete is still Init's read, because a planned hunt has no Init walk.
+        private HashSet<string>? told;
 
         // FR-33 and FR-33a, after the decision's clock read: true when the step took the stack, to walk or to park.
-        internal async Task<bool> StepAsync(GameState state, Func<string, Task> follow, Func<GameState, Task> updateMilestone, CancellationToken ct)
+        internal async Task<bool> StepAsync(GameState state, Func<string, Task> follow, Func<GameState, Task> updateMilestone, Func<string, Task> tell,
+            CancellationToken ct)
         {
             string? pick = Plan.Pick((DayOfWeek)state.RatesSeen!.Weekday, state.RatesSeen.Hour, Complete);
+            if (told is null)
+            {
+                told = [.. Complete];
+            }
+            else
+            {
+                foreach (string done in Stops.Keys.Where(s => Complete.Contains(s) && !told.Contains(s)))
+                {
+                    told.Add(done);
+                    string sentence = $"{Plan.Name}: {Stops[done].Name} is complete on {state.Bot.GameFileName}.";
+                    await tell(pick is null ? $"{sentence} The plan is finished." : $"{sentence} Next: {Stops[pick].Name}.");
+                }
+            }
             if (pick is null)
             {
                 // FR-34: nothing is left, so the decision's finish check ends the hunt.
