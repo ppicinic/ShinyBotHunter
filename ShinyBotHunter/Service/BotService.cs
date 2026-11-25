@@ -892,6 +892,46 @@ namespace ShinyBotHunter.Service
             return new BotMilestones(bot.GameFileName, list);
         }
 
+        // FR-22: the milestone's anchor on the bot's game file becomes where the bot stands and how it faces, hunted with the
+        // form's range under the leg's range rules. Reads only; nothing is pressed.
+        public async Task<MilestoneAnchor> SetAnchorAsync(int pos, string milestone, int xRange, int yRange)
+        {
+            if (GetBotAt(pos) is not { } bot)
+            {
+                throw new ArgumentException($"There is not bot at position: {pos}");
+            }
+            if (!bot.Profile.Capabilities.HasOverworldNavigation)
+            {
+                throw new ArgumentException($"{bot.GameFlavor} cannot walk to an anchor.");
+            }
+            if (xRange < 0 || yRange < 0)
+            {
+                throw new ArgumentException($"X and Y range must be non-negative values");
+            }
+            if (xRange > 0 && yRange > 0)
+            {
+                throw new ArgumentException($"Only x or y range must be supplied, not both.");
+            }
+            if ((await bot.State.ReadAsync(CancellationToken.None)).Screen != GameScreen.FieldFree)
+            {
+                throw new InvalidOperationException(StandInTheField);
+            }
+            int map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
+            var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
+            var anchor = new MilestoneAnchor(milestone, new Anchor(map, x, y, xRange, yRange), await bot.Overworld.GetFacingAsync(CancellationToken.None));
+            await provider.GetRequiredService<MongoGameFileDao>().SetAnchorAsync(bot.GameFileName, anchor);
+            return anchor;
+        }
+
+        public async Task ClearAnchorAsync(int pos, string milestone)
+        {
+            if (GetBotAt(pos) is not { } bot)
+            {
+                throw new ArgumentException($"There is not bot at position: {pos}");
+            }
+            await provider.GetRequiredService<MongoGameFileDao>().ClearAnchorAsync(bot.GameFileName, milestone);
+        }
+
         /// <summary>
         /// <see cref="GetAvailableActions"/> with Headbutt and Pickup marked disabled on the encounter
         /// actions when no party member knows Headbutt or has the Pickup ability. Both come from the

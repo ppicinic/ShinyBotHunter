@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
@@ -56,6 +57,35 @@ namespace ShinyBotHunter.Controllers
         [HttpGet("bot/milestones/{pos}")]
         public async Task<ActionResult<BotMilestones>> GetMilestones(int pos)
             => await botService.GetMilestonesAsync(pos) is { } milestones ? Ok(milestones) : NotFound();
+
+        [HttpPut("bot/anchor/{pos}")]
+        public async Task<ActionResult<MilestoneAnchor>> SetAnchor(int pos, [FromQuery] string milestone, [FromQuery] int xRange, [FromQuery] int yRange)
+        {
+            try
+            {
+                return Ok(await botService.SetAnchorAsync(pos, milestone, xRange, yRange));
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                // The same mapping as StartAction.
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = ex.Message, ContentType = "text/plain" };
+            }
+        }
+
+        [HttpDelete("bot/anchor/{pos}")]
+        public async Task<ActionResult> ClearAnchor(int pos, [FromQuery] string milestone)
+        {
+            try
+            {
+                await botService.ClearAnchorAsync(pos, milestone);
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                // The same mapping as StartAction.
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = ex.Message, ContentType = "text/plain" };
+            }
+        }
 
         [HttpGet("bot/getParty/{pos}")]
         public async Task<ActionResult<List<PartySlotInfo>>> GetParty(int pos)
