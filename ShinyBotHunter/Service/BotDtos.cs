@@ -1,6 +1,7 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 
 namespace ShinyBotHunter.Service
 {
@@ -10,6 +11,9 @@ namespace ShinyBotHunter.Service
         ShinyTarget,
         NoTarget
     }
+
+    // The bot's milestone picker, with the game file name the archive and order calls take.
+    public record BotMilestones(string GameFileName, IReadOnlyList<PickerMilestone> Milestones);
 
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor, IReadOnlyList<string>? SpeedLines);
 

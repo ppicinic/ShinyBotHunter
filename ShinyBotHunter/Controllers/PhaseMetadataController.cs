@@ -144,6 +144,30 @@ namespace ShinyBotHunter.Controllers
             return NoContent();
         }
 
+        // FR-17: milestone is a generated id or a custom phase name. Only the picker reads it, so an unknown one is harmless.
+        [HttpPut("goal/{gameFileName}/archived")]
+        public async Task<ActionResult> SetArchivedAsync(string gameFileName, [FromQuery] string milestone, [FromQuery] bool archived)
+        {
+            await gameFileDao.SetArchivedAsync(gameFileName, milestone, archived);
+            return NoContent();
+        }
+
+        // FR-18: an empty label clears the milestone's label.
+        [HttpPut("goal/{gameFileName}/order")]
+        public async Task<ActionResult> SetOrderAsync(string gameFileName, [FromBody] MilestoneLabel label)
+        {
+            await gameFileDao.SetOrderAsync(gameFileName, label);
+            return NoContent();
+        }
+
+        // FR-16: a custom phase assigned to no file is on every file.
+        [HttpPut("goal/{gameFileName}/assigned")]
+        public async Task<ActionResult> SetAssignedAsync(string gameFileName, [FromQuery] string phase, [FromQuery] bool assigned)
+        {
+            await gameFileDao.SetAssignedAsync(gameFileName, phase, assigned);
+            return NoContent();
+        }
+
         // A generated milestone of the file's version seen through the file's goal: its rows with wanted, caught (FR-9) and the
         // encounters at this milestone and on the file (FR-11).
         [HttpGet("milestone/{game}/{milestoneId}/{gameFileName}")]
