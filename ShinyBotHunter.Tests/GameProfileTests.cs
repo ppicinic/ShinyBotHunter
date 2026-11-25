@@ -42,7 +42,8 @@ namespace ShinyBotHunter.Tests
                 HasStaticEncounter: true,
                 HasHeadbuttTrees: true,
                 HasPickup: true,
-                HasWildRunChecks: false), profile.Capabilities);
+                HasWildRunChecks: false,
+                HasHuntPlans: true), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);

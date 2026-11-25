@@ -15,16 +15,18 @@ namespace ShinyBotHunter.Controllers
         private IEncounterDao encounterDao;
         private PokemonMetadataService pokemonMetadataService;
         private readonly MongoGameFileDao gameFileDao;
+        private readonly MongoHuntPlanDao huntPlanDao;
         private readonly GameProfiles gameProfiles;
         private readonly RomInfoService romInfoService;
         public PhaseMetadataController(PhaseInfoService phaseInfoService, PokemonPersistenceService pokemonPersistenceService, IEncounterDao encounterDao, PokemonMetadataService pokemonMetadataService,
-            MongoGameFileDao gameFileDao, GameProfiles gameProfiles, RomInfoService romInfoService)
+            MongoGameFileDao gameFileDao, MongoHuntPlanDao huntPlanDao, GameProfiles gameProfiles, RomInfoService romInfoService)
         {
             this.phaseInfoService = phaseInfoService;
             this.pokemonPersistenceService = pokemonPersistenceService;
             this.encounterDao = encounterDao;
             this.pokemonMetadataService = pokemonMetadataService;
             this.gameFileDao = gameFileDao;
+            this.huntPlanDao = huntPlanDao;
             this.gameProfiles = gameProfiles;
             this.romInfoService = romInfoService;
         }
@@ -206,6 +208,35 @@ namespace ShinyBotHunter.Controllers
                     EncountersOnFile = file.PokemonEncounters[r.Key].Encounters
                 })
             });
+        }
+
+        // The game's saved hunt plans (FR-37a).
+        [HttpGet("plans/{game}")]
+        public async Task<ActionResult<List<HuntPlan>>> GetPlansAsync(string game) => Ok(await huntPlanDao.ListAsync(Enum.Parse<GameFlavor>(game)));
+
+        // Saves the plan under the game and name of the route, whatever the body says. Its milestones are checked at Start against
+        // the hunt's game file, because anchors and completion are per file (FR-35).
+        [HttpPut("plans/{game}/{name}")]
+        public async Task<ActionResult> PutPlanAsync(string game, string name, [FromBody] HuntPlan plan)
+        {
+            string? error = PlanError(plan);
+            if (error is not null)
+            {
+                return BadRequest(error);
+            }
+            await huntPlanDao.SaveAsync(plan with { Game = Enum.Parse<GameFlavor>(game), Name = name });
+            return NoContent();
+        }
+
+        // PUT plans is the boundary for a plan: the default and every rule name a milestone.
+        internal static string? PlanError(HuntPlan plan)
+        {
+            if (string.IsNullOrWhiteSpace(plan.Default))
+            {
+                return "The plan has no default milestone";
+            }
+            int empty = plan.Rules.FindIndex(r => string.IsNullOrWhiteSpace(r.Milestone));
+            return empty < 0 ? null : $"Rule {empty + 1} names no milestone";
         }
 
         // PUT goal is the boundary for entries: a species is wanted in any form or by its forms, never both, each key once.
