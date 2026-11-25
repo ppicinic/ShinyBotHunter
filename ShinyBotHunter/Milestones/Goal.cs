@@ -23,6 +23,12 @@ namespace ShinyBotHunter.Milestones
         public List<string> Assigned { get; set; } = new List<string>();
         // The owner's replacement anchors (FR-22).
         public List<MilestoneAnchor> Anchors { get; set; } = new List<MilestoneAnchor>();
+        // Existing phases the owner linked to a generated milestone on this file (FR-43).
+        public List<MilestoneLink> Links { get; set; } = new List<MilestoneLink>();
+
+        // FR-44: a generated milestone's counts on this file are its own and those of every phase linked to it here.
+        public List<string> CountedPhases(string milestoneId)
+            => [milestoneId, .. Links.Where(l => l.MilestoneId == milestoneId).Select(l => l.Phase)];
 
         // FR-22 and FR-23: the file's replacement, else the generated anchor with the facing the bot has, else null, which is
         // hunted where the bot stands.
@@ -54,4 +60,8 @@ namespace ShinyBotHunter.Milestones
     // A milestone's replacement anchor on one file (FR-22), a list entry as MilestoneLabel is. Facing is the one the player had
     // when it was set; None keeps the facing the bot has at Start.
     public record MilestoneAnchor(string Milestone, Anchor Anchor, Direction Facing);
+
+    // An existing phase read as part of a generated milestone on one file (FR-43), a list entry as HiddenRow is. Nothing is
+    // logged under Phase once it is linked (FR-44a).
+    public record MilestoneLink(string Phase, string MilestoneId);
 }

@@ -28,6 +28,11 @@ namespace ShinyBotHunter.Persistence.MongoDb
                 hidden ? Builders<GameFile>.Update.AddToSet(f => f.Hidden, row) : Builders<GameFile>.Update.Pull(f => f.Hidden, row),
                 new UpdateOptions { IsUpsert = true });
 
+        public Task SetLinkAsync(string gameFileName, MilestoneLink link, bool linked)
+            => collection.UpdateOneAsync(f => f.Id == gameFileName,
+                linked ? Builders<GameFile>.Update.AddToSet(f => f.Links, link) : Builders<GameFile>.Update.Pull(f => f.Links, link),
+                new UpdateOptions { IsUpsert = true });
+
         public Task SetArchivedAsync(string gameFileName, string milestone, bool archived)
             => collection.UpdateOneAsync(f => f.Id == gameFileName,
                 archived ? Builders<GameFile>.Update.AddToSet(f => f.Archived, milestone) : Builders<GameFile>.Update.Pull(f => f.Archived, milestone),
