@@ -47,43 +47,27 @@ namespace ShinyBotHunter.Controllers
         [HttpGet("phaseinfo/{game}/{phase}")]
         public async Task<ActionResult<WrappedPokemonPhase>> GetPhaseInfo(string game, string phase)
         {
-            try
+            var gameFlavor = Enum.Parse<GameFlavor>(game);
+            var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
+            if (phaseInfo is null)
             {
-                var gameFlavor = Enum.Parse<GameFlavor>(game);
-                var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
-                if (phaseInfo is null)
-                {
-                    return NotFound();
-                }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>()));
-                return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
                 return NotFound();
             }
+            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>()));
+            return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
         }
 
         [HttpGet("phaseinfo/{game}/{phase}/{gameFileName}")]
         public async Task<ActionResult<WrappedPokemonPhase>> GetPhaseInfo(string game, string phase, string gameFileName)
         {
-            try
+            var gameFlavor = Enum.Parse<GameFlavor>(game);
+            var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
+            if (phaseInfo is null)
             {
-                var gameFlavor = Enum.Parse<GameFlavor>(game);
-                var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
-                if (phaseInfo is null)
-                {
-                    return NotFound();
-                }
-                var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
-                return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
                 return NotFound();
             }
+            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
+            return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
         }
 
         [HttpPost("updatePhaseInfo/{game}/{phase}")]
@@ -194,19 +178,28 @@ namespace ShinyBotHunter.Controllers
                 milestone.Name,
                 milestone.Modality,
                 milestone.Slots,
-                Rows = rows.Select(r => new
+                Rows = rows.Select(r =>
                 {
-                    r.Species,
-                    r.Key,
-                    r.FormCode,
-                    r.Wanted,
-                    r.Caught,
-                    r.Complete,
-                    r.Hidden,
-                    r.IsTarget,
-                    EncountersHere = file.PhaseEncounters[milestoneId].PokemonEncounters[r.Key].Encounters,
-                    EncountersOnFile = file.PokemonEncounters[r.Key].Encounters
-                })
+                    var metadata = pokemonMetadataService.GetPokemonMetadata(r.Species);
+                    return new
+                    {
+                        r.Species,
+                        r.Key,
+                        r.FormCode,
+                        Name = metadata.PokemonName,
+                        Sprite = r.FormCode ?? metadata.PokeApiName,
+                        metadata.HasFemaleForm,
+                        r.Wanted,
+                        r.Caught,
+                        r.Complete,
+                        r.Hidden,
+                        r.IsTarget,
+                        EncountersHere = file.PhaseEncounters[milestoneId].PokemonEncounters[r.Key].Encounters,
+                        EncountersOnFile = file.PokemonEncounters[r.Key].Encounters,
+                        ShinyEncountersOnFile = file.PokemonEncounters[r.Key].ShinyEncounters
+                    };
+                }),
+                Data = rsp
             });
         }
 

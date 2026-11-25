@@ -158,6 +158,40 @@ export interface WrappedPokemonPhase {
 }
 
 // ============================================================
+// Generated milestone rows (GET /api/milestone/{game}/{milestoneId}/{gameFileName})
+// Matches the response of GetMilestoneRowsAsync in PhaseMetadataController.cs
+// ============================================================
+
+export interface MilestoneCardRow {
+  species: number
+  // The count key: "#<species>" for an any-form row, else the form code
+  key: string
+  // Null for an any-form row
+  formCode: string | null
+  name: string
+  // The form code, or the species' sprite slug for an any-form row
+  sprite: string
+  hasFemaleForm: boolean
+  wanted: number
+  caught: number
+  complete: boolean
+  // Hidden on this game file
+  hidden: boolean
+  isTarget: boolean
+  encountersHere: number
+  encountersOnFile: number
+  shinyEncountersOnFile: number
+}
+
+export interface MilestoneRowsResponse {
+  id: string
+  name: string
+  modality: Modality
+  rows: MilestoneCardRow[]
+  data: GameEncounterResponse
+}
+
+// ============================================================
 // Subscription state (internal frontend state)
 // ============================================================
 
@@ -167,6 +201,10 @@ export interface SubscriptionState {
   gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
+  // Set instead of phaseInfo for a generated milestone
+  milestone: MilestoneRowsResponse | null
+  // Neither endpoint knows the milestone, so the card says so instead of loading forever
+  notFound: boolean
 }
 
 // ============================================================
