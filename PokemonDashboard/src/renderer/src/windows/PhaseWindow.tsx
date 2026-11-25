@@ -27,8 +27,7 @@ export function PhaseWindow({ game, phase, gameName }: PhaseWindowProps): JSX.El
     : phase
 
   const subscription =
-    subscriptions.find((s) => s.game === game && s.phase === shown && (s.gameName ?? null) === gameName) ??
-    subscriptions.find((s) => s.game === game && s.phase === shown)
+    subscriptions.find((s) => s.game === game && s.phase === shown && (s.gameName ?? null) === gameName)
 
   if (!subscription) {
     return (
