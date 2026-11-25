@@ -255,6 +255,8 @@ namespace ShinyBotHunter.Controllers
             var phases = gameFile.CountedPhases(milestoneId);
             var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(flavor, rows.Select(r => r.Key).ToList(), phases, [gameFileName]));
             var file = rsp.GameSpecificResponse[gameFileName];
+            var seen = phaseInfoService.Seen(gameFileName);
+            var shares = MilestoneRows.Shares(milestone, gameProfiles.Get(flavor).Rates, seen);
             return Ok(new
             {
                 milestone.Id,
@@ -279,9 +281,14 @@ namespace ShinyBotHunter.Controllers
                         r.IsTarget,
                         EncountersHere = phases.Sum(p => file.PhaseEncounters[p].PokemonEncounters[r.Key].Encounters),
                         EncountersOnFile = file.PokemonEncounters[r.Key].Encounters,
-                        ShinyEncountersOnFile = file.PokemonEncounters[r.Key].ShinyEncounters
+                        ShinyEncountersOnFile = file.PokemonEncounters[r.Key].ShinyEncounters,
+                        Share = shares?.Species[r.Species].Share,
+                        Reason = shares?.Species[r.Species].Reason
                     };
                 }),
+                Survive = shares?.Survive,
+                Live = seen?.Live ?? false,
+                TimeOfDay = seen is { } s ? HuntPlan.TimeOfDay(s.Inputs.Hour) : (SlotCondition?)null,
                 Data = rsp
             });
         }
