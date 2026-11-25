@@ -1,5 +1,6 @@
 ﻿using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents.Factories;
+using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
@@ -250,6 +251,12 @@ namespace ShinyBotHunter.BotEvents
                 return;
             }
             var phaseInfo = phaseInfoService.GetPhaseInfo(state.GameFlavor, state.Milestone);
+            if (phaseInfo is null && state.Target is PhaseTarget target)
+            {
+                // A generated milestone: its target knows the goal (FR-14).
+                state.MilestoneComplete = await target.IsMilestoneCompleteAsync();
+                return;
+            }
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(state.GameFlavor)).Where(x => x.GameFileName == state.Bot.GameFileName).ToList();
             bool complete = true;
             if (phaseInfo is not null)

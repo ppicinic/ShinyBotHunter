@@ -57,16 +57,7 @@ namespace ShinyBotHunter.Service
                 
                 if(phaseInfo is not null)
                 {
-                    foreach(var pokemon in phaseInfo.Pokemon)
-                    {
-                        var metadata = GetMetadata(pokemon);
-                        pokemon.Name = metadata.PokemonName;
-                        pokemon.SpeciesId = metadata.Id;
-                        if (String.IsNullOrEmpty(pokemon.FormCode))
-                        {
-                            pokemon.FormCode = metadata.PokeApiName;
-                        }
-                    }
+                    Normalize(phaseInfo, metadataService);
                     phaseInfos.Add(new GamePhase(phaseInfo.Game, phaseInfo.Name, null), phaseInfo);
                     if (!gamePhases.ContainsKey(phaseInfo.Game))
                     {
@@ -92,16 +83,7 @@ namespace ShinyBotHunter.Service
                 phaseInfo.Id = phaseInfosDb.Id;
                 await phaseInfoCollection.ReplaceOneAsync(Builders<PhaseInfo>.Filter.Eq(x => x.Id, phaseInfo.Id), phaseInfo);
             }
-            foreach (var pokemon in phaseInfo.Pokemon)
-            {
-                var metadata = GetMetadata(pokemon);
-                pokemon.Name = metadata.PokemonName;
-                pokemon.SpeciesId = metadata.Id;
-                if (String.IsNullOrEmpty(pokemon.FormCode))
-                {
-                    pokemon.FormCode = metadata.PokeApiName;
-                }
-            }
+            Normalize(phaseInfo, metadataService);
             lock (phasesLock)
             {
                 var key = new GamePhase(phaseInfo.Game, phaseInfo.Name, null);
@@ -155,7 +137,22 @@ namespace ShinyBotHunter.Service
             return result;
         }
 
-        private PokemonMetadata GetMetadata(PhasePokemonInfo pokemon) 
+        // Fills each phase row's name, species and default form code from the metadata, as InitAsync and AddOrUpdatePhaseInfoAsync load a phase.
+        internal static void Normalize(PhaseInfo phaseInfo, PokemonMetadataService metadataService)
+        {
+            foreach (var pokemon in phaseInfo.Pokemon)
+            {
+                var metadata = GetMetadata(pokemon, metadataService);
+                pokemon.Name = metadata.PokemonName;
+                pokemon.SpeciesId = metadata.Id;
+                if (String.IsNullOrEmpty(pokemon.FormCode))
+                {
+                    pokemon.FormCode = metadata.PokeApiName;
+                }
+            }
+        }
+
+        private static PokemonMetadata GetMetadata(PhasePokemonInfo pokemon, PokemonMetadataService metadataService)
         {
             // TODO form code would be at the top as it's the most descriptive
             if(pokemon.SpeciesId != 0)
