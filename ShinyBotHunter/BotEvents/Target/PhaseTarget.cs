@@ -49,7 +49,6 @@ namespace ShinyBotHunter.BotEvents.Target
             return IsPhaseTarget(phaseInfo!, caughtPokemon, pokemon);
         }
 
-
         // The generated milestone of the file's version with this id, or null when the file is not scanned or the flavor has no milestones.
         internal static Milestone? FindMilestone(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones, RomVersion? version, string id)
             => version is not null && milestones is not null && milestones.TryGetValue(version.Value, out var versionMilestones)
