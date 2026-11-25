@@ -190,7 +190,7 @@ export function GoalEditorTab(): JSX.Element {
         isError: false
       })
     } catch (err) {
-      setFeedback({ msg: err instanceof Error ? err.message : 'Preset failed', isError: true })
+      if (selected.current === fileName) setFeedback({ msg: err instanceof Error ? err.message : 'Preset failed', isError: true })
     } finally {
       setBusy(false)
     }
