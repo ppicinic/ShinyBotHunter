@@ -122,6 +122,8 @@ namespace ShinyBotHunter.Service
         /// </summary>
         public string? RecordingName { get; set; }
         public string? StaticEncounter { get; set; }
+        /// <summary>The saved hunt plan's name, for Wild Encounter (FR-37a).</summary>
+        public string? HuntPlan { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 
