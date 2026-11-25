@@ -1,3 +1,4 @@
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 
 namespace ShinyBotHunter.Milestones
@@ -26,6 +27,50 @@ namespace ShinyBotHunter.Milestones
                     gameFile.Hidden.Contains(new HiddenRow(milestone.Id, e.Key)))));
             }
             return rows;
+        }
+
+        // FR-27 and FR-28: each slot species' share now, the reason a share is zero, and the survive share. Live, the inputs the
+        // decision last read; otherwise the last-seen time of day with no Repel and no lead. Null with no rate rule, on headbutt
+        // (the tree the bot faces is not known), and when never seen on a milestone whose slots depend on the time of day.
+        internal static (IReadOnlyDictionary<int, (double Share, string? Reason)> Species, double Survive)? Shares(Milestone m,
+            Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? rates,
+            (RateInputs Inputs, bool Live)? seen)
+        {
+            SlotCondition[] timed = [SlotCondition.Morning, SlotCondition.Day, SlotCondition.Night, SlotCondition.NightFishing];
+            if (rates is null || m.Modality == Modality.Headbutt || (seen is null && m.Slots.Any(s => timed.Contains(s.Condition))))
+            {
+                return null;
+            }
+            SlotCondition cond = seen is { } s ? HuntPlan.TimeOfDay(s.Inputs.Hour) : SlotCondition.None;
+            RateInputs? live = seen is { Live: true } l ? l.Inputs : null;
+            var (shares, survive) = live is null
+                ? rates(m, cond, null, 0, 1, false)
+                : rates(m, cond, live.RepelLevel, live.LeadAbility, live.LeadLevel, live.LeadIsEgg);
+            return (m.Slots.GroupBy(s => s.Species).ToDictionary(g => g.Key, g =>
+            {
+                double share = shares.GetValueOrDefault(g.Key);
+                return (share, share > 0 ? null : Reason(g.Select(x => x.Condition).ToHashSet(), cond, live?.RepelLevel is not null));
+            }), survive);
+        }
+
+        // Why a species' share is zero, from its slots' conditions.
+        private static string? Reason(HashSet<SlotCondition> conditions, SlotCondition cond, bool repel)
+        {
+            bool present = conditions.Contains(SlotCondition.None) || conditions.Contains(cond)
+                || (cond == SlotCondition.Night && conditions.Contains(SlotCondition.NightFishing));
+            if (present)
+            {
+                return repel ? "blocked by Repel" : null;
+            }
+            var times = new[] { SlotCondition.Morning, SlotCondition.Day, SlotCondition.Night }.Where(conditions.Contains).ToList();
+            if (times.Count > 0)
+            {
+                return $"{string.Join(" and ", times.Select(t => t.ToString().ToLowerInvariant()))} only";
+            }
+            return conditions.SetEquals([SlotCondition.HoennSound]) ? "needs Hoenn Sound"
+                : conditions.SetEquals([SlotCondition.SinnohSound]) ? "needs Sinnoh Sound"
+                : conditions.SetEquals([SlotCondition.NightFishing]) ? "night only"
+                : null;
         }
     }
 }
