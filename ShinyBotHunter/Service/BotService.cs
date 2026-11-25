@@ -304,18 +304,19 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException(reason);
                 }
             }
-            RefuseNoHuntYet(bot, args.PhaseName);
-            // A stored phase of the same name wins, as it does in PhaseTarget, so with no replacement stored a stored phase has
-            // no anchor and is hunted where the bot stands (FR-42).
-            Milestone? generated = args.PhaseName is null ? null : PhaseTarget.FindMilestone(bot.Profile.Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, args.PhaseName);
-            if (generated is not null && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, args.PhaseName!) is not null)
+            HuntPlan? plan = null;
+            if (args.HuntPlan is not null)
             {
-                generated = null;
+                if (!caps.HasHuntPlans)
+                {
+                    throw new ArgumentException($"Hunt plans need the in-game clock; {bot.GameFlavor} has none.");
+                }
+                plan = await provider.GetRequiredService<MongoHuntPlanDao>().LoadAsync(bot.GameFlavor, args.HuntPlan)
+                    ?? throw new ArgumentException($"No hunt plan named {args.HuntPlan}.");
             }
-            if (EncounterTypeRefusal(generated, args.EncounterType) is { } wrongType)
-            {
-                throw new ArgumentException(wrongType);
-            }
+            // With a plan the form's milestone is ignored, and each of the plan's is refused as the form's would be (binding answer 6).
+            Milestone? generated = plan is null ? RefuseMilestone(bot, args.PhaseName, args.EncounterType) : null;
+            var planMilestones = plan?.Milestones.Select(m => (Milestone: m, Generated: RefuseMilestone(bot, m, args.EncounterType))).ToList();
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -331,8 +332,91 @@ namespace ShinyBotHunter.Service
                 lead = await WildRefusalAsync(bot);
             }
             await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
-            var leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
-            var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+            EventLeg leg;
+            MilestoneAnchor? anchor;
+            HuntPlanRun? run = null;
+            if (plan is null)
+            {
+                leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
+                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+                (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile);
+            }
+            else
+            {
+                var planLegs = planMilestones!.Select(p =>
+                {
+                    NewEventLegArguments legArgs = args.ToLeg();
+                    legArgs.PhaseName = p.Milestone;
+                    return (p.Generated, Leg: ValidateAndBuildLeg(legArgs, bot.GameFileName, bot.GameFlavor));
+                }).ToList();
+                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+                var reach = new List<(string Name, MilestoneAnchor? Anchor)>();
+                var stops = new Dictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)>();
+                foreach (var (stopGenerated, planLeg) in planLegs)
+                {
+                    var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile);
+                    string name = stopGenerated?.Name ?? stopLeg.PhaseName;
+                    reach.Add((name, stopAnchor));
+                    if (stopAnchor is not null)
+                    {
+                        stops[stopLeg.PhaseName] = (stopLeg, stopAnchor, name);
+                    }
+                }
+                int map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
+                var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
+                Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
+                if (await HuntPlanRun.ReachRefusalAsync(plan.Name, bot.Profile.Pathfinding!, (map, x, y, facing), reach) is { } unreachable)
+                {
+                    throw new InvalidOperationException(unreachable);
+                }
+                run = new HuntPlanRun(plan, stops);
+                foreach (var (stopLeg, stopAnchor, name) in stops.Values)
+                {
+                    Console.WriteLine($"[BotService] Plan {plan.Name}: {name} at map {stopAnchor.Anchor.Map} ({stopAnchor.Anchor.X}, {stopAnchor.Anchor.Y}), {HowHunted(stopLeg.EncounterParams)}");
+                }
+                // The first decision walks to the clock's pick, so no Init walk runs.
+                (leg, anchor) = (stops[plan.Default].Leg, null);
+            }
+
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor, run);
+            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            if (lead is not null)
+            {
+                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
+                foreach (string line in lines)
+                {
+                    Console.WriteLine($"[BotService] {line}");
+                }
+                slots.Entries[pos].GameState!.SpeedLines = lines;
+                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+            }
+            slots.Entries[pos].GameState!.State.Push(EventState.Init);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, plan is null ? leg.PhaseName : $"Plan {plan.Name}", removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
+        // FR-15a and B2's type rule for one milestone, before anything is read; the generated milestone, or null for a stored phase.
+        private Milestone? RefuseMilestone(IBot bot, string? phaseName, EncounterType? type)
+        {
+            RefuseNoHuntYet(bot, phaseName);
+            // A stored phase of the same name wins, as it does in PhaseTarget, so with no replacement stored a stored phase has
+            // no anchor and is hunted where the bot stands (FR-42).
+            Milestone? generated = phaseName is null ? null : PhaseTarget.FindMilestone(bot.Profile.Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, phaseName);
+            if (generated is not null && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName!) is not null)
+            {
+                generated = null;
+            }
+            if (EncounterTypeRefusal(generated, type) is { } wrongType)
+            {
+                throw new ArgumentException(wrongType);
+            }
+            return generated;
+        }
+
+        // FR-44a, FR-24 and FR-23 for one validated leg on the file: the leg hunted from its anchor, and the anchor, or null.
+        private (EventLeg Leg, MilestoneAnchor? Anchor) AnchoredLeg(IBot bot, EventLeg leg, Milestone? generated, GameFile gameFile)
+        {
             RefuseLinked(bot, gameFile, leg.PhaseName);
             MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated);
             if (anchor is not null && generated is { Modality: Modality.Land }
@@ -346,23 +430,7 @@ namespace ShinyBotHunter.Service
                 Console.WriteLine($"[BotService] {generated?.Name ?? leg.PhaseName}: hunting from the anchor map {anchor.Anchor.Map} ({anchor.Anchor.X}, {anchor.Anchor.Y}), "
                     + $"{HowHunted(leg.EncounterParams)} ({(anchor.Facing == Direction.None ? "generated" : "set on this file")})");
             }
-
-            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
-            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
-            if (lead is not null)
-            {
-                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
-                foreach (string line in lines)
-                {
-                    Console.WriteLine($"[BotService] {line}");
-                }
-                slots.Entries[pos].GameState!.SpeedLines = lines;
-                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
-            }
-            slots.Entries[pos].GameState!.State.Push(EventState.Init);
-            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
-
-            return GetBotDashboardState();
+            return (leg, anchor);
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartChainedEncounter(NewEventArguments args, int pos)
