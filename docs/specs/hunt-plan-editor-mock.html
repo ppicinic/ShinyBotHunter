@@ -1,0 +1,111 @@
+<h2 class="sr-only">Mock of a hunt setup form where ordered rules send the bot to a different milestone by in-game time of day and day of week, with a 24 hour preview.</h2>
+<style>
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:0.5px solid var(--border-strong);background:transparent;color:var(--text-secondary);cursor:pointer;height:auto;line-height:1.5}
+.chip.on{background:var(--bg-accent);color:var(--text-accent);border-color:var(--border-accent)}
+.rule{border-top:0.5px solid var(--border);padding:12px 0;display:grid;grid-template-columns:22px minmax(0,1fr) 28px;gap:10px;align-items:start}
+.lab{font-size:12px;color:var(--text-muted);width:44px;flex:none}
+.row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.seg{height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;overflow:hidden;white-space:nowrap}
+</style>
+<div style="background:var(--bg-neutral);border-radius:12px;padding:16px">
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:12px;padding:1rem 1.25rem">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div>
+      <p style="margin:0;font-weight:500;font-size:15px">Wild encounter</p>
+      <p style="margin:0;font-size:13px;color:var(--text-secondary)">HG-Route32 · shiny target · flee</p>
+    </div>
+    <span style="font-size:12px;color:var(--text-secondary);background:var(--bg-neutral);padding:4px 10px;border-radius:var(--radius)"><i class="ti ti-clock" aria-hidden="true" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i>In-game Tue 19:42</span>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <span style="font-size:13px;color:var(--text-secondary);width:110px;flex:none">Otherwise hunt</span>
+    <select style="flex:1"><option>Route 32 · grass</option><option>Route 30 · grass</option></select>
+  </div>
+
+  <p style="margin:0 0 4px;font-size:13px;color:var(--text-secondary)">Rules, first match wins</p>
+
+  <div class="rule" data-rule="0">
+    <i class="ti ti-grip-vertical" aria-hidden="true" style="font-size:18px;color:var(--text-muted);margin-top:4px"></i>
+    <div>
+      <div class="row"><span class="lab">When</span>
+        <button class="chip" data-t="m">Morning</button><button class="chip" data-t="d">Day</button><button class="chip on" data-t="n">Night</button></div>
+      <div class="row"><span class="lab">Days</span>
+        <button class="chip on" data-d="0">Su</button><button class="chip on" data-d="1">Mo</button><button class="chip on" data-d="2">Tu</button><button class="chip on" data-d="3">We</button><button class="chip on" data-d="4">Th</button><button class="chip on" data-d="5">Fr</button><button class="chip on" data-d="6">Sa</button></div>
+      <div class="row" style="margin-bottom:0"><span class="lab">Go to</span>
+        <select style="flex:1;min-width:180px"><option>Route 30 · grass</option></select>
+        <span style="font-size:12px;color:var(--text-muted)">Spinarak, Hoothoot · 55 s walk</span></div>
+    </div>
+    <button aria-label="Remove rule" style="border:none;padding:4px"><i class="ti ti-trash" style="font-size:16px"></i></button>
+  </div>
+
+  <div class="rule" data-rule="1">
+    <i class="ti ti-grip-vertical" aria-hidden="true" style="font-size:18px;color:var(--text-muted);margin-top:4px"></i>
+    <div>
+      <div class="row"><span class="lab">When</span>
+        <button class="chip on" data-t="m">Morning</button><button class="chip on" data-t="d">Day</button><button class="chip" data-t="n">Night</button></div>
+      <div class="row"><span class="lab">Days</span>
+        <button class="chip" data-d="0">Su</button><button class="chip" data-d="1">Mo</button><button class="chip" data-d="2">Tu</button><button class="chip" data-d="3">We</button><button class="chip" data-d="4">Th</button><button class="chip on" data-d="5">Fr</button><button class="chip" data-d="6">Sa</button></div>
+      <div class="row" style="margin-bottom:0"><span class="lab">Go to</span>
+        <select style="flex:1;min-width:180px"><option>Union Cave B2F · surf</option></select>
+        <span style="font-size:12px;color:var(--text-warning)"><i class="ti ti-alert-triangle" aria-hidden="true" style="font-size:14px;vertical-align:-2px"></i> needs Surf</span></div>
+    </div>
+    <button aria-label="Remove rule" style="border:none;padding:4px"><i class="ti ti-trash" style="font-size:16px"></i></button>
+  </div>
+
+  <div style="border-top:0.5px solid var(--border);padding-top:12px">
+    <button style="font-size:13px"><i class="ti ti-plus" aria-hidden="true" style="font-size:14px;vertical-align:-2px;margin-right:4px"></i>Add rule</button>
+  </div>
+
+  <div style="margin-top:18px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-size:13px;color:var(--text-secondary)">Preview</span>
+      <select id="pday" style="width:130px;height:30px;font-size:13px"><option value="0">Sunday</option><option value="1">Monday</option><option value="2" selected>Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option></select>
+    </div>
+    <div id="bar" style="display:flex;border-radius:var(--radius);overflow:hidden;border:0.5px solid var(--border)"></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:4px"><span>00:00</span><span>04:00</span><span>10:00</span><span>20:00</span><span>24:00</span></div>
+    <div id="legend" style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-secondary);margin-top:8px"></div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:0.5px solid var(--border);padding-top:12px">
+    <span style="font-size:12px;color:var(--text-muted)">The dashboard window follows the bot.</span>
+    <button style="background:var(--fill-primary);color:var(--on-primary);border-color:transparent">Start hunt</button>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+var names=['Route 30 · grass','Union Cave B2F · surf','Route 32 · grass'];
+var fills=['#CECBF6','#9FE1CB','var(--bg-neutral)'];
+var inks=['#3C3489','#085041','var(--text-secondary)'];
+var slots=[{k:'n',h:4},{k:'m',h:6},{k:'d',h:10},{k:'n',h:4}];
+function pick(day,k){
+  var rules=document.querySelectorAll('.rule');
+  for(var i=0;i<rules.length;i++){
+    var t=rules[i].querySelector('[data-t="'+k+'"]').classList.contains('on');
+    var d=rules[i].querySelector('[data-d="'+day+'"]').classList.contains('on');
+    if(t&&d)return i;
+  }
+  return 2;
+}
+function draw(){
+  var day=document.getElementById('pday').value,bar=document.getElementById('bar'),used={};
+  bar.innerHTML='';
+  slots.forEach(function(s){
+    var r=pick(day,s.k);used[r]=1;
+    var e=document.createElement('div');e.className='seg';
+    e.style.width=(s.h/24*100)+'%';e.style.background=fills[r];e.style.color=inks[r];
+    e.textContent=s.h>=6?names[r].split(' · ')[0]:'';
+    bar.appendChild(e);
+  });
+  var lg=document.getElementById('legend');lg.innerHTML='';
+  Object.keys(used).forEach(function(r){
+    var s=document.createElement('span');
+    s.innerHTML='<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+fills[r]+';border:0.5px solid var(--border-strong);margin-right:6px"></span>'+names[r];
+    lg.appendChild(s);
+  });
+}
+document.querySelectorAll('.chip').forEach(function(c){c.addEventListener('click',function(){c.classList.toggle('on');draw();});});
+document.getElementById('pday').addEventListener('change',draw);
+draw();
+})();
+</script>

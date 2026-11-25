@@ -152,7 +152,7 @@ From the owner, 2026-11-25:
 | FR-34 | A rule whose milestone is complete for the game file is skipped. When the default is complete too, the hunt ends. | Must | Unit test. |
 | FR-35 | Start refuses a plan with a milestone that has no anchor, or whose anchor the pathfinder cannot reach with the party and badges as they are, naming the milestone. | Must | Unit test. |
 | FR-36 | An encounter on the walk is logged under the milestone being left until the bot stands on the new anchor. | Must | Unit test. |
-| FR-37 | The dashboard's form shows the rules, the in-game clock, and a 24-hour preview for a chosen weekday (the mock in the session of 2026-11-24). | Should | QA. |
+| FR-37 | The dashboard's form shows the rules, the in-game clock, and a 24-hour preview for a chosen weekday (the mock of 2026-11-24, kept as [hunt-plan-editor-mock.html](hunt-plan-editor-mock.html)). | Should | QA. |
 | FR-37a | A plan is defined once and saved by name, per game: its default milestone and its rules. Wild Encounter picks a saved plan by name; the same plan can be used on any game file of that game. Plans are stored in Mongo, in their own collection. | Must | Unit test: a plan saved once is started on two game files. |
 | FR-37b | The dashboard lists the saved plans and can add, edit, rename and delete one. A plan in use by a running hunt cannot be deleted. Editing a plan does not change a hunt already running on it; the hunt reads the plan at Start. | Must | Unit test; QA. |
 | FR-37c | A card does not follow a plan by itself: with no hunt running, the in-game clock is not known. A plan reaches a card only through the hunt, by FR-39b. | Must | By design; no test. |
@@ -314,6 +314,8 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - FR-23: a hunt that finds no path to its anchor stops with "{milestone}: no path to the anchor ({x}, {y})."; it does not end Complete.
   - Start refuses Headbutt at a land milestone and Run or Spin at a headbutt one.
   - Route 111 gets no item rule; what happens there with and without the Go-Goggles is checked in Q1 (#525).
+
+- 2026-11-25, from the owner ("yeah it can be inline of botcontrol. the spiker had a nice mock"): the plan editor is inline in the Bot Control tab under the Wild Encounter form, and follows the spike's mock, now committed beside this spec. C4 is two tasks, C4a the backend (#564) and C4b the dashboard (#524).
 
 ## Appendix: the maps and their names
 
