@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}, goal/{game}/{gameFileName}/preset/{preset}, species/{game}, goal/{gameFileName}/archived, goal/{gameFileName}/order, milestone/{game}/{milestoneId}/{gameFileName}), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}, goal/{game}/{gameFileName}/preset/{preset}, species/{game}, goal/{gameFileName}/archived, goal/{gameFileName}/order, goal/{gameFileName}/hidden, goal/{gameFileName}/assigned, goal/{game}/{gameFileName}/link, goal/{game}/{gameFileName}/backfill/{phase}, goal/{game}/{gameFileName}/copy/{phase}, milestone/{game}/{milestoneId}/{gameFileName}), ShinyBotHunter/Milestones/Backfill.cs, ShinyBotHunter/Service/BotService.cs (RefuseLinked, LinkedRefusal), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -116,6 +116,15 @@ Both are saved for this game file and the list reloads.
 
 On **Wild Encounter**, a line under the settings shows the picked milestone's anchor, the tile its hunt starts from, or `No anchor: hunted where the bot stands`. **Set anchor here** makes where your character stands the anchor for this game file, and **Clear** removes one you set; [Where the hunt starts: the anchor](04-hunts/01-wild-encounter.md#where-the-hunt-starts-the-anchor) explains both.
 
+#### Hide a row
+
+When the milestone picked on **Wild Encounter** is a generated one, a line under the anchor reads **Rows (N hidden)**, N being how many of its rows you hid on this game file. Click it to list the rows: each shows the Pokémon and its form (or "any form"), how many are wanted and caught, the encounters at this milestone, and a **Hide** checkbox.
+
+- Tick **Hide** to hide a row on this game file. A hidden row is not shown on the counts card and is never a target; its encounters are still logged. It stays in this list, greyed, so you can untick it to show it again.
+- The card drops or brings back the row at its next count update.
+- Hiding is per game file: the same milestone on another file keeps its rows.
+- You hide rows from an emulator's form, so the game file needs a bot running on it.
+
 An emulator offers only the actions its game supports, and only while it is not busy. While an action is running, the entry shows no actions; you can only cancel it.
 
 While a Ruby or Sapphire wild hunt runs, its entry can show small grey lines under its name, each naming something in your save that slows the hunt. These are the [speed lines](04-hunts/08-rs-wild-encounter.md#the-speed-lines).
@@ -161,6 +170,42 @@ You see `Saved "NAME" successfully`, with your milestone's name, and the name is
 - A milestone that shows "This milestone is static (loaded from disk) and cannot be edited." came with the bot. Make a new one instead.
 
 Milestones are stored in the bot's database; see [Your data](06-your-data.md). Always make and change them here.
+
+When you pick a saved milestone, a **Game files** section under **Save Milestone** has one box for each detected game file of that game. Opening it saves nothing; each change below is saved when you click it, for that game file only.
+
+### Use a milestone on some game files only
+
+Tick **Assigned** on the game files whose **Milestone** list should offer this milestone. The line above the boxes says where it is listed:
+
+- `Assigned to no game file: listed on every game file.` is how every milestone starts.
+- `Assigned to 2 game files: listed only on those.` once you tick some. Untick them all to list it everywhere again.
+
+Generated milestones need no assignment: the game file's goal decides their rows.
+
+### Link a milestone you made to a generated one
+
+A milestone you made before the generated ones existed, such as `1-4 Route 30`, can be linked on one game file to the generated milestone for the same place, such as `34-land` (`Route 30 · grass`). The box is filled with the suggested id when there is one; type another id to override it, or leave it empty for a milestone with none, such as a training one.
+
+1. Check the id in the box. Typing an id such as `34-land` in an emulator's **Milestone** filter finds the generated milestone it names.
+2. Click **Link**.
+
+The box then reads `Linked to 34-land`. On that game file:
+
+- The generated milestone's counts include everything logged under the linked name, and new encounters are logged under the generated milestone. Nothing already logged is rewritten.
+- The linked name leaves the **Milestone** list. Hunt the generated milestone instead; a Start with the linked name is refused with, for example, `1-4 Route 30 is linked to Route 30 · grass on <file>; start Route 30 · grass, or remove the link.`
+- **Remove link** undoes it: the name is back in the list, and the generated milestone counts only what is logged under its own id.
+
+A red message says why a link is refused: `No generated milestone "<id>" for this game file's version`, or `<milestone> is already linked to <id> on <file>; remove that link first`.
+
+### Copy its amounts into the goal
+
+Linking copies nothing. To take the amounts saved in this milestone into the game file's goal, so the generated milestone wants the same:
+
+1. Click **Copy amounts…** on the game file.
+2. Each Pokémon of the milestone is shown with what it would copy beside what the goal has for it now. Tick the ones to copy.
+3. Click **Copy chosen**.
+
+Only the ticked Pokémon change: their entries in the goal are replaced by the milestone's, and every other entry is kept. The goal column then shows the new entries. To change amounts one by one, use [Set a game file's goal](#set-a-game-files-goal).
 
 ## Set a game file's goal
 
