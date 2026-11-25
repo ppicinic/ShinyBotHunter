@@ -3,6 +3,7 @@ import * as api from '../services/apiClient'
 import { IpcSignalRService } from '../services/ipcSignalRService'
 import { applyTheme, windowNameFromSearch } from '../utils/theme'
 import type {
+  ActiveSubscription,
   AppConfig,
   DashboardConfig,
   GameEncounterResponse,
@@ -56,6 +57,42 @@ async function fetchWrappedPhaseInfo(
   }
 }
 
+function sameSubscription(a: ActiveSubscription, b: ActiveSubscription): boolean {
+  return a.game === b.game && a.phase === b.phase && (a.gameName ?? null) === (b.gameName ?? null)
+}
+
+// One subscription per pushed (game, phase, game file); kept ones are the same objects, so their data survives
+export function syncSubscriptions(
+  current: SubscriptionState[],
+  gamePhases: ActiveSubscription[]
+): { subscriptions: SubscriptionState[]; added: SubscriptionState[] } {
+  const kept = current.filter((sub) => gamePhases.some((gp) => sameSubscription(gp, sub)))
+  const added: SubscriptionState[] = []
+  for (const { game, phase, gameName } of gamePhases) {
+    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null }
+    if (!kept.some((s) => sameSubscription(s, sub)) && !added.some((s) => sameSubscription(s, sub))) {
+      added.push(sub)
+    }
+  }
+  return { subscriptions: [...kept, ...added], added }
+}
+
+// A push names the file that encountered in gameSpecificResponse; a no-file card takes the game-wide counts
+export function applyEncounters(
+  subs: SubscriptionState[],
+  response: GameEncounterResponse,
+  game: string,
+  phase: string
+): SubscriptionState[] {
+  return subs.map((sub) =>
+    sub.game === game &&
+    sub.phase === phase &&
+    (sub.gameName === null || sub.gameName in response.gameSpecificResponse)
+      ? { ...sub, encounterData: response }
+      : sub
+  )
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }): JSX.Element {
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [connectionState, setConnectionState] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected')
@@ -99,13 +136,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
 
     const unsubEncounters = service.onEncounters((response: GameEncounterResponse, game: string, phase: string) => {
       // Update subscription encounter data
-      setSubscriptions((prev) =>
-        prev.map((sub) =>
-          sub.game === game && sub.phase === phase
-            ? { ...sub, encounterData: response }
-            : sub
-        )
-      )
+      setSubscriptions((prev) => applyEncounters(prev, response, game, phase))
 
       // Extract latest encounters from the payload, trimmed to the configured count.
       // Use the ref to get the current recentEncounterCount without stale closure.
@@ -137,23 +168,18 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     const cfg = configRef.current
     if (!service || !cfg) return
 
-    const newSubs = dashboardConfig.gamePhases
-
     // Use functional update to get current subscriptions without stale closure
     setSubscriptions((currentSubs) => {
-      // Determine which subs to add (not already tracked)
-      const toAdd = newSubs.filter(
-        ({ game, phase }) => !currentSubs.some((s) => s.game === game && s.phase === phase)
-      )
+      const { subscriptions: synced, added } = syncSubscriptions(currentSubs, dashboardConfig.gamePhases)
 
       // Fetch phase info for new subs
-      toAdd.forEach(async ({ game, phase, gameName }) => {
+      added.forEach(async (fresh) => {
         // Fetch phase info + initial encounter data from REST API
-        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase, gameName)
+        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, fresh.game, fresh.phase, fresh.gameName)
         if (result) {
           setSubscriptions((prev) =>
             prev.map((sub) =>
-              sub.game === game && sub.phase === phase
+              sameSubscription(sub, fresh)
                 ? { ...sub, phaseInfo: result.phaseInfo, encounterData: result.encounterData }
                 : sub
             )
@@ -170,19 +196,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
         }
       })
 
-      // Build new subscriptions list: keep existing ones that are still in config,
-      // add placeholders for new ones
-      const kept = currentSubs.filter((sub) =>
-        newSubs.some((ns) => ns.game === sub.game && ns.phase === sub.phase)
-      )
-      const added = toAdd.map(({ game, phase, gameName }) => ({
-        game,
-        phase,
-        gameName: gameName ?? null,
-        encounterData: null,
-        phaseInfo: null
-      }))
-      return [...kept, ...added]
+      return synced
     })
   }, [dashboardConfig])
 
