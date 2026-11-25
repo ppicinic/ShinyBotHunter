@@ -1,0 +1,1042 @@
+[
+  {
+    "_id": {
+      "$binary": {
+        "base64": "POsur6bITxCWZ1Fsgr0zLQ==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "0c Training",
+    "Pokemon": [],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "YWFlJxnIToK+ORCPiIE4jA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-1 Starters",
+    "Pokemon": [
+      {
+        "Name": "Chikorita",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Cyndaquil",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Totodile",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": true
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "CtOnEes1TtK0QRjtgjixUw==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-10 Ruins of Alph",
+    "Pokemon": [
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "201"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-a",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-b",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-c",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-d",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-e",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-f",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-g",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-h",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-i",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Unown",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "unown-j",
+        "RequireSpecificForm": true
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "L9vpDuFMSGmzNG/p3lQhfg==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-2 Route 29",
+    "Pokemon": [
+      {
+        "Name": "Pidgey",
+        "SpeciesId": {
+          "$numberInt": "16"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "pidgey",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Hoothoot",
+        "SpeciesId": {
+          "$numberInt": "163"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "hoothoot",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Sentret",
+        "SpeciesId": {
+          "$numberInt": "161"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "sentret",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "7uxBFyosRLyoMYSEcbQgeA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-2c Route 29",
+    "Pokemon": [
+      {
+        "Name": "Sentret",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "6ekqb0Z1Tnq1Jbon26lXMA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-3 Route 46",
+    "Pokemon": [
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "rattata",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Spearow",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Geodude",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "2cIpcOj9Sc6YJBJ9PoVT8Q==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-3b Route 46",
+    "Pokemon": [
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "19"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "rattata;f",
+        "RequireSpecificForm": true
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "Lt+yw4z9QnCXzm8SVtAeNA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-4 Route 30",
+    "Pokemon": [
+      {
+        "Name": "Weedle",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Ledyba",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "2"
+        },
+        "FormCode": "ledyba",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Pidgey",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Hoothoot",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "rattata",
+        "RequireSpecificForm": true
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "+8Gs7m9wQTG+1esOOOmPjw==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-4b Route 30",
+    "Pokemon": [
+      {
+        "Name": "Ledyba",
+        "SpeciesId": {
+          "$numberInt": "165"
+        },
+        "Amount": {
+          "$numberInt": "2"
+        },
+        "FormCode": "ledyba;f",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Ledyba",
+        "SpeciesId": {
+          "$numberInt": "165"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "ledyba",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Weedle",
+        "SpeciesId": {
+          "$numberInt": "13"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "weedle",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Kakuna",
+        "SpeciesId": {
+          "$numberInt": "14"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "kakuna",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Pidgey",
+        "SpeciesId": {
+          "$numberInt": "16"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "pidgey",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Hoothoot",
+        "SpeciesId": {
+          "$numberInt": "163"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "hoothoot",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "19"
+        },
+        "Amount": {
+          "$numberInt": "2"
+        },
+        "FormCode": "rattata;f",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "19"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "rattata",
+        "RequireSpecificForm": true
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "Q/Psx7uTTT69ogFg7Y4SoQ==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-4c Route 30",
+    "Pokemon": [
+      {
+        "Name": "Caterpie",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Spinarak",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "2V18NDYuTbC9FAu/2UPkEQ==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-6 Dark Cave",
+    "Pokemon": [
+      {
+        "Name": "Geodude",
+        "SpeciesId": {
+          "$numberInt": "74"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "geodude",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Zubat",
+        "SpeciesId": {
+          "$numberInt": "41"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "zubat",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Dunsparce",
+        "SpeciesId": {
+          "$numberInt": "206"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "dunsparce",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "W6OuJZtITCmQaIszWAPdPw==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-6b Dark Cave",
+    "Pokemon": [
+      {
+        "Name": "Zubat",
+        "SpeciesId": {
+          "$numberInt": "41"
+        },
+        "Amount": {
+          "$numberInt": "2"
+        },
+        "FormCode": "zubat;f",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Geodude",
+        "SpeciesId": {
+          "$numberInt": "74"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "geodude",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Dunsparce",
+        "SpeciesId": {
+          "$numberInt": "206"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "dunsparce",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "/OT9N+YFR6KpoClW9z1PUQ==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-8 Route 32",
+    "Pokemon": [
+      {
+        "Name": "Ekans",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Bellsprout",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Mareep",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Hoppip",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Zubat",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Wooper",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "wooper",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Wooper",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "wooper;f",
+        "RequireSpecificForm": true
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "5IH96MbxQPun64ZAaL1zsA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-8b Route 32",
+    "Pokemon": [
+      {
+        "Name": "Wooper",
+        "SpeciesId": {
+          "$numberInt": "194"
+        },
+        "Amount": {
+          "$numberInt": "2"
+        },
+        "FormCode": "wooper;f",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Wooper",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "wooper",
+        "RequireSpecificForm": true
+      },
+      {
+        "Name": "Ekans",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Bellsprout",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Mareep",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Hoppip",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Zubat",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "HenZ7NI2SYCUbwCy+8K3gQ==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "1-9 Sprout Tower",
+    "Pokemon": [
+      {
+        "Name": "Gastly",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Rattata",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "TtfVA3gSTEauXQ+1df1h1A==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "2-1c Togepi",
+    "Pokemon": [
+      {
+        "Name": "Togepi",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "kqSqv+EESLi8sTwq7rhkig==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "2-2c Slowpoke Well",
+    "Pokemon": [
+      {
+        "Name": "Slowpoke",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Zubat",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "o6Ii3xOLQqSrxmVKZNkCLw==",
+        "subType": "04"
+      }
+    },
+    "GameName": "HGSS",
+    "Name": "2-3c Azalea Town Headbutt",
+    "Pokemon": [
+      {
+        "Name": "Aipom",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "6"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Spearow",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Heracross",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "0"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "i/f45+rAQ9ikBzJSL5GRfw==",
+        "subType": "04"
+      }
+    },
+    "GameName": "RS",
+    "Name": "1-1 Starters",
+    "Pokemon": [
+      {
+        "Name": "Treecko",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Torchic",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      },
+      {
+        "Name": "Mudkip",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": true
+  },
+  {
+    "_id": {
+      "$binary": {
+        "base64": "X1a5yAGvQo2FxyrDgqF3NA==",
+        "subType": "04"
+      }
+    },
+    "GameName": "RS",
+    "Name": "1-2 WISHMKR Jirachi",
+    "Pokemon": [
+      {
+        "Name": "Jirachi",
+        "SpeciesId": {
+          "$numberInt": "0"
+        },
+        "Amount": {
+          "$numberInt": "1"
+        },
+        "FormCode": "",
+        "RequireSpecificForm": false
+      }
+    ],
+    "IsStatic": false
+  }
+]

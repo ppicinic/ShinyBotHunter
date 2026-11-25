@@ -42,7 +42,7 @@ flowchart LR
   end
 
   PG[(PostgreSQL + Timescale<br/>encounters)]
-  Mongo[(MongoDB<br/>CaughtPokemon, PhaseInfos, PokemonMetadata, PhaseStates, DashboardConfig)]
+  Mongo[(MongoDB<br/>CaughtPokemon, PhaseInfos, PokemonMetadata, PhaseStates, DashboardConfig, GameFiles)]
   DiscordAPI[(Discord)]
 
   Main -- REST --> API
@@ -81,7 +81,7 @@ Ports: REST on 5000 and SignalR on 5001, enforced per endpoint by `RouteExtensio
 3. Starts the persistence service's two channel consumers and the bot service.
 4. Setup commands (`--parsepokeapi`, which also fetches the animated sprites (the `Animated` folder; `ffmpeg` on the PATH is optional, for 11 forms) and the item sprites, `--parseitemsprites` for the item sprites alone, `--generatemapdatahgss <romDataDir> <decompDir> <headerCsv> <outputDir>`, `--generatemapdatars <pokerubyDir> <outputDir>`, which writes `Data/RS` from a `pret/pokeruby` checkout) run from `Tools/SetupCommands.cs` before the host is built; otherwise runs the web host and blocks on `Console.ReadLine` until `end`.
 
-Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is the **game profile**: `Startup` registers one `GameProfiles` singleton built from `HgssProfile.Create` and `RsProfile.Create`, and every per-flavor part (address table, parsers, capabilities, map data, readers) is reached through `bot.Profile`. The HGSS profile loads `Data/HGSS` when `GameProfiles` is first resolved. Adding a game flavor means one `Create` method composing its parts, plus macros and phase JSON (section 11).
+Composition is plain `IServiceCollection` with almost everything a singleton. The one deliberate extension point is the **game profile**: `Startup` registers one `GameProfiles` singleton built from `HgssProfile.Create` and `RsProfile.Create`, and every per-flavor part (address table, parsers, capabilities, map data, readers) is reached through `bot.Profile`. The HGSS profile loads `Data/HGSS` when `GameProfiles` is first resolved, and each profile loads its `milestones.json.gz` then. Adding a game flavor means one `Create` method composing its parts, plus macros and phase JSON (section 11).
 
 Configuration is `appsettings.json` bound to `ApplicationSettings` plus user secrets for tokens and the connection string. Paths to ROMs, BizHawk and sprites are absolute `D:/` paths on the dev machine.
 
@@ -93,7 +93,7 @@ All under `/api` (`ApiControllerBase`). Consumers: the dashboard only.
 |---|---|---|
 | `AdminController` | subscribe/unsubscribe a game phase for live updates; recent-encounter count; `admin/appearance` (the whole theme choice, pushed to every dashboard); `metadata` (all phases per flavor + feature flags); `getAllGames`, `refreshGames` (ROM inventory) | `AdminService`, `PhaseInfoService`, `RomInfoService` |
 | `BotController` | `getTopLevelActions` (the `OwnsEmulators` entries of `EventRegistry`, minus the by-name-only HGSS hunt), `startTopLevelAction` (launch a bot or a multi-emulator hunt), `bot/getDashboardState`, `bot/getBotActions/{pos}`, `bot/getParty/{pos}`, `bot/startAction/{pos}`, `bot/cancelAction`, `bot/getPickupItems` (the in-memory Pickup tally, `PickupTally`) | `BotService`, `PickupTally` |
-| `PhaseMetadataController` | `phaseinfo/{game}/{phase}[/{gameFileName}]` (phase definition + all counts), `updatePhaseInfo`, `phaseinfo/encounterRate/...` | `PhaseInfoService`, `PokemonPersistenceService`, `IEncounterDao` |
+| `PhaseMetadataController` | `phaseinfo/{game}/{phase}[/{gameFileName}]` (phase definition + all counts), `updatePhaseInfo`, `phaseinfo/encounterRate/...`; a game file's goal: `GET`/`PUT goal/{gameFileName}` (`PUT` refuses with a 400 a negative amount, a repeated key, or a species with both an any-form and form entries), `POST goal/{game}/{gameFileName}/preset/{preset}` (adds the preset's entries for species the goal has none for; 400 for the female preset on Ruby or Sapphire), `PUT goal/{gameFileName}/hidden?hidden=` (body: milestone id and row key); `milestone/{game}/{milestoneId}/{gameFileName}` (a generated milestone of the file's version: name, modality, slots, and its `MilestoneRows` with wanted, caught, complete, hidden and the encounters here and on the file; 404 for an unknown version or id) | `PhaseInfoService`, `PokemonPersistenceService`, `IEncounterDao`, `MongoGameFileDao`, `GameProfiles`, `RomInfoService` |
 | `DevController` | location readout and macro recording; every route 404s unless `EnableMacroRecording` | `LocationService`, `MacroRecordingService` |
 
 The action model is data-driven: `EventArgumentOptions` describes an action's required, optional and conditional parameters, and the dashboard renders forms from it. Every action is one `EventRegistration` in `Games/EventRegistry.cs` (name, options, required capability, owns-emulators flag, and the `BotService` method that starts it), so a new bot action is one registry entry plus one method, with no dashboard code change. Both start routes map `ArgumentException`, `InvalidOperationException` and `FileNotFoundException` to a plain-text 400.
@@ -107,7 +107,7 @@ The action model is data-driven: `EventArgumentOptions` describes an action's re
 | Store | Data | Access |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `encounters` hypertable, one row per encounter (species, PID, IVs, shiny flag, milestone, game file name, timestamp). Three EF migrations. | `PostgreSQLEncounterDao` via `IDbContextFactory<PokemonDbContext>` |
-| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the subscriptions and the recent count; `appearance` is not in it) | Three DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
+| MongoDB | `CaughtPokemon` (shinies actually caught), `PhaseInfos` (milestone definitions seeded from `Phases/*.json`), `PokemonMetadata` (species/forms scraped from PokeAPI), `PhaseStates` (HGSS and RS hunt state, incl. `StarterHuntStateStore`), `DashboardConfig` (one document, `_id` `dashboard`: the subscriptions and the recent count; `appearance` is not in it), `GameFiles` (one document per game file, `_id` the game file name: its goal's `Entries` and its `Hidden` rows; a read of a file with no document writes nothing, and each write is a one-field upsert) | Five DAOs/services with the raw driver, `StarterHuntStateStore`, and `MultiShinyHunterEvent` reading `PhaseStates` directly |
 | Files | ROMs and save copies under `ROMBaseDirectory`; macro YAML under `Macro/Configs/{flavor}/`; event configs under `Configs/Events/` | |
 
 ### Write path
@@ -251,6 +251,7 @@ The project grows in two known directions. Each gets one seam; nothing else is g
 | Whether a ROM can train | game and ROM | delegate over the address table | `profile.TrainingRefusal`: null for HGSS; RS refuses a table without the per-game part (US Ruby and Sapphire only) |
 | Saving after a catch | game | delegate | `profile.SaveGame`: HGSS the `SaveGame` macro, RS `RsStartMenuService.SaveViaStartMenuAsync` |
 | Map and graph data | game | `MapService`, `GraphService`, `PathfindingService` instances | `profile.Maps`, `.Graph`, `.Pathfinding`; HGSS all three from `HgssProfile.DataDirectory`; RS only `Maps`, from `RsProfile.DataDirectory` (`data/RS`) with elevation and events, which `RsNavigatorEvent` plans over with `RouteSearch` |
+| Generated milestones | game | `IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>` from `MilestoneFile.Load` | `profile.Milestones`: both profiles from their `DataDirectory`'s `milestones.json.gz`; null on the test overloads unless passed |
 | Macro set | game | YAML | `Macro/Configs/{flavor}/`, with the same macro name per flavor for the shared events |
 | Phases | game | JSON | `Phases/{flavor}/`, unchanged |
 | Console (window size, emulator budget, ROM extension, core) | console | `GameContext` + `ApplicationSettings` per `ConsoleType` | unchanged |
@@ -278,3 +279,4 @@ The two hunt orchestrations (`MultiStarterHuntEvent` for RS, `MultiShinyHunterEv
 - 2026-11-17: Ruby and Sapphire train, heal and walk home: RS declares navigation and training, the training refusal at Start, the heal trip's log line (#451).
 - 2026-11-17: section 7 and axis 1 made true for the merged RS feature (#434): `RsNavigatorEvent` over `RouteSearch` and the walk's hand-off, `RsBattleEvent`'s training and its one re-press, `FieldAdvance`, the four per-game members, and which reader carries the training reads.
 - 2026-11-18: `appearance` saved per PC in a file, not in the `DashboardConfig` document; the recent-encounters list starts empty (epic #478).
+- 2026-11-25: the `GameFiles` collection, the goal and milestone-rows endpoints, and the profile's `Milestones` part (#536, epic #508).

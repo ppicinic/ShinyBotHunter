@@ -21,9 +21,10 @@ namespace ShinyBotHunter.Games.Hgss
         public const string DataDirectory = ".\\data\\HGSS";
 
         public static GameProfile Create(PokemonMetadataService metadata)
-            => Create(metadata, new MapService(DataDirectory), new GraphService(DataDirectory));
+            => Create(metadata, new MapService(DataDirectory), new GraphService(DataDirectory), MilestoneFile.Load(DataDirectory));
 
-        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps, GraphService graph) => new(
+        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps, GraphService graph,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null) => new(
             GameFlavor.HGSS,
             new GameCapabilities(
                 HasOverworldNavigation: true,
@@ -55,6 +56,7 @@ namespace ShinyBotHunter.Games.Hgss
                 await bot.WaitForMacroAsync();
             },
             createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>(),
-            rates: HgssRates.Compute);
+            rates: HgssRates.Compute,
+            milestones: milestones);
     }
 }
