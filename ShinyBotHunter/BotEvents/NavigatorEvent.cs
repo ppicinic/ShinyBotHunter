@@ -461,14 +461,13 @@ namespace ShinyBotHunter.BotEvents
                         // the loop re-reads our real position and recomputes the A* from there.
                         continue;
                     }
-                    if (outcome is SegmentOutcome.RepelMessage or SegmentOutcome.CompletedUnderRepelMessage)
+                    if (outcome == SegmentOutcome.RepelMessage)
                     {
                         await RunEncounterEvent.CloseRepelMessageAsync(state.Bot, (HgssPointerService)state.Bot.Addresses, ScriptStale, ScriptPressConfirm,
                             cancellationToken);
-                        // Mid-segment the A replaced the walk macro, and the player stands on the tile the box came up on, so the
-                        // segment is walked again from the tile read next, as after poison. At the segment's end it is done.
-                        if (outcome == SegmentOutcome.RepelMessage)
-                            continue;
+                        // The A replaced the walk macro, and the player stands on the tile the box came up on, so the segment is
+                        // walked again from the tile read next, as after poison.
+                        continue;
                     }
                     if (outcome is SegmentOutcome.Blocked or SegmentOutcome.Sign)
                     {
@@ -491,6 +490,7 @@ namespace ShinyBotHunter.BotEvents
 
                 // After a portal crossing, poll until we're on the destination map
                 // and coordinates are valid.
+                int advance = 1;
                 var mapIdAfter = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
                 if (toNodeIsPortal)
                 {
@@ -503,8 +503,7 @@ namespace ShinyBotHunter.BotEvents
                     // node, this ends the walk.
                     var (landX, landY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
                     Console.WriteLine($"[Navigator] Portal crossed: at ({landX},{landY}) on map {mapIdAfter}, skipping the spawn node ({warpDest.X},{warpDest.Y})");
-                    state.NavigationPathIndex += 2;
-                    continue;
+                    advance = 2;
                 }
                 else if (mapIdAfter != mapId)
                 {
@@ -512,7 +511,34 @@ namespace ShinyBotHunter.BotEvents
                         [mapIdAfter], null, null, WarpStale, cancellationToken);
                 }
 
-                state.NavigationPathIndex++;
+                if (macro is not null)
+                {
+                    // The walked segment is done, so whatever the field settled in is handled and the walk goes on to the next.
+                    var end = await WaitForSegmentEndAsync(state, partyAtStart, cancellationToken);
+                    if (end == SegmentOutcome.CompletedUnderRepelMessage)
+                    {
+                        await RunEncounterEvent.CloseRepelMessageAsync(state.Bot, (HgssPointerService)state.Bot.Addresses, ScriptStale, ScriptPressConfirm,
+                            cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.Sign)
+                    {
+                        await CloseSignAsync(state.Bot.State, (HgssPointerService)state.Bot.Addresses, Press(state.Bot, cancellationToken),
+                            ScriptStale, cancellationToken);
+                        await RecoverFromBlockedSegmentAsync(state, "Walked under a sign", cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.PoisonEvent)
+                    {
+                        await ClearPoisonScriptAsync(state, cancellationToken);
+                        partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.Battle)
+                    {
+                        state.NavigationPathIndex += advance;
+                        return true;
+                    }
+                }
+
+                state.NavigationPathIndex += advance;
             }
 
             return false;
@@ -552,19 +578,45 @@ namespace ShinyBotHunter.BotEvents
                     : SegmentOutcome.Sign;
             }
 
-            // The macro can answer done with the Repel message already up (docs/research/milestone-builder.md, "HeartGold: the
-            // message during a navigator walk"), and a battle, a sign or the poison script can start on the last step too, so
-            // the segment ends on the state the field settles in, not on the reply. The Repel message is taken at its wait, so
-            // the close sees it in its wait already.
+            return SegmentOutcome.Completed;
+        }
+
+        /// <summary>
+        /// The state a completed segment's field settles in, read after any warp wait so that wait sees the door transition
+        /// itself. The macro can answer done with the Repel message already up (docs/research/milestone-builder.md, "HeartGold:
+        /// the message during a navigator walk"), and a battle, a sign or the poison script can start on the last step too, so
+        /// the segment ends on that state, not on the reply. The Repel message is taken at its wait, so the close sees it in
+        /// its wait already. A sign and the Repel message log as the stall watch logs them, and the poison script logs the
+        /// party's event as the poison watch does, since that watch lost the race to the macro.
+        /// </summary>
+        private async Task<SegmentOutcome> WaitForSegmentEndAsync(GameState state, PartySnapshot partyAtStart, CancellationToken cancellationToken)
+        {
             var hgss = (HgssPointerService)state.Bot.Addresses;
             GameSnapshot end = await GameStateWait.UntilAsync(state.Bot.State, "the field after the segment",
                 s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp) || IsSign(s, hgss)
                     || s.Script == hgss.SurvivePoisoningScript || (RunEncounterEvent.IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative),
                 TimeSpan.FromSeconds(10), cancellationToken);
             if (end.Screen == GameScreen.FieldFree) return SegmentOutcome.Completed;
-            if (RunEncounterEvent.IsRepelMessage(end, hgss)) return SegmentOutcome.CompletedUnderRepelMessage;
-            if (IsSign(end, hgss)) return SegmentOutcome.Sign;
-            if (end.Script == hgss.SurvivePoisoningScript) return SegmentOutcome.PoisonEvent;
+            if (RunEncounterEvent.IsRepelMessage(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Repel message seen: {end}");
+                return SegmentOutcome.CompletedUnderRepelMessage;
+            }
+            if (IsSign(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Sign seen: {end}");
+                return SegmentOutcome.Sign;
+            }
+            if (end.Script == hgss.SurvivePoisoningScript)
+            {
+                // The script on screen is the proof here; the party read names the member, as the poison watch's line does.
+                var party = await ReadValidatedPartyWithRetriesAsync(state.Bot, cancellationToken);
+                var poison = party is null ? null : FindPoisonEvent(party, partyAtStart);
+                Console.WriteLine(poison is null
+                    ? "[Navigator] Poison script at the end of the segment; the party read shows no poison event"
+                    : $"[Navigator] Poison event confirmed: {poison}");
+                return SegmentOutcome.PoisonEvent;
+            }
             return SegmentOutcome.Battle;
         }
 
@@ -590,7 +642,8 @@ namespace ShinyBotHunter.BotEvents
                     GameSnapshot ready = await WaitForFieldFreeOrSignAsync(bot.State, (HgssPointerService)bot.Addresses, cancellationToken);
                     if (ready.Screen != GameScreen.FieldFree)
                     {
-                        Console.WriteLine($"[Navigator] Stopped at: {ready}");
+                        Console.WriteLine(RunEncounterEvent.IsRepelMessage(ready, (HgssPointerService)bot.Addresses)
+                            ? $"[Navigator] Repel message seen: {ready}" : $"[Navigator] Sign seen: {ready}");
                         return ready;
                     }
                     (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);

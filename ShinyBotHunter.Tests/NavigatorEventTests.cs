@@ -498,15 +498,20 @@ namespace ShinyBotHunter.Tests
         private static readonly string DataDirectory = Path.Combine(RepoPaths.AppProject, "Data", "HGSS");
         private const int Route32 = 36;
 
+        // Where the field system points; any RAM value works.
+        private const uint FieldSystem = 0x02300000;
+
         private static FakeMemoryClient OnRoute32(int x, int y)
         {
-            const uint anchorTarget = 0x02300000;
             FakeMemoryClient memory = new();
-            memory.Place(Table.Anchor, BitConverter.GetBytes(anchorTarget));
-            memory.Place((uint)(anchorTarget + Table.MapIdOffset), BitConverter.GetBytes((ushort)Route32));
+            memory.Place(Table.Anchor, BitConverter.GetBytes(FieldSystem));
+            OnMap(memory, Route32);
             MoveTo(memory, x, y);
             return memory;
         }
+
+        private static void OnMap(FakeMemoryClient memory, int mapId)
+            => memory.Place((uint)(FieldSystem + Table.MapIdOffset), BitConverter.GetBytes((ushort)mapId));
 
         private static void MoveTo(FakeMemoryClient memory, int x, int y)
         {
@@ -552,13 +557,15 @@ namespace ShinyBotHunter.Tests
         {
             private enum Phase { Free, Box, Taken, After }
 
-            // Written and read by the test's one async flow and the racers it awaits; no lock.
+            // No lock. The segment's racers read concurrently while a macro runs, and there they only advance boxReads, where a
+            // lost increment changes nothing; every other change is made by a press, which comes after the racers are cancelled.
             private Phase phase = Phase.Free;
             private int boxReads;
             private int segments;
 
             public List<string> Presses { get; } = [];
             public bool BattleNext { get; init; }
+            public int Segments => segments;
 
             public void Pressed(string macro)
             {
@@ -621,20 +628,80 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(state.TilePenalties);
         }
 
-        // Nothing is pressed between the free field and the next segment, and a battle on its first step is the walk's battle.
+        // Nothing is pressed between the free field and the next segment, and a battle on its first step, while its macro is
+        // held, is that segment's battle.
         [Fact]
         public async Task BattleOnTheFirstStepAfterTheCloseIsTheWalksBattle()
         {
             FakeMemoryClient memory = OnRoute32(474, 294);
             RepelWalk walk = new([(474, 294), (474, 292), (471, 292)], memory, boxWith: 1) { BattleNext = true };
-            FakeBot bot = Route32Bot(memory, walk);
+            // The second segment's macro holds until it is cleared.
+            FakeBot bot = Route32Bot(memory, walk, b => walk.Segments == 2 && b.Macros.Count == 0 ? new TaskCompletionSource().Task : Task.CompletedTask);
             GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
 
             await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal([Segment(bot, 474, 294, 474, 292), A, Segment(bot, 474, 292, 471, 292)], walk.Presses);
+            Assert.Equal(["clear"], bot.Macros);
             Assert.Equal(EventState.BattleStart, state.State.Peek());
             Assert.Equal(1, state.NavigationPathIndex);
+        }
+
+        // A segment that ends on another map: the warp wait runs first and sees the transition, as the door QA scenarios
+        // assert, and the segment's end is read only after it, here with the Repel message up after the warp's W.60.
+        [Fact]
+        public async Task WarpWaitRunsBeforeTheSegmentEndCheck()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            List<string> presses = [];
+            string? last = null;
+            int fadeReads = 0, afterA = 0;
+            // Before the walk the free field; after the segment the door fade, then the free field; after the warp's W.60 the
+            // Repel message waiting; after the A the freed environment, then the free field.
+            GameSnapshot Read() => last switch
+            {
+                null => Free,
+                "W.60" => RepelWaiting,
+                A => afterA++ == 0 ? RepelTaken : Free,
+                _ => fadeReads++ < 3 ? ChildTask(FadeTask) : Free,
+            };
+            GameProfile hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(DataDirectory), new GraphService());
+            FakeBot bot = new(Task.CompletedTask, hgss)
+            {
+                State = new FuncReader(Read),
+                Overworld = new HgssOverworldReader(memory, Table),
+                Pressed = macro =>
+                {
+                    presses.Add(macro);
+                    last = macro;
+                    if (macro.StartsWith("M."))
+                    {
+                        MoveTo(memory, 471, 292);
+                        OnMap(memory, 37);
+                    }
+                },
+            };
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+
+            string[] lines = log.ToString().Split(Environment.NewLine);
+            int warpSawTheFade = Array.FindIndex(lines, l => l.Contains("[Navigator] Warp to map 37: on map 37, ") && l.Contains("Screen = FieldTask"));
+            int lastWarpLine = Array.FindLastIndex(lines, l => l.Contains("[Navigator] Warp to map 37: "));
+            int firstEndLine = Array.FindIndex(lines, l => l.Contains("the field after the segment") || l.Contains("Repel message seen"));
+            Assert.Equal([Segment(bot, 474, 294, 471, 292), "W.60", A], presses);
+            Assert.True(warpSawTheFade >= 0, "the warp wait did not see the transition");
+            Assert.True(firstEndLine > lastWarpLine, "the segment's end was read before the warp wait ended");
+            Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
         }
 
         // The box comes up one tile into the segment while its macro is held: the macro is cleared, one A closes the box, and the
