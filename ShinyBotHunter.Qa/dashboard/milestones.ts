@@ -32,6 +32,8 @@ const MONGOSH = path.join(process.env.LOCALAPPDATA!, 'Programs', 'mongosh', 'mon
 const made = {
   local: false,
   staged: [] as string[],
+  // Every handle stageCopy made, kept after unstage: only their follows-the-hunt cards are removed by game file.
+  throwaway: new Set<string>(),
   handles: new Set<string>(),
   plans: [] as { game: Game; name: string }[],
   subscriptions: [] as Subscription[],
@@ -88,6 +90,7 @@ export function stageCopy(handle: string, { rom, save }: { rom: string; save: st
   const copy = path.join(romDir, handle + path.extname(rom))
   if (fs.existsSync(copy)) throw new Error(`${copy} already exists: a leftover of an earlier run? Delete it by hand`)
   made.staged.push(copy)
+  made.throwaway.add(handle)
   made.handles.add(handle)
   if (save === null) {
     for (const file of [saveOf(handle), saveOf(handle) + '.bak']) fs.rmSync(file, { force: true })
@@ -351,8 +354,18 @@ export async function teardown(frame: Frame, cleanup?: () => Promise<void> | voi
   if (made.subscriptions.length > 0) {
     await attempt('the subscriptions', () => {
       for (const s of made.subscriptions) {
-        const element = { game: s.game === 'HGSS' ? 0 : 1, phase: s.phase, gameFileName: s.gameName ?? null, followsHunt: s.followsHunt ? true : { $exists: false } }
-        mongo(`db.DashboardConfig.updateOne({ _id: 'dashboard' }, { $pull: { GamePhases: ${JSON.stringify(element)} } }).modifiedCount`)
+        const game = s.game === 'HGSS' ? 0 : 1
+        // A follows-the-hunt card is moved by the hunt, so it is matched by its game file whatever milestone it holds now,
+        // as unsubscribe does; only on this run's throwaway copies, so no other card is ever removed.
+        if (s.followsHunt && !made.throwaway.has(s.gameName!)) {
+          step(`teardown: warning: follows-the-hunt card of ${s.gameName} not removed: not a copy this run staged`)
+          continue
+        }
+        const element = s.followsHunt
+          ? { game, gameFileName: s.gameName, followsHunt: true }
+          : { game, phase: s.phase, gameFileName: s.gameName ?? null, followsHunt: { $exists: false } }
+        const removed = mongo(`db.DashboardConfig.updateOne({ _id: 'dashboard' }, { $pull: { GamePhases: ${JSON.stringify(element)} } }).modifiedCount`)
+        if (removed === 0) step(`teardown: warning: subscription ${JSON.stringify(s)} not found in DashboardConfig`)
       }
       step(`teardown: subscriptions removed: ${JSON.stringify(made.subscriptions)}`)
       made.subscriptions = []
@@ -596,7 +609,8 @@ export const RS_REPEL_CLOSED = /\[Run\] REPEL's effect wore off: closed with (\d
 export const REPEL_NOT_CLOSED = /\[Run\] The Repel message did not close\./
 // NavigatorEvent: the message on a walk, a warp wait, the nurse.
 export const NAV_REPEL = /\[Navigator\] Repel message seen: (.*)$/
-export const WARP = /\[Navigator\] Warp to map (\d+): on map (\d+), (.*)$/
+// The first group is every destination id, joined by "/" (WaitForWarpAsync).
+export const WARP = /\[Navigator\] Warp to map (\d+(?:\/\d+)*): on map (\d+), (.*)$/
 export const HEALING = /\[Navigator\] Healing with/
 // DiscordBotService with no login, and OrchestratorEvent.TellAsync's failed send (FR-34a).
 export const DROPPED = /Discord is not logged in; dropping message: (.*)$/
