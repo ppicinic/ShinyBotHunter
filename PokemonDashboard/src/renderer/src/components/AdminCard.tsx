@@ -4,17 +4,19 @@ import * as api from '../services/apiClient'
 import type { AdminMetadata } from '../types/api'
 import { BotControlTab } from './admin/BotControlTab'
 import { DashboardConfigTab } from './admin/DashboardConfigTab'
+import { GoalEditorTab } from './admin/GoalEditorTab'
 import { PhaseEditorTab } from './admin/PhaseEditorTab'
 import { ConnectionStatus } from './ConnectionStatus'
 import { DevModeTab } from './DevModeTab'
 import { WindowLayoutTab } from './WindowLayoutTab'
 
-type TabId = 'config' | 'botControl' | 'phaseEditor' | 'windows' | 'macroRecord'
+type TabId = 'config' | 'botControl' | 'phaseEditor' | 'goals' | 'windows' | 'macroRecord'
 
 const BASE_TABS: { id: TabId; label: string }[] = [
   { id: 'config', label: 'Dashboard Config' },
   { id: 'botControl', label: 'Bot Control' },
   { id: 'phaseEditor', label: 'Milestone Editor' },
+  { id: 'goals', label: 'Goals' },
   { id: 'windows', label: 'Window Layout' }
 ]
 
@@ -85,6 +87,7 @@ export function AdminCard(): JSX.Element {
           <BotControlTab key={refreshKey} />
         )}
         {activeTab === 'phaseEditor' && <PhaseEditorTab />}
+        {activeTab === 'goals' && <GoalEditorTab />}
         {activeTab === 'windows' && <WindowLayoutTab />}
         {activeTab === 'macroRecord' && macroRecordingEnabled && <DevModeTab />}
       </div>
