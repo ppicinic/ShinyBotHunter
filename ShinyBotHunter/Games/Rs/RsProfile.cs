@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
@@ -21,9 +22,10 @@ namespace ShinyBotHunter.Games.Rs
 
         // RS plans over the maps alone (RouteSearch), so they carry elevation and events and there is no graph or pathfinding.
         public static GameProfile Create(PokemonMetadataService metadata)
-            => Create(metadata, new MapService(DataDirectory, withElevationAndEvents: true));
+            => Create(metadata, new MapService(DataDirectory, withElevationAndEvents: true), MilestoneFile.Load(DataDirectory));
 
-        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps) => new(
+        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null) => new(
             GameFlavor.RS,
             new GameCapabilities(
                 HasOverworldNavigation: true,
@@ -69,6 +71,7 @@ namespace ShinyBotHunter.Games.Rs
             trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null,
                 PartyMenuMainCallback2: not null }
                 ? null
-                : NoTrainingAddresses);
+                : NoTrainingAddresses,
+            milestones: milestones);
     }
 }

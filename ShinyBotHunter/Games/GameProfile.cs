@@ -6,6 +6,7 @@ using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 
@@ -65,6 +66,9 @@ namespace ShinyBotHunter.Games
         /// Repel level or null, lead ability, lead level, lead is egg). Null when the flavor has no milestones.</summary>
         public Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? Rates { get; }
 
+        /// <summary>Each version's generated milestones, from the flavor's milestone file. Null when the flavor has none.</summary>
+        public IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? Milestones { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -83,7 +87,8 @@ namespace ShinyBotHunter.Games
             TimeSpan? seekLockHandOff = null,
             Func<IServiceProvider, IBotEvent<GameState>>? createNavigatorEvent = null,
             Func<IPointerService, string?>? trainingRefusal = null,
-            Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? rates = null)
+            Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? rates = null,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -163,6 +168,7 @@ namespace ShinyBotHunter.Games
             CreateNavigatorEvent = createNavigatorEvent;
             TrainingRefusal = trainingRefusal;
             Rates = rates;
+            Milestones = milestones;
         }
     }
 }
