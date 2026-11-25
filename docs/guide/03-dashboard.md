@@ -212,13 +212,14 @@ Only the ticked Pokémon change: their entries in the goal are replaced by the m
 A game file's goal is what that file is collecting: for each Pokémon, or one form of it, how many. You set it once per game file, and every generated milestone, such as `Route 30 · grass`, shows its rows on that file through it. The milestones you made in the Milestone Editor keep their own amounts.
 
 1. In the Admin window, click the **Goals** tab.
-2. In **Game file**, pick the game file. Its goal is shown; a file with no goal yet shows none, and nothing is saved until you save or apply a preset.
-3. Optional: under **Start from a preset**, click one:
+2. In **Game file**, pick the game file. Its goal is shown; a file with no goal yet shows none, and nothing is saved until you save or pick a preset.
+3. Optional: in **Preset**, pick one. It shows the preset the file has now:
+   - **None**: no default amounts; the goal is only what you add.
    - **Living dex**: every species, as many as there are Pokémon in its evolution line; Unown is one of each of its 28 letters.
    - **Female forms** (HeartGold and SoulSilver only): every species with a female form, the female form at the number of its line that have one, and the male form at 0.
    - **Version exclusives**: one of each species found in this game's wild places and not in the other game's.
 
-   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. A species the goal already has an entry for is kept as it is, so an amount you changed survives a preset applied later. Presets do not stack on a species: one the goal already has, including from an earlier preset, is left as it is. The presets are greyed out while you have edits not yet saved.
+   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. Every amount you have not changed takes the new preset's amount, and a Pokémon the new preset does not have goes. A Pokémon you changed, added or removed by hand is left as you left it; changing one form, or one Unown letter, counts for the whole Pokémon. A Pokémon you removed stays removed when you change the preset, but it can come back if you first pick a preset without it and then one with it. To get a removed Pokémon back on purpose, add it again. A message then says how many Pokémon changed and how many hand edits were kept, for example `Living dex chosen: 412 species changed, 3 hand-edited species kept.` **Preset** is greyed out while you have edits not yet saved.
 4. Change the entries:
    - **Filter**: type part of a name, a number such as `190`, or a form code to show only those entries.
    - Each entry shows the Pokémon, its number, the form (or "any form") and its **Amount**. An amount of 0 reads "tracked, never a target": the Pokémon is shown and counted, but the bot never stops for it. An amount that is not a whole number, 0 or more, reads "Amount is a whole number, 0 or more." in red, and the goal cannot be saved until it is fixed.
