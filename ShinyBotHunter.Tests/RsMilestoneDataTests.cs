@@ -1,10 +1,17 @@
 using Newtonsoft.Json.Linq;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Tests
 {
     // The committed Data/RS/milestones.json.gz, as --generatemilestoners wrote it from pokeruby at 5784633.
+    // In the collection because MapService opens maps.bin without read sharing, and RouteSearch asks the registry for
+    // RunHold, so the working directory is the app project (as in RouteSearchTests).
+    [Collection("macro-registry")]
     public class RsMilestoneDataTests
     {
         private const int Poochyena = 261, Zigzagoon = 263, Wurmple = 265, Lotad = 270, Lombre = 271, Seedot = 273, Nuzleaf = 274;
@@ -20,6 +27,11 @@ namespace ShinyBotHunter.Tests
         private static Dictionary<int, int> Shares(Milestone milestone)
             => milestone.Slots.GroupBy(s => s.Species).ToDictionary(g => g.Key, g => g.Sum(s => s.Weight));
 
+        public RsMilestoneDataTests()
+        {
+            Directory.SetCurrentDirectory(RepoPaths.AppProject);
+        }
+
         [Fact]
         public void Route101Grass_BothVersions()
         {
@@ -30,6 +42,72 @@ namespace ShinyBotHunter.Tests
                 Assert.Equal(new Dictionary<int, int> { [Wurmple] = 45, [Zigzagoon] = 45, [Poochyena] = 10 }, Shares(route101));
                 Assert.Equal("Route 101 · grass", route101.Name);
             }
+        }
+
+        // The spike's anchors (FR-19a), each the cheapest land tile to a Pokémon Center and back.
+        [Theory]
+        [InlineData("16-land", 16, 4, 2)]
+        [InlineData("17-land", 17, 4, 7)]
+        [InlineData("18-land", 18, 12, 15)]
+        [InlineData("19-land", 19, 2, 11)]
+        [InlineData("25-land", 25, 14, 97)]
+        public void SpikeAnchors_AreReproduced(string id, int map, int x, int y)
+        {
+            foreach (var version in Versions)
+            {
+                Assert.Equal(new Anchor(map, x, y, 0, 0), Find(version, id).Anchor);
+            }
+        }
+
+        // Route 111's only land-encounter tiles are its desert, MB_UNUSED_DEEP_SAND.
+        [Fact]
+        public void Route111_AnchorOnItsDesert()
+        {
+            var maps = new MapService(DataDirectory, withElevationAndEvents: true);
+
+            var anchor = Find(RomVersion.Ruby, "26-land").Anchor!;
+
+            Assert.Equal(new Anchor(26, 19, 38, 0, 0), anchor);
+            Assert.Equal(Constant.MAP_Grass, maps.GetMap(26, true)[38, 19]);
+        }
+
+        // Cave floor is MB_UNUSED_CAVE.
+        [Fact]
+        public void GraniteCave1F_AnchorOnItsFloor()
+        {
+            var maps = new MapService(DataDirectory, withElevationAndEvents: true);
+
+            var milestone = Find(RomVersion.Ruby, "6151-land");
+
+            Assert.Equal("Granite Cave 1F · cave", milestone.Name);
+            Assert.Equal(new Anchor(6151, 37, 11, 0, 0), milestone.Anchor);
+            Assert.Equal(Constant.MAP_Grass, maps.GetMap(6151, true)[11, 37]);
+        }
+
+        [Fact]
+        public void LandAnchors_AreSpinsOnTheirMapsReachingACenterAndBack()
+        {
+            var versions = Load();
+            var maps = new MapService(DataDirectory, withElevationAndEvents: true);
+            var search = new RouteSearch(maps, new RsPointerService(), GameFlavor.RS);
+            byte[] flags = new byte[0x120], vars = new byte[0x200];
+            int Elevation(int map, int x, int y) => maps.GetMap(map, true).ElevationAt(y, x) is var e && e == 15 ? 0 : e;
+
+            foreach (var milestone in versions[RomVersion.Ruby].Where(m => m.Modality == Modality.Land && m.Anchor is not null))
+            {
+                var anchor = milestone.Anchor!;
+                Assert.Contains(anchor.Map, milestone.Maps);
+                Assert.Equal((0, 0), (anchor.XRange, anchor.YRange));
+                Assert.Equal(Constant.MAP_Grass, maps.GetMap(anchor.Map, true)[anchor.Y, anchor.X]);
+
+                var toCenter = search.Find(anchor.Map, anchor.X, anchor.Y, Elevation(anchor.Map, anchor.X, anchor.Y),
+                    (m, x, y) => x == 7 && y == 4 && maps.GetMapLookup(m).InternalName.EndsWith("_PokemonCenter_1F"), flags, vars, new Capability());
+                Assert.NotNull(toCenter);
+                var counter = toCenter.Steps[^1];
+                Assert.NotNull(search.Find(counter.Map, counter.X, counter.Y, Elevation(counter.Map, counter.X, counter.Y),
+                    (m, x, y) => m == anchor.Map && x == anchor.X && y == anchor.Y, flags, vars, new Capability()));
+            }
+            Assert.Equal(versions[RomVersion.Ruby].Select(m => m.Anchor), versions[RomVersion.Sapphire].Select(m => m.Anchor));
         }
 
         [Fact]
