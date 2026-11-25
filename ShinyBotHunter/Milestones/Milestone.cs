@@ -34,8 +34,12 @@ namespace ShinyBotHunter.Milestones
     // One headbutt tree, in its map's list order; each tile is [x, y].
     public record HeadbuttTree(bool Secret, int[][] Tiles);
 
+    // Where a milestone is hunted: a tile on game map Map, run left and right XRange tiles each way, or up and down
+    // YRange tiles each way, or with both 0 a spin.
+    public record Anchor(int Map, int X, int Y, int XRange, int YRange);
+
     // One map, or several of one location that share a table, and one way of hunting it.
-    public record Milestone(int[] Maps, Modality Modality, bool HasGrass, Slot[] Slots, HeadbuttTree[] Trees)
+    public record Milestone(int[] Maps, Modality Modality, bool HasGrass, Slot[] Slots, HeadbuttTree[] Trees, Anchor? Anchor = null)
     {
         // Stable across name corrections and regenerations; never stored in the file.
         [JsonIgnore]
