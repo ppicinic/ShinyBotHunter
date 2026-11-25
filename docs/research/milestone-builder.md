@@ -113,6 +113,35 @@ What the generated anchors do not yet account for, and must before they are trus
 - **Headbutt.** An anchor is a tile and a facing next to a tree, and the tree's table depends on the trainer ID's last digit ([headbutt research](headbutt.md)), so it is per game file.
 - **Fishing and rock smash.** Not attempted: a shore tile and a facing; a rock.
 
+### Generated land anchors (2026-11-24)
+
+`--generatemilestoneshgss` (#517) now writes an `Anchor` (game map, tile, x range, y range) on each land milestone, the same in both versions. Surf, fishing, rock smash and headbutt anchors are not generated.
+
+- **The tiles.** Grass (kind 3) for a milestone with grass, floor (kind 0) otherwise, on the milestone's maps and on the overworld only in the cells the map owns. Taken out: every trainer's sight (an object of type other than 0 sees `param0` tiles, along its facing for movement 0 and 14 to 17, otherwise in all four directions from every tile of its `xRange`/`yRange` box; beaten and hidden trainers count and walls do not block sight), and the tile below every sign (bg type 1), where an Up press opens it. Both are read from the decomp's `files/fielddata/eventdata/zone_event/NNN_<internal name>.json`, since the map data keeps neither.
+- **The rule.** The maximal runs are grouped by length, longest first, left and right before up and down at equal length. The first group of 3 or more with a run whose middle tile reaches a Pokémon Center (`FindClosestPokemonCenter`) and is reached back from it (`FindNodePath`) wins; inside it the cheapest to the Pokémon Center, then the first in row-major order. The anchor is the tile `s + (L-1)/2` with range `(L-1)/2`, so an even run leaves one end tile unpaced. Under 3, a spin on the cheapest reached tile. No HM first; with every HM only when nothing is reached without one.
+- **Route 30** is (547, 304), up-down, range 6: columns 546 and 547 are both clear from y 298 to 310, and 547 is cheaper to the Pokémon Center (166 against 171). The spike's (546, 304) above was the first column its loop visited. **Route 32** is (458, 339), up-down, range 7.
+- **Ilex Forest.** Its encounter tiles are behaviour 8, cave floor, on 934 of its 958 reachable floor tiles (tallied at B1's plan against the ROM permissions `--generatemapdatahgss` extracts); the other 24 are behaviour 0 and give nothing. The map data writes both as kind 0, so Ilex is chosen from the floor as a cave is, and its name "Ilex Forest · cave" stands. Viridian Forest's encounters are on grass (kind 3), and its anchor, (27, 58) left-right range 7, is on grass.
+
+**Counts** (90 land milestones): run left-right 47, run up-down 24, spin 0, none 19.
+
+**No anchor**, all because the committed `graph.bin` does not connect the map to a Pokémon Center in both directions, with every HM:
+
+| Milestone | What the graph does |
+|---|---|
+| 155-land Sprout Tower, 332-land Bell Tower | From the floor it reaches only the tower's own floors, never the town. |
+| 177-land Slowpoke Well B1F, 181-land B2F | B1F reaches Azalea's overworld but no Pokémon Center; B2F reaches only B1F. |
+| 238-land Ice Path B2F and B3F | Reaches only B1F. |
+| 459, 460, 462, 463, 464-land Mt. Silver Cave | Reach only other Mt. Silver Cave maps. |
+| 450-land Cerulean Cave 2F | No floor tile walks to any of the map's six graph nodes. |
+| 217-land Burned Tower B1F | Reaches a Pokémon Center, but no route back: from Burned Tower 1F's node at (15, 26) the graph walks nowhere but out through its warp. |
+| 252-land Mt. Mortar B1F | The same, at Mt. Mortar (1F back) (57, 81). |
+| 451-land Cerulean Cave B1F | The same, at Cerulean Cave 1F (49, 42). |
+| 452-land Rock Tunnel B1F | The same, at Rock Tunnel 1F (46, 10). |
+| 454, 455, 456-land Seafoam Islands B2F, B3F, B4F | The same, one floor up each: B1F (45, 21), B2F (9, 22), B3F (4, 24). |
+| 486-land Whirl Islands B3F | The same, at Whirl Islands B1F (29, 53). |
+
+**The file:** 1,203,576 bytes of JSON, 72,720 gzipped (from 70,208). Generation took 1 min 45 s on the owner's machine. Apart from the anchors, the milestones and slots are unchanged.
+
 ## The existing names
 
 Production's 20 phases, read (not written) on 2026-11-24. The suffix is the game file: none for `Pokemon SoulSilver` (living dex), `b` for `Pokemon SoulSilver2` (females), `c` for `Pokemon HeartGold` (version exclusives). The number is the owner's order.
