@@ -1,11 +1,17 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
+using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Service;
+using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using Route = ShinyBotHunter.Pathfinding.Route;
 
 namespace ShinyBotHunter.Scripts.Milestones
 {
@@ -94,8 +100,21 @@ namespace ShinyBotHunter.Scripts.Milestones
             }
             groups = groups.OrderBy(g => g[0].Header.Id).ThenBy(g => g[0].Modality).ToList();
 
+            Console.WriteLine("Anchors:");
+            var total = Stopwatch.StartNew();
+            var maps = new MapService(outputDir, withElevationAndEvents: true);
+            var search = new RouteSearch(maps, new RsPointerService(), GameFlavor.RS);
+            var anchors = new Dictionary<List<Entry>, Anchor?>();
+            foreach (var group in groups.Where(g => g[0].Modality == Modality.Land))
+            {
+                anchors[group] = FindAnchor(group, maps, search);
+            }
+            var unanchored = anchors.Where(a => a.Value is null).Select(a => $"{a.Key[0].Header.Id}-land {a.Key[0].Header.Internal}").ToList();
+            Console.WriteLine($"Anchors: {anchors.Count - unanchored.Count} spin, {unanchored.Count} none, in {total.Elapsed.TotalSeconds:F1} s");
+            Console.WriteLine($"No anchor: {string.Join(", ", unanchored)}");
+
             var file = Versions.ToDictionary(v => v, v => groups.Select(g => new Milestone(
-                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], [])).ToList());
+                g.Select(e => e.Header.Id).ToArray(), g[0].Modality, g.Any(e => e.HasGrass), g[0].Slots[v], [], anchors.GetValueOrDefault(g))).ToList());
             byte[] raw = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(file, new StringEnumConverter()));
             var compressed = new MemoryStream();
             using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
@@ -124,6 +143,101 @@ namespace ShinyBotHunter.Scripts.Milestones
                 Console.WriteLine($"  {group[0].Header.Id}-land {group[0].Header.Internal}: {string.Join(", ", group.Select(e => e.Header.MapType).Distinct())}, {(group[0].HasGrass ? "grass" : "cave")}");
             }
             Console.WriteLine($"milestones.json.gz: {raw.Length} bytes raw, {compressed.Length} gzipped");
+        }
+
+        // A land milestone's anchor (FR-19a): a spin on the land-encounter tile of its maps, out of every trainer's sight,
+        // that is cheapest on foot to a Pokémon Center's counter and is reached back from it, ties to the lowest map and
+        // then row-major. Searched with zeroed flags and variables and no HM: the RS navigator walks no HM route. Signs
+        // are not excluded: on RS a sign needs an A press, and the spin presses none.
+        private Anchor? FindAnchor(List<Entry> group, MapService maps, RouteSearch search)
+        {
+            var watch = Stopwatch.StartNew();
+            byte[] flags = new byte[0x120], vars = new byte[0x200];
+            var reached = new List<(int Map, int X, int Y, Route Route)>();
+            foreach (var entry in group)
+            {
+                var map = maps.GetMap(entry.Header.Id, true);
+                var sight = TrainerSight(JObject.Parse(File.ReadAllText(Path.Combine(decompDir, "data", "maps", entry.Header.Internal, "map.json"))));
+                for (int y = 0; y < map.Height; y++)
+                {
+                    for (int x = 0; x < map.Width; x++)
+                    {
+                        if (map[y, x] != Constant.MAP_Grass || sight.Contains((x, y)))
+                        {
+                            continue;
+                        }
+                        var route = search.Find(entry.Header.Id, x, y, Elevation(maps, entry.Header.Id, x, y), IsCounter(maps), flags, vars, new Capability());
+                        if (route is not null)
+                        {
+                            reached.Add((entry.Header.Id, x, y, route));
+                        }
+                    }
+                }
+            }
+
+            // OrderBy is stable, so equal costs keep the candidate order.
+            foreach (var (mapId, x, y, route) in reached.OrderBy(r => r.Route.Cost))
+            {
+                var counter = route.Steps[^1];
+                if (search.Find(counter.Map, counter.X, counter.Y, Elevation(maps, counter.Map, counter.X, counter.Y), (m, gx, gy) => m == mapId && gx == x && gy == y, flags, vars, new Capability()) is null)
+                {
+                    continue;
+                }
+                string crossed = route.LiveTriggers.Count == 0 ? "none" : string.Join(", ", route.LiveTriggers.Select(t => $"{maps.GetMapLookup(t.Map).InternalName} ({t.X}, {t.Y})"));
+                Console.WriteLine($"  {group[0].Header.Id}-land {group[0].Header.Internal}: {maps.GetMapLookup(mapId).InternalName} ({x}, {y}), cost {route.Cost}, "
+                    + $"to {maps.GetMapLookup(counter.Map).InternalName}, live triggers crossed: {crossed}; {watch.ElapsedMilliseconds} ms");
+                return new Anchor(mapId, x, y, 0, 0);
+            }
+            Console.WriteLine($"  {group[0].Header.Id}-land {group[0].Header.Internal}: no anchor ({reached.Count} tiles reach a Center); {watch.ElapsedMilliseconds} ms");
+            return null;
+        }
+
+        // The tile's elevation as the navigator starts a search from it: 15, any elevation, is 0.
+        private static int Elevation(MapService maps, int map, int x, int y)
+        {
+            byte elevation = maps.GetMap(map, true).ElevationAt(y, x);
+            return elevation == 15 ? 0 : elevation;
+        }
+
+        // The navigator's goal: the tile below a Pokémon Center's counter.
+        private static Func<int, int, int, bool> IsCounter(MapService maps)
+            => (map, x, y) => x == 7 && y == 4 && maps.GetMapLookup(map).InternalName.EndsWith("_PokemonCenter_1F");
+
+        // The tiles some trainer of the map's object_events sees (src/trainer_see.c): a normal trainer facing one way
+        // (MOVEMENT_TYPE_FACE_UP, _DOWN, _LEFT or _RIGHT) along its facing, every other trainer, buried ones too, in all
+        // four directions from every tile of its movement range, since it turns or walks. trainer_sight_or_berry_tree_id
+        // tiles in a straight line. Beaten trainers count and walls do not block sight.
+        internal static HashSet<(int X, int Y)> TrainerSight(JObject map)
+        {
+            var tiles = new HashSet<(int X, int Y)>();
+            foreach (var trainer in map["object_events"]?.Where(o => (string)o["trainer_type"]! != "TRAINER_TYPE_NONE") ?? [])
+            {
+                int x = (int)trainer["x"]!, y = (int)trainer["y"]!, sight = int.Parse((string)trainer["trainer_sight_or_berry_tree_id"]!);
+                (int X, int Y)? facing = ((string)trainer["trainer_type"]!, (string)trainer["movement_type"]!) switch
+                {
+                    ("TRAINER_TYPE_NORMAL", "MOVEMENT_TYPE_FACE_UP") => (0, -1),
+                    ("TRAINER_TYPE_NORMAL", "MOVEMENT_TYPE_FACE_DOWN") => (0, 1),
+                    ("TRAINER_TYPE_NORMAL", "MOVEMENT_TYPE_FACE_LEFT") => (-1, 0),
+                    ("TRAINER_TYPE_NORMAL", "MOVEMENT_TYPE_FACE_RIGHT") => (1, 0),
+                    _ => null,
+                };
+                (int X, int Y)[] directions = facing is { } f ? [f] : [(0, -1), (0, 1), (-1, 0), (1, 0)];
+                int rangeX = facing is null ? (int)trainer["movement_range_x"]! : 0, rangeY = facing is null ? (int)trainer["movement_range_y"]! : 0;
+                for (int dy = -rangeY; dy <= rangeY; dy++)
+                {
+                    for (int dx = -rangeX; dx <= rangeX; dx++)
+                    {
+                        foreach (var (stepX, stepY) in directions)
+                        {
+                            for (int step = 1; step <= sight; step++)
+                            {
+                                tiles.Add((x + dx + stepX * step, y + dy + stepY * step));
+                            }
+                        }
+                    }
+                }
+            }
+            return tiles;
         }
 
         private static Entry Make(Header header, Modality modality, bool hasGrass, Func<RomVersion, Slot[]> slots)
