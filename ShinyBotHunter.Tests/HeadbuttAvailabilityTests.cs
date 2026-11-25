@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
@@ -64,7 +65,10 @@ namespace ShinyBotHunter.Tests
                 createNavigatorEvent: hgss.CreateNavigatorEvent);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
-            var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
+            // A start moves the follows-the-hunt card, so the provider needs an AdminService; nothing here watches it.
+            var admin = new AdminService(_ => Task.CompletedTask, () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
+                _ => Task.CompletedTask, () => Task.FromResult<Appearance?>(null), _ => Task.CompletedTask, NullLogger.Instance);
+            var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().AddSingleton(admin).BuildServiceProvider();
             var service = new BotService(settings, factory, provider, null!, null!, null!);
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             FakeBot bot = factory.Bots[0];

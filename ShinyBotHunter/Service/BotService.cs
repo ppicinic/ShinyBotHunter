@@ -283,7 +283,10 @@ namespace ShinyBotHunter.Service
             {
                 throw new ArgumentException($"{args.EventName} is not a valid action to run currently.");
             }
-            return await entry.Create(this, args, pos);
+            var started = await entry.Create(this, args, pos);
+            // FR-39b: a hunt that started on a game file moves that file's follows-the-hunt card to its milestone.
+            if (slots.Entries[pos] is { Bot: { } hunter, GameState.Milestone: { } milestone }) await provider.GetRequiredService<AdminService>().FollowHuntAsync(hunter.GameFlavor, hunter.GameFileName, milestone);
+            return started;
         }
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)

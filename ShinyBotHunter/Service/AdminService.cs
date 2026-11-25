@@ -13,7 +13,7 @@ namespace ShinyBotHunter.Service
 
         // Guards gamePhases, RecentEncounterCount and appearance. Held only around the mutation or the snapshot copy, never across an await.
         private readonly object gamePhasesLock = new();
-        // Mutated by concurrent dashboard requests (subscribe/unsubscribe) and copied by UpdateDashboardsAsync (requests and every SignalR connect): read and written only under gamePhasesLock.
+        // Mutated by concurrent dashboard requests (subscribe/unsubscribe) and by FollowHuntAsync (a hunt's start and each Chained leg, on bot threads), and copied by UpdateDashboardsAsync (requests and every SignalR connect): read and written only under gamePhasesLock.
         private readonly HashSet<GamePhase> gamePhases = new HashSet<GamePhase>();
         // Set once in the constructor; the hub context and the MongoDB collection behind them are thread-safe,
         // and the appearance file is touched only inside saveGate and once in InitAsync before the host starts.
@@ -76,24 +76,57 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        public async Task SubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
+        // FR-38d: a game file has at most one follows-the-hunt card, so a second one replaces the first's milestone.
+        public async Task SubscribeGamePhaseAsync(string game, string phase, string? gameFileName, bool followsHunt = false)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName) { followsHunt = followsHunt };
             lock (gamePhasesLock)
             {
+                if (followsHunt)
+                {
+                    gamePhases.RemoveWhere(x => x.followsHunt && x.game == gp.game && x.gameFileName == gameFileName);
+                }
                 gamePhases.Add(gp);
             }
             await UpdateDashboardsAsync();
             await SaveAsync(saveShared);
         }
 
-        public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName)
+        // FR-40: the file's follows-the-hunt card moves to the hunted milestone in one push and one save; with no such card, or one already there, nothing happens.
+        public async Task FollowHuntAsync(GameFlavor game, string gameFileName, string phase)
         {
-            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName);
+            lock (gamePhasesLock)
+            {
+                GamePhase? card = gamePhases.FirstOrDefault(x => x.followsHunt && x.game == game && x.gameFileName == gameFileName);
+                if (card == null || card.phase == phase)
+                {
+                    return;
+                }
+                gamePhases.Remove(card);
+                gamePhases.Add(card with { phase = phase });
+            }
+            // A dashboard card never stops or fails a hunt: a failed push or save is logged and the move stays in memory.
+            try
+            {
+                await UpdateDashboardsAsync();
+                await SaveAsync(saveShared);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Moving the follows-the-hunt card of {Game} {GameFile} to {Phase} was not pushed or saved", game, gameFileName, phase);
+            }
+        }
+
+        // A follows-the-hunt card is removed whatever milestone it shows now, as subscribe replaces it whatever it shows.
+        public async Task UnsubscribeGamePhaseAsync(string game, string phase, string? gameFileName, bool followsHunt = false)
+        {
+            GamePhase gp = new GamePhase(Enum.Parse<GameFlavor>(game), phase, gameFileName) { followsHunt = followsHunt };
             bool removed;
             lock (gamePhasesLock)
             {
-                removed = gamePhases.Remove(gp);
+                removed = followsHunt
+                    ? gamePhases.RemoveWhere(x => x.followsHunt && x.game == gp.game && x.gameFileName == gameFileName) > 0
+                    : gamePhases.Remove(gp);
             }
             if (removed)
             {
