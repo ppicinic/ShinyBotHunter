@@ -109,7 +109,7 @@ At each decision between encounters the hunt reads the game's clock. When the pl
    You see your saved plans as buttons and **+ New plan**.
 3. Press a plan to change it, or **+ New plan** and type its name.
 4. Pick **Otherwise hunt**. Press **Add rule** for each rule, switch its chips on, and pick its **Go to**. **Up** and **Down** move a rule; **Remove** drops it.
-   A milestone with no anchor on this game file, or one that reads `(no hunt yet)`, is marked beside it: Start refuses a plan that names it.
+   A milestone with no anchor on this game file, or one with no hunt yet, has an orange hint beside it, `no anchor on this file: Start refuses the plan` or `no hunt yet: Start refuses the plan`.
 5. Under **Preview**, pick a weekday. The bar shows the 24 hours split at 04:00, 10:00 and 20:00, coloured by the milestone the rules pick, with a legend. The preview ignores completion: the hunt itself skips complete milestones.
 6. Press **Save**. Nothing is written before that. A refused save shows the server's reason in red, such as "The plan has no default milestone" or "Rule 2 names no milestone".
 
@@ -122,7 +122,7 @@ A plan in use by a hunt, running or waiting for you, cannot be deleted or rename
 1. Pick the plan in **Hunt Plan**.
    The **Milestone** field reads `Set by the plan "Johto": it starts on its default and follows the in-game clock.` The anchor line is not shown, and **Run** works with no milestone picked.
 2. Pick an **Encounter Type** that suits every milestone of the plan: Run or Spin for grass and caves, Headbutt for trees. The form's Target Type, Encounter Type and training settings apply at every stop.
-3. Press **Run**. The card names the hunt `Plan Johto`. The dashboard window follows the bot.
+3. Press **Run**. The card names the hunt `Plan Johto`. If this game file has a **Follows the hunt** window (see [Watch the counts](../03-dashboard.md#watch-the-counts)), it follows the bot.
 
 Run is refused when the plan cannot be hunted from this game file, naming the milestone:
 
@@ -133,7 +133,7 @@ Run is refused when the plan cannot be hunted from this game file, naming the mi
 | "Johto: Union Cave's anchor (12, 7) cannot be reached from here without an HM." or "... from Route 32 without an HM." | The bot cannot walk from where it stands, or from another stop, to that anchor with the party and badges as they are. |
 | The milestone refusals of a plain hunt, such as "Route 30 · headbutt is not hunted with Run." | The form's Encounter Type does not suit one of the plan's milestones. |
 
-The "Repel's effect wore off..." message during a walk between two milestones stops the walk, and about 10 s later the hunt waits for you. The bot presses nothing into the message: close it in the emulator and press **Resume**, and the walk goes on to the anchor.
+The "Repel's effect wore off..." message during a walk between two milestones stops the walk, and about 10 s later the hunt waits for you. The bot presses nothing into the message: close it in the emulator and press **Resume**. The walk is planned again from where your character stands, to the anchor of whatever milestone the clock picks now, which can be another milestone than the one it was walking to.
 
 ## Start a chained hunt
 

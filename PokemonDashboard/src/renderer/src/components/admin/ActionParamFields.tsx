@@ -264,7 +264,7 @@ export function ActionParamFields({
           ))}
           {params['HuntPlan'] && (
             <div className="text-xs text-slate-400 mt-0.5">
-              The plan picks each milestone and hunts it from its anchor. Encounter Type must suit all of them: Run or Spin for grass and caves, Headbutt for trees. The dashboard window follows the bot.
+              The plan picks each milestone and hunts it from its anchor. Encounter Type must suit all of them: Run or Spin for grass and caves, Headbutt for trees. A Follows the hunt window follows the bot.
             </div>
           )}
         </div>
