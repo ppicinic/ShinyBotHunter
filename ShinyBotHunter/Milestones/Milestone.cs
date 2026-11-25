@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using ShinyBotHunter.Games;
 
 namespace ShinyBotHunter.Milestones
 {
@@ -31,8 +32,9 @@ namespace ShinyBotHunter.Milestones
     // One line of the game's table. Species is the national dex number; Index is the slot's position in the game's table.
     public record Slot(int Index, int Species, int MinLevel, int MaxLevel, int Weight, SlotCondition Condition);
 
-    // One headbutt tree, in its map's list order; each tile is [x, y].
-    public record HeadbuttTree(bool Secret, int[][] Tiles);
+    // One headbutt tree, in its map's list order; each tile is [x, y]. Anchor is the generated tile to stand on, facing Facing
+    // toward one of the tiles, and Cost its route cost to a Pokémon Center; null when no tile beside the tree reaches one.
+    public record HeadbuttTree(bool Secret, int[][] Tiles, Anchor? Anchor = null, Direction Facing = Direction.None, int Cost = 0);
 
     // Where a milestone is hunted: a tile on game map Map, run left and right XRange tiles each way, or up and down
     // YRange tiles each way, or with both 0 a spin.
