@@ -185,6 +185,34 @@ Every grass tile on the five routes had a route. Route 111 has a land table but 
 
 Run on Sapphire (a copy of `rs.qa-route101`, 2026-11-24): the navigator walked from (14, 4) to the generated anchor (4, 2) in 109 frames and the Spin hunt gave 44 encounters there: Wurmple 23, Zigzagoon 16, Poochyena 5, against the table's 45, 45 and 10.
 
+### The generated file (2026-11-24)
+
+`--generatemilestoners` (#512) run against `pret/pokeruby` at `5784633` wrote `ShinyBotHunter/Data/RS/milestones.json.gz` (241,189 bytes of JSON, 8,943 gzipped). Maps of one region map section (`region_map_section` in each `map.json`) are one milestone per modality when their slots for it are identical in both versions, levels included, the same rule as HGSS. The four Safari Zone maps (6656 to 6659) are left out. This supersedes the 283 above, which counted every map on its own.
+
+**Counts, the same in both versions and with the same ids:** 226 milestones: land 46, surf 46, Old Rod 43, Good Rod 43, Super Rod 44, rock smash 4.
+
+**The land word** is from the map's `map_type`, not its tiles: `MAP_TYPE_UNDERGROUND` and `MAP_TYPE_INDOOR` are "cave", every other type "grass". So Route 111 and Route 130 (`MAP_TYPE_6`) are "grass", Mt. Pyre 1F to 6F (indoor) and New Mauville Inside (underground) are "cave", and regenerating the tile kinds does not rename anything.
+
+**Underwater (Route 124) (50) and Underwater (Route 126) (51)** are kept as surf. Their table is `water_mons` with the surf weights, but it is met by diving onto seaweed, not by surfing. They are the only RS source of Clamperl, Chinchou and Relicanth.
+
+**The merged milestones** and their names in `Data/RS/map-names.json`'s `Groups`:
+
+| Id | Maps | Name |
+|---|---|---|
+| 6144-oldrod, 6144-goodrod | 6144 to 6147 | Meteor Falls |
+| 6145-land | 6145, 6146 | Meteor Falls 1F 2R and B1F 1R |
+| 6145-surf, 6145-superrod | 6145, 6146, 6147 | Meteor Falls 1F 2R, B1F 1R and B1F 2R |
+| 6159-land | 6159, 6160, 6161 | Mt. Pyre 1F, 2F and 3F |
+| 6162-land | 6162, 6163, 6164 | Mt. Pyre 4F, 5F and 6F |
+| 6171-surf, 6171-oldrod, 6171-goodrod, 6171-superrod | 6171, 6177, 6178 | Seafloor Cavern |
+| 6172-land | 6172 to 6179 | Seafloor Cavern |
+| 6182-land | 6182 to 6185 | Cave of Origin 1F, B1F, B2F and B3F |
+| 6190-land | 6190 to 6193 | Shoal Cave Low Tide Entrance Room, Inner Room, Stairs Room and Lower Room |
+| 6190-surf, 6190-oldrod, 6190-goodrod, 6190-superrod | 6190, 6191 | Shoal Cave |
+| 6202-surf, 6202-oldrod, 6202-goodrod, 6202-superrod | 6202, 6209 | Abandoned Ship |
+
+Feebas and mass outbreaks are not table slots and are not in the file.
+
 ## Not proved
 
 - Ruby and Sapphire: one anchor was run. Their rates, their Repel address and their cave and desert tiles were not.
