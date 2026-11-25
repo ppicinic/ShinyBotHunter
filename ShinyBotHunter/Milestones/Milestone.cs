@@ -48,5 +48,9 @@ namespace ShinyBotHunter.Milestones
         // Set by MilestoneFile.Load from map-names.json.
         [JsonIgnore]
         public string Name { get; init; } = "";
+
+        // The modalities some EncounterType hunts: Spin and Run hunt land, Headbutt hunts headbutt (FR-15a).
+        [JsonIgnore]
+        public bool Huntable => Modality is Modality.Land or Modality.Headbutt;
     }
 }
