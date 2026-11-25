@@ -121,7 +121,7 @@ From the owner, 2026-11-25:
 | FR-19 | HGSS. Each grass, cave and surf milestone has a generated anchor: among tiles of the milestone's kind inside its own maps, the longest straight run that the pathfinder can reach from the map's entrance and that is in no trainer's line of sight and under no sign. Left-right is preferred over up-down at equal length; under three tiles, a single tile to spin on. Among equal runs, the one with the shortest route to a Pokémon Center. | Must | Unit test on the committed map data for Route 30, Route 32 and one cave. |
 | FR-19a | RS. Each land milestone's anchor is a spin on the land tile with the cheapest route to a Pokémon Center's counter, by `RouteSearch` with no HM. The spike's results, to be reproduced: Route 101 (4, 2) to Oldale Town, Route 102 (4, 7) to Petalburg City, Route 103 (12, 15) to Oldale Town, Route 104 (2, 11) to Rustboro City, Route 110 (14, 97) to Slateport City. | Must | Unit test on the committed RS data for those five. |
 | FR-19b | RS. A land tile is one whose tile behaviour the game marks as giving wild encounters and that is not water: in `pokeruby`'s `src/metatile_behavior.c` these are tall grass, long grass, ash grass, the footprint sand of Route 111's desert, cave floor and indoor-encounter floor. Plain sand gives none. The committed RS map data marks only grass as kind 3, so Route 111 gave no tile in the spike; the map data's generator is extended to mark every such tile, and the anchor is then chosen as FR-19a says. In a cave that is almost every floor tile. | Must | Unit test: Route 111 has an anchor on its desert; a cave has one on its floor. |
-| FR-20 | The anchor is the middle tile of the run with the range that reaches both ends, since the Run encounter paces an equal distance each way and a longer line means fewer turns. | Must | Unit test: Route 30 gives (546, 304), up-down, range 6. |
+| FR-20 | The anchor is the middle tile of the run with the range that reaches both ends, since the Run encounter paces an equal distance each way and a longer line means fewer turns. | Must | Unit test: Route 30 gives (547, 304), up-down, range 6. |
 | FR-21 | Headbutt, fishing and rock smash anchors are a tile and a facing: the tree, shore tile or rock with the shortest route to a Pokémon Center. For headbutt the tree must be one that gives the wanted table for the game file's trainer ID, so the anchor is worked out per game file. | Should | Unit test for Azalea Town with trainer ID 15613. |
 | FR-22 | The operator can replace a milestone's anchor with where the bot stands and how it faces, per game file, and can clear the replacement. | Must | QA. |
 | FR-23 | Starting a hunt at a milestone with an anchor walks there first. With no anchor (a custom milestone), the hunt starts where the bot stands, as today. | Must | QA. |
@@ -218,7 +218,7 @@ New scenarios, on a copy of `hgss.qa-route32` unless said; the emulator's DS clo
 | `hgss-plan-morning-back` | From 09:52: moves to Route 30, back to Route 32 after 10:00. |
 | `hgss-plan-weekday` | A weekday rule matches and one for another day does not. |
 | `hgss-plan-refused` | A plan naming a milestone behind Surf on a save without it is refused. |
-| `hgss-milestone-anchor` | Starting "Route 30 · grass" from Route 32 walks to (546, 304) and runs up and down. |
+| `hgss-milestone-anchor` | Starting "Route 30 · grass" from Route 32 walks to (547, 304) and runs up and down. |
 | `hgss-milestone-bad-anchor` | A replaced anchor on a path stops the hunt with FR-24's sentence. |
 | `hgss-rates-repel` | The Repel counter written during a hunt: the card's shares change, blocked rows dim; at zero the message is closed and the hunt carries on. |
 | `hgss-rates-clock` | The card's rows change at 20:00 in-game with no move. |
@@ -292,6 +292,13 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - Cards are of two kinds: fixed, as today, any number per game file; and one follows-the-hunt card per game file (FR-38d, FR-39 to FR-39c). FR-39 no longer makes every card that names a game file that file's one window.
   - Plans are saved by name and shared between game files (FR-37a to FR-37c), in a second Mongo collection (NFR-3 amended from one collection to two).
   - Not built: a card that switches by a plan with no hunt running (FR-37c).
+
+- 2026-11-25 (B1, #517), decided by the orchestrator:
+  - FR-20's example is (547, 304), not (546, 304): columns 546 and 547 are both 13 clear grass tiles, and FR-19's tie-break (the shorter route to a Pokémon Center, 166 against 171 by the pathfinder) picks 547. The spike's 546 was the first column its loop visited.
+  - FR-19: surf anchors are deferred. Start refuses surf, nothing would read one, and what a water anchor means is not defined.
+  - FR-19: 71 of HGSS's 90 land milestones have a generated anchor. 19 have none, because the committed pathfinder graph gives no round trip between them and a Pokémon Center (Sprout Tower, Bell Tower, Slowpoke Well B1F and B2F, Burned Tower B1F, Ice Path B2F/B3F, Mt. Mortar B1F, Rock Tunnel B1F, Cerulean Cave 2F and B1F, Seafoam Islands B2F to B4F, Whirl Islands B3F, five Mt. Silver Cave maps; the list and each reason are in the research doc). A generated milestone with no anchor is treated as FR-46 treats a custom one: hunted from where the bot stands, given an anchor by the operator (FR-22), and not a plan's destination until it has one (FR-35). The graph is not changed in this feature.
+  - FR-19: trainers and signs are read from the decomp at generation, not from the committed map data. Every trainer's sight is excluded, beaten or not.
+  - FR-21 (headbutt anchors, a Should) is its own task.
 
 ## Appendix: the maps and their names
 
