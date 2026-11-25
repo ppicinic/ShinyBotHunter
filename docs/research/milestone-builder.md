@@ -242,14 +242,14 @@ Run on Sapphire (a copy of `rs.qa-route101`, 2026-11-24): the navigator walked f
 
 Feebas and mass outbreaks are not table slots and are not in the file.
 
-### Generated land anchors (2026-11-24)
+### Generated RS land anchors (2026-11-24)
 
 `--generatemilestoners` (#518) now writes an `Anchor` on each land milestone it can, the same in both versions, always a spin (both ranges 0). Surf, fishing and rock smash anchors are not generated. Apart from the anchors the file is unchanged: 249,543 bytes of JSON, 9,548 gzipped. The anchors took 7.4 s.
 
 - **The tiles.** Kind 3 on the milestone's maps, which since #518 is every land-encounter behaviour, cave floor and Route 111's desert included ([RS research, "The generated data"](rs-navigation-and-training.md#the-generated-data)). Taken out: every trainer's sight, read from each `data/maps/<Name>/map.json`'s `object_events` (`src/trainer_see.c`): a `TRAINER_TYPE_NORMAL` trainer with `MOVEMENT_TYPE_FACE_UP`, `_DOWN`, `_LEFT` or `_RIGHT` sees along that facing, every other trainer (buried ones too) in all four directions from every tile of its `movement_range_x`/`_y` box; `trainer_sight_or_berry_tree_id` tiles in a straight line, beaten trainers counted and walls not modelled. Signs are not taken out: on RS a sign needs an A press, and the spin presses none.
 - **The rule.** `RouteSearch` from every tile to the navigator's goal (a Pokémon Center's counter, (7, 4) on a `_PokemonCenter_1F` map), with flags and variables all 0 and no HM, starting at the tile's elevation (15 as 0). In ascending cost, ties to the lowest map and then row-major, the first tile that the counter reaches back wins. No HM fallback: the RS navigator walks no HM route.
 - **The spike's five** are reproduced: Route 101 (4, 2) 37, Route 102 (4, 7) 38, Route 103 (12, 15) 54, Route 104 (2, 11) 133, Route 110 (14, 97) 54.
-- **Route 111** is (19, 38) on the desert, cost 900, to Fallarbor Town. Its route crosses three live triggers: (10, 36) and (17, 38) set the weather, and (18, 38), live while `VAR_TEMP_3` is 0 as it is on entering the map, turns the player back without the Go-Goggles (`Route111_EventScript_15013A`). Every desert tile is behind it, so the anchor is only walked to with the Go-Goggles.
+- **Route 111** is (19, 38) on the desert, cost 900, to Fallarbor Town. Its route crosses three live triggers: (10, 36) and (17, 38) set the weather, and (18, 38), live while `VAR_TEMP_3` is 0 as it is on entering the map, turns the player back without the Go-Goggles (`Route111_EventScript_15013A`). The return route from the Pokémon Center crosses (17, 38) and (18, 38) again and a fourth trigger, (9, 37), which also sets the weather. Every desert tile is behind (18, 38), so the anchor is only walked to with the Go-Goggles. The gate is a `checkitem ITEM_GO_GOGGLES` behind `VAR_TEMP_3`, a temporary variable that resets on every map entry (and that the weather triggers at (9, 37) and (10, 36) set back to 0), so a route search with a real game file's flags and variables still crosses it as live.
 - **Caves:** Granite Cave 1F (37, 11) 111, B1F (3, 21) 230, B2F (29, 12) 388 and Steven's room (7, 4) 260, all to Dewford Town; Rusturf Tunnel (29, 15) 59; Meteor Falls 1F 1R (27, 17) 271; Fiery Path (26, 3) 339; Victory Road 1F (15, 39) 71 and B1F (9, 3) 227.
 
 **Counts** (46 land milestones): spin 24, none 22.

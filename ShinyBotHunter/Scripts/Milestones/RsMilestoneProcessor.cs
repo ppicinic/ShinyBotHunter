@@ -210,7 +210,7 @@ namespace ShinyBotHunter.Scripts.Milestones
         internal static HashSet<(int X, int Y)> TrainerSight(JObject map)
         {
             var tiles = new HashSet<(int X, int Y)>();
-            foreach (var trainer in map["object_events"]?.Where(o => (string)o["trainer_type"]! != "TRAINER_TYPE_NONE") ?? [])
+            foreach (var trainer in map["object_events"]!.Where(o => (string)o["trainer_type"]! != "TRAINER_TYPE_NONE"))
             {
                 int x = (int)trainer["x"]!, y = (int)trainer["y"]!, sight = int.Parse((string)trainer["trainer_sight_or_berry_tree_id"]!);
                 (int X, int Y)? facing = ((string)trainer["trainer_type"]!, (string)trainer["movement_type"]!) switch

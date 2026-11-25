@@ -37,9 +37,9 @@ Everything needed is in the checkout, no ROM unpacking:
 
 | Kind | Byte | From | Prototype count | `Data/RS` count (#440) |
 |---|---|---|---|---|
-| Free | 0x00 | no collision, plain behaviour | 59,013 | 64,176 |
+| Free | 0x00 | no collision, plain behaviour | 59,013 | 64,176; 55,263 since #518 |
 | Portal | 0x01 | a warp event's tile | 1,108 | 988 |
-| Grass | 0x03 | every land-encounter behaviour (corrected 2026-11-24, below) | 5,972 | 6,066 |
+| Grass | 0x03 | every land-encounter behaviour (corrected 2026-11-24, below) | 5,972 | 6,066; 14,979 since #518 |
 | Surf | 0x04 | every water behaviour, currents included | 55,450 | 52,464 |
 | Ledges right, left, down | 0x05, 0x06, 0x07 | `MB_JUMP_EAST`, `_WEST`, `_SOUTH` | 132, 171, 647 | 132, 171, 647 |
 | Waterfall | 0x0D | `MB_WATERFALL` | 196 | 196 |
