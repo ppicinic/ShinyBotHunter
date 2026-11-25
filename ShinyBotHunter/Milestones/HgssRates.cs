@@ -25,7 +25,7 @@ namespace ShinyBotHunter.Milestones
             for (int i = 0; i < slots.Length; i++)
             {
                 double mass = picks[i]
-                    * Levels(slots[i]).Sum(l => l.Chance * Kept(l.Level, ability, leadLevel, repel));
+                    * Levels(slots, i, milestone.Modality, ability).Sum(l => l.Chance * Kept(l.Level, ability, leadLevel, repel));
                 masses[slots[i].Species] += mass;
                 survive += mass;
             }
@@ -68,11 +68,22 @@ namespace ShinyBotHunter.Milestones
             return picks.Select((p, i) => 0.5 * p + (typed[i] ? 0.5 / count : 0)).ToArray();
         }
 
-        // A land slot has one level; any other slot rolls uniformly within its range (encounter_check.c:742-764).
-        private static IEnumerable<(int Level, double Chance)> Levels(Slot slot)
+        // The levels slot i gives and their chances. A land slot has one level; with Hustle, Vital Spirit or Pressure, half the
+        // time the roll moves to the same species' highest-level slot (encounter_check.c:1359-1373). Any other slot rolls
+        // uniformly within its range, and with those abilities half the time takes the top of it (:742-764).
+        private static IEnumerable<(int Level, double Chance)> Levels(Slot[] slots, int i, Modality modality, Ability ability)
         {
+            Slot slot = slots[i];
+            bool hustle = ability is Ability.Hustle or Ability.VitalSpirit or Ability.Pressure;
+            if (modality == Modality.Land)
+            {
+                int top = slots.Where(s => s.Species == slot.Species).Max(s => s.MaxLevel);
+                return hustle ? [(slot.MaxLevel, 0.5), (top, 0.5)] : [(slot.MaxLevel, 1.0)];
+            }
             int range = slot.MaxLevel - slot.MinLevel + 1;
-            return Enumerable.Range(slot.MinLevel, range).Select(level => (level, 1.0 / range));
+            double share = hustle ? 0.5 / range : 1.0 / range;
+            return Enumerable.Range(slot.MinLevel, range)
+                .Select(level => (level, level == slot.MaxLevel && hustle ? share + 0.5 : share));
         }
 
         // Keen Eye or Intimidate, then Repel (encounter_check.c:921-926). The lead-level-5 guard (:1153) cannot change the

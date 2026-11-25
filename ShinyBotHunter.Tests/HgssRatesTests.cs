@@ -250,6 +250,52 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(plain.Survive, survive, 6);
         }
 
+        [Theory]
+        [InlineData(Ability.Hustle)]
+        [InlineData(Ability.VitalSpirit)]
+        [InlineData(Ability.Pressure)]
+        public void HustleFamily_LandMovesToTheSpeciesHighestSlot(Ability ability)
+        {
+            var (shares, survive) = HgssRates.Compute(Route32, SlotCondition.Day, 6, (byte)ability, 20, false);
+
+            Assert.Equal(0.675, survive, 6);
+            AssertShares(new()
+            {
+                [Bellsprout] = 30 / 67.5, [Mareep] = 20 / 67.5, [Hoppip] = 10 / 67.5, [Rattata] = 7.5 / 67.5, [Ekans] = 0
+            }, shares);
+        }
+
+        [Fact]
+        public void HustleFamily_NoRepel_SharesUnchanged()
+        {
+            var (shares, survive) = HgssRates.Compute(Route32, SlotCondition.Day, null, (byte)Ability.Hustle, 20, false);
+
+            AssertShares(Route32DayPlain, shares);
+            Assert.Equal(1, survive, 6);
+        }
+
+        [Fact]
+        public void HustleFamily_RangeTakesTheTopHalfTheTime()
+        {
+            var (_, survive) = HgssRates.Compute(Surf10To19, SlotCondition.Day, 15, (byte)Ability.Hustle, 20, false);
+
+            Assert.Equal(0.75, survive, 6);
+        }
+
+        [Theory]
+        [InlineData(Ability.KeenEye, 9, null)]
+        [InlineData(Ability.Static, 20, null)]
+        [InlineData(Ability.Hustle, 20, 6)]
+        public void EggLead_TurnsAbilitiesOff(Ability ability, int leadLevel, int? repelLevel)
+        {
+            var off = HgssRates.Compute(Route32, SlotCondition.Day, repelLevel, 0, leadLevel, false);
+
+            var (shares, survive) = HgssRates.Compute(Route32, SlotCondition.Day, repelLevel, (byte)ability, leadLevel, true);
+
+            AssertShares(new(off.Shares), shares);
+            Assert.Equal(off.Survive, survive, 6);
+        }
+
         [Fact]
         public void SoundSlots_CountedAsOff()
         {
