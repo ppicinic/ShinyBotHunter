@@ -134,7 +134,7 @@ The bot reads the game when you press Run on a Ruby or Sapphire **Wild Encounter
 |---|---|---|
 | `A Wishmaker Jirachi Hunt is already running.` | Only one Jirachi hunt can run. | Wait for it, or cancel it first. |
 | `<action> is not a valid action to run currently.` | That bot is busy, or cannot run that action now. | Wait for the bot to be idle, or cancel what it is doing. |
-| `There is not bot at position: <n>` | No emulator is at that position any more. | Refresh the dashboard and pick a running emulator. |
+| `There is no bot at position: <n>` | No emulator is at that position any more. | Refresh the dashboard and pick a running emulator. |
 
 Two refusals come back as a plain error, so the dashboard may show only a general server error. Their text is in the backend's window:
 
