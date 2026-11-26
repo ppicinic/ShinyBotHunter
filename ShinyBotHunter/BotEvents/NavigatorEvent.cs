@@ -81,7 +81,14 @@ namespace ShinyBotHunter.BotEvents
             RepelMessage,
             // The macro finished with that message up.
             CompletedUnderRepelMessage,
+            // A sight trainer's challenge stopped the walk (TrainerApproachScript).
+            Trainer,
         }
+
+        // std_trainer_approach: a sight trainer has seen the player. Up from the frame the step into his line begins, with no
+        // free or transitioning frame before it, and at the speech's arrow until A (docs/research/milestone-builder.md,
+        // "HeartGold and SoulSilver: a trainer's challenge during a navigator walk").
+        private const int TrainerApproachScript = 3739;
 
         public NavigatorEvent(PokemonStateReader reader, ShinyAlertService alerts) : this(reader, alerts.NotifyStopAsync)
         {
@@ -271,11 +278,17 @@ namespace ShinyBotHunter.BotEvents
             => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask
                 && (s.Native == addresses.SignWaitNative || s.Native == addresses.SignPrintingNative);
 
-        // The overworld-ready wait that also stops at a sign, or at "Repel's effect wore off..." printing or waiting (FR-29); a warp,
-        // a poison script or a battle behaves as in Overworld.WaitForReadyAsync.
+        // A trainer's challenge (#604): the approach script under the script task, read from the script alone. Used only by the
+        // walk's two readers; during the battle the snapshot carries no script, so it is never read as the stop going on.
+        internal static bool IsTrainerChallenge(GameSnapshot s, HgssPointerService addresses)
+            => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask && s.Script == TrainerApproachScript;
+
+        // The overworld-ready wait that also stops at a sign, at "Repel's effect wore off..." printing or waiting (FR-29), or at a
+        // trainer's challenge; a warp, a poison script or a battle behaves as in Overworld.WaitForReadyAsync.
         internal static Task<GameSnapshot> WaitForFieldFreeOrSignAsync(IGameStateReader game, HgssPointerService addresses, CancellationToken ct)
             => GameStateWait.UntilAsync(game, "the overworld ready",
-                s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses) || RunEncounterEvent.IsRepelMessage(s, addresses),
+                s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses) || RunEncounterEvent.IsRepelMessage(s, addresses)
+                    || IsTrainerChallenge(s, addresses),
                 TimeSpan.FromSeconds(10), ct);
 
         /// <summary>
@@ -581,6 +594,7 @@ namespace ShinyBotHunter.BotEvents
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
                 GameSnapshot? stopped = await stallTask;
                 return stopped is null ? SegmentOutcome.Blocked
+                    : IsTrainerChallenge(stopped.Value, (HgssPointerService)state.Bot.Addresses) ? SegmentOutcome.Trainer
                     : RunEncounterEvent.IsRepelMessage(stopped.Value, (HgssPointerService)state.Bot.Addresses) ? SegmentOutcome.RepelMessage
                     : SegmentOutcome.Sign;
             }
@@ -601,9 +615,15 @@ namespace ShinyBotHunter.BotEvents
             var hgss = (HgssPointerService)state.Bot.Addresses;
             GameSnapshot end = await GameStateWait.UntilAsync(state.Bot.State, "the field after the segment",
                 s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp) || IsSign(s, hgss)
-                    || s.Script == hgss.SurvivePoisoningScript || (RunEncounterEvent.IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative),
+                    || s.Script == hgss.SurvivePoisoningScript || (RunEncounterEvent.IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative)
+                    || IsTrainerChallenge(s, hgss),
                 TimeSpan.FromSeconds(10), cancellationToken);
             if (end.Screen == GameScreen.FieldFree) return SegmentOutcome.Completed;
+            if (IsTrainerChallenge(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Trainer challenge seen: {end}");
+                return SegmentOutcome.Trainer;
+            }
             if (RunEncounterEvent.IsRepelMessage(end, hgss))
             {
                 Console.WriteLine($"[Navigator] Repel message seen: {end}");
@@ -633,7 +653,8 @@ namespace ShinyBotHunter.BotEvents
         /// coordinate reaches its target, so anything that blocks movement holds that direction forever
         /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
         /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait. Returns null on a
-        /// stall, and the snapshot when the held wait ends at a sign (<see cref="IsSign"/>) or the Repel message.
+        /// stall, and the snapshot when the held wait ends at a sign (<see cref="IsSign"/>), the Repel message or a trainer's
+        /// challenge (<see cref="IsTrainerChallenge"/>).
         /// </summary>
         private async Task<GameSnapshot?> WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -649,8 +670,9 @@ namespace ShinyBotHunter.BotEvents
                     GameSnapshot ready = await WaitForFieldFreeOrSignAsync(bot.State, (HgssPointerService)bot.Addresses, cancellationToken);
                     if (ready.Screen != GameScreen.FieldFree)
                     {
-                        Console.WriteLine(RunEncounterEvent.IsRepelMessage(ready, (HgssPointerService)bot.Addresses)
-                            ? $"[Navigator] Repel message seen: {ready}" : $"[Navigator] Sign seen: {ready}");
+                        Console.WriteLine(IsTrainerChallenge(ready, (HgssPointerService)bot.Addresses) ? $"[Navigator] Trainer challenge seen: {ready}"
+                            : RunEncounterEvent.IsRepelMessage(ready, (HgssPointerService)bot.Addresses) ? $"[Navigator] Repel message seen: {ready}"
+                            : $"[Navigator] Sign seen: {ready}");
                         return ready;
                     }
                     (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);

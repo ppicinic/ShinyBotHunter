@@ -288,6 +288,44 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(Script(SignWait, 9), end);
         }
 
+        // Youngster Joey's challenge on Route 30 (docs/research/milestone-builder.md, "HeartGold and SoulSilver: a trainer's
+        // challenge during a navigator walk", R2): the approach script with its first native, with none, printing, at the arrow.
+        private const int TrainerApproach = 3739;
+        private static readonly GameSnapshot ChallengeStep = Script(0x02046D41, TrainerApproach);
+        private static readonly GameSnapshot ChallengeQuiet = Script(null, TrainerApproach);
+        private static readonly GameSnapshot ChallengeArrow = Script(Printing, TrainerApproach, 2, 0x022A860E);
+
+        public static TheoryData<GameSnapshot, bool> ChallengeSnapshots => new()
+        {
+            { ChallengeStep, true },
+            { ChallengeQuiet, true },
+            { Script(Printing, TrainerApproach, 0), true },
+            { ChallengeArrow, true },
+            { Script(Printing, 3007, 2), false },
+            { Script(null, 3), false },
+            { RepelPrinting, false },
+            { Script(Printing, 2003, 2), false },
+            { new GameSnapshot(GameScreen.FieldTask, null, null, null, 0x020551B9), false },
+            { Free, false },
+        };
+
+        [Theory]
+        [MemberData(nameof(ChallengeSnapshots))]
+        public void IsTrainerChallengeOnlyOnTheApproachScript(GameSnapshot snapshot, bool challenge)
+        {
+            Assert.Equal(challenge, NavigatorEvent.IsTrainerChallenge(snapshot, Table));
+        }
+
+        [Fact]
+        public async Task HeldWatchEndsOnATrainerChallenge()
+        {
+            ScriptedReader reader = new(ChallengeStep, ChallengeQuiet, ChallengeArrow);
+
+            GameSnapshot end = await NavigatorEvent.WaitForFieldFreeOrSignAsync(reader, Table, CancellationToken.None);
+
+            Assert.Equal(ChallengeStep, end);
+        }
+
         // The door trace: no script, never the script task.
         [Fact]
         public async Task HeldWatchEndsOnTheFreeFieldThroughAWarp()
