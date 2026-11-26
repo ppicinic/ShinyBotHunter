@@ -158,6 +158,8 @@ From the owner, 2026-11-25:
 | FR-37b | The dashboard lists the saved plans and can add, edit, rename and delete one. A plan in use by a running hunt cannot be deleted. Editing a plan does not change a hunt already running on it; the hunt reads the plan at Start. | Must | Unit test; QA. |
 | FR-37c | A card does not follow a plan by itself: with no hunt running, the in-game clock is not known. A plan reaches a card only through the hunt, by FR-39b. | Must | By design; no test. |
 
+FR-36, note of 2026-11-26: at the first decision after Start nothing is being left, so the clock's pick becomes the milestone before the first walk (C3b, #550; `HuntPlanRun.cs:62-64`, pinned by `Step_FirstDecision_PickBecomesTheMilestone_ThenWalks`). An encounter on that first walk is logged under the pick. Every later walk logs under the milestone being left, as the row says.
+
 ### The navigator at a side door
 
 The bug the spike ran into, on `main` at v0.1.3. It is not specific to plans: any walk through such a door parks.
@@ -334,8 +336,8 @@ Nothing below was run for this close-out; the results are the orchestrator's QA 
 | `hgss-plan-ending` | `default-complete` | `20261126-120414` | Pass, 2.6 min; no completion message, as expected. |
 | `hgss-plan-ending` | `all-complete` | `20261126-120654` | Pass, 0.7 min; no completion message, as expected. |
 | `hgss-plan-repel-walk` | | `20261126-103228` | Pass, 1.7 min. |
-| `hgss-plan-night` | `night` | `20261126-105048` | Pass, 16.3 min; one completion message. The run before it, `20261126-103410`, failed on the old assert (six Rattata in six encounters): the shares, 40, 30 and 30, are right against the decomp, and the fixed clock start replays the game's RNG. With #610's assert it passed again, `20261126-141542`. |
-| `hgss-plan-night` | `start-on-rule` | `20261126-110705` | Pass, 2.5 min; again `20261126-143147`. |
+| `hgss-plan-night` | `night` | `20261126-105048` | Pass, 16.3 min; one completion message. FR-36 mid-hunt: two Spinarak met on the walk at 20:00 are logged under `36-land`, the milestone left, and the switch comes on arrival. The run before it, `20261126-103410`, failed on the old assert (six Rattata in six encounters): the shares, 40, 30 and 30, are right against the decomp, and the fixed clock start replays the game's RNG. With #610's assert it passed again, `20261126-141542`. |
+| `hgss-plan-night` | `start-on-rule` | `20261126-110705` | Pass, 2.5 min; again `20261126-143147`. The first walk logs under the pick (FR-36 note): Bellsprout on Route 31 under `34-land`. |
 | `hgss-plan-morning-back` | `back` | `20261126-110936` | Pass, 23.3 min. |
 | `hgss-plan-morning-back` | `complete-on-return` | `20261126-113257` | Pass, 24.4 min; one completion message. |
 | `hgss-plan-weekday` | `hg` | `20261126-092747` | Pass, 14.3 min, in the N1c coder's worktree on the bot code of `bd96858`. |
