@@ -760,5 +760,207 @@ namespace ShinyBotHunter.Tests
             Assert.Empty(state.TilePenalties);
             Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
         }
+
+        private const string TrainerSentence = "A trainer battle started on R32.";
+
+        // Each segment macro moves the player to the next of tiles. From a segment numbered in challengeOn the approach script is
+        // up, one read with no native then the speech at its arrow, until the test says the trainer was beaten.
+        private sealed class TrainerWalk((int X, int Y)[] tiles, FakeMemoryClient memory, params int[] challengeOn)
+        {
+            // No lock. The segment's racers read concurrently while a macro runs, and there they only advance challengeReads, where
+            // a lost increment changes nothing; segments and Beaten change on a press or in the test, after the racers are cancelled.
+            private int segments;
+            private int challengeReads;
+
+            public List<string> Presses { get; } = [];
+            public bool Beaten { get; set; }
+
+            public void Pressed(string macro)
+            {
+                Presses.Add(macro);
+                segments++;
+                MoveTo(memory, tiles[segments].X, tiles[segments].Y);
+                if (challengeOn.Contains(segments))
+                {
+                    Beaten = false;
+                    challengeReads = 0;
+                }
+            }
+
+            public GameSnapshot Read()
+                => !challengeOn.Contains(segments) || Beaten ? Free : challengeReads++ == 0 ? ChallengeQuiet : ChallengeArrow;
+        }
+
+        private static FakeBot TrainerBot(FakeMemoryClient memory, TrainerWalk walk, Func<FakeBot, Task>? macroDone = null)
+        {
+            GameProfile hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(DataDirectory), new GraphService());
+            FakeBot bot = null!;
+            bot = new FakeBot(Task.CompletedTask, hgss)
+            {
+                State = new FuncReader(walk.Read),
+                Overworld = new HgssOverworldReader(memory, Table),
+                Pressed = walk.Pressed,
+                MacroDone = () => macroDone is null ? Task.CompletedTask : macroDone(bot),
+            };
+            return bot;
+        }
+
+        // Runs the navigator with the console captured, and returns the log.
+        private static async Task<string> NavigateLogged(NavigatorEvent navigator, GameState state)
+        {
+            TextWriter console = Console.Out;
+            StringWriter log = new();
+            Console.SetOut(log);
+            try
+            {
+                await navigator.ExecuteWithResultAsync(state, CancellationToken.None);
+            }
+            finally
+            {
+                Console.SetOut(console);
+            }
+            return log.ToString();
+        }
+
+        // The challenge one tile into the segment while its macro is held: the clear is the only thing sent, the route is dropped,
+        // and Waiting goes over the leg with one message.
+        [Fact]
+        public async Task WalkStopsForATrainerMidSegmentPressingNothing()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (474, 293)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk, b => b.Macros.Count > 0 ? Task.CompletedTask : new TaskCompletionSource().Task);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            List<string> sent = [];
+
+            string log = await NavigateLogged(new NavigatorEvent(new PokemonStateReader(), s => { sent.Add(s); return Task.CompletedTask; }), state);
+
+            Assert.Equal([Segment(bot, 474, 294, 471, 292)], walk.Presses);
+            Assert.Equal(["clear"], bot.Macros);
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Null(state.NavigationPath);
+            Assert.Empty(state.TilePenalties);
+            Assert.Equal([TrainerSentence], sent);
+            Assert.Contains($"[Navigator] stopped: {TrainerSentence} (474, 293), {ChallengeArrow}", log);
+        }
+
+        // The macro answers done with the approach script already up (R4): the segment end reads it, and nothing is sent at all.
+        [Fact]
+        public async Task WalkStopsForATrainerOnTheSegmentsLastStep()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (471, 292)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            List<string> sent = [];
+
+            await new NavigatorEvent(new PokemonStateReader(), s => { sent.Add(s); return Task.CompletedTask; }).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 471, 292)], walk.Presses);
+            Assert.Empty(bot.Macros);
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Null(state.NavigationPath);
+            Assert.Empty(state.TilePenalties);
+            Assert.Equal([TrainerSentence], sent);
+        }
+
+        [Fact]
+        public async Task HealTripStopForATrainerKeepsTheLegUnderWaiting()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (471, 292)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            state.SwapState(EventState.GoToPokemonCenter);
+            List<string> sent = [];
+
+            await new NavigatorEvent(new PokemonStateReader(), s => { sent.Add(s); return Task.CompletedTask; }).ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([EventState.Waiting, EventState.GoToPokemonCenter], state.State);
+            Assert.Null(state.NavigationPath);
+            Assert.Equal([TrainerSentence], sent);
+        }
+
+        // The operator won and pressed Resume: the field is free, so the leg comes back with no route, to be planned from the tile.
+        [Fact]
+        public async Task ResumeAfterAWalkTrainerStopHandsBackTheLegUnplanned()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (471, 292)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
+            walk.Beaten = true;
+            state.SwapState(EventState.Resume);
+
+            await OrchestratorEvent.ResumeAsync(state, () => Task.FromResult(true), Stale, CancellationToken.None);
+
+            Assert.Equal([EventState.ReturnToStart], state.State);
+            Assert.Null(state.NavigationPath);
+            Assert.False(state.StoppedForTrainer);
+        }
+
+        // Resume pressed with the speech still at its arrow parks again, and sends nothing more.
+        [Fact]
+        public async Task ResumeDuringTheSpeechParksAgainWithNoSecondMessage()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (471, 292)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+            List<string> sent = [];
+            await new NavigatorEvent(new PokemonStateReader(), s => { sent.Add(s); return Task.CompletedTask; }).ExecuteWithResultAsync(state, CancellationToken.None);
+            state.SwapState(EventState.Resume);
+
+            await OrchestratorEvent.ResumeAsync(state, () => Task.FromResult(true), Stale, CancellationToken.None);
+
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Single(walk.Presses);
+            Assert.Empty(bot.Macros);
+            Assert.Equal([TrainerSentence], sent);
+        }
+
+        // After a win and Resume, a second trainer on the same walk is a stop of its own with its own message. The test's graph is
+        // empty, so the route the leg plans at Resume is set as the planner would give it.
+        [Fact]
+        public async Task SecondTrainerAfterResumeIsANewStopWithItsOwnMessage()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (474, 292), (471, 292)], memory, 1, 2);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
+            List<string> sent = [];
+            NavigatorEvent navigator = new(new PokemonStateReader(), s => { sent.Add(s); return Task.CompletedTask; });
+            await navigator.ExecuteWithResultAsync(state, CancellationToken.None);
+            walk.Beaten = true;
+            state.SwapState(EventState.Resume);
+            await OrchestratorEvent.ResumeAsync(state, () => Task.FromResult(true), Stale, CancellationToken.None);
+            state.NavigationPath = [new NodePoint { Node = new Node { MapId = Route32, X = 474, Y = 292 } }, new NodePoint { Node = new Node { MapId = Route32, X = 471, Y = 292 } }];
+
+            await navigator.ExecuteWithResultAsync(state, CancellationToken.None);
+
+            Assert.Equal([Segment(bot, 474, 294, 474, 292), Segment(bot, 474, 292, 471, 292)], walk.Presses);
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Equal([TrainerSentence, TrainerSentence], sent);
+        }
+
+        [Fact]
+        public async Task FailedTrainerMessageIsLoggedAndTheWalkStillParks()
+        {
+            FakeMemoryClient memory = OnRoute32(474, 294);
+            TrainerWalk walk = new([(474, 294), (471, 292)], memory, 1);
+            FakeBot bot = TrainerBot(memory, walk);
+            GameState state = Returning(bot, (474, 294), (471, 292));
+
+            string log = await NavigateLogged(new NavigatorEvent(new PokemonStateReader(), _ => throw new InvalidOperationException("the queue is closed")), state);
+
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+            Assert.True(state.StoppedForTrainer);
+            Assert.Contains($"[Navigator] The trainer stop's message was not sent: {TrainerSentence}{Environment.NewLine}System.InvalidOperationException: the queue is closed", log);
+        }
     }
 }

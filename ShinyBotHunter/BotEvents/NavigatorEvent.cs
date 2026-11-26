@@ -150,13 +150,13 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Navigator] Starting from map={mapId} ({x},{y})");
             }
 
-            bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
+            SegmentOutcome walked = await ExecuteNavigationAsync(state, cancellationToken);
 
-            if (battleOccurred)
+            if (walked == SegmentOutcome.Battle)
             {
                 state.State.Push(EventState.BattleStart);
             }
-            else
+            else if (walked == SegmentOutcome.Completed)
             {
                 ClearNavigation(state, "arrived at pokemon center");
                 state.SwapState(EventState.HealAtPokemonCenter);
@@ -355,13 +355,13 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Navigator] Returning to start map={state.StartMapId} ({state.StartX},{state.StartY}) from map={mapId} ({x},{y})");
             }
 
-            bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
+            SegmentOutcome walked = await ExecuteNavigationAsync(state, cancellationToken);
 
-            if (battleOccurred)
+            if (walked == SegmentOutcome.Battle)
             {
                 state.State.Push(EventState.BattleStart);
             }
-            else
+            else if (walked == SegmentOutcome.Completed)
             {
                 FinishReturn(state, "arrived back at start");
             }
@@ -397,9 +397,10 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // Walks the NodePath segment by segment, running A* for each leg.
-        // Returns true if a battle was encountered (NavigationPathIndex is left at the
-        // in-progress segment so the A* can be recomputed on resume).
-        private async Task<bool> ExecuteNavigationAsync(GameState state, CancellationToken cancellationToken)
+        // Returns Battle if a battle was encountered (NavigationPathIndex is left at the
+        // in-progress segment so the A* can be recomputed on resume), Trainer once a trainer's
+        // challenge has parked the bot, and Completed when the walk arrived or was abandoned.
+        private async Task<SegmentOutcome> ExecuteNavigationAsync(GameState state, CancellationToken cancellationToken)
         {
             // Covers resuming navigation right after a mid-route battle, where the first
             // segment's position read would otherwise hit the post-battle (0,0).
@@ -469,7 +470,12 @@ namespace ShinyBotHunter.BotEvents
                 {
                     var outcome = await ExecuteSegmentMacroAsync(state, macro, partyAtStart, cancellationToken);
                     if (outcome == SegmentOutcome.Battle)
-                        return true;
+                        return SegmentOutcome.Battle;
+                    if (outcome == SegmentOutcome.Trainer)
+                    {
+                        await StopForTrainerAsync(state, cancellationToken);
+                        return SegmentOutcome.Trainer;
+                    }
                     if (outcome == SegmentOutcome.PoisonEvent)
                     {
                         await ClearPoisonScriptAsync(state, cancellationToken);
@@ -499,7 +505,7 @@ namespace ShinyBotHunter.BotEvents
                         if (blockedRetries > MaxBlockedRetries)
                         {
                             Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex} blocked {MaxBlockedRetries} times; abandoning the route.");
-                            return false;
+                            return SegmentOutcome.Completed;
                         }
                         await RecoverFromBlockedSegmentAsync(state, outcome == SegmentOutcome.Sign ? "Walked under a sign" : "Movement blocked",
                             cancellationToken);
@@ -554,14 +560,46 @@ namespace ShinyBotHunter.BotEvents
                     else if (end == SegmentOutcome.Battle)
                     {
                         state.NavigationPathIndex += advance;
-                        return true;
+                        return SegmentOutcome.Battle;
+                    }
+                    else if (end == SegmentOutcome.Trainer)
+                    {
+                        await StopForTrainerAsync(state, cancellationToken);
+                        return SegmentOutcome.Trainer;
                     }
                 }
 
                 state.NavigationPathIndex += advance;
             }
 
-            return false;
+            return SegmentOutcome.Completed;
+        }
+
+        /// <summary>
+        /// A trainer's challenge stops the walk (#604), as Ruby and Sapphire stop on a trainer: nothing is pressed (the macro's
+        /// clear, already sent, only released the held direction), the route is dropped so the leg is planned again from the tile
+        /// read at Resume, and Waiting goes over the leg with StoppedForTrainer set, so Resume waits for the free field. The tile
+        /// logged can be the one the player was leaving (the research's R2) and no wait is added for a better one. The sentence is
+        /// sent once; a failed send is logged in full and the bot stays parked (AGENTS rule 10).
+        /// </summary>
+        private async Task StopForTrainerAsync(GameState state, CancellationToken cancellationToken)
+        {
+            GameSnapshot seen = await state.Bot.State.ReadAsync(cancellationToken);
+            int mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+            (int x, int y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+            string sentence = $"A trainer battle started on {state.Bot.Profile.Maps!.GetMapLookup(mapId).InternalName}.";
+            Console.WriteLine($"[Navigator] stopped: {sentence} ({x}, {y}), {seen}");
+            ClearNavigation(state, "a trainer's challenge");
+            state.StoppedForTrainer = true;
+            state.State.Push(EventState.Waiting);
+            try
+            {
+                await notifyStop(sentence);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Navigator] The trainer stop's message was not sent: {sentence}{Environment.NewLine}{ex}");
+            }
         }
 
         // Runs macro and races it against battle detection and a party faint.
