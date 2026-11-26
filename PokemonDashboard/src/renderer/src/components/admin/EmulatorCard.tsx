@@ -19,6 +19,12 @@ function anchorHunt(anchor: Anchor, modality: Modality | null): string {
 
 const PLAN_UNSAVED = 'Save or discard the plan changes first'
 
+// The dashboard state names a hunt by what it was started with, a generated milestone by its id: that one reads as its
+// name from the file's picker. A plan, a custom phase or an idle bot reads as given.
+export function cardHeading(name: string, milestones: BotMilestones | undefined): string {
+  return milestones?.milestones.find((m) => m.id === name)?.name ?? name
+}
+
 export function EmulatorCard({
   pos,
   name,
@@ -84,7 +90,7 @@ export function EmulatorCard({
       <div className="flex items-center justify-between">
         <span className="text-sm text-white">
           <span className="text-slate-400 text-xs mr-2">#{pos}</span>
-          {name}
+          {cardHeading(name, milestones)}
         </span>
         {confirmingCancel ? (
           <span className="flex items-center gap-1.5">

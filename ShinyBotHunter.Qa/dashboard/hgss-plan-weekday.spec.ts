@@ -8,6 +8,10 @@
 // `ss`: SoulSilver from the qa-ss-route30 save's tile on Route 30, (556, 374): the two milestones swapped, so the default is the
 // route the save stands on (default Route 30 · grass, Friday -> Route 32 · grass), goal Hoothoot 1 (SS Route 30 at night, not
 // Route 32) and Wooper 1 (SS Route 32 at night, not Route 30). Without the save it fails at once naming the missing file.
+// Precondition for `ss`: the trainer on Route 30 at column 559 (rows 333 to 343) beaten on the save; the HGSS navigator has
+// no handling for a trainer who challenges on a walk. On the staged qa-ss-route30 save that trainer is unbeaten, and `ss` is
+// known to fail on the first walk with the backend logging `[Navigator] ShinyBotHunter.Games.GameStateTimeoutException:
+// Waited for the overworld ready; the game state stayed GameSnapshot { Screen = FieldTask, ..., Script = 3739, ... }`.
 // Run: `npx playwright test hgss-plan-weekday`; `$env:QA_HGSS_VARIANT = "ss"` for SoulSilver.
 import * as fs from 'fs'
 import { expect, test } from '@playwright/test'

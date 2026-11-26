@@ -69,6 +69,26 @@ function Chip({ on, onClick, title, children }: { on: boolean; onClick: () => vo
 }
 
 /**
+ * Reads the saved plans and shows them, or the error; a response to a read made before a later one (or before the unmount,
+ * which bumps `seq` too) is dropped, so a re-read on focus cannot be overwritten by an older list.
+ */
+export async function loadPlans(
+  read: () => Promise<Response>,
+  seq: { current: number },
+  show: (list: HuntPlan[] | null, error: string | null) => void
+): Promise<void> {
+  const mine = ++seq.current
+  try {
+    const r = await read()
+    if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
+    const list = await r.json() as HuntPlan[]
+    if (mine === seq.current) show(list, null)
+  } catch (err) {
+    if (mine === seq.current) show(null, err instanceof Error ? err.message : 'Failed to load the plans')
+  }
+}
+
+/**
  * The Hunt Plan field of Wild Encounter (FR-37a) and, under Edit plans, the saved plans' editor (FR-37, FR-37b). Nothing is
  * written until Save, Rename or Delete; while the draft differs from what was loaded, whatever would drop it is greyed and
  * onDirtyChange tells the card to grey its own.
@@ -103,20 +123,11 @@ export function HuntPlanEditor({
   // and the unmount below, on the renderer's one thread.
   const loadSeq = useRef(0)
 
-  const load = async (): Promise<void> => {
-    const seq = ++loadSeq.current
-    try {
-      const r = await api.getPlans(apiUrl, PLAN_GAME)
-      if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
-      const list = await r.json() as HuntPlan[]
-      if (seq === loadSeq.current) {
-        setPlans(list)
-        setListError(null)
-      }
-    } catch (err) {
-      if (seq === loadSeq.current) setListError(err instanceof Error ? err.message : 'Failed to load the plans')
-    }
-  }
+  // Also on the select's focus and on opening the editor: another card may have saved, renamed or deleted a plan since.
+  const load = (): Promise<void> => loadPlans(() => api.getPlans(apiUrl, PLAN_GAME), loadSeq, (list, err) => {
+    if (list) setPlans(list)
+    setListError(err)
+  })
 
   useEffect(() => {
     if (apiUrl) void load()
@@ -202,7 +213,7 @@ export function HuntPlanEditor({
   return (
     <div className="flex-1 space-y-1">
       <div className="flex items-center gap-2">
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={`flex-1 ${SELECT}`}>
+        <select value={value} onChange={(e) => onChange(e.target.value)} onFocus={() => void load()} className={`flex-1 ${SELECT}`}>
           <option value="">No plan</option>
           {value && !plans.some((p) => p.name === value) && <option value={value}>{value}</option>}
           {plans.map((p) => (
@@ -212,8 +223,10 @@ export function HuntPlanEditor({
         <button
           type="button"
           onClick={() => {
-            if (!open) edit(plans.find((p) => p.name === value) ?? null)
-            else setDraft(null)
+            if (!open) {
+              edit(plans.find((p) => p.name === value) ?? null)
+              void load()
+            } else setDraft(null)
             setOpen(!open)
           }}
           disabled={open && dirty}
