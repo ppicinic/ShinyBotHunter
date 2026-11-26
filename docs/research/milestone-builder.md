@@ -616,6 +616,8 @@ The snapshots from the second A on (the pristine win of launch 3, 15 s rule):
 
 *Conclusion.* After a win the field is free on the stop's tile with the flag set, and walking the tile again starts nothing. The field is not free while the question or its boxes wait, and script 3739 is still the one running there.
 
+2026-11-26 (N1c, #609): in the `hgss-plan-weekday ss` launches the absolute addresses above (the text cursors, the flag byte) were 0x20 higher, for example Joey's flag byte at `0x0227D43B` against `0x0227D41B` and the speech's first arrow at `0x022A862E` against `0x022A860E`; they vary by launch, and nothing may assert them.
+
 ### R6: Resume too early
 
 *Question.* Do the speech at its arrow and the battle's action menu each stand unchanged for at least 10 s, so that `OrchestratorEvent.ResumeAsync`'s free-field wait (stale after 10 s without a change) parks again?
@@ -672,6 +674,7 @@ The snapshots from the second A on (the pristine win of launch 3, 15 s rule):
 - In the four tile challenge the trainer walked to the tile beside the player (the screenshot at the speech). That battle was not played, so where he stands after a win, and whether a route planned at Resume can run into him there, is not known. On the QA walk the player enters his line next to him and he does not walk.
 - What the Yes/No question after the first win says, and what the screen behind the 20 s of `Transitioning` after a loss shows. Neither was captured. The whiteout screen's need for a press rests on two trials.
 - Text speed and battle animations were the save's own. The frame counts above are for those settings.
+- 2026-11-26 (N1c, #609): a byte telling when the battle menu takes a touch is not known. In the scenario's launches a Fight touch sent at the first `BattleMenu` read (+ `W.10`) was dropped every time, and one sent about 1 s later was taken.
 - The natives `0x02046D41`, `0x02041D99`, `0x020476E9`, `0x02047745`, `0x02049331`, `0x02043459`, `0x02041CA9` and the task functions `0x02050739`, `0x020551B9`, `0x0205528D`, `0x020552D5` are addresses only. They were not named from the decomp.
 
 ### Evidence

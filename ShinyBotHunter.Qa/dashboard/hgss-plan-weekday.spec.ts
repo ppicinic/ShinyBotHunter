@@ -14,6 +14,8 @@
 // Waiting with only Resume, presses nothing, and the speech stays at its arrow; Resume during the speech parks again with no
 // second message. The scenario then presses through the speech and wins, each press on the state it changes (R5), presses
 // Resume, and the walk is planned again from the stop's tile to the anchor. `ss` starts at 23:45 to pay for the stop's minutes.
+// The Fight and Quick Attack touches are sent again only while the same menu still reads 1 s later, 3 times at most; an A is
+// never sent again.
 // Before Run every other trainer is marked beaten by a RAM write, so Joey is the one trainer left unbeaten on the save: the
 // walks also cross Youngster Mikey's and Bug Catcher Don's sight, and their two-Pokémon battles have no researched gates.
 // `ss` ends at midnight's Friday walk line, cancelled once the overworld is ready: on this save the Friday walk passes Lyra's
@@ -319,8 +321,9 @@ async function winTheBattle(criterion: string): Promise<string[]> {
       continue
     }
     presses.push(gate.name)
-    // A touch on a battle menu drawn a few frames ago can be dropped (seen on the first two runs): as the bot's SelectMove
-    // does, it is sent again only while the menu still reads unchanged 1 s later, which proves it was dropped; 3 at most.
+    // The gate fires before the battle menu takes a touch: the first Fight touch was dropped on every run, so each run depends
+    // on the resend, and no byte telling when the menu takes a touch has been researched. As the bot's SelectMove does, a touch
+    // is sent again only while the menu still reads unchanged 1 s later, which proves it was dropped; 3 at most.
     const touch = gate.macro !== A
     for (let attempt = 1; ; attempt++) {
       step(`scenario press ${presses.length}${attempt > 1 ? ` again (${attempt})` : ''}: ${gate.macro} (${gate.name}) at ${show(r)}`)
@@ -386,7 +389,7 @@ async function meetJoey(card: Locator, pages: Record<string, Page>, runStart: st
   expect(backendLog().filter((l) => RESUME.test(l)).length, '"Resume after the win": a second park').toBe(resumes + 1)
 }
 
-test(`hgss-plan-weekday ${which}: Thursday 23:50 to Friday, a weekday rule not matching, then matching after midnight`, async () => {
+test(`hgss-plan-weekday ${which}: Thursday ${which === 'ss' ? '23:45' : '23:50'} to Friday, a weekday rule not matching, then matching after midnight`, async () => {
   test.setTimeout(40 * MINUTE)
   const frame: Frame = { backend: null, app: null }
   assertLocalStores()
