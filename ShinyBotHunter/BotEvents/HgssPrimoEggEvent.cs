@@ -59,7 +59,7 @@ namespace ShinyBotHunter.BotEvents
             this.shinyAlertService = provider.GetRequiredService<ShinyAlertService>();
             this.easyChat = new HgssEasyChatInput(bot, bot, addresses);
             this.hatch = new HgssEggHatch(bot, addresses, reader, TimeSpan.FromMilliseconds(config.HatchStaleMs));
-            this.navigator = new NavigatorEvent(reader);
+            this.navigator = new NavigatorEvent(reader, shinyAlertService);
         }
 
         public override async Task<PokemonData?> ExecuteWithResultAsync(GameState gameState, CancellationToken cancellationToken)

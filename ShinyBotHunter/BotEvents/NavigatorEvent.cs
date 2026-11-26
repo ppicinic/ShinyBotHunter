@@ -14,6 +14,7 @@ namespace ShinyBotHunter.BotEvents
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
         private readonly PokemonStateReader reader;
+        private readonly Func<string, Task> notifyStop;
 
         // How often the party is re-read while walking to catch a poison faint. Each tick costs a
         // party read plus decrypt, so this is deliberately far slower than the battle poll.
@@ -82,9 +83,15 @@ namespace ShinyBotHunter.BotEvents
             CompletedUnderRepelMessage,
         }
 
-        public NavigatorEvent(PokemonStateReader reader)
+        public NavigatorEvent(PokemonStateReader reader, ShinyAlertService alerts) : this(reader, alerts.NotifyStopAsync)
+        {
+        }
+
+        // The test seam for the Discord boundary (AGENTS rule 2's exception), as RsBattleEvent.RunAsync takes notifyStop.
+        internal NavigatorEvent(PokemonStateReader reader, Func<string, Task> notifyStop)
         {
             this.reader = reader;
+            this.notifyStop = notifyStop;
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)

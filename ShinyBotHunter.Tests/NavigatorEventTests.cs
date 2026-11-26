@@ -605,7 +605,7 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = Route32Bot(memory, walk);
             GameState state = Returning(bot, (474, 294), (471, 292));
 
-            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+            await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal([Segment(bot, 474, 294, 471, 292), A], walk.Presses);
             Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
@@ -621,7 +621,7 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = Route32Bot(memory, walk);
             GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
 
-            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+            await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal([Segment(bot, 474, 294, 474, 292), A, Segment(bot, 474, 292, 471, 292)], walk.Presses);
             Assert.Equal(EventState.DecideOverworldAction, state.State.Peek());
@@ -639,7 +639,7 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = Route32Bot(memory, walk, b => walk.Segments == 2 && b.Macros.Count == 0 ? new TaskCompletionSource().Task : Task.CompletedTask);
             GameState state = Returning(bot, (474, 294), (474, 292), (471, 292));
 
-            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+            await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal([Segment(bot, 474, 294, 474, 292), A, Segment(bot, 474, 292, 471, 292)], walk.Presses);
             Assert.Equal(["clear"], bot.Macros);
@@ -687,7 +687,7 @@ namespace ShinyBotHunter.Tests
             Console.SetOut(log);
             try
             {
-                await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+                await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
             }
             finally
             {
@@ -715,7 +715,7 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = Route32Bot(memory, walk, b => b.Macros.Count > 0 ? Task.CompletedTask : new TaskCompletionSource().Task);
             GameState state = Returning(bot, (474, 294), (471, 292));
 
-            await new NavigatorEvent(new PokemonStateReader()).ExecuteWithResultAsync(state, CancellationToken.None);
+            await new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask).ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal([Segment(bot, 474, 294, 471, 292), A, Segment(bot, 474, 293, 471, 292)], walk.Presses);
             Assert.Equal(["clear"], bot.Macros);
