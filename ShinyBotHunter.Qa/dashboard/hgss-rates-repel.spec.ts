@@ -129,6 +129,9 @@ test(`HGSS rates and Repel (${VARIANT}): the card follows the counter, the messa
       const after = await shares()
       expectShares(after, NIGHT, 1, 'after the close')
       expect(after.reason[19], 'Rattata\'s reason after the close').toBeNull()
+      // The card shows it at its next poll: Rattata drawn again at the plain night share.
+      await expect(cardWindow.locator('tbody tr', { hasText: /rattata/i }).getByTestId('row-share'), 'Rattata back on the card after the close')
+        .toHaveText(`${(NIGHT[19] * 100).toFixed(1)} %`, { timeout: CARD_POLL })
       await shotAll('02-after-the-close', pages)
 
       // 5. The counter is 0 with the bot idle; the logs.
