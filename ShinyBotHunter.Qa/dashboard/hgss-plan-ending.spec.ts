@@ -56,7 +56,10 @@ test(`hgss-plan-ending ${which}: a complete default gives way to the first incom
     const runStart = await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
     // One line per stop at Start, the default first.
     await seen(PLAN_STOP, 2, MINUTE)
-    const stops = backendLog().flatMap((l) => PLAN_STOP.exec(l) ?? []).map((m) => [m[1], m[2], m[3], m[4], m[5]])
+    const stops = backendLog().flatMap((l) => {
+      const m = PLAN_STOP.exec(l)
+      return m ? [m.slice(1, 6)] : []
+    })
     expect(stops, 'the plan\'s stops at Start').toEqual([[PLAN.name, R32.name, ...R32.at], [PLAN.name, R30.name, ...R30.at]])
 
     if (which === 'default-complete') {
