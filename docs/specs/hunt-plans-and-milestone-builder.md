@@ -350,6 +350,7 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
   - The Share column is gone; each share is drawn small under the Pokémon's name.
   - A row whose share is zero now is not drawn, so the reasons ("night only", "blocked by Repel", "needs Hoenn Sound") are shown nowhere on the card. A card without shares (a stored phase, a headbutt milestone, a file not seen since the backend started) draws every row. The header's encounter count, the footer's Phase and Rate, and completion still count every row. A Repel that blocks every species leaves the table with no rows.
   - The footer's "NN % of encounters survive" is removed. The endpoint still gives `survive` and each row's `reason`; the card does not read the reason.
+- **2026-11-26, the owner on the Ruins of Alph card** (28 rows all named "Unown"). His words: "Letter in parentheses. Example "Unown (A)". We may later add stuff like Giratina (Altered)". A milestone row for one Unown letter is named `Unown (A)` to `Unown (Z)`, `Unown (!)` and `Unown (?)`, from the backend's row (`PokemonMetadataService.RowName`); an any-form row keeps the plain name. Only Unown gets a form name now; `Species (Form)` is the format for any later one. The Goals tab still names a line by its species, with the form code in its own column.
 
 ## Appendix: the maps and their names
 

@@ -275,7 +275,7 @@ namespace ShinyBotHunter.Controllers
                         r.Species,
                         r.Key,
                         r.FormCode,
-                        Name = metadata.PokemonName,
+                        Name = pokemonMetadataService.RowName(r.Species, r.FormCode),
                         Sprite = r.FormCode ?? metadata.PokeApiName,
                         metadata.HasFemaleForm,
                         r.Wanted,

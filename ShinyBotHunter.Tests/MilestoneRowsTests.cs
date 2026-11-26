@@ -98,6 +98,30 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void RowName_UnownLetterRowsNameTheLetter()
+        {
+            var metadata = Metadata();
+            var letters = Enumerable.Range(0, 28).Select(i => metadata.RowName(Unown, metadata.GetFormCode(Unown, 0, i))).ToList();
+
+            Assert.Equal(Enumerable.Range('A', 26).Select(c => $"Unown ({(char)c})").Concat(["Unown (!)", "Unown (?)"]), letters);
+        }
+
+        [Fact]
+        public void RowName_AnyFormUnownIsThePlainName()
+        {
+            Assert.Equal("Unown", Metadata().RowName(Unown, null));
+        }
+
+        [Fact]
+        public void RowName_OtherSpeciesArePlain()
+        {
+            var metadata = Metadata();
+
+            Assert.Equal(["Pidgey", "Ledyba", "Ledyba", "Giratina"],
+                new[] { metadata.RowName(Pidgey, null), metadata.RowName(Ledyba, "ledyba;f"), metadata.RowName(Ledyba, "ledyba"), metadata.RowName(487, "giratina-origin") });
+        }
+
+        [Fact]
         public void SpeciesWithoutEntry_IsRowAtZero_NeverTarget()
         {
             var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 3)] };
