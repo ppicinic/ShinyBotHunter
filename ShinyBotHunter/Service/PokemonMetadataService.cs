@@ -123,7 +123,8 @@ namespace ShinyBotHunter.Service
         internal string RowName(int species, string? formCode)
         {
             string name = _metadata[species].PokemonName;
-            if (species != 201 || formCode is null)
+            // The Goals tab's form field is free text, and a copy can carry a stored row's "unown": no letter, no form name.
+            if (species != 201 || formCode is null || !formCode.StartsWith("unown-") || formCode.Length == "unown-".Length)
             {
                 return name;
             }

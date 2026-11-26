@@ -112,6 +112,16 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("Unown", Metadata().RowName(Unown, null));
         }
 
+        [Theory]
+        [InlineData("unown")]
+        [InlineData("unown-")]
+        [InlineData("u")]
+        [InlineData("pidgey")]
+        public void RowName_UnownCodeWithoutALetterIsThePlainName(string formCode)
+        {
+            Assert.Equal("Unown", Metadata().RowName(Unown, formCode));
+        }
+
         [Fact]
         public void RowName_OtherSpeciesArePlain()
         {
