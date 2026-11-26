@@ -33,9 +33,12 @@ $counts = Get-WindowVideo (Join-Path $RunDir $Card)
 
 $emuFile = Join-Path $RunDir "emulator.mp4"
 $log = Get-Content "$emuFile.log" -Raw
-if ($log -notmatch "first=(\S+) last=(\S+)") { throw "$emuFile.log has no first and last frame times (recorded before they were logged)" }
-$first = [DateTime]::Parse($Matches[1], $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
-$last = [DateTime]::Parse($Matches[2], $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+# The last recording's line: emulator.mp4 holds the last one.
+$times = [regex]::Matches($log, "first=(\S+) last=(\S+)")
+if ($times.Count -eq 0) { throw "$emuFile.log has no first and last frame times (recorded before they were logged)" }
+$lastTimes = $times[$times.Count - 1]
+$first = [DateTime]::Parse($lastTimes.Groups[1].Value, $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+$last = [DateTime]::Parse($lastTimes.Groups[2].Value, $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
 $emuLength = Get-LastPts $emuFile
 $wall = ($last - $first).TotalSeconds
 $emu = [pscustomobject]@{ Path = $emuFile; Start = $first; Length = $wall; Stretch = $wall / $emuLength }

@@ -10,7 +10,8 @@ import {
 
 // #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6) and a headbutt card with no share, at Violet City's headbutt
 // milestone, reached going north from the save's tile on Route 32. Not Route 32's own stand to the south: that walk meets a
-// one-time story NPC ("Wait up! What's the hurry?", script 3) at (475, 305), which the navigator does not handle.
+// one-time story NPC ("Wait up! What's the hurry?", script 3) at (475, 305), which the navigator does not handle. The
+// Violet City stand no longer exercises the walk with no Rock Smash (B1h-c, #572), so that check has no emulator scenario now.
 const HANDLE = 'HG-Headbutt2'
 const HEADBUTT = '73-headbutt'
 const CARD = `HGSS — ${HEADBUTT} (${HANDLE})`
