@@ -221,13 +221,14 @@ namespace ShinyBotHunter.BotEvents
             return true;
         }
 
-        // Whether the walk to the anchor goes on after the navigator ran: still walking, or in a battle on the way. HGSS's
+        // Whether the walk to the anchor goes on after the navigator ran: still walking, in a battle on the way, or parked for a
+        // trainer's challenge on the way (the leg is under Waiting, #604). HGSS's
         // navigator completes in place when it finds no path, but a hunt that never reached its anchor is not complete (FR-23),
         // so that walk parks with the sentence after the navigator's own line with where the player stood.
         internal static bool AnchorWalkGoesOn(GameState state, Anchor anchor, string milestone)
         {
             EventState top = state.State.Peek();
-            if (top is EventState.ReturnToStart or EventState.BattleStart)
+            if (top is EventState.ReturnToStart or EventState.BattleStart || (top == EventState.Waiting && state.StoppedForTrainer))
             {
                 return true;
             }

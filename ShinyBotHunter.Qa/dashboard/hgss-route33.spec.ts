@@ -119,7 +119,8 @@ test('HGSS Route 33 through the dashboard: hunt, forced shiny, Resume, cancel', 
     await shotAll('04-three-encounters', pages)
 
     // 10. Arm the wild-shiny patch. EmuHawk must hold the foreground for the hotkey to land.
-    expect(sendCheatHotkey(), 'EmuHawk was not the foreground window when the hotkey was sent').toBe(true)
+    const hotkey = sendCheatHotkey()
+    expect(hotkey.sent, `EmuHawk was not the foreground window when the hotkey was sent; the foreground was ${hotkey.foreground}`).toBe(true)
     for (const [addr] of PATCH_SITES) step(`patch site ${addr.toString(16)} after hotkey = ${(await readU16(addr)).toString(16)}`)
     await shotAll('05-armed', pages)
 

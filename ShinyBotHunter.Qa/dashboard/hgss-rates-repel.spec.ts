@@ -129,6 +129,9 @@ test(`HGSS rates and Repel (${VARIANT}): the card follows the counter, the messa
       const after = await shares()
       expectShares(after, NIGHT, 1, 'after the close')
       expect(after.reason[19], 'Rattata\'s reason after the close').toBeNull()
+      // The card shows it at its next poll: Rattata drawn again at the plain night share.
+      await expect(cardWindow.locator('tbody tr', { hasText: /rattata/i }).getByTestId('row-share'), 'Rattata back on the card after the close')
+        .toHaveText(`${(NIGHT[19] * 100).toFixed(1)} %`, { timeout: CARD_POLL })
       await shotAll('02-after-the-close', pages)
 
       // 5. The counter is 0 with the bot idle; the logs.
@@ -142,7 +145,8 @@ test(`HGSS rates and Repel (${VARIANT}): the card follows the counter, the messa
 
       // 6. Every encounter before the close is Lv 6 (Wooper, Bellsprout, Mareep): the game's Repel was on at level 5.
       const all = rowsFor(HANDLE, ROUTE32, runStart)
-      const before = all.filter((r) => r.at < closed.at)
+      // The rows pair in order with the foe lines, so the rows before the close are as many as the foe lines above it.
+      const before = all.slice(0, backendLog().slice(0, closedAt).filter((l) => FOE.test(l)).length)
       step(`${before.length} encounters while ${steps} Repel steps lasted (QA_REPEL_STEPS tunes it); ${all.length} in all`)
       expect(before.length, 'no encounter while the Repel lasted').toBeGreaterThanOrEqual(1)
       for (const r of before) {

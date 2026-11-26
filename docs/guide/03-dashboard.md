@@ -34,7 +34,7 @@ A sixth tab, **Dev Mode**, appears only when macro recording is switched on in t
 4. Optional: tick **Sound On** to hear the game (see [Turn the sound on](#turn-the-sound-on)).
 5. Click **Start**.
 
-You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name. When nothing is running, **Active Emulators** reads "No active emulators."
+You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name (once a hunt is started, the hunt's milestone, such as `Route 30 · grass`, or its plan, such as `Plan Johto`). When nothing is running, **Active Emulators** reads "No active emulators."
 
 **Launch Bot + Continue** works the same way. After the emulator opens, it waits about four seconds, then presses Continue on the game's menu for you, so the game loads your save. Its entry under **Active Emulators** only appears once the game has loaded and you are standing in the field, so nothing reads the game before then.
 
@@ -244,7 +244,7 @@ Goals are stored in the bot's database; see [Your data](06-your-data.md).
 
 A counts window opens for that milestone, and it is listed under **Active Subscriptions**. The window shows one row per Pokémon in the milestone, with the columns **Name**, **Milestone Encounters**, **Game Encounters** and **Shinies Caught**.
 
-A window on a generated milestone, such as `Route 30 · grass`, shows that name as its title and one row for every Pokémon that can be met there: one per form the game file wants, so the Ruins of Alph with the Unown preset shows 28. A row the game file wants none of reads `tracked`. A row you hid on that game file is not shown. Its counts are read again at each encounter. If the bot knows no milestone by that name, the window says `Milestone "NAME" was not found.`
+A window on a generated milestone, such as `Route 30 · grass`, shows that name as its title and one row for every Pokémon that can be met there: one per form the game file wants, so the Ruins of Alph with the Unown preset shows 28, named `Unown (A)` to `Unown (Z)`, `Unown (!)` and `Unown (?)`. A row for any form of a species shows the plain name, such as `Unown`. A row the game file wants none of reads `tracked`. A row you hid on that game file is not shown. Its counts are read again at each encounter. If the bot knows no milestone by that name, the window says `Milestone "NAME" was not found.`
 
 Such a window also shows, in small text under each Pokémon's name, its share: the part of the encounters there it is expected to make right now, such as `53.8 %`, for the in-game time of day, the Repel and the lead. Only the Pokémon you can meet right now are shown: one that is out at another time of day, blocked by the Repel or only heard on the radio has no row until it can be met again. If a Repel blocks every Pokémon there, the window shows the column headings and no rows. The encounter count in the title bar and the footer's **Phase** and **Rate** still count every Pokémon of the milestone. The shares are read again at each encounter and on the counts windows' polling interval (a minute by default), so during a hunt they change at the first encounter after 4:00, 10:00 or 20:00 in-game, within one polling interval, with no move. On HeartGold and SoulSilver, for the first encounter after a launch the bot has not yet read the Repel, so the shares are shown as if there were none, and the window cannot tell you so. Ruby and Sapphire have no clock, so their shares change with the Repel and the lead only, and they are live from the first encounter.
 
@@ -296,7 +296,7 @@ To close them all, untick **Pickup items windows**. A window you close yourself 
 
 ## Resume a hunt that is waiting
 
-Some hunts stop and wait for you, for example after finding a shiny, or when a trainer challenges your character in Ruby or Sapphire. The entry under **Active Emulators** then offers only **Resume**.
+Some hunts stop and wait for you, for example after finding a shiny, or when a trainer challenges your character in Ruby or Sapphire, or on a HeartGold or SoulSilver walk. The entry under **Active Emulators** then offers only **Resume**.
 
 1. Click **Run** beside **Resume**.
 

@@ -141,7 +141,8 @@ test('HGSS Headbutt shiny: wild-shiny armed after two cycles reaches a headbutt 
 
     // 10. Arm the wild-shiny patch. EmuHawk must hold the foreground for the hotkey to land.
     const armAt = new Date().toISOString()
-    expect(sendCheatHotkey(), 'EmuHawk was not the foreground window when the hotkey was sent').toBe(true)
+    const hotkey = sendCheatHotkey()
+    expect(hotkey.sent, `EmuHawk was not the foreground window when the hotkey was sent; the foreground was ${hotkey.foreground}`).toBe(true)
     for (const [addr] of PATCH_SITES) step(`patch site ${addr.toString(16)} after hotkey = ${(await readU16(addr)).toString(16)}`)
     step(`armed at ${armAt}`)
     await shotAll('03-armed', pages)

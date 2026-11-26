@@ -6,6 +6,7 @@ using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Pathfinding;
@@ -292,7 +293,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
 
-        // Not after a trainer stop (HGSS always): Resume reads no game state, as before.
+        // A trainer's challenge on the walk to the anchor parks with the leg under Waiting: the walk goes on after Resume. A Waiting
+        // for anything else ends it, as before.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void AnchorWalkGoesOn_TrainerStop_KeepsTheWalk(bool stoppedForTrainer)
+        {
+            GameState state = new() { StoppedForTrainer = stoppedForTrainer };
+            state.State.Push(EventState.ReturnToStart);
+            state.State.Push(EventState.Waiting);
+
+            bool goesOn = OrchestratorEvent.AnchorWalkGoesOn(state, new Anchor(34, 547, 304, 0, 6), "Route 30 · grass");
+
+            Assert.Equal(stoppedForTrainer, goesOn);
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+        }
+
+        // Not after a trainer stop: Resume reads no game state, as before.
         [Fact]
         public async Task Resume_NotAfterATrainerStop_ReadsNoGameState()
         {

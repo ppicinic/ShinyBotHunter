@@ -94,7 +94,7 @@ A chained hunt does not use anchors: each leg starts where the bot stands.
 
 HeartGold and SoulSilver only. A hunt plan sends one hunt to a different milestone by the game's own clock: for example Route 30 at night, Union Cave on Fridays, Route 32 the rest of the time. Ruby and Sapphire have no clock, so their Wild Encounter form has no **Hunt Plan** field.
 
-A plan is saved by name and shared by every HeartGold and SoulSilver game file. It has:
+A plan is saved by name and shared by every HeartGold and SoulSilver game file. The **Hunt Plan** list and **Edit plans** read the saved plans again each time you go to them, so a plan saved, renamed or deleted on another card shows there. It has:
 
 - **Otherwise hunt**: the default milestone, hunted when no rule matches.
 - **Rules, first match wins**: each rule has **When** (Morning, Day, Night), **Days** (Su to Sa) and **Go to**, a milestone. The first rule, from the top, whose time and day both match the game's clock is hunted. A rule with no When chip on matches any time, and one with no Days chip on matches any day; the editor says so beside the row.

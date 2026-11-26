@@ -31,8 +31,9 @@ const R29 = '33-land'
 const ROUTE33 = 'Route 33'
 const HOPPIP = 187
 const SPINARAK = 167
-// HG Route 30 at night: Spinarak, Rattata, Hoothoot.
+// HG Route 30 at night: Spinarak, Rattata, Hoothoot, Lv 2 to 4; by day: Pidgey, Caterpie, Metapod.
 const R30_NIGHT = ['167', '19', '163']
+const R30_DAY = ['16', '10', '11']
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const PLAN: Plan = { name: 'QA Night', default: R32.id, rules: [{ times: ['Night'], weekdays: [], milestone: R30.id }] }
 const IN_USE = 'QA Night is in use by the hunt on bot #0; cancel that hunt first.'
@@ -46,6 +47,9 @@ const FIXED_TITLE = `HGSS — ${R30.id} (${HANDLE})`
 const OTHER_TITLE = `HGSS — ${R30.id} (${OTHER_FILE})`
 const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\)/
 const BATTLE = /, isShiny: (True|False)\s*$/
+// OrchestratorEvent's state line once a battle is over, then the Spin's Overworld.WaitForReadyAsync, ended on the free field.
+const BATTLE_OVER = /\[Orchestrator\] State: BattleComplete/
+const FIELD_READY = /\[GameState\] the overworld ready: GameSnapshot \{ Screen = FieldFree/
 const WARP_ANY = /\[Navigator\] Warp to map (\d+(?:\/\d+)*): on map (\d+), (.*)$/
 // The anchors' run lines: Route 32 up-down ±1 from (474, 294), Route 30 up-down ±6 from (547, 304).
 const R32_MACRO = /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/
@@ -97,6 +101,12 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       // (a) Two encounters at the custom Route 33, a label where the bot stands: the follows window shows it (milestone 1).
       const aStart = await startWild(card, { phase: ROUTE33, target: 'ShinyTarget', mode: 'Spin' })
       await seen(BATTLE, 2, 5 * MINUTE)
+      // The cancel leaves the game where it is, and Set anchor here and the plan's Start both want the free field: so the
+      // event is cancelled only once the second battle is over and the field is free again, before the next spin finds one.
+      await seen(BATTLE_OVER, 2, 2 * MINUTE)
+      const aLog = backendLog()
+      const secondOver = aLog.map((l, i) => (BATTLE_OVER.test(l) ? i : -1)).filter((i) => i >= 0)[1]
+      await seen(FIELD_READY, aLog.slice(0, secondOver).filter((l) => FIELD_READY.test(l)).length + 1, MINUTE)
       await expect.poll(() => rowsFor(HANDLE, ROUTE33, aStart).length, { message: 'two rows under Route 33', timeout: 30_000, intervals: [2000] })
         .toBeGreaterThanOrEqual(2)
       await expect(heading(follows), 'milestone 1 in the follows window').toHaveText(ROUTE33, { timeout: 30_000 })
@@ -188,9 +198,11 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       expect(r30Rows.length, 'six encounters rows under 34-land').toBeGreaterThanOrEqual(6)
       for (const row of r30Rows) {
         expect(R30_NIGHT, `a ${row.species} under 34-land`).toContain(row.species)
+        expect(row.level >= 2 && row.level <= 4, `a Lv ${row.level} ${row.species} under 34-land, outside the night table's Lv 2 to 4`).toBe(true)
         expect(row.at, `a 34-land row at ${new Date(row.at).toISOString()}, before the switch was seen`).toBeGreaterThanOrEqual(now.at - 300)
       }
-      expect(r30Rows.some((r) => r.species === '167' || r.species === '163'), 'neither a Spinarak nor a Hoothoot in six').toBe(true)
+      // The fixed clock start replays the game's RNG, so which night species come up is the stream's, not a sample.
+      expect(r30Rows.filter((r) => R30_DAY.includes(r.species)), 'a day species under 34-land after the switch').toEqual([])
       expect(await milestoneMessages(runStart), 'one milestone message in all').toHaveLength(1)
       // Each file's own counts: HG-Plan's Route 30 card counts this run's rows, HG-Route32's does not move.
       await expect.poll(async () => (await countedHere(HANDLE)) - here!.plan, { message: 'HG-Plan\'s Route 30 card', timeout: MINUTE, intervals: [5000] })

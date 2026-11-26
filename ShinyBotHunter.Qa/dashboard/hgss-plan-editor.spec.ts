@@ -203,9 +203,11 @@ test('hgss-plan-editor: create, replace, preview, greyed while unsaved, refusals
     await shotAll('08-refused-start', pages)
 
     // 9. The same plan on the SoulSilver bot at its title screen.
+    // Its form mounted before Johto was saved; going to the select (its focus) reads the plans again.
     await ss.getByRole('button', { name: WILD, exact: true }).click()
-    await expect(ss.getByTestId('param-HuntPlan').locator('select').first().locator(`option[value="${JOHTO}"]`), 'Johto on the SoulSilver bot')
-      .toBeAttached({ timeout: 30_000 })
+    const ssPlan = ss.getByTestId('param-HuntPlan').locator('select').first()
+    await ssPlan.focus()
+    await expect(ssPlan.locator(`option[value="${JOHTO}"]`), 'Johto on the SoulSilver bot').toBeAttached({ timeout: 30_000 })
     await shotAll('09-soulsilver', pages)
 
     // 10. A draft open while its bot is cancelled through REST is dropped with no error (no uncaught error in the page).
@@ -217,13 +219,14 @@ test('hgss-plan-editor: create, replace, preview, greyed while unsaved, refusals
     await expect(button('Discard'), 'the draft is unsaved').toBeVisible()
     const cancel = await fetch(`${API}/bot/cancelAction`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '0' })
     expect(cancel.status, 'POST bot/cancelAction 0').toBe(200)
-    await expect(hg, 'the HeartGold card after the REST cancel').toHaveCount(0, { timeout: MINUTE })
     await stopRecorder()
+    // A cancel answers its caller only (no push), so the Admin learns of it at its next state read: the SoulSilver card's
+    // own cancel, whose answer holds neither bot, takes both cards down.
+    await cancelBot(ss)
+    await expect(hg, 'the HeartGold card after the REST cancel and the next state read').toHaveCount(0, { timeout: MINUTE })
     await admin.waitForTimeout(3000)
     expect(errors, 'a page error after the REST cancel').toEqual([])
-    await expect(admin.getByTestId('emulator-card-1'), 'the SoulSilver card after the HeartGold cancel').toBeVisible()
     await shotAll('10-draft-dropped', pages)
-    await cancelBot(ss)
     expect(fs.readFileSync(saveOf(HG)).equals(fs.readFileSync(saveOf(HG) + '.bak')), 'the HG-Editor SaveRAM differs from its .bak').toBe(true)
 
     expect((await deletePlan('HGSS', JOHTO)).status, 'DELETE Johto').toBe(204)

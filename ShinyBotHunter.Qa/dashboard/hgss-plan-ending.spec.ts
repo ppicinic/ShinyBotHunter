@@ -9,7 +9,7 @@ import * as fs from 'fs'
 import { expect, test } from '@playwright/test'
 import { emuHawkRunning, shotAll, step } from './driver'
 import {
-  assertLocalStores, cancelEventAndBot, CLEARING, clockConfig, launchHgss, milestoneMessages, PLAN_NOW, PLAN_STOP, PLAN_WALK,
+  assertLocalStores, cancelBot, cancelEventAndBot, CLEARING, clockConfig, launchHgss, milestoneMessages, PLAN_NOW, PLAN_STOP, PLAN_WALK,
   putGoal, putPlan, readClock, rowsFor, RUN_FROM, saveOf, seen, shutdown, stageCopy, startFrame, startWild, teardown, variant,
   writeLeadExtension, type Frame, type Plan
 } from './milestones'
@@ -56,7 +56,10 @@ test(`hgss-plan-ending ${which}: a complete default gives way to the first incom
     const runStart = await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
     // One line per stop at Start, the default first.
     await seen(PLAN_STOP, 2, MINUTE)
-    const stops = backendLog().flatMap((l) => PLAN_STOP.exec(l) ?? []).map((m) => [m[1], m[2], m[3], m[4], m[5]])
+    const stops = backendLog().flatMap((l) => {
+      const m = PLAN_STOP.exec(l)
+      return m ? [m.slice(1, 6)] : []
+    })
     expect(stops, 'the plan\'s stops at Start').toEqual([[PLAN.name, R32.name, ...R32.at], [PLAN.name, R30.name, ...R30.at]])
 
     if (which === 'default-complete') {
@@ -97,7 +100,8 @@ test(`hgss-plan-ending ${which}: a complete default gives way to the first incom
       await shotAll('02-complete', pages)
     }
 
-    await cancelEventAndBot(card)
+    // A Complete event has already ended (BotEventRunner keeps only its state for the card), so there one Cancel closes the bot.
+    await (which === 'default-complete' ? cancelEventAndBot(card) : cancelBot(card))
     // FR-34a: no message for a milestone complete at Start, read after the cancel so a late send has had time to land.
     expect(await milestoneMessages(runStart), '"none for a milestone complete at Start"').toEqual([])
     expect(fs.readFileSync(saveOf(HANDLE)).equals(fs.readFileSync(saveOf(HANDLE) + '.bak')), 'the SaveRAM differs from its .bak').toBe(true)

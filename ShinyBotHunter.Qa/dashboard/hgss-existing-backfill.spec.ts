@@ -193,7 +193,8 @@ test('hgss-existing-backfill: stored phases behave as before; 1-4 Route 30 linke
     await expect(block(LEGACY2).getByText(NOT_FOUND, { exact: true }), '"a mistyped id gives the 404 sentence"').toBeVisible({ timeout: 30_000 })
     await block(LEGACY).getByRole('button', { name: 'Link', exact: true }).click()
     await expect(block(LEGACY).locator('code'), '"Link stores it"').toHaveText(ROUTE30, { timeout: 30_000 })
-    await expect(block(LEGACY).getByText(`Linked to ${ROUTE30}`, { exact: true }), '"Linked to 34-land"').toBeVisible()
+    // The status line reads the same as the feedback message under the block; the message is the green one.
+    await expect(block(LEGACY).locator('div.text-green-400'), '"Linked to 34-land"').toHaveText(`Linked to ${ROUTE30}`)
     await shotAll('05-linked', pages)
     const again = await link(LEGACY, OTHER, true)
     expect([again.status, again.text], '"a second link of the phase to another id gives the server\'s 400"').toEqual([400, LINKED_ELSEWHERE])

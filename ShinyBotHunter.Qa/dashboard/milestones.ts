@@ -445,7 +445,16 @@ const plainOf = (raw: Buffer): { flat: Buffer; plain: Buffer } => {
   return { flat, plain: crypt(flat.subarray(0x08, EXTENSION), flat.readUInt16LE(6)) }
 }
 
-/** Party slot `slot` (1-based) knows `move` with `pp` in move slot `index` (0-based): block B re-encoded with a new checksum. */
+// The record's flags word (+ 4, outside the encryption): bit 2 is set by the game when a record fails its checksum.
+const FLAGS = 4
+
+/**
+ * Party slot `slot` (1-based) knows `move` with `pp` in move slot `index` (0-based): block B re-encoded with a new checksum.
+ * The new checksum re-encrypts all four blocks, about 130 bytes, and ApiHawk writes one byte a frame: a game read of the
+ * half-written record (the lead is read within the 2 s) fails its checksum and sets the flags word's bit 2, a bad egg
+ * (measured on HG-Route32, #525). So the checksum and blocks are written first, then the flags word as it was before, and
+ * read again 3 s later, unchanged.
+ */
 export async function teachMove(slot: number, index: number, move: number, pp: number): Promise<void> {
   await idle('teachMove')
   const addr = await slotAddr(slot - 1)
@@ -457,8 +466,12 @@ export async function teachMove(slot: number, index: number, move: number, pp: n
   plain[BLOCK_B + 8 + index] = pp
   // Encrypted again under the old checksum, so rewritePid back to the PID reads the changed blocks and sums them anew.
   crypt(plain, flat.readUInt16LE(6)).copy(flat, 0x08)
-  await writeLogged(`slot ${slot} move ${index} = ${move}`, addr, rewritePid(flat, raw.readUInt32LE(0)))
+  const record = rewritePid(flat, raw.readUInt32LE(0))
+  await writeLogged(`slot ${slot} move ${index} = ${move}`, addr + FLAGS + 2, record.subarray(FLAGS + 2))
+  await writeLogged(`slot ${slot} flags word back`, addr + FLAGS, raw.subarray(FLAGS, FLAGS + 2))
+  await sleep(3000)
   const after = await readMemory(addr, MON_SIZE)
+  expect(after.equals(record), `slot ${slot} changed by the game within 3 s of the write: ${after.toString('hex')}`).toBe(true)
   expect(decodeMon(after).checksumValid, `slot ${slot} fails its checksum after the write`).toBe(true)
   const read = plainOf(after).plain
   expect([read.readUInt16LE(BLOCK_B + 2 * index), read[BLOCK_B + 8 + index]], `slot ${slot}'s move ${index} after the write`).toEqual([move, pp])
@@ -597,7 +610,8 @@ export const PLAN_STOP = /\[BotService\] Plan (.+?): (.+) at map (\d+) \((\d+), 
 export const ANCHOR_HUNT = /\[BotService\] (.+?): hunting from the anchor map (\d+) \((\d+), (\d+)\), (.*) \((set on this file|generated)\)\s*$/
 // BotService, a headbutt milestone's trainer ID (B1h).
 export const TRAINER_ID = /\[BotService\] Trainer ID (\d+) \(visible (\d+)\), (.*)$/
-// HuntPlanRun: a pick that walks, and the switch once on the anchor.
+// HuntPlanRun: a pick that walks, and the switch: before the walk on the plan's first pick when it is not the default, once
+// on the anchor after any later walk.
 export const PLAN_WALK = /\[Orchestrator\] Plan: (\w+) (\d+)h names (.+); walking from map (\d+) \((\d+), (\d+)\) to map (\d+) \((\d+), (\d+)\)\s*$/
 export const PLAN_NOW = /\[Orchestrator\] Plan: now hunting (.+?)\s*$/
 export const WALK_ENDED = /\[Orchestrator\] (.+?): the walk ended at map (\d+) \((\d+), (\d+)\), not on the anchor \((\d+), (\d+)\)\./

@@ -241,6 +241,8 @@ test('hgss-goal-rows: three presets on three files give three sets of rows; the 
     await expect.poll(async () => (await readCard(alph)).rows.map((r) => r.line), { message: 'the Ruins of Alph card\'s rows are not the server\'s', timeout: MINUTE })
       .toEqual(alphRows.lines)
     expect(alphRows.rows.map((r) => r.species), '"28 Unown rows"').toEqual(Array(28).fill(UNOWN))
+    expect(alphRows.rows.map((r) => r.name), '"Unown (A)" to "Unown (?)"')
+      .toEqual([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ!?'].map((l) => `Unown (${l})`))
     const sprites = (await readCard(alph)).rows.map((r, i) => `${alphRows.rows[i].key}: ${r.sprite === null ? 'no img' : `naturalWidth ${r.sprite}`}`)
     step(`Ruins of Alph sprites: ${sprites.join(', ')}`)
     await shotAll('10-alph', pages)
