@@ -70,3 +70,55 @@ When a milestone a hunt is working on becomes complete for the game file, one me
 ### Consequences
 - Once per milestone per hunt. A milestone already complete when the hunt starts sends nothing.
 - A failed send is logged in full and the hunt goes on.
+
+---
+
+## The counts card shows only what can be met now, the share under the name
+
+Status: Accepted
+Date: 2026-11-25 (owner)
+
+### Context
+As first built, the card had a Share column, dimmed rows at a zero share with their reason, and a footer line "NN % of encounters survive". The owner, on Route 32 · grass with a Repel on: "nota fan. the percentage can be below the mon. the greyed out rows can just not show. only show active mons." And on the footer line: "so we're basiaclyl showing that there are encounters that skip. no human would know this. should not be included. [...] either way i would remove it."
+
+### Decision
+Each row's share is drawn small under the Pokémon's name. A row whose share is zero now is not drawn. The "encounters survive" footer line is removed (#603).
+
+### Consequences
+- The reasons ("night only", "blocked by Repel", "needs Hoenn Sound") are shown nowhere on the card; the endpoint still gives them.
+- A card without shares (a stored phase, a headbutt milestone, a file not seen since the backend started) draws every row.
+- A Repel that blocks every species leaves the card's table with no rows.
+
+---
+
+## A form row is named "Species (Form)"
+
+Status: Accepted
+Date: 2026-11-26 (owner)
+
+### Context
+Ruins of Alph's card showed 28 rows all named "Unown". The owner: "Letter in parentheses. Example "Unown (A)". We may later add stuff like Giratina (Altered)".
+
+### Decision
+A milestone row for one Unown letter is named `Unown (A)` to `Unown (Z)`, `Unown (!)` and `Unown (?)` (#605). `Species (Form)` is the format for any later form name.
+
+### Consequences
+- Only Unown gets a form name now. An any-form row keeps the plain name.
+- The Goals tab and stored phases keep plain names; the Goals tab shows the form code in its own column.
+
+---
+
+## A trainer's challenge on an HGSS walk is a Discord message and Waiting
+
+Status: Accepted
+Date: 2026-11-26 (owner)
+
+### Context
+On HeartGold and SoulSilver an unbeaten trainer who sees the player during a navigator walk (a plan's walk, the walk to an anchor, a heal trip and its return) starts a battle the bot does not fight. The owner: "A trainer block should be a discord ping and waiting state. I resume when i beat the trainer."
+
+### Decision
+The walk stops as a Ruby and Sapphire hunt stops on a trainer (#604; research #607, code #608, scenario #609). The challenge is recognised on the walk by script 3739 (`std_trainer_approach`). Nothing is pressed. One message is sent per stop, `A trainer battle started on <map>.`, with the map's internal name (`R30`). Waiting goes over the leg, and Resume, once the operator has won and the field is free, plans the leg again from where the player stands.
+
+### Consequences
+- A second unbeaten trainer on the same walk is a new stop with its own message.
+- A one-time story scene on a walk (Route 32's "Wait up!" NPC; Lyra's gatehouse scene on map 97 on the SoulSilver save) is not a trainer stop: it ends in the navigator's timeout and a Waiting with no message. Whether it should share the stop is open for the owner.
