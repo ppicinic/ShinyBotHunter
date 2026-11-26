@@ -46,6 +46,9 @@ const FIXED_TITLE = `HGSS — ${R30.id} (${HANDLE})`
 const OTHER_TITLE = `HGSS — ${R30.id} (${OTHER_FILE})`
 const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\)/
 const BATTLE = /, isShiny: (True|False)\s*$/
+// OrchestratorEvent's state line once a battle is over, then the Spin's Overworld.WaitForReadyAsync, ended on the free field.
+const BATTLE_OVER = /\[Orchestrator\] State: BattleComplete/
+const FIELD_READY = /\[GameState\] the overworld ready: GameSnapshot \{ Screen = FieldFree/
 const WARP_ANY = /\[Navigator\] Warp to map (\d+(?:\/\d+)*): on map (\d+), (.*)$/
 // The anchors' run lines: Route 32 up-down ±1 from (474, 294), Route 30 up-down ±6 from (547, 304).
 const R32_MACRO = /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/
@@ -97,6 +100,12 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       // (a) Two encounters at the custom Route 33, a label where the bot stands: the follows window shows it (milestone 1).
       const aStart = await startWild(card, { phase: ROUTE33, target: 'ShinyTarget', mode: 'Spin' })
       await seen(BATTLE, 2, 5 * MINUTE)
+      // The cancel leaves the game where it is, and Set anchor here and the plan's Start both want the free field: so the
+      // event is cancelled only once the second battle is over and the field is free again, before the next spin finds one.
+      await seen(BATTLE_OVER, 2, 2 * MINUTE)
+      const aLog = backendLog()
+      const secondOver = aLog.map((l, i) => (BATTLE_OVER.test(l) ? i : -1)).filter((i) => i >= 0)[1]
+      await seen(FIELD_READY, aLog.slice(0, secondOver).filter((l) => FIELD_READY.test(l)).length + 1, MINUTE)
       await expect.poll(() => rowsFor(HANDLE, ROUTE33, aStart).length, { message: 'two rows under Route 33', timeout: 30_000, intervals: [2000] })
         .toBeGreaterThanOrEqual(2)
       await expect(heading(follows), 'milestone 1 in the follows window').toHaveText(ROUTE33, { timeout: 30_000 })
