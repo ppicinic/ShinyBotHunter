@@ -94,7 +94,8 @@ test(`HGSS milestone complete (${VARIANT}): a wanted shiny parks the hunt, the g
     await expect.poll(() => count(FOE, runAt), { timeout: 10 * MINUTE, intervals: [2000] }).toBeGreaterThanOrEqual(2)
     const armAt = new Date().toISOString()
     const foesBefore = count(FOE)
-    expect(sendCheatHotkey(), 'EmuHawk was not the foreground window when the hotkey was sent').toBe(true)
+    const hotkey = sendCheatHotkey()
+    expect(hotkey.sent, `EmuHawk was not the foreground window when the hotkey was sent; the foreground was ${hotkey.foreground}`).toBe(true)
     step(`armed at ${armAt}`)
 
     // 2. The next encounter is shiny and a target: Resume on the card, Waiting, the alert sent.
