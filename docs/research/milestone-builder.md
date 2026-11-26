@@ -508,3 +508,172 @@ Route 32, with the segment `PathfindingService.CreateMacro` writes, sent as `Exe
 ### Evidence
 
 `ShinyBotHunter.Qa/dashboard/qa-runs/20261125-repel-research/` (gitignored): `ru-run1.log`, `sa0-run1.log`, `sa2-run1.log`, `hg-run1.log` (every sample of every traced trial), the probe scripts, the config copy and `shots/`. Two probe errors are in the logs and are not game behaviour: the Ruby E4 summary's "battle 0 of N" (a detector error; the count above is from the "battle: fleeing" lines) and HeartGold's `N1 (held)` trials (a batch whose clear wiped the A; redone as `N3`).
+
+## HeartGold and SoulSilver: a trainer's challenge during a navigator walk
+
+Research round N1a for #604, run 2026-11-26 on `feature/hunt-plans-milestones` at `9927055`. Run as the two rounds above: EmuHawk started directly with ApiHawk and its own config copy (100 % speed, `UseRealTime: false`, `InitialTime` Thursday 2026-12-03 22:30), no backend and no database, on a throwaway copy of `Pokemon SoulSilver.nds` (USA, rev 0, `IPGE`) and of the pristine `hgss.qa-ss-route30` (Route 30, map 34, (556, 374)). Three launches, each from a fresh copy of the pristine save. Everything below was observed unless it says "from the source".
+
+**How the snapshots were read.** The probe sends one cmd `0x05` request per sample, so every value of a sample is from one emulated frame, and it classifies the blocks with a port of `HgssFieldSystemStateReader.Classify` and `HgssPointerService`'s offsets. The reader's own code was not run. ApiHawk takes 16 blocks per request, so two of the reader's blocks that these screens do not use (the evolution summary state and the party menu index) were swapped for the tile and a counter, and the environment block was read longer to cover env + `0x60`. ApiHawk answers memory requests once per emulated frame, so one sample per frame (16.7 ms) is the densest read this tooling has. In the walking traces the gap between two samples was 17 ms at the median and never over 25 ms, so no frame was skipped there. The only longer gaps (49 and 51 ms) are the two places where the probe wrote a flag between two samples.
+
+**The walk.** The macro is the one run `20261126-003848` logged for the `ss` Thursday walk, sent as `ExecuteSegmentMacroAsync` sends it: `macro_string_M.Right.558.…;M.Up.353.…;M.Right.559.…;M.Up.333.…;M.Left.552.…;M.Up.326.…;…` from (556, 374). The navigator's own code was not run. The save has the Running Shoes on, so the player runs: one tile in 8 frames.
+
+**Challenges seen: 9.** Three on the pristine save, one per launch. Six more in launches 1 and 3 after the probe cleared the beaten trainer's flag again (a research write, marked "re-armed" below). Six wins and two losses were played through by hand.
+
+### R1: the tile and the trainer
+
+*Question.* On which tile does the challenge start, and which trainer is it?
+
+*Done.* The full walk macro on the pristine save (launches 1 and 2), and the environment read at the first 3739 sample.
+
+*Seen.*
+
+- The walk passes column 559 from row 353 to row 333, and row 333 from column 559 to column 552, with the field free. **The challenge starts on the step from (552, 333) up to (552, 332)**, the first step of `M.Up.326`. The player ends on (552, 332), the facing byte at 0 (Up), with the trainer on the tile to the right (the screenshot at the speech). It did not start on column 559 between rows 343 and 333, where the issue expected it. (In launch 1 a wild battle at (558, 372) interrupted the walk. It was fled by hand and the rest of the macro was sent again, as the navigator does.)
+- env + `0x54` is `engagedTrainers[0]`, seven `int`s: `(1, 2, 3007, 8, 0, 0x022A2724, 0)`. **env + `0x60` reads 8**, `TRAINER_YOUNGSTER_JOEY` in the decomp's `trainers.h`. The word at + `0x5C` reads 3007, which is 3000 + 8 - 1, the trainer's own talk script. The word at + `0x54` is the distance in tiles: 1 here, and 4 when the line was entered at (549, 332). The second slot (env + `0x70`) was all zero.
+- His line of sight covers row 332 at column 552 and at column 549: entering at (549, 332) started the same script with distance 4 (re-armed), and he walked three tiles to the player. Row 333 right under him is outside it.
+
+*Conclusion.* The stop on this walk is at map 34 (552, 332) and the trainer is Youngster Joey, id 8. The bot does not need the id.
+
+### R2: the snapshots from the step to the speech
+
+*Question.* From the step that triggers it until the speech, is every snapshot `FieldTask`, `Task_RunScripts`, `Script = 3739`? Which natives? Is there any `FieldFree` or `Transitioning` frame between the step and the first 3739?
+
+*Done.* Six walking traces at one sample per frame, from before the step to two seconds or more at the arrow: the full macro held to the arrow (launch 1), the full macro cleared on the first 3739 sample (launch 2), a hand segment ending on the tile (launch 3), and three re-armed ones in launch 1.
+
+*Seen.* The five traces that enter the line next to the trainer are the same frame for frame. Frame 0 is the first 3739 sample.
+
+| Frames | Snapshot | Tile read |
+|---|---|---|
+| before 0 | `FieldFree`, on every sample of the walk. On the last two the player is centred on (552, 333) with Up held: the turn. | (552, 333) |
+| 0 | `FieldTask`, `TaskFunction = 0x0203FF45`, `Script = 3739`, `Native = 0x02046D41`, no printer. **The player's position leaves the centre of (552, 333) on this same frame.** | (552, 333) |
+| 1, 2 | the same with no native (`ctx.mode` 1) | (552, 333) |
+| 3, 4 | `Native = 0x02041D99` | (552, 332), still moving |
+| 5 to 167 | no native (`ctx.mode` 1), 163 frames. Whatever the game shows before the text (the "!" would be here), the snapshot carries no native for it. | (552, 332), centred from frame 5 |
+| 168 to 213 | `Native = 0x021EF349` (the printing native), `TextPrinter = 0`, 46 frames | (552, 332) |
+| 214 on | `Native = 0x021EF349`, **`TextPrinter = 2`, `TextCursor = 0x022A860E`**: the first arrow, 3.57 s after frame 0. The text is "I just lost, so I'm trying to find more Pokémon." | (552, 332) |
+
+- **Every sample from frame 0 to the arrow is `FieldTask`, `0x0203FF45`, 3739.** There was no `Transitioning` sample, no `FieldFree` sample after frame 0 and no other task function, in any trace.
+- **There is no free-field frame between the step and the first 3739.** The script does not wait for the step to end: it is up on the frame the step begins, and the player walks the step under it. The tile coordinate (`0x021DA6F4`, `0x021DA6FC`, upper half) still reads the old tile on frames 0 to 2 and the sight tile from frame 3.
+- With the trainer four tiles away, the stretch with no native is 211 frames instead of 163 (three steps of 16 frames), printing starts at frame 216 and the arrow is up at frame 262, 4.37 s after frame 0. The natives and the order are the same. No separate native showed for the trainer's walk.
+- The natives `0x02046D41` and `0x02041D99` are not in `HgssPointerService` and were not named from the decomp. `0x02041D99` is the `Native = 33824153` of runs `20261126-003848` and `20261126-004024`.
+- **The check is not tied to a step.** With the player standing still on (552, 332) after a win, no macro and no key held, clearing the trainer's flag by a memory write put script 3739 up within four frames (51 ms after the last sample before the write in launch 1, 67 ms in launch 3). So the game looks for trainers on standing frames too. Whether the game itself can produce that without a write (a trainer who turns or walks, the frame after a warp) was not tested.
+
+*Conclusion.* Yes to the first question, on every frame. No free or transitioning frame comes between the step and the first 3739, so the stall timer cannot run there and a segment end cannot read `Completed` there.
+
+### R3: nothing is taken while the speech waits
+
+*Question.* After the macro is cleared, does the speech stay at its first arrow, with `TextPrinter` and `TextCursor` unchanged for 30 s? Did the held direction or the release move the text?
+
+*Done.* Three ways. Launch 1: the macro left running to the arrow and 5 s past it, then `macro_clear`, then 30 s. Launch 2 and one re-armed trial: `macro_clear` sent on the first 3739 sample, then 30 s at the arrow. Launch 3 and two re-armed trials: the macro had ended by itself (R4), then 12 s at the arrow.
+
+*Seen.*
+
+- Macro held: Up read as held on all 514 samples from frame 0 to the clear, 301 of them at the arrow. The player stayed on (552, 332) and the snapshot stayed `TextPrinter = 2`, `TextCursor = 0x022A860E`. `M.Up.326` never completed.
+- The clear: Up read as released on the next sample. Over the next 30 s, 1,795 samples had one snapshot value: `FieldTask`, `0x0203FF45`, 3739, `0x021EF349`, `TextPrinter = 2`, `TextCursor = 0x022A860E`, tile (552, 332). No key read as held or new.
+- Cleared on the first 3739 sample: Up was held on that one sample and released on the next. The player still finished the step onto (552, 332), the arrow came on the same frame as in the held trace, and the 30 s were one snapshot value again, both times.
+- At the arrow the native is still the printing native: the box waits in the printer (`TextPrinter = 2`), not in `WaitABPressNative`.
+
+*Conclusion.* A held direction, its release and `macro_clear` are not input to this script. The speech stays at its first arrow until A is pressed.
+
+### R4: a segment that ends exactly on the sight tile
+
+*Question.* Does the macro's reply come before the first 3739 snapshot?
+
+*Done.* `macro_string_M.Left.552.…;M.Up.332.…` from (555, 333), with `/wait-macro` long-polled on its own connection and its answer timed against the samples. Once on the pristine save (launch 3), once re-armed, and once re-armed as `M.Up.332` from (549, 333), four tiles from the trainer.
+
+*Seen.* **The reply came after the first 3739 sample in all three: 79, 79 and 78 ms after it, five frames.** `M.Up.332` is satisfied when the coordinate first reads 332, which is frame 3 of the script, and ApiHawk answered done two frames later. Up read as held on frames 0 to 4. No sample was `FieldFree` from frame 0 on. The 12 s that followed at the arrow were one snapshot value.
+
+*Conclusion.* No. When the reply arrives the snapshot is already `FieldTask`, 3739, and it stays so. `WaitForSegmentEndAsync` is the reader that sees it, and its first read cannot be `FieldFree`. The stall watch can see it first if one of its 250 ms polls falls in those five frames.
+
+### R5: after a win
+
+*Question.* The snapshot sequence back to `FieldFree`; whether a press is needed after the battle's last message; where the player stands; whether flag `0x550` + id is set; and whether the same steps start a second 3739.
+
+*Done.* Six wins by hand, two of them the first win on a pristine save (launches 1 and 3). A press outside the battle menu was sent only after the snapshot had stood unchanged for 5 s (three wins) or 15 s (three wins, one of them pristine), so a wait that needs a press shows as a snapshot that stood for the whole 15 s. The flag was read through the save's section 4: the flags start `0x170 * 2` bytes into it, and `0x558` is bit 0 of the byte at `0x0227D41B` in these launches.
+
+*Seen.* The presses, all research presses and not bot behaviour:
+
+| Press | Sent at | What it did |
+|---|---|---|
+| `H.A.3;W.20` | `TextPrinter = 2`, `TextCursor = 0x022A860E` | the second page: `TextPrinter = 0` for 0.7 s, then `TextPrinter = 2`, `TextCursor = 0x022A8666` |
+| `H.A.3;W.20` | `TextPrinter = 2`, `TextCursor = 0x022A8666` | the battle starts (below) |
+| `W.10;S.70.60.3` | `BattleMenu` | `BattleMoveList` |
+| `W.10;S.170.110.3` | `BattleMoveList` | Quick Attack, the fourth move. It won in one turn, six times of six. **Scratch, the first move, has 0 PP in this save**: a touch on it gives `BattleMessage` for 1.5 s and the list again. |
+
+The snapshots from the second A on (the pristine win of launch 3, 15 s rule):
+
+1. `FieldTask`, 3739 with no native (5 frames), then **`FieldTask` with `TaskFunction = 0x02050739`** (1 frame) and **`0x020551B9`** (1.7 s), neither with a script. Then `Transitioning` (0.2 s) and `BattleStarting` (app states 0, 3, 8).
+2. `BattleScript` 0 for 8.8 s with no press, `BattleTurn`, `BattleMenu`.
+3. After the move: `BattleScript` 76, 1, 2, 264, 2, 16, 293, 6, 83, 276 with `BattleTurn` between them, then **`BattleScript` 4 for 7.3 s, which ends by itself**, then `BattleOver` with `Outcome = Won` (app states 9, 10, 13, 15), `BattleStarting` (state 0, 2 frames) and `Transitioning` (1.2 s).
+4. `FieldTask` with `TaskFunction = 0x0205528D`, then `0x020552D5` (0.25 s), then `0x0203FF45` with `Script = 3739` again.
+5. On the first win of a save, script 3739 goes on: a message that prints and closes by itself (0.9 s), `Native = 0x020476E9` (0.4 s), then **`Native = 0x020477C1` (`MenuChoiceNative`): a Yes/No question, which stood 15 s.** It is taken to be the offer of his phone number, since it comes once and never again in that launch; the box was not read on screen. One A (the first choice) gave `Native = 0x02047745` (0.5 s), `Native = 0x02049331` (3.1 s), a box at `TextPrinter = 2`, `TextCursor = 0x022A8606` (stood 15 s, one A), a box at `Native = 0x02041075` (`WaitButtonNative`, stood 15 s, one A), and `FieldFree` four frames later.
+6. On the later wins in the same launch (the trainer re-armed) step 5 is absent: 3739 shows for six frames after `0x020552D5` and the field is free with no press, 1.7 s after `BattleOver`.
+
+- **In the battle no press is needed beyond Fight and the move.** `BattleScript` 0 took 8.8 s with an A at 5 s and without one. `BattleScript` 4, the battle's last messages, took 7.3 s without a press and 6.8 s with an A at 5 s.
+- **After the battle a press is needed only at the question and its two boxes**, three presses, on the first win.
+- **The player stands on the stop's tile**, (552, 332), map 34, with the facing byte at 0 (Up), on all six wins.
+- **Flag `0x558` (`0x550` + 8): 0 at both arrows of the speech, 1 while the question waits, 1 on the free field.** The byte went `0x00` to `0x01`.
+- **No second 3739.** With the flag set: `M.Down.333;M.Right.555` and `M.Left.552;M.Up.332`, twice, then `M.Left.549` along row 332 and back. 962 samples, all `FieldFree`, and each macro answered done.
+
+*Conclusion.* After a win the field is free on the stop's tile with the flag set, and walking the tile again starts nothing. The field is not free while the question or its boxes wait, and script 3739 is still the one running there.
+
+### R6: Resume too early
+
+*Question.* Do the speech at its arrow and the battle's action menu each stand unchanged for at least 10 s, so that `OrchestratorEvent.ResumeAsync`'s free-field wait (stale after 10 s without a change) parks again?
+
+*Done.* The speech was left at its first arrow for 30 s three times and for 12 s three times (R3). The battle menu was left alone for 12 s in launch 1.
+
+*Seen.*
+
+- The speech: one snapshot value for the whole time, never `FieldFree`.
+- The battle menu: 718 samples over 12.0 s, one value: `BattleMenu`, app state 9, command 5, selection 1. Never `FieldFree`.
+- The other waits that stood 15 s or more with one value, none of them `FieldFree`: the second page of the speech, the Yes/No question (`Native = 0x020477C1`), its two boxes, and after a loss the whiteout screen and the nurse's four boxes (R7).
+- With nothing waiting, the longest unchanged stretches were `BattleScript` 0 (8.8 s), `BattleScript` 4 (7.3 s) and, on a loss, `BattleScript` 5 (12.0 s).
+
+*Conclusion.* A Resume while the speech or the battle menu waits reads an unchanged snapshot that is not free for 10 s, and parks again. A Resume pressed while the operator is playing does not park as long as the snapshot keeps changing: it goes on at the first `FieldFree`. One stretch with no input pending, the 12 s of `BattleScript` 5 before a whiteout, is longer than the 10 s. `ResumeAsync` itself was not run.
+
+### R7: after a loss
+
+*Question.* Where does the player land, is the field free, is the trainer's flag still clear, and what would a Resume start from?
+
+*Done.* Twice (launch 2 on the pristine save, launch 3 re-armed). At the first arrow the lead's current HP was written to 1 and the other five members' to 0 (the encrypted battle stat word at party slot + `0x8E`), so one hit ends the battle. Then the speech was pressed through and Defense Curl chosen (`W.10;S.70.110.3`) until the Rattata's hit landed. Presses on a 6 s rule in launch 2 and a 20 s rule in launch 3.
+
+*Seen.*
+
+1. `BattleScript` 5 for 12.0 s with no press, then `BattleOver` with `Outcome = Lost` (raw 2), `BattleStarting` (state 0), then **`Transitioning`, which stood 20 s.** One A moved it on 0.6 s later (the same after 6 s in launch 2). The screen was not captured; it is taken to be the whiteout message.
+2. `FieldTask` with `TaskFunction = 0x0205528D`, then **`0x0203FF45` with `Script = 2013`** (`std_whited_out_to_pokecenter` in `std_script.h`) on **map 69 at (8, 13)**, in front of the nurse. Map 69 is `MAP_CHERRYGROVE_POKECENTER_1F` in the decomp's `maps.h`.
+3. Under 2013: natives `0x02043459` and `0x02041CA9`, two messages that close by themselves, the heal (`TaskFunction = 0x0224BB91`, `HealAnimationTask`, 5.8 s), then **four waits that each stood 20 s and each took one A**: `TextPrinter = 2`, `TextPrinter = 3`, `TextPrinter = 2`, and `Native = 0x02041075`.
+4. After the fourth A: `Script = 3739` again for two frames, with no native, still on map 69. Then `FieldFree` at (8, 13), map 69, the facing byte at 0 (Up).
+
+- **The flag is still clear**: `0x558` read 0 on the free field in the Center, both times.
+- The party was healed: the lead read 32 of 32 HP.
+- The field is not free at any point between the battle and the fourth A in the Center: five presses in all, the whiteout screen and the nurse's four waits.
+
+*Conclusion.* After a loss the player stands in the Cherrygrove Pokémon Center, healed, with the trainer unbeaten. Until the operator has pressed through the whiteout screen and the nurse, a Resume reads an unchanged snapshot that is not free, and parks again. After that the field is free, so a Resume would hand the leg back to the navigator at map 69 (8, 13), and the leg would be planned from there. Walking back into the trainer's line was not done, but with the flag at 0 the challenge started every time the player was in the line (R1, R2).
+
+### What the bot may rely on
+
+- **What identifies the challenge:** `Screen = FieldTask`, `TaskFunction = 0x0203FF45` (`RunScriptsTask`) and `Script = 3739`. It is true from the frame the step into the line begins, on every frame to the speech's arrow, and it stays true at the arrow until someone presses A. There is no free or transitioning frame before it.
+- **Both readers see it.** Mid-segment the stall watch's poll reads it. On a segment's last step the macro's reply comes five frames after it, so the segment end's first read is already 3739.
+- **Nothing is pressed and nothing is taken.** The held direction, its release and `macro_clear` do not move the text. Cleared on the first sample or held for 8 s, the result is the same: the player on the sight tile, the speech at `TextPrinter = 2`.
+- **The tile.** The coordinate reads the tile before the sight tile for the first three frames of the script and the sight tile from then on. A tile read at the moment of recognition can be one step short. The tile read at Resume is the one the route is planned from.
+- **Script 3739 is not the whole stop.** Between the speech and the free field the snapshot also goes through `FieldTask` with other task functions and no script (`0x02050739`, `0x020551B9`, `0x0205528D`, `0x020552D5`), `Transitioning` and the battle screens, and 3739 shows again after the battle. After a loss it shows for two frames in the Pokémon Center. None of this matters to a bot that is parked.
+- **Resume after a win:** `FieldFree` on the stop's tile, map 34 (552, 332) here, with the trainer's flag set. The same steps start no second challenge.
+- **Resume after a loss:** `FieldFree` at map 69 (8, 13), the Cherrygrove Pokémon Center, once the operator has pressed through. The flag is clear, so the walk back meets the trainer again, which is a new stop.
+- **Resume pressed too early:** the speech, the battle menu, the Yes/No question, the whiteout screen and the nurse's boxes each stand unchanged and not free for longer than the 10 s stale, so the wait parks again.
+
+### Not verified
+
+- `NavigatorEvent` and `OrchestratorEvent.ResumeAsync` themselves. The probe sent the navigator's strings and read with a port of the reader. No backend ran.
+- Any trainer but Youngster Joey, any map but Route 30, and HeartGold. A double battle, two trainers at once (`engagedTrainers[1]`), a trainer who turns or walks on his own, and a trainer met while surfing or on the bike were not seen.
+- Whether the game can start a challenge on a standing player without a memory write. The write showed that the check runs on standing frames. That goes against the plan's "no step, no sight check" for a Headbutt hunt's turns and for a landing from a warp. Neither case was run.
+- Six of the nine challenges and four of the six wins were on a trainer re-armed by clearing his flag in memory. They matched the pristine ones frame for frame up to the speech, but they are not a state the game produces.
+- A walk at walking pace (the save runs), and a challenge on a step that also ends a Repel, ticks poison, opens a sign or starts a wild battle.
+- The route from the Cherrygrove Pokémon Center back to Route 30's anchor after a loss, and the walk back into the trainer's line. A loss with other members still able to fight was not played.
+- In the four tile challenge the trainer walked to the tile beside the player (the screenshot at the speech). That battle was not played, so where he stands after a win, and whether a route planned at Resume can run into him there, is not known. On the QA walk the player enters his line next to him and he does not walk.
+- What the Yes/No question after the first win says, and what the screen behind the 20 s of `Transitioning` after a loss shows. Neither was captured. The whiteout screen's need for a press rests on two trials.
+- Text speed and battle animations were the save's own. The frame counts above are for those settings.
+- The natives `0x02046D41`, `0x02041D99`, `0x020476E9`, `0x02047745`, `0x02049331`, `0x02043459`, `0x02041CA9` and the task functions `0x02050739`, `0x020551B9`, `0x0205528D`, `0x020552D5` are addresses only. They were not named from the decomp.
+
+### Evidence
+
+`ShinyBotHunter.Qa/dashboard/qa-runs/20261126-trainer-research/` (gitignored): `run1.log`, `run2.log`, `run3.log` (one per launch: every sample of every dense trace, each press and each write), `drive1.out` to `drive6.out` (the six wins), `drive-loss.out` and `drive-loss2.out` (the two losses), the probe scripts (`tr.py` holds the port of the reader), the config copy and `shots/`. The earlier scenario runs that showed the script are `20261126-003848` and `20261126-004024`. Two things in the logs are probe matters and not game behaviour: `run1.log` holds a loop of touches on Scratch, which has no PP, before the first win, and the "samples after the write" lines count samples, which are three frames apart at a write.
