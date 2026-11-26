@@ -210,7 +210,7 @@ namespace ShinyBotHunter.Tests
             Stand(memory, 73, 469, 258, Direction.Up);
             FakeBot bot = new(Task.CompletedTask) { State = new ScriptedReader(FieldFree), Overworld = new HgssOverworldReader(memory, Table) };
 
-            await HgssPrimoEggEvent.WalkToLineAsync(bot, new NavigatorEvent(new PokemonStateReader()), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
+            await HgssPrimoEggEvent.WalkToLineAsync(bot, new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
                 CancellationToken.None);
 
             Assert.Empty(bot.Macros);

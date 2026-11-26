@@ -296,7 +296,7 @@ To close them all, untick **Pickup items windows**. A window you close yourself 
 
 ## Resume a hunt that is waiting
 
-Some hunts stop and wait for you, for example after finding a shiny, or when a trainer challenges your character in Ruby or Sapphire. The entry under **Active Emulators** then offers only **Resume**.
+Some hunts stop and wait for you, for example after finding a shiny, or when a trainer challenges your character in Ruby or Sapphire, or on a HeartGold or SoulSilver walk. The entry under **Active Emulators** then offers only **Resume**.
 
 1. Click **Run** beside **Resume**.
 
