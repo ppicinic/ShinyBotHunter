@@ -22,14 +22,14 @@ function Get-LastPts([string] $file) {
 function Get-WindowVideo([string] $file) {
     $length = Get-LastPts $file
     $end = (Get-Item $file).LastWriteTimeUtc
-    @{ Path = $file; Start = $end.AddSeconds(-$length); Length = $length; Stretch = 1.0 }
+    [pscustomobject]@{ Path = $file; Start = $end.AddSeconds(-$length); Length = $length; Stretch = 1.0 }
 }
 
 $adminSize = (Get-Item (Join-Path $RunDir "admin.webm")).Length
 $adminFile = Get-ChildItem (Join-Path $RunDir "videos") -Filter *.webm | Where-Object { $_.Length -eq $adminSize } | Select-Object -First 1
 if (-not $adminFile) { throw "no video in videos\ has admin.webm's size" }
 $admin = Get-WindowVideo $adminFile.FullName
-$card = Get-WindowVideo (Join-Path $RunDir $Card)
+$counts = Get-WindowVideo (Join-Path $RunDir $Card)
 
 $emuFile = Join-Path $RunDir "emulator.mp4"
 $log = Get-Content "$emuFile.log" -Raw
@@ -38,11 +38,11 @@ $first = [DateTime]::Parse($Matches[1], $inv, [Globalization.DateTimeStyles]::Ro
 $last = [DateTime]::Parse($Matches[2], $inv, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
 $emuLength = Get-LastPts $emuFile
 $wall = ($last - $first).TotalSeconds
-$emu = @{ Path = $emuFile; Start = $first; Length = $wall; Stretch = $wall / $emuLength }
+$emu = [pscustomobject]@{ Path = $emuFile; Start = $first; Length = $wall; Stretch = $wall / $emuLength }
 
-$views = @($emu, $admin, $card)
-$t0 = ($views | ForEach-Object { $_.Start } | Measure-Object -Minimum).Minimum
-$t1 = ($views | ForEach-Object { $_.Start.AddSeconds($_.Length) } | Measure-Object -Maximum).Maximum
+$views = @($emu, $admin, $counts)
+$t0 = ($views | ForEach-Object { $_.Start } | Sort-Object | Select-Object -First 1)
+$t1 = ($views | ForEach-Object { $_.Start.AddSeconds($_.Length) } | Sort-Object | Select-Object -Last 1)
 $total = ($t1 - $t0).TotalSeconds
 $inputs = @()
 $chains = @()
