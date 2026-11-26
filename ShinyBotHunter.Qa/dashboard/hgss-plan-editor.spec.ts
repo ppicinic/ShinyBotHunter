@@ -203,9 +203,11 @@ test('hgss-plan-editor: create, replace, preview, greyed while unsaved, refusals
     await shotAll('08-refused-start', pages)
 
     // 9. The same plan on the SoulSilver bot at its title screen.
+    // Its form mounted before Johto was saved; going to the select (its focus) reads the plans again.
     await ss.getByRole('button', { name: WILD, exact: true }).click()
-    await expect(ss.getByTestId('param-HuntPlan').locator('select').first().locator(`option[value="${JOHTO}"]`), 'Johto on the SoulSilver bot')
-      .toBeAttached({ timeout: 30_000 })
+    const ssPlan = ss.getByTestId('param-HuntPlan').locator('select').first()
+    await ssPlan.focus()
+    await expect(ssPlan.locator(`option[value="${JOHTO}"]`), 'Johto on the SoulSilver bot').toBeAttached({ timeout: 30_000 })
     await shotAll('09-soulsilver', pages)
 
     // 10. A draft open while its bot is cancelled through REST is dropped with no error (no uncaught error in the page).
