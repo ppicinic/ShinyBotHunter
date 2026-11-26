@@ -69,6 +69,9 @@ try {
         $bmp.UnlockBits($data)
         $stdin.Write($buf, 0, $buf.Length)
         $frames++
+        # The first and last frames' wall times (UTC), for compose-run-video.ps1: frames come slower than $Fps under load.
+        if ($frames -eq 1) { $first = [DateTime]::UtcNow.ToString("o") }
+        $last = [DateTime]::UtcNow.ToString("o")
         Get-ChildItem -Path $ShotDir -Filter "shot-*.request" -ErrorAction SilentlyContinue | ForEach-Object {
             $name = $_.BaseName.Substring(5)
             $bmp.Save((Join-Path $ShotDir "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
@@ -81,5 +84,5 @@ try {
 finally {
     $stdin.Close()
     $ff.WaitForExit()
-    "frames=$frames exit=$($ff.ExitCode)" | Out-File -FilePath "$OutFile.log" -Append -Encoding utf8
+    "frames=$frames exit=$($ff.ExitCode) first=$first last=$last" | Out-File -FilePath "$OutFile.log" -Append -Encoding utf8
 }
