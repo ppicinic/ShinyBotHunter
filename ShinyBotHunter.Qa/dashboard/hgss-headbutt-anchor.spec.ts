@@ -8,15 +8,18 @@ import {
   startFrame, startWild, subscribe, teardown, teachMove, TRAINER_ID, writeLeadExtension, type Frame
 } from './milestones'
 
-// #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6; B1h-c) and a headbutt card with no share.
+// #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6) and a headbutt card with no share, at Violet City's headbutt
+// milestone, reached going north from the save's tile on Route 32. Not Route 32's own stand to the south: that walk meets a
+// one-time story NPC ("Wait up! What's the hurry?", script 3) at (475, 305), which the navigator does not handle.
 const HANDLE = 'HG-Headbutt2'
-const HEADBUTT = '36-headbutt'
+const HEADBUTT = '73-headbutt'
 const CARD = `HGSS — ${HEADBUTT} (${HANDLE})`
-// The full trainer ID of hgss.qa-route32 (TID 15613, SID 35374); 2318286077 % 10 = 7 picks Route 32's tree 23 at (471, 421),
-// stood on from (470, 421) facing Right, the cheapest of the trees whose kind holds a wanted species (milestones.json.gz).
+// The full trainer ID of hgss.qa-route32 (TID 15613, SID 35374); 2318286077 % 10 = 7 picks Violet City's tree 4 (rare; tiles
+// (496, 279) to (497, 279)), stood on from (497, 278) facing Down, the cheapest of the trees whose kind holds a wanted
+// species (milestones.json.gz; tree 7, cheaper at cost 72, gives nothing for this ID).
 const TRAINER = ['2318286077', '15613']
-const STAND = ['36', '470', '421']
-// Route 32's headbutt species: Hoothoot, Pineco, Exeggcute.
+const STAND = ['73', '497', '278']
+// Violet City's headbutt species: Hoothoot, Pineco, Exeggcute (its rare trees give Hoothoot and Exeggcute).
 const SPECIES = ['163', '204', '102']
 const FR11 = /\[Headbutt\] start=script/
 const HEADBUTT_SCRIPT = 10014
@@ -24,7 +27,7 @@ const MOVE_HEADBUTT = 29
 
 const count = (pattern: RegExp, from = 0): number => backendLog().slice(from).filter((l) => pattern.test(l)).length
 
-test('HGSS headbutt anchor: the trainer ID picks Route 32\'s stand, the walk there with no Rock Smash, three headbutt battles', async () => {
+test('HGSS headbutt anchor: the trainer ID picks Violet City\'s stand, the walk there, three headbutt battles', async () => {
   test.setTimeout(25 * MINUTE)
   const frame: Frame = { backend: null, app: null }
   assertLocalStores()
@@ -53,9 +56,9 @@ test('HGSS headbutt anchor: the trainer ID picks Route 32\'s stand, the walk the
     expect([trainer[1], trainer[2]], 'the trainer ID line').toEqual(TRAINER)
     step(`trainer ID ${trainer[3]}`)
     const hunt = ANCHOR_HUNT.exec((await seen(ANCHOR_HUNT, 1, MINUTE)).line)!
-    expect(hunt.slice(1, 7), 'the anchor line').toEqual(['Route 32 · headbutt', ...STAND, 'headbutt', 'generated'])
+    expect(hunt.slice(1, 7), 'the anchor line').toEqual(['Violet City · headbutt', ...STAND, 'headbutt', 'generated'])
 
-    // 3. The walk ends on the stand (Route 32 has no Rock Smash rock on the way); three cycles with a battle each. A fourth
+    // 3. The walk ends on the stand; three cycles with a battle each. A fourth
     // FR-11 line means the third battle's foe was logged (a cycle's line comes before its battle), as hgss-headbutt waits.
     const arrival = await seen(CLEARING, 1, 15 * MINUTE)
     expect(arrival.line, 'the walk to the stand').toMatch(/arrived back at start/)
@@ -64,10 +67,10 @@ test('HGSS headbutt anchor: the trainer ID picks Route 32\'s stand, the walk the
     for (const [i, c] of cycles.entries()) {
       step(`cycle ${i + 1}: start=script ${c.script} presses=${c.presses} end=${c.end} return=${c.ret}`)
       expect(c.script, `cycle ${i + 1} ran another script`).toBe(HEADBUTT_SCRIPT)
-      expect(c.end, `cycle ${i + 1}: the tree at (471, 421) gave no Pokémon`).toBe('battle')
+      expect(c.end, `cycle ${i + 1}: the tree at (497, 279) gave no Pokémon`).toBe('battle')
     }
     // The first return is made on the stand itself: none when the walk ended facing the tree, otherwise a turn, no step.
-    expect(cycles[0].ret, 'the first return took a step off the stand').toMatch(/^(none|(re)?built from \(470,421,\w+\))$/)
+    expect(cycles[0].ret, 'the first return took a step off the stand').toMatch(/^(none|(re)?built from \(497,278,\w+\))$/)
     await shotAll('01-three-cycles', pages)
     await cancelEventAndBot(card)
 
@@ -84,7 +87,7 @@ test('HGSS headbutt anchor: the trainer ID picks Route 32\'s stand, the walk the
     step(`${rowsFor(HANDLE, HEADBUTT, runStart).length} rows under ${HEADBUTT} since the Start, the walk's included`)
     const found = rowsFor(HANDLE, HEADBUTT, new Date(arrival.at).toISOString())
     expect(found.length, 'fewer than 3 headbutt rows').toBeGreaterThanOrEqual(3)
-    for (const r of found) expect(SPECIES, `species ${r.species} is not a Route 32 headbutt species`).toContain(r.species)
+    for (const r of found) expect(SPECIES, `species ${r.species} is not a Violet City headbutt species`).toContain(r.species)
   } finally {
     await teardown(frame)
   }

@@ -221,6 +221,7 @@ New scenarios, on a copy of `hgss.qa-route32` unless said; the emulator's DS clo
 | `hgss-plan-refused` | A plan naming a milestone behind Surf on a save without it is refused. |
 | `hgss-milestone-anchor` | Starting "Route 30 · grass" from Route 32 walks to (547, 304) and runs up and down. |
 | `hgss-milestone-bad-anchor` | A replaced anchor on a path stops the hunt with FR-24's sentence. |
+| `hgss-headbutt-anchor` | Starting "Violet City · headbutt" from Route 32: the trainer ID picks the stand (497, 278) facing Down, the bot walks there and its headbutts give battles; the card shows no share. |
 | `hgss-rates-repel` | The Repel counter written during a hunt: the card's shares change, blocked rows dim (changed 2026-11-25: they are left out); at zero the message is closed and the hunt carries on. |
 | `hgss-rates-clock` | The card's rows change at 20:00 in-game with no move. |
 | `hgss-goal-rows` | One milestone, three game files with the three presets: three different sets of rows. |
