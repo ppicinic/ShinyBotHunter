@@ -34,7 +34,7 @@ A sixth tab, **Dev Mode**, appears only when macro recording is switched on in t
 4. Optional: tick **Sound On** to hear the game (see [Turn the sound on](#turn-the-sound-on)).
 5. Click **Start**.
 
-You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name. When nothing is running, **Active Emulators** reads "No active emulators."
+You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name (once a hunt is started, the hunt's milestone, such as `Route 30 · grass`, or its plan, such as `Plan Johto`). When nothing is running, **Active Emulators** reads "No active emulators."
 
 **Launch Bot + Continue** works the same way. After the emulator opens, it waits about four seconds, then presses Continue on the game's menu for you, so the game loads your save. Its entry under **Active Emulators** only appears once the game has loaded and you are standing in the field, so nothing reads the game before then.
 
