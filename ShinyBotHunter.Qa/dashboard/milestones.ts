@@ -597,7 +597,8 @@ export const PLAN_STOP = /\[BotService\] Plan (.+?): (.+) at map (\d+) \((\d+), 
 export const ANCHOR_HUNT = /\[BotService\] (.+?): hunting from the anchor map (\d+) \((\d+), (\d+)\), (.*) \((set on this file|generated)\)\s*$/
 // BotService, a headbutt milestone's trainer ID (B1h).
 export const TRAINER_ID = /\[BotService\] Trainer ID (\d+) \(visible (\d+)\), (.*)$/
-// HuntPlanRun: a pick that walks, and the switch once on the anchor.
+// HuntPlanRun: a pick that walks, and the switch: before the walk on the plan's first pick when it is not the default, once
+// on the anchor after any later walk.
 export const PLAN_WALK = /\[Orchestrator\] Plan: (\w+) (\d+)h names (.+); walking from map (\d+) \((\d+), (\d+)\) to map (\d+) \((\d+), (\d+)\)\s*$/
 export const PLAN_NOW = /\[Orchestrator\] Plan: now hunting (.+?)\s*$/
 export const WALK_ENDED = /\[Orchestrator\] (.+?): the walk ended at map (\d+) \((\d+), (\d+)\), not on the anchor \((\d+), (\d+)\)\./
