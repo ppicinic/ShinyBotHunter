@@ -31,8 +31,9 @@ const R29 = '33-land'
 const ROUTE33 = 'Route 33'
 const HOPPIP = 187
 const SPINARAK = 167
-// HG Route 30 at night: Spinarak, Rattata, Hoothoot.
+// HG Route 30 at night: Spinarak, Rattata, Hoothoot, Lv 2 to 4; by day: Pidgey, Caterpie, Metapod.
 const R30_NIGHT = ['167', '19', '163']
+const R30_DAY = ['16', '10', '11']
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const PLAN: Plan = { name: 'QA Night', default: R32.id, rules: [{ times: ['Night'], weekdays: [], milestone: R30.id }] }
 const IN_USE = 'QA Night is in use by the hunt on bot #0; cancel that hunt first.'
@@ -197,9 +198,11 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       expect(r30Rows.length, 'six encounters rows under 34-land').toBeGreaterThanOrEqual(6)
       for (const row of r30Rows) {
         expect(R30_NIGHT, `a ${row.species} under 34-land`).toContain(row.species)
+        expect(row.level >= 2 && row.level <= 4, `a Lv ${row.level} ${row.species} under 34-land, outside the night table's Lv 2 to 4`).toBe(true)
         expect(row.at, `a 34-land row at ${new Date(row.at).toISOString()}, before the switch was seen`).toBeGreaterThanOrEqual(now.at - 300)
       }
-      expect(r30Rows.some((r) => r.species === '167' || r.species === '163'), 'neither a Spinarak nor a Hoothoot in six').toBe(true)
+      // The fixed clock start replays the game's RNG, so which night species come up is the stream's, not a sample.
+      expect(r30Rows.filter((r) => R30_DAY.includes(r.species)), 'a day species under 34-land after the switch').toEqual([])
       expect(await milestoneMessages(runStart), 'one milestone message in all').toHaveLength(1)
       // Each file's own counts: HG-Plan's Route 30 card counts this run's rows, HG-Route32's does not move.
       await expect.poll(async () => (await countedHere(HANDLE)) - here!.plan, { message: 'HG-Plan\'s Route 30 card', timeout: MINUTE, intervals: [5000] })

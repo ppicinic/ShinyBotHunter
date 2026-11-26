@@ -135,7 +135,10 @@ test('rs-rates-repel: lead Lv 4 and the Repel at 30: every Route 101 row blocked
     const closeAt = log.findIndex((l) => RS_REPEL_CLOSED.test(l))
     const firstEncounter = log.findIndex((l) => ENCOUNTER.test(l))
     expect(firstEncounter, '"no encounter while the Repel lasts": the first encounter line').toBeGreaterThan(closeAt)
-    expect(rowsFor(ROM, ROUTE101, runStart).filter((r) => r.at < closed.at - 1000), '"no encounter row while the Repel lasts"').toEqual([])
+    // The rows pair in order with the encounter lines, so each row is a battle logged after the close line.
+    const afterClose = log.slice(closeAt).filter((l) => ENCOUNTER.test(l)).map((l) => ENCOUNTER.exec(l)!).map((m) => `${m[2]} Lv ${m[3]}`)
+    const recorded = rowsFor(ROM, ROUTE101, runStart).map((r) => `${r.species} Lv ${r.level}`)
+    expect(recorded, '"no encounter row while the Repel lasts": the rows against the encounter lines after the close').toEqual(afterClose.slice(0, recorded.length))
     const finished = battles(log).filter((b) => b.some((l) => OVER.test(l)))
     finished.forEach((b, k) => checkFlee(b, k + 1))
   } finally {
