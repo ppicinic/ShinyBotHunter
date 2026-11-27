@@ -114,6 +114,8 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData, location)
   // Ruby and Sapphire, and a location met all day, carry no pills: only a location with a timed row has them
   const timed = location?.rows.some((r) => r.times.length === 1 || r.times.length === 2) ?? false
+  // The rows hidden now, by the next time they can be met, in the response's order
+  const hiddenGroups = Object.entries(location?.hiddenUntil ?? {}) as [PlanTime, string[]][]
 
   // The phase card sizes its rows to the space available rather than scrolling: the whole point is
   // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
@@ -124,6 +126,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const SPRITE_MAX = 96
   const bodyRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
+  const summaryRef = useRef<HTMLTableRowElement>(null)
   const [rowHeight, setRowHeight] = useState<number | null>(null)
 
   useLayoutEffect(() => {
@@ -133,7 +136,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       return
     }
     const measure = (): void => {
-      const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0)
+      const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0) - (summaryRef.current?.offsetHeight ?? 0)
       setRowHeight(Math.max(ROW_MIN, Math.floor(available / rows.length)))
     }
     measure()
@@ -275,6 +278,18 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                   </tr>
                 )
               })}
+              {hiddenGroups.length > 0 && (
+                <tr ref={summaryRef} data-testid="hidden-summary">
+                  <td colSpan={5} className="py-0.5 text-center text-xs text-slate-500">
+                    {hiddenGroups.map(([time, names], i) => (
+                      <span key={time}>
+                        {i > 0 && ' · '}
+                        {names.length} more at<TimePill time={time} />: {names.join(', ')}
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}

@@ -65,6 +65,48 @@ describe('PhaseCard', () => {
 
     expect([html.includes('row-share'), html.includes('time-pill')]).toEqual([true, false])
   })
+
+  it('draws the rows hidden now as one dim last row', () => {
+    const location = {
+      rows: [at('#16', ['Morning', 'Day'], 0.6), at('#163', ['Night'], null, true), at('#167', ['Night'], null, true), at('#19', ['Morning', 'Day', 'Night'], 0.4)],
+      hiddenUntil: { Night: ['Hoothoot', 'Spinarak'] }
+    }
+
+    const html = card([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Spinarak', 167), pokemon('Rattata', 19)], location, true, 'Day')
+
+    const last = html.slice(html.lastIndexOf('<tr'))
+    expect(last).toMatch(/^<tr data-testid="hidden-summary"><td colSpan="5" class="[^"]*text-slate-500[^"]*">/)
+    expect(last).toMatch(/2 more at<span data-testid="time-pill"[^>]*>night<\/span>: Hoothoot, Spinarak/)
+    expect(html.slice(0, html.lastIndexOf('<tr'))).not.toMatch(/Hoothoot|Spinarak/)
+  })
+
+  it("draws two hidden groups in the response's order", () => {
+    const location = {
+      rows: [at('#163', ['Night'], null, true), at('#16', ['Morning'], null, true), at('#21', ['Day'], 1)],
+      hiddenUntil: { Night: ['Hoothoot'], Morning: ['Pidgey'] }
+    }
+
+    const html = card([pokemon('Hoothoot', 163), pokemon('Pidgey', 16), pokemon('Spearow', 21)], location, true, 'Day')
+
+    expect(html).toMatch(/1 more at<span[^>]*>night<\/span>: Hoothoot<\/span><span> · 1 more at<span[^>]*>morning<\/span>: Pidgey/)
+  })
+
+  it('keeps the table with only the summary row when every row is hidden now', () => {
+    const location = { rows: [at('#163', ['Night'], null, true)], hiddenUntil: { Night: ['Hoothoot'] } }
+
+    const html = card([pokemon('Hoothoot', 163)], location, true, 'Day')
+
+    expect([html.includes('<table'), html.includes('hidden-summary'), html.includes('No Pokémon')]).toEqual([true, true, false])
+    expect(html.match(/<tr/g)).toHaveLength(2)
+  })
+
+  it('a row blocked by Repel is neither drawn nor in the summary row', () => {
+    const location = { rows: [at('#19', ['Morning', 'Day', 'Night'], 0), at('#16', ['Morning', 'Day'], 1)], hiddenUntil: {} }
+
+    const html = card([pokemon('Rattata', 19), pokemon('Pidgey', 16)], location, true, 'Day')
+
+    expect([html.includes('Rattata'), html.includes('Pidgey'), html.includes('hidden-summary')]).toEqual([false, true, false])
+  })
 })
 
 describe('phaseCardRows', () => {
