@@ -39,7 +39,7 @@ namespace ShinyBotHunter.Milestones
             {
                 return null;
             }
-            SlotCondition cond = seen?.Inputs.Hour is int h ? HuntPlan.TimeOfDay(h) : SlotCondition.None;
+            SlotCondition cond = seen?.Inputs.Hour is int h ? Plan.TimeOfDay(h) : SlotCondition.None;
             RateInputs? live = seen is { Live: true } l ? l.Inputs : null;
             var (shares, survive) = live is null
                 ? rates(m, cond, null, 0, 1, false)

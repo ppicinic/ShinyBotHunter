@@ -65,7 +65,7 @@ namespace ShinyBotHunter.Controllers
             var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(Key).ToList(),
                 [phase], gameFileName is null ? [] : [gameFileName]));
             var seen = gameFileName is null ? null : phaseInfoService.Seen(gameFileName);
-            SlotCondition? timeOfDay = seen?.Inputs.Hour is int h ? HuntPlan.TimeOfDay(h) : null;
+            SlotCondition? timeOfDay = seen?.Inputs.Hour is int h ? Plan.TimeOfDay(h) : null;
             return Ok(new
             {
                 PhaseInfo = WithFormMetadata(phaseInfo),

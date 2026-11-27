@@ -640,6 +640,22 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.Encountering], state.State);
         }
 
+        // FR-42 and its binding note: with no plan the decision is today's, one chain read beside the party read and no
+        // overworld read (the bot has no reader, so one would throw).
+        [Fact]
+        public async Task Decide_NoPlan_IsTodaysDecision()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state);
+
+            Assert.Single(memory.ChainReads);
+            Assert.Equal(1, bot.PartyReads);
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), state.RatesSeen);
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
         // FR-26a and NFR-1: on RS each decision reads the Repel counter as one 2-byte block, with no clock.
         [Fact]
         public async Task Decide_Rs_KeepsTheRepelCounterFromOneBlock()

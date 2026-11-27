@@ -306,18 +306,7 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException(reason);
                 }
             }
-            HuntPlan? plan = null;
-            if (args.HuntPlan is not null)
-            {
-                if (!caps.HasHuntPlans)
-                {
-                    throw new ArgumentException($"Hunt plans need the in-game clock; {bot.GameFlavor} has none.");
-                }
-                throw new ArgumentException("A Wild Encounter no longer takes a plan; start the Plan action with it.");
-            }
-            // With a plan the form's milestone is ignored, and each of the plan's is refused as the form's would be (binding answer 6).
-            Milestone? generated = plan is null ? RefuseMilestone(bot, args.PhaseName, args.EncounterType) : null;
-            var planMilestones = plan?.Milestones.Select(m => (Milestone: m, Generated: RefuseMilestone(bot, m, args.EncounterType))).ToList();
+            Milestone? generated = RefuseMilestone(bot, args.PhaseName, args.EncounterType);
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -333,55 +322,12 @@ namespace ShinyBotHunter.Service
                 lead = await WildRefusalAsync(bot);
             }
             PokemonState? party = await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
-            EventLeg leg;
-            MilestoneAnchor? anchor;
-            HuntPlanRun? run = null;
-            if (plan is null)
-            {
-                leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
-                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
-                (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
-            }
-            else
-            {
-                var planLegs = planMilestones!.Select(p =>
-                {
-                    NewEventLegArguments legArgs = args.ToLeg();
-                    legArgs.PhaseName = p.Milestone;
-                    return (p.Generated, Leg: ValidateAndBuildLeg(legArgs, bot.GameFileName, bot.GameFlavor));
-                }).ToList();
-                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, planLegs.Select(p => (p.Leg.PhaseName, p.Generated)), party);
-                var reach = new List<(string Name, MilestoneAnchor? Anchor)>();
-                var stops = new Dictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)>();
-                foreach (var (stopGenerated, planLeg) in planLegs)
-                {
-                    var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile, trainerId, caught);
-                    string name = stopLeg.PhaseName;
-                    reach.Add((name, stopAnchor));
-                    if (stopAnchor is not null)
-                    {
-                        stops[stopLeg.PhaseName] = (stopLeg, stopAnchor, name);
-                    }
-                }
-                int map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
-                var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
-                Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
-                if (await HuntPlanRun.ReachRefusalAsync(plan.Name, bot.Profile.Pathfinding!, (map, x, y, facing), reach) is { } unreachable)
-                {
-                    throw new InvalidOperationException(unreachable);
-                }
-                run = new HuntPlanRun(plan, stops);
-                foreach (var (stopLeg, stopAnchor, name) in stops.Values)
-                {
-                    Console.WriteLine($"[BotService] Plan {plan.Name}: {name} at map {stopAnchor.Anchor.Map} ({stopAnchor.Anchor.X}, {stopAnchor.Anchor.Y}), {HowHunted(stopLeg.EncounterParams)}");
-                }
-                // The first decision walks to the clock's pick, so no Init walk runs.
-                (leg, anchor) = (stops[plan.Default].Leg, null);
-            }
+            EventLeg leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
+            var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+            var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
+            (leg, MilestoneAnchor? anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
 
-            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor, run);
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
             slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
             if (lead is not null)
             {
@@ -394,7 +340,7 @@ namespace ShinyBotHunter.Service
                 slots.Entries[pos].GameState!.LeadLevel = lead.Level;
             }
             slots.Entries[pos].GameState!.State.Push(EventState.Init);
-            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, plan is null ? leg.PhaseName : PlanEventName(plan.Name), removeWhenDone: false);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
 
             return GetBotDashboardState();
         }
