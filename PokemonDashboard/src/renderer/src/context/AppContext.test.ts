@@ -117,12 +117,12 @@ describe('applyReread', () => {
     const before: SubscriptionState = {
       ...sub('M', 'A'),
       encounterData: counts,
-      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Pidgey', 16), pokemon('Rattata', 19), pokemon('Sentret', 161)], isStatic: false },
+      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Pidgey', 16), pokemon('Rattata', 19), pokemon('Sentret', 161)], isStatic: false, location: null, gameFiles: [], archived: false },
       location: {
         rows: [
-          { key: '#16', times: ['Morning', 'Day'], share: 0.5, hiddenNow: false },
-          { key: '#19', times: ['Morning', 'Day', 'Night'], share: 0.3, hiddenNow: false },
-          { key: '#161', times: ['Morning', 'Day'], share: 0.2, hiddenNow: false }
+          { key: '#16', version: null, times: ['Morning', 'Day'], share: 0.5, hiddenNow: false },
+          { key: '#19', version: null, times: ['Morning', 'Day', 'Night'], share: 0.3, hiddenNow: false },
+          { key: '#161', version: null, times: ['Morning', 'Day'], share: 0.2, hiddenNow: false }
         ],
         hiddenUntil: {}
       }

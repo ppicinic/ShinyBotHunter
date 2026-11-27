@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react'
-import { useAppContext } from '../../context/AppContext'
-import * as api from '../../services/apiClient'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PickerMilestone } from '../../types/api'
 import { romLabel } from '../../types/api'
 import { choiceOptions, encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
@@ -9,6 +7,11 @@ import { HuntPlanEditor } from './HuntPlanEditor'
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
 const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget', 'NoTarget']
+
+// The selected milestone stays listed whatever the box says, so the select never shows one milestone while holding another.
+export function launchMilestones(milestones: PickerMilestone[], selected: string, incompleteOnly: boolean): PickerMilestone[] {
+  return milestones.filter((m) => m.name === selected || !incompleteOnly || !m.complete)
+}
 
 /**
  * The inputs for one set of encounter parameters, driven entirely by the schema the server sent.
@@ -23,8 +26,6 @@ export function ActionParamFields({
   onReloadParty,
   partyLoading,
   games,
-  gameFileName,
-  onMilestonesChanged,
   onPlanDirtyChange
 }: {
   schema: EventArgumentOptions
@@ -37,44 +38,16 @@ export function ActionParamFields({
   // Detected ROMs, for schemas whose entries pick a game (the starter hunt's legs do). When absent,
   // GameName falls through to a plain text input like any other parameter.
   games?: GameRomInfo[]
-  // The bot's game file, for archiving and labelling the picked milestone. Without it the picker has no Archive or Order.
-  gameFileName?: string
-  onMilestonesChanged?: () => void
   // Told whether the plan editor holds unsaved changes, so the card can grey what would drop them.
   onPlanDirtyChange?: (dirty: boolean) => void
 }): JSX.Element {
-  const { config } = useAppContext()
-  const [milestoneText, setMilestoneText] = useState('')
-  const [milestoneModality, setMilestoneModality] = useState('')
   const [incompleteOnly, setIncompleteOnly] = useState(false)
-  const [showArchived, setShowArchived] = useState(false)
-  const [milestoneError, setMilestoneError] = useState<string | null>(null)
-  // Generated milestones are wild locations, so only an encounter form (Wild Encounter, a chain's leg) offers them;
-  // Togepi, Primo and Static Encounter list custom milestones only.
+  // A milestone with a location is a wild one, so only an encounter form (Wild Encounter, a chain's leg) offers it;
+  // Togepi, Primo and Static Encounter list milestones with no location only.
   const offered = schema.requiredParameters?.includes('EncounterType')
     ? availablePhases
     : availablePhases.filter((m) => m.modality === null)
-  const modalities = Array.from(new Set(offered.flatMap((m) => (m.modality ? [m.modality] : []))))
-  const selectedId = params['PhaseName'] ?? ''
-  const selectedMilestone = offered.find((m) => m.id === selectedId)
-  const filterText = milestoneText.trim().toLowerCase()
-  // The picked milestone stays listed whatever the filters say, so the select never shows one milestone while holding another.
-  const shownMilestones = offered.filter((m) => m.id === selectedId || (
-    (showArchived || !m.archived) &&
-    (!incompleteOnly || !m.complete) &&
-    (milestoneModality === '' || (milestoneModality === 'Custom' ? m.modality === null : m.modality === milestoneModality)) &&
-    (filterText === '' || [m.name, m.id, m.order ?? ''].some((s) => s.toLowerCase().includes(filterText)))
-  ))
-  const saveMilestone = async (save: () => Promise<Response>): Promise<void> => {
-    setMilestoneError(null)
-    try {
-      const r = await save()
-      if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
-      onMilestonesChanged?.()
-    } catch (err) {
-      setMilestoneError(err instanceof Error ? err.message : 'Failed to save the milestone')
-    }
-  }
+  const shownMilestones = launchMilestones(offered, params['PhaseName'] ?? '', incompleteOnly)
   const encounter = encounterTypeChoices(schema, params['EncounterType'])
   useEffect(() => {
     if (params['EncounterType'] && encounter.selected !== params['EncounterType']) onChange('EncounterType', '')
@@ -90,7 +63,7 @@ export function ActionParamFields({
     <>
       {schema.requiredParameters?.map((param) => (
         // The milestone picker carries param-PhaseName on the wrapper of its one milestone select, not on the row, so
-        // the row's filter select is not inside it.
+        // the row's Incomplete only box is not inside it.
         <div key={param} data-testid={param === 'PhaseName' && !params['HuntPlan'] ? undefined : `param-${param}`} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
           {param === 'GameName' && games ? (
@@ -111,37 +84,6 @@ export function ActionParamFields({
             </span>
           ) : param === 'PhaseName' ? (
             <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={milestoneText}
-                  onChange={(e) => setMilestoneText(e.target.value)}
-                  placeholder="Filter"
-                  className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                />
-                {modalities.length > 0 && (
-                  <select
-                    data-testid="param-PhaseName-filter"
-                    value={milestoneModality}
-                    onChange={(e) => setMilestoneModality(e.target.value)}
-                    className="bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="">All</option>
-                    <option value="Custom">Custom</option>
-                    {modalities.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                )}
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  <input type="checkbox" checked={incompleteOnly} onChange={(e) => setIncompleteOnly(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
-                  Incomplete only
-                </label>
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
-                  Show archived
-                </label>
-              </div>
               <div data-testid="param-PhaseName" className="space-y-1">
                 {/* A "no hunt yet" milestone stays selectable, so Start shows the server's reason. */}
                 <select
@@ -151,36 +93,16 @@ export function ActionParamFields({
                 >
                   <option value="">Select a milestone...</option>
                   {shownMilestones.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {`${m.order ? `${m.order} ` : ''}${m.name}${m.huntable ? '' : ' (no hunt yet)'}${m.archived ? ' (archived)' : ''}`}
+                    <option key={m.name} value={m.name}>
+                      {`${m.name}${m.huntable ? '' : ' (no hunt yet)'}`}
                     </option>
                   ))}
                 </select>
-                {gameFileName && selectedMilestone && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => saveMilestone(() => api.setMilestoneArchived(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, !selectedMilestone.archived))}
-                      className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600"
-                    >
-                      {selectedMilestone.archived ? 'Unarchive' : 'Archive'}
-                    </button>
-                    <input
-                      key={selectedMilestone.id}
-                      type="text"
-                      defaultValue={selectedMilestone.order ?? ''}
-                      onBlur={(e) => {
-                        if (e.target.value !== (selectedMilestone.order ?? '')) {
-                          void saveMilestone(() => api.setMilestoneOrder(config?.apiUrl ?? '', gameFileName, selectedMilestone.id, e.target.value))
-                        }
-                      }}
-                      placeholder="Order"
-                      className="w-20 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-                    />
-                    {milestoneError && <span className="text-xs text-red-400">{milestoneError}</span>}
-                  </div>
-                )}
               </div>
+              <label className="flex items-center gap-1 text-xs text-slate-500">
+                <input type="checkbox" checked={incompleteOnly} onChange={(e) => setIncompleteOnly(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
+                Incomplete only
+              </label>
             </div>
           ) : param === 'TargetType' ? (
             <select

@@ -56,12 +56,15 @@ export function BotControlTab(): JSX.Element {
   /**
    * Milestones belonging to whichever ROM the action has selected. Top-level actions pick a game
    * before a milestone, so the list follows from that choice rather than being global -- offering
-   * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads.
+   * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads. As on a
+   * bot's launch form, archived milestones and those ticked only for other files are left out.
    */
   const phasesForSelectedGame = (params: Record<string, string>, legs?: Record<string, string>[]): PhaseInfo[] => {
     const handle = params['GameName'] ?? legs?.find((leg) => leg['GameName'])?.['GameName']
     const rom = allGames.find((g) => g.handle === handle)
-    return rom?.flavor ? (metadata?.games[rom.flavor]?.phases ?? []) : []
+    return rom?.flavor
+      ? (metadata?.games[rom.flavor]?.phases ?? []).filter((p) => !p.archived && (p.gameFiles.length === 0 || p.gameFiles.includes(rom.handle)))
+      : []
   }
   const [loadingParty, setLoadingParty] = useState<number | null>(null)
 
@@ -374,7 +377,6 @@ export function BotControlTab(): JSX.Element {
                 key={pos}
                 pos={pos}
                 name={name}
-                game={positions.botState[pos].gameFlavor}
                 milestones={milestonesByPos[pos]}
                 onMilestonesChanged={() => loadMilestones(pos)}
                 actions={positions.botActions[pos] ?? []}

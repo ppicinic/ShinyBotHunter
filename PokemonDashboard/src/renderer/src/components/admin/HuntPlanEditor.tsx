@@ -31,7 +31,7 @@ const hh = (hour: number): string => `${String(hour).padStart(2, '0')}:00`
 
 // Start refuses a plan naming one of these (FR-35); a milestone this file does not list is refused there too, by name.
 function refusal(id: string, milestones: PickerMilestone[]): string | null {
-  const m = milestones.find((x) => x.id === id)
+  const m = milestones.find((x) => x.name === id)
   if (!m) return null
   if (!m.huntable) return 'no hunt yet: Start refuses the plan'
   if (!m.anchor) return 'no anchor on this file: Start refuses the plan'
@@ -44,9 +44,9 @@ function MilestoneSelect({ value, onChange, milestones }: { value: string; onCha
     <>
       <select value={value} onChange={(e) => onChange(e.target.value)} className={`flex-1 min-w-0 ${SELECT}`}>
         <option value="">Select a milestone...</option>
-        {value && !milestones.some((m) => m.id === value) && <option value={value}>{value}</option>}
-        {milestones.filter((m) => !m.archived || m.id === value).map((m) => (
-          <option key={m.id} value={m.id}>{`${m.order ? `${m.order} ` : ''}${m.name}`}</option>
+        {value && !milestones.some((m) => m.name === value) && <option value={value}>{value}</option>}
+        {milestones.map((m) => (
+          <option key={m.name} value={m.name}>{m.name}</option>
         ))}
       </select>
       {hint && <span className="text-xs text-amber-400">{hint}</span>}
@@ -202,7 +202,7 @@ export function HuntPlanEditor({
     setDraft({ ...draft, rules })
   }
 
-  const nameOf = (id: string): string => milestones.find((m) => m.id === id)?.name ?? id
+  const nameOf = (id: string): string => milestones.find((m) => m.name === id)?.name ?? id
   const planMilestones = draft ? Array.from(new Set([draft.default, ...draft.rules.map((r) => r.milestone)])) : []
   const fill = (id: string): string => FILLS[planMilestones.indexOf(id) % FILLS.length]
   const runs = draft ? planPreview(draft, day) : []

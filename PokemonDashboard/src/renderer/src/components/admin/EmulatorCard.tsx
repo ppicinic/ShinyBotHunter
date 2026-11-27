@@ -2,10 +2,9 @@ import React, { useState } from 'react'
 import type { Dispatch } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { Anchor, BotMilestones, EventArgumentOptions, GameFlavor, Modality, PartySlotInfo } from '../../types/api'
+import type { Anchor, BotMilestones, EventArgumentOptions, Modality, PartySlotInfo } from '../../types/api'
 import { requiredParamsFilled } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
-import { MilestoneRowsPanel } from './MilestoneRowsPanel'
 import type { BotPositionsAction } from './botPositions'
 
 // Matches BotService.HowHunted's wording, so the card and the backend log read the same: a headbutt milestone is headbutted
@@ -19,16 +18,9 @@ function anchorHunt(anchor: Anchor, modality: Modality | null): string {
 
 const PLAN_UNSAVED = 'Save or discard the plan changes first'
 
-// The dashboard state names a hunt by what it was started with, a generated milestone by its id: that one reads as its
-// name from the file's picker. A plan, a custom phase or an idle bot reads as given.
-export function cardHeading(name: string, milestones: BotMilestones | undefined): string {
-  return milestones?.milestones.find((m) => m.id === name)?.name ?? name
-}
-
 export function EmulatorCard({
   pos,
   name,
-  game,
   milestones,
   onMilestonesChanged,
   actions: availableActions,
@@ -48,7 +40,6 @@ export function EmulatorCard({
 }: {
   pos: number
   name: string
-  game: GameFlavor
   milestones: BotMilestones | undefined
   onMilestonesChanged: () => void
   actions: EventArgumentOptions[]
@@ -90,7 +81,7 @@ export function EmulatorCard({
       <div className="flex items-center justify-between">
         <span className="text-sm text-white">
           <span className="text-slate-400 text-xs mr-2">#{pos}</span>
-          {cardHeading(name, milestones)}
+          {name}
         </span>
         {confirmingCancel ? (
           <span className="flex items-center gap-1.5">
@@ -150,7 +141,7 @@ export function EmulatorCard({
             // FR-22: only the Wild Encounter form hunts from an anchor; a chain's legs hunt where the bot stands.
             // With a plan the form's milestone is not hunted, so it has no anchor line.
             const anchorMilestone = action.name === 'Wild Encounter' && !params['HuntPlan']
-              ? availablePhases.find((m) => m.id === params['PhaseName'])
+              ? availablePhases.find((m) => m.name === params['PhaseName'])
               : undefined
             const encounterType = params['EncounterType'] ?? ''
             const xRange = parseInt(params['xRange'], 10) || 0
@@ -197,8 +188,6 @@ export function EmulatorCard({
                         params={leg}
                         onChange={(param, value) => dispatch({ type: 'legParamChanged', pos, actionName: action.name, legIndex, param, value })}
                         availablePhases={availablePhases}
-                        gameFileName={milestones?.gameFileName}
-                        onMilestonesChanged={onMilestonesChanged}
                         party={party}
                         onReloadParty={onReloadParty}
                         partyLoading={partyLoading}
@@ -214,8 +203,6 @@ export function EmulatorCard({
                       dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })
                     }}
                     availablePhases={availablePhases}
-                    gameFileName={milestones?.gameFileName}
-                    onMilestonesChanged={onMilestonesChanged}
                     onPlanDirtyChange={setPlanDirty}
                     party={party}
                     onReloadParty={onReloadParty}
@@ -235,8 +222,8 @@ export function EmulatorCard({
                       <button
                         type="button"
                         onClick={() => saveAnchor(() => encounterType === 'Run'
-                          ? api.setAnchor(config?.apiUrl ?? '', pos, anchorMilestone.id, xRange, yRange)
-                          : api.setAnchor(config?.apiUrl ?? '', pos, anchorMilestone.id, 0, 0))}
+                          ? api.setAnchor(config?.apiUrl ?? '', pos, anchorMilestone.name, xRange, yRange)
+                          : api.setAnchor(config?.apiUrl ?? '', pos, anchorMilestone.name, 0, 0))}
                         disabled={encounterType === '' || (encounterType === 'Run' && xRange <= 0 && yRange <= 0)}
                         className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600 disabled:opacity-40"
                       >
@@ -245,7 +232,7 @@ export function EmulatorCard({
                       {anchorMilestone.anchorSet && (
                         <button
                           type="button"
-                          onClick={() => saveAnchor(() => api.clearAnchor(config?.apiUrl ?? '', pos, anchorMilestone.id))}
+                          onClick={() => saveAnchor(() => api.clearAnchor(config?.apiUrl ?? '', pos, anchorMilestone.name))}
                           className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5 rounded border border-slate-600"
                         >
                           Clear
@@ -260,10 +247,6 @@ export function EmulatorCard({
                     )}
                     {anchorError && <div className="text-xs text-red-400">{anchorError}</div>}
                   </div>
-                )}
-                {/* FR-12: only a generated milestone has rows to hide on this file. */}
-                {anchorMilestone && anchorMilestone.modality !== null && milestones && (
-                  <MilestoneRowsPanel game={game} gameFileName={milestones.gameFileName} milestoneId={anchorMilestone.id} />
                 )}
               </div>
             )
