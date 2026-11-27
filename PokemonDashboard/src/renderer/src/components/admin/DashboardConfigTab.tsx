@@ -227,7 +227,7 @@ export function DashboardConfigTab(): JSX.Element {
               disabled={loading || !canFollowHunt}
               onChange={(e) => setFollowsHunt(e.target.checked)}
             />
-            {fileHasFollowsHunt ? 'Follows the hunt (this file has one)' : 'Follows the hunt'}
+            {fileHasFollowsHunt ? 'Follows the hunt (this file has one)' : "Follows the hunt (and a running plan's steps)"}
           </label>
           <button
             onClick={handleAddSubscription}
@@ -237,6 +237,9 @@ export function DashboardConfigTab(): JSX.Element {
             Add
           </button>
         </div>
+        <p className="text-xs text-slate-500 mt-1">
+          Follows the hunt: moves to each hunt started on this game file, including each step of a running plan.
+        </p>
       </div>
 
       {/* Recent encounter count */}

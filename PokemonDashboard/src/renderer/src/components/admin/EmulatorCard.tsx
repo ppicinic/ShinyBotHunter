@@ -16,8 +16,6 @@ function anchorHunt(anchor: Anchor, modality: Modality | null): string {
   return 'spin'
 }
 
-const PLAN_UNSAVED = 'Save or discard the plan changes first'
-
 export function EmulatorCard({
   pos,
   name,
@@ -59,8 +57,6 @@ export function EmulatorCard({
 }): JSX.Element {
   const { config } = useAppContext()
   const [anchorError, setAnchorError] = useState<string | null>(null)
-  // The plan editor holds unsaved changes: Run would start the saved plan, and another action would drop the editor.
-  const [planDirty, setPlanDirty] = useState(false)
   const selectedActionName = selected ?? availableActions[0]?.name
   const availablePhases = milestones?.milestones ?? []
   const saveAnchor = async (save: () => Promise<Response>): Promise<void> => {
@@ -118,8 +114,6 @@ export function EmulatorCard({
                 <button
                   key={action.name}
                   onClick={() => dispatch({ type: 'actionSelected', pos, actionName: action.name })}
-                  disabled={planDirty}
-                  title={planDirty ? PLAN_UNSAVED : undefined}
                   className={`px-2 py-0.5 text-xs rounded transition-colors disabled:opacity-50 ${
                     selectedActionName === action.name
                       ? 'bg-indigo-700 text-white'
@@ -139,8 +133,7 @@ export function EmulatorCard({
               ? legs.length > 0 && legs.every((leg) => requiredParamsFilled(action.legParameters!, leg))
               : requiredParamsFilled(action, params)
             // FR-22: only the Wild Encounter form hunts from an anchor; a chain's legs hunt where the bot stands.
-            // With a plan the form's milestone is not hunted, so it has no anchor line.
-            const anchorMilestone = action.name === 'Wild Encounter' && !params['HuntPlan']
+            const anchorMilestone = action.name === 'Wild Encounter'
               ? availablePhases.find((m) => m.name === params['PhaseName'])
               : undefined
             const encounterType = params['EncounterType'] ?? ''
@@ -161,8 +154,7 @@ export function EmulatorCard({
                     )}
                     <button
                       onClick={() => onRun(action)}
-                      disabled={!allFilled || !!inFlight || planDirty}
-                      title={planDirty ? PLAN_UNSAVED : undefined}
+                      disabled={!allFilled || !!inFlight}
                       className="px-2 py-0.5 bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs rounded transition-colors"
                     >
                       {inFlight === 'run' ? 'Running...' : 'Run'}
@@ -203,7 +195,6 @@ export function EmulatorCard({
                       dispatch({ type: 'paramChanged', pos, actionName: action.name, param, value })
                     }}
                     availablePhases={availablePhases}
-                    onPlanDirtyChange={setPlanDirty}
                     party={party}
                     onReloadParty={onReloadParty}
                     partyLoading={partyLoading}

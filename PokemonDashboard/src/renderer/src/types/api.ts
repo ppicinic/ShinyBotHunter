@@ -433,8 +433,8 @@ export type BotDashboardState = Record<number, EmulatorState>
 export type GoalPreset = 'None' | 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
 
 // ============================================================
-// Saved hunt plans (GET /api/plans/{game}, PUT, DELETE and POST .../rename on /api/plans/{game}/{name})
-// Matches C# PlanRule and HuntPlan (Milestones/HuntPlan.cs)
+// Saved plans: GET /api/plans/steps, GET /api/plans/{game}, and GET, PUT, DELETE and POST .../rename?to= on /api/plans/{game}/{name}
+// Matches C# PlanStep and Plan (Milestones/HuntPlan.cs)
 // ============================================================
 
 // The SlotCondition values a rule uses: morning 4 to 10, day 10 to 20, night 20 to 4.
@@ -443,16 +443,21 @@ export type PlanTime = 'Morning' | 'Day' | 'Night'
 // C# DayOfWeek as JsonStringEnumConverter writes it.
 export type Weekday = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'
 
+// A step's body: exactly the Start body Bot Control posts for that action, eventName included; null for every unset field.
+export type StepArguments = { eventName: string } & Record<string, unknown>
+
 // An empty times or weekdays matches any.
-export interface PlanRule {
+export interface PlanStep {
   times: PlanTime[]
   weekdays: Weekday[]
-  milestone: string
+  arguments: StepArguments
 }
 
-export interface HuntPlan {
+// Rules are checked in order and the first match wins; default runs when none matches. A PUT's game and name are the route's.
+export interface Plan {
   game: GameFlavor
   name: string
-  default: string
-  rules: PlanRule[]
+  rules: PlanStep[]
+  default: StepArguments
+  endWhenComplete: boolean
 }
