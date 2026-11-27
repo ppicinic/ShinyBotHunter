@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { GameEncounterResponseBase, PhaseEncounterResponse, PhasePokemonInfo, SubscriptionState } from '../types/api'
+import type { GameEncounterResponseBase, MilestoneLocation, PhaseEncounterResponse, PhasePokemonInfo, PlanTime, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import * as api from '../services/apiClient'
 import { PokemonSprite } from './PokemonSprite'
@@ -25,14 +25,37 @@ interface CardRow {
   encountersHere: number
   encountersOnFile: number
   missed: number
+  // From the location's row at the same position; null and empty without a location
+  share: number | null
+  times: PlanTime[]
 }
 
+// The time-of-day pills; "all day" follows the theme's neutrals and border
+const PILL_COLORS: Record<PlanTime | 'All', string> = {
+  Morning: 'text-amber-300 border-amber-300/40',
+  Day: 'text-sky-300 border-sky-300/40',
+  Night: 'text-violet-300 border-violet-300/40',
+  All: 'text-slate-400 border-card-border'
+}
+
+function TimePill({ time }: { time: PlanTime | 'All' }): JSX.Element {
+  return (
+    <span data-testid="time-pill" className={`ml-1 text-xs px-1 rounded border ${PILL_COLORS[time]}`}>
+      {time === 'All' ? 'all day' : time.toLowerCase()}
+    </span>
+  )
+}
+
+// A row hidden now is not drawn, nor one at a zero share (Repel blocks it): only what can be met now shows
 export function phaseCardRows(
   pokemon: PhasePokemonInfo[],
   phaseData: PhaseEncounterResponse | undefined,
-  scopedData: GameEncounterResponseBase | null | undefined
+  scopedData: GameEncounterResponseBase | null | undefined,
+  location: MilestoneLocation | null
 ): CardRow[] {
-  return pokemon.map((pkmn) => {
+  return pokemon.flatMap((pkmn, i) => {
+    const at = location?.rows[i]
+    if (at && (at.hiddenNow || at.share === 0)) return []
     // A row that pins a form counts only that form (male and female, or Unown's 28,
     // stay separate); a row that accepts any form counts the whole species. Must match
     // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
@@ -53,7 +76,7 @@ export function phaseCardRows(
         : pkmn.hasFemaleForm
           ? '♂'
           : ''
-    return {
+    return [{
       key: countKey,
       name: pkmn.name,
       sprite: pkmn.formCode,
@@ -62,8 +85,10 @@ export function phaseCardRows(
       caught: shiniesCaught,
       encountersHere: phaseCounts?.encounters ?? 0,
       encountersOnFile: totalCounts?.encounters ?? 0,
-      missed: shiniesMissed
-    }
+      missed: shiniesMissed,
+      share: at?.share ?? null,
+      times: at?.times ?? []
+    }]
   })
 }
 
@@ -74,7 +99,7 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
   const { config, connectionState } = useAppContext()
-  const { game, phase, gameName, encounterData, phaseInfo, notFound } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo, location, notFound } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
   const scopedData: GameEncounterResponseBase | null | undefined = gameName
@@ -86,7 +111,9 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
   const phaseCount = phaseData?.phaseCount ?? null
 
-  const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData)
+  const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData, location)
+  // Ruby and Sapphire, and a location met all day, carry no pills: only a location with a timed row has them
+  const timed = location?.rows.some((r) => r.times.length === 1 || r.times.length === 2) ?? false
 
   // The phase card sizes its rows to the space available rather than scrolling: the whole point is
   // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
@@ -168,7 +195,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       </div>
 
       <div ref={bodyRef} className="flex-1 overflow-hidden px-2 py-1">
-        {rows.length === 0 ? (
+        {(phaseInfo?.pokemon.length ?? 0) === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
             {notFound
               ? `Milestone "${phase}" was not found.`
@@ -188,7 +215,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed }) => {
+              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed, share, times }) => {
                 // Amount 0 means "track this pokemon's encounters but don't require it". Without the
                 // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
                 const isTrackedOnly = amountRequired === 0
@@ -214,6 +241,10 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                       )}
                       {isComplete && (
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-700/50 text-green-300">✓</span>
+                      )}
+                      {timed && (times.length === 3 ? <TimePill time="All" /> : times.map((t) => <TimePill key={t} time={t} />))}
+                      {share !== null && (
+                        <div data-testid="row-share" className="text-xs text-slate-400">{(share * 100).toFixed(1)} %</div>
                       )}
                     </td>
 
