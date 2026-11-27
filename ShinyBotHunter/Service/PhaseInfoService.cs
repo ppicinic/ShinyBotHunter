@@ -3,6 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
 using System.Text.Json;
 
@@ -200,6 +201,66 @@ namespace ShinyBotHunter.Service
             {
                 return rates.TryGetValue(gameFileName, out var seen) ? seen : null;
             }
+        }
+
+        private static readonly SlotCondition[] DayTimes = [SlotCondition.Morning, SlotCondition.Day, SlotCondition.Night];
+
+        // The game's milestones with this id, per version that has one; empty for an id the game does not have.
+        internal static Dictionary<RomVersion, Milestone> At(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> milestones, string locationId)
+            => milestones.Where(v => v.Value.Any(m => m.Id == locationId)).ToDictionary(v => v.Key, v => v.Value.Single(m => m.Id == locationId));
+
+        // The one version of the game's two that has the species at this location; null when both have it.
+        internal static RomVersion? OnlyVersion(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> milestones, Dictionary<RomVersion, Milestone> at, int species)
+        {
+            var have = milestones.Keys.Where(v => at.TryGetValue(v, out var m) && m.Slots.Any(s => s.Species == species)).ToList();
+            return have.Count == 1 ? have[0] : null;
+        }
+
+        // When the species can be met at these milestones, in the order Morning, Day, Night. At night a None slot whose index has a
+        // NightFishing slot is replaced by it, as HgssRates and MilestoneRows.Reason treat it; sound and tree slots are all day.
+        internal static SlotCondition[] Times(IEnumerable<Milestone> milestones, int species)
+            => DayTimes.Where(t => milestones.Any(m => m.Slots.Any(s => s.Species == species && s.Condition switch
+            {
+                SlotCondition.Morning or SlotCondition.Day or SlotCondition.Night => s.Condition == t,
+                SlotCondition.NightFishing => t == SlotCondition.Night,
+                SlotCondition.None => t != SlotCondition.Night || !m.Slots.Any(o => o.Index == s.Index && o.Condition == SlotCondition.NightFishing),
+                _ => true
+            }))).ToArray();
+
+        // The rows not meetable now, grouped by the next time each can be met, in order from now; empty when now is not known.
+        // A row with Times [] (not in the slots) or all three is never hidden. Form rows of one species give its name once.
+        internal static Dictionary<SlotCondition, List<string>> HiddenUntil(IEnumerable<(string Name, SlotCondition[] Times)> rows, SlotCondition? now)
+        {
+            if (now is not { } time)
+            {
+                return new();
+            }
+            int at = Array.IndexOf(DayTimes, time);
+            SlotCondition[] next = [DayTimes[(at + 1) % 3], DayTimes[(at + 2) % 3]];
+            var hidden = rows.Where(r => r.Times.Length > 0 && !r.Times.Contains(time)).ToList();
+            return next.Select(t => (Time: t, Names: hidden.Where(r => next.First(r.Times.Contains) == t).Select(r => r.Name).Distinct().ToList()))
+                .Where(g => g.Names.Count > 0)
+                .ToDictionary(g => g.Time, g => g.Names);
+        }
+
+        // A location's species as milestone rows, in slot order of the first included version, then any new ones from the second.
+        // Amounts are the preset's for the included versions, applied to each species as MilestoneRows.Build applies a goal: its
+        // form entries, else its any-form entry, else one any-form row at 0.
+        internal static List<(GoalEntry Entry, RomVersion? Version, SlotCondition[] Times)> Seed(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> milestones,
+            string locationId, IReadOnlyList<RomVersion> versions, GoalPreset preset, PokemonMetadataService metadata)
+        {
+            var at = At(milestones, locationId);
+            var included = versions.Where(at.ContainsKey).Select(v => at[v]).ToList();
+            var entries = versions.SelectMany(v => GoalPresets.Entries(preset, v, milestones, metadata)).DistinctBy(e => e.Key).ToList();
+            return included.SelectMany(m => m.Slots).Select(s => s.Species).Distinct().SelectMany(species =>
+            {
+                var mine = entries.Where(e => e.Species == species).ToList();
+                var forms = mine.Where(e => e.FormCode is not null).ToList();
+                IEnumerable<GoalEntry> rows = forms.Count > 0 ? forms : [mine.SingleOrDefault() ?? new GoalEntry(species, null, 0)];
+                var version = OnlyVersion(milestones, at, species);
+                var times = Times(included, species);
+                return rows.Select(e => (e, version, times));
+            }).ToList();
         }
 
         // Fills each phase row's name, species and default form code from the metadata, as InitAsync and AddOrUpdatePhaseInfoAsync load a phase.
