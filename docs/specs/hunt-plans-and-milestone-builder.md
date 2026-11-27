@@ -399,6 +399,8 @@ Open, the owner's:
 - The order of PR #506 (Pickup in Ruby and Sapphire, still open against `main`) and this feature.
 - Whether a one-time story scene on a walk should share the trainer stop: Route 32's "Wait up!" NPC, and Lyra's gatehouse scene on map 97 on the SoulSilver save. Today such a walk ends in the navigator's timeout and a Waiting with no message.
 
+  **Answered 2026-11-26** (the owner: "Leave as is"): nothing is built; see the [decision](../decisions/hunt-plans-and-milestones.md).
+
 ## Not proved by the spikes
 
 Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp and their Repel address from its layout; five anchors were generated and Route 101's was hunted on Sapphire); SoulSilver on the emulator; the ability rules on the emulator; anchors other than Route 30's; reachability and trainer sight in the anchor choice; the radio sound in memory; the 4:00 boundary and weekday rules; a plan across a route needing an HM. The research docs list each.
@@ -490,6 +492,7 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 - 2026-11-26 (N1b, #604): on HeartGold and SoulSilver a trainer's challenge during a navigator walk (a plan's walk, the walk to an anchor, a heal trip and its return) stops the walk, as the owner decided ("A trainer block should be a discord ping and waiting state. I resume when i beat the trainer."). It is recognised by script 3739 (`std_trainer_approach`) under the script task, by the walk's stall watch or its segment end; nothing is pressed, the route is dropped, Waiting goes over the leg with `StoppedForTrainer`, and `A trainer battle started on <map>.` is sent once, with the map's internal name (`R30`). Resume waits for the free field as on Ruby and Sapphire and the leg is planned again from the tile read then; a walk to an anchor stays one across the stop. Research: [milestone-builder.md, "HeartGold and SoulSilver: a trainer's challenge during a navigator walk"](../research/milestone-builder.md#heartgold-and-soulsilver-a-trainers-challenge-during-a-navigator-walk). Route 32's one-time story trigger keeps today's behaviour; the QA scenario is N1c.
 - 2026-11-26, close-out (#526): "As built", the QA table and "Evidence" brought up to the tip `0c4d563` (#605 to #610): the Unown row names, the plan list re-read and the card heading, the trainer stop, `hgss-headbutt-anchor` at Violet City; the new-scenario and regression results of the final pass written in, `hgss-milestone-complete` still to run; the open story-scene question.
 - 2026-11-27, close-out (#526): `hgss-milestone-complete`'s two results on `0c4d563` written in; it and the cheat hotkey's in-front path leave the not-verified list.
+- 2026-11-26, the owner on a one-time story scene met on a walk: "Leave as is". It is not a stop of its own; the walk ends in the navigator's timeout and a Waiting with no message, as before. Recorded in the decisions doc.
 
 ## Appendix: the maps and their names
 
