@@ -133,6 +133,11 @@ export function stopMacroRecord(apiUrl: string, pos: number, name: string): Prom
   return request('POST', `${apiUrl}/api/dev/macroRecord/stop/${pos}`, { name })
 }
 
+// Each action a plan step may be, with its schema, in the plan's own order.
+export function getPlanSteps(apiUrl: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/plans/steps`)
+}
+
 export function getPlans(apiUrl: string, game: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/plans/${encodeURIComponent(game)}`)
 }

@@ -450,6 +450,25 @@ export interface PlanRule {
   milestone: string
 }
 
+// A step's body: exactly the Start body Bot Control posts for that action, eventName included; null for every unset field.
+export type StepArguments = { eventName: string } & Record<string, unknown>
+
+// An empty times or weekdays matches any.
+export interface PlanStep {
+  times: PlanTime[]
+  weekdays: Weekday[]
+  arguments: StepArguments
+}
+
+// Rules are checked in order and the first match wins; default runs when none matches. A PUT's game and name are the route's.
+export interface Plan {
+  game: GameFlavor
+  name: string
+  rules: PlanStep[]
+  default: StepArguments
+  endWhenComplete: boolean
+}
+
 export interface HuntPlan {
   game: GameFlavor
   name: string
