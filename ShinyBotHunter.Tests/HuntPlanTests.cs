@@ -324,6 +324,17 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void PlanError_MalformedRules_Refused()
+        {
+            const string sentence = "The plan's rules are malformed: each rule needs its times and weekdays lists.";
+
+            Assert.Equal(sentence, Error(Steps(WaitStep()) with { Rules = null! }));
+            Assert.Equal(sentence, Error(Steps(WaitStep()) with { Rules = [null!] }));
+            Assert.Equal(sentence, Error(Steps(WaitStep(), new PlanStep(null!, [], WaitStep()))));
+            Assert.Equal(sentence, Error(Steps(WaitStep(), new PlanStep([], null!, WaitStep()))));
+        }
+
+        [Fact]
         public void PlanError_NoClock_Refused()
         {
             var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())).Capabilities;

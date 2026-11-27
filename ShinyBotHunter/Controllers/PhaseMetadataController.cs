@@ -306,6 +306,10 @@ namespace ShinyBotHunter.Controllers
             {
                 return $"{plan.Game} has no in-game clock, so it has no plans.";
             }
+            if (plan.Rules is null || plan.Rules.Any(r => r?.Times is null || r.Weekdays is null))
+            {
+                return "The plan's rules are malformed: each rule needs its times and weekdays lists.";
+            }
             for (int i = 0; i < plan.Rules.Count; i++)
             {
                 if (StepError(plan.Rules[i].Arguments, $"Rule {i + 1}") is { } error)
