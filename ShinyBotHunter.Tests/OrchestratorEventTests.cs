@@ -498,8 +498,9 @@ namespace ShinyBotHunter.Tests
             return state;
         }
 
-        private static Task DecideAsync(GameState state) =>
-            OrchestratorEvent.DecideOverworldAction(state, new PokemonStateReader(), Moves().GetPokemonMoveMetadata, null!, CancellationToken.None);
+        // No PickupTally: a Pickup visit would throw.
+        private static Task DecideAsync(GameState state, Func<GameState, bool>? endsHere = null) =>
+            OrchestratorEvent.DecideOverworldAction(state, new PokemonStateReader(), Moves().GetPokemonMoveMetadata, null!, CancellationToken.None, endsHere);
 
         // FR-18 on Gen 3 data: a lead with HP and damaging PP fights the next encounter, back in Battle.
         [Fact]
@@ -656,6 +657,62 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.Encountering], state.State);
         }
 
+        // R6b and AGENTS rule 16: a plan's step that ends at the decision completes there, on the clock the decision read,
+        // with no press and no Pickup visit (the tally is null, so a visit would throw).
+        [Fact]
+        public async Task Decide_StepEndsHere_CompletesWithNoPressOrPickupVisit()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            state.Pickup = true;
+            RateInputs? seen = null;
+
+            await DecideAsync(state, s => { seen = s.RatesSeen; return true; });
+
+            Assert.Equal([EventState.Complete], state.State);
+            Assert.Empty(bot.Macros);
+            Assert.Single(memory.ChainReads);
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), seen);
+        }
+
+        [Fact]
+        public async Task Decide_StepEndsHere_False_IsTodaysEncounter()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state, _ => false);
+
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        // A lead with no damaging PP would take a heal trip; a step that ends here leaves before it.
+        [Fact]
+        public async Task Decide_StepEndsHere_HurtLead_EndsBeforeTheHealTrip()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = Training(bot, TrainType.Standard);
+
+            await DecideAsync(state, _ => true);
+
+            Assert.Equal([EventState.Complete], state.State);
+        }
+
+        // A step complete at its decision finishes as today and is never switched away from: the hook is not asked.
+        [Fact]
+        public async Task Decide_StepComplete_FinishWinsOverTheSwitch()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            state.MilestoneComplete = true;
+            int asked = 0;
+
+            await DecideAsync(state, _ => { asked++; return true; });
+
+            Assert.Equal(0, asked);
+            Assert.Equal([EventState.Complete], state.State);
+        }
+
         // FR-26a and NFR-1: on RS each decision reads the Repel counter as one 2-byte block, with no clock.
         [Fact]
         public async Task Decide_Rs_KeepsTheRepelCounterFromOneBlock()
@@ -691,6 +748,23 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(toldAfter, result);
             Assert.Equal(sentences, sent.Count);
+        }
+
+        // FR-34a in a plan: each step's orchestrator starts its told flag at null, so two steps on one milestone tell its
+        // completion once: A sees it complete mid-hunt, B sees it complete at its Init.
+        [Fact]
+        public async Task TellIfComplete_TwoStepsOneMilestone_TellsOnce()
+        {
+            List<string> sent = [];
+            Func<string, Task> tell = s => { sent.Add(s); return Task.CompletedTask; };
+            Func<string> sentence = () => "Route 30 · grass is complete on fake.nds.";
+
+            bool? stepA = await OrchestratorEvent.TellIfCompleteAsync(null, false, sentence, tell);
+            stepA = await OrchestratorEvent.TellIfCompleteAsync(stepA, true, sentence, tell);
+            await OrchestratorEvent.TellIfCompleteAsync(null, true, sentence, tell);
+
+            Assert.True(stepA);
+            Assert.Single(sent);
         }
 
         // FR-34a: a failed send is logged and the hunt goes on.

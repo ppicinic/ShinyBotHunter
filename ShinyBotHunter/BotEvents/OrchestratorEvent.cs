@@ -461,6 +461,13 @@ namespace ShinyBotHunter.BotEvents
                 await FinishAsync(state);
                 return;
             }
+            // A plan ends this step's hunt here, on the clock just read, before a heal trip or a Pickup visit: nothing is in
+            // flight at the decision, and nothing is pressed or walked, since the next step walks to its own anchor.
+            if (endsHere is not null && endsHere(state))
+            {
+                state.SwapState(EventState.Complete);
+                return;
+            }
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead, moveMetadata))
             {
                 if (state.Pickup)
