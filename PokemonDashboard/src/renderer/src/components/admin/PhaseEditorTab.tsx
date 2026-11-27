@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
 import type {
@@ -28,6 +28,11 @@ export function versionsOf(game: string): RomVersion[] {
 // A new milestone's name may not be a saved one's: the save route upserts by name, so it would replace that milestone.
 export function nameTaken(phases: PhaseInfo[], name: string): boolean {
   return phases.some((p) => p.name === name.trim())
+}
+
+// The reread after Attach or Detach is applied only to the milestone it was asked for, not to one opened meanwhile.
+export function sameMilestone(open: PhaseInfo, reread: PhaseInfo): boolean {
+  return open.gameName === reread.gameName && open.name === reread.name
 }
 
 export function toggleFile(gameFiles: string[], handle: string, on: boolean): string[] {
@@ -181,6 +186,10 @@ export function PhaseEditorTab(): JSX.Element {
 
   // ── editor state ─────────────────────────────────────────────
   const [form, setForm] = useState<PhaseInfo | null>(null)
+  // The form as last rendered, for the Attach and Detach handler to check after its round trips; written only by render,
+  // read only on the UI thread.
+  const openForm = useRef<PhaseInfo | null>(null)
+  openForm.current = form
   // Set while a new milestone is made from game data; its rows are drawn from it, not from form
   const [draft, setDraft] = useState<Draft | null>(null)
   // A saved milestone's markers and version marks, by row key; null without a location
@@ -328,6 +337,7 @@ export function PhaseEditorTab(): JSX.Element {
       const reread = await api.getPhaseInfo(apiUrl, selectedGame, selectedPhase, new AbortController().signal)
       if (!reread.ok) throw new Error(`Server returned ${reread.status}`)
       const data = await reread.json() as PhaseInfoResponse
+      if (!openForm.current || !sameMilestone(openForm.current, data.phaseInfo)) return
       setForm((prev) => prev && { ...prev, location: data.phaseInfo.location })
       showLocation(data)
     } catch (err) {

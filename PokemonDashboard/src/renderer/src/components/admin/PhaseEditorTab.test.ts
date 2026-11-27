@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PhaseInfo, RomVersion, SeedRow } from '../../types/api'
 import type { Draft } from './PhaseEditorTab'
-import { byModality, draftRows, markerLabels, nameTaken, presetsFor, savePayload, toggleFile, versionsOf } from './PhaseEditorTab'
+import { byModality, draftRows, markerLabels, nameTaken, presetsFor, sameMilestone, savePayload, toggleFile, versionsOf } from './PhaseEditorTab'
 
 function phase(name: string): PhaseInfo {
   return { gameName: 'HGSS', name, pokemon: [], isStatic: false, location: null, gameFiles: [], archived: false }
@@ -63,7 +63,7 @@ describe('draftRows', () => {
   })
 
   it('a form row and the any-form row are edited apart', () => {
-    const female = draft([seed('Rattata', 19, 1, null, 'rattata'), seed('Rattata', 19, 1, null, 'rattata;f')], { edited: { 'rattata;f': 4 } })
+    const female = draft([seed('Rattata', 19, 1), seed('Rattata', 19, 1, null, 'rattata;f')], { edited: { 'rattata;f': 4 } })
     expect(amounts(female)).toEqual([['rattata', 1], ['rattata;f', 4]])
   })
 
@@ -131,6 +131,13 @@ describe('nameTaken', () => {
 
   it('is false for a free name', () => {
     expect(nameTaken([phase('1-4 Route 30')], 'Route 30 · grass')).toBe(false)
+  })
+})
+
+describe('sameMilestone', () => {
+  it('drops a reread for a milestone no longer open', () => {
+    expect(sameMilestone(phase('1-4 Route 30'), phase('1-4 Route 30'))).toBe(true)
+    expect(sameMilestone(phase('1-5 Route 31'), phase('1-4 Route 30'))).toBe(false)
   })
 })
 
