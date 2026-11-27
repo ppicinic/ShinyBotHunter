@@ -313,8 +313,7 @@ namespace ShinyBotHunter.Service
                 {
                     throw new ArgumentException($"Hunt plans need the in-game clock; {bot.GameFlavor} has none.");
                 }
-                plan = await provider.GetRequiredService<MongoHuntPlanDao>().LoadAsync(bot.GameFlavor, args.HuntPlan)
-                    ?? throw new ArgumentException($"No hunt plan named {args.HuntPlan}.");
+                throw new ArgumentException("A Wild Encounter no longer takes a plan; start the Plan action with it.");
             }
             // With a plan the form's milestone is ignored, and each of the plan's is refused as the form's would be (binding answer 6).
             Milestone? generated = plan is null ? RefuseMilestone(bot, args.PhaseName, args.EncounterType) : null;
@@ -430,6 +429,24 @@ namespace ShinyBotHunter.Service
             }
         }
 
+        // Under the gate, as DeletePlanAsync, so a save never lands while a hunt of the plan starts (FR-37b).
+        public async Task SavePlanAsync(Plan plan)
+        {
+            await slots.Gate.WaitAsync();
+            try
+            {
+                if (PlanInUseRefusal(slots.Entries, plan.Game, plan.Name) is { } inUse)
+                {
+                    throw new InvalidOperationException(inUse);
+                }
+                await provider.GetRequiredService<MongoHuntPlanDao>().SaveAsync(plan);
+            }
+            finally
+            {
+                slots.Gate.Release();
+            }
+        }
+
         // Refused while in use: the hunt's name would then name no plan, and a delete of the new name would not see the hunt.
         public async Task RenamePlanAsync(GameFlavor game, string name, string? to)
         {
@@ -445,7 +462,7 @@ namespace ShinyBotHunter.Service
                     throw new InvalidOperationException(inUse);
                 }
                 var plans = provider.GetRequiredService<MongoHuntPlanDao>();
-                HuntPlan plan = await plans.LoadAsync(game, name) ?? throw new ArgumentException($"No hunt plan named {name}.");
+                Plan plan = await plans.LoadAsync(game, name) ?? throw new ArgumentException($"No hunt plan named {name}.");
                 if (await plans.LoadAsync(game, to) is not null)
                 {
                     throw new ArgumentException($"A plan named {to} already exists.");
@@ -1153,12 +1170,6 @@ namespace ShinyBotHunter.Service
             if (!actions.Any(a => a.Name is "Wild Encounter" or "Chained Encounter") || !slots.Entries.TryGetValue(pos, out var entry))
             {
                 return actions;
-            }
-            // FR-31: only a game with the in-game clock is offered a plan. A copy, so the registry's options and Chained Encounter's legs are untouched.
-            int wildIndex = actions.FindIndex(a => a.Name == "Wild Encounter");
-            if (wildIndex >= 0 && entry.Bot!.Profile.Capabilities.HasHuntPlans)
-            {
-                actions[wildIndex] = actions[wildIndex] with { OptionalParameters = [.. actions[wildIndex].OptionalParameters!, "HuntPlan"] };
             }
             Task<PokemonState?>? read = entry.PartyRead;
             if (read is null)

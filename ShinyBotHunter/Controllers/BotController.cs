@@ -1,5 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
@@ -49,9 +51,16 @@ namespace ShinyBotHunter.Controllers
         public ActionResult<List<PickupItemsResponse>> GetPickupItems([FromServices] PickupTally pickupTally) => Ok(pickupTally.Read());
 
         [HttpGet("bot/getBotActions/{pos}")]
-        public async Task<ActionResult<EventArgumentOptions>> GetBotActions(int pos)
+        public async Task<ActionResult<EventArgumentOptions>> GetBotActions(int pos, [FromServices] MongoHuntPlanDao plans)
         {
-            return Ok((await botService.GetBotActionsAsync(pos)).ToArray());
+            var actions = await botService.GetBotActionsAsync(pos);
+            // Read per listing, as the static encounters are, so a plan saved in the editor shows without a restart.
+            int i = actions.FindIndex(a => a.Name == "Plan");
+            if (i >= 0 && botService.GetBotAt(pos) is { } bot)
+            {
+                actions[i] = EventRegistry.PlanChoices((await plans.ListAsync(bot.GameFlavor)).Select(p => p.Name));
+            }
+            return Ok(actions.ToArray());
         }
 
         [HttpGet("bot/milestones/{pos}")]
