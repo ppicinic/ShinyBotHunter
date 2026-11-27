@@ -342,11 +342,11 @@ Nothing below was run for this close-out; the results are the orchestrator's QA 
 | `hgss-plan-morning-back` | `complete-on-return` | `20261126-113257` | Pass, 24.4 min; one completion message. |
 | `hgss-plan-weekday` | `hg` | `20261126-092747` | Pass, 14.3 min, in the N1c coder's worktree on the bot code of `bd96858`. |
 | `hgss-plan-weekday` | `ss` | `20261126-085217`, `20261126-091007` | Pass twice, 17.6 and 17.5 min, in the N1c coder's worktree on the bot code of `bd96858`. |
-| `hgss-milestone-complete` | `no-plan` | [QA: pending] | [QA: pending] |
-| `hgss-milestone-complete` | `plan` | [QA: pending] | [QA: pending] |
+| `hgss-milestone-complete` | `no-plan` | `20261127-030012` | Pass, about 2 min, on `0c4d563`; the hotkey sent with EmuHawk in front; the shiny parked the hunt one encounter after the arm; one milestone message, `Route 32 · grass is complete on HG-Complete.` |
+| `hgss-milestone-complete` | `plan` | `20261127-030224` | Pass, about 2 min, on `0c4d563`; the hotkey sent with EmuHawk in front; one message, `QA Single: Route 32 · grass is complete on HG-Complete. The plan is finished.`; the plan's delete and rename while parked both refused with 400, "in use by the hunt on bot #0; cancel that hunt first." |
 | `hgss-headbutt-anchor` | | `20261126-120738` | Pass, 2.9 min. |
 
-The pass ran on the feature tip, whose bot code is that of `bd96858`; the stamps are UTC. Every Repel close in it was one A press. `hgss-milestone-complete` did not run on the final tip: a Windows system dialog held the foreground, so the arming hotkey was not sent (`20261126-115731`, `20261126-115859`). Its last passes were on `a91ae47`: `no-plan` `20261126-004143`, `plan` `20261126-004339`.
+The pass ran on the feature tip, whose bot code is that of `bd96858`; the stamps are UTC. Every Repel close in it was one A press. `hgss-milestone-complete` first could not run on the final tip: a Windows system dialog held the foreground, so the arming hotkey was not sent (`20261126-115731`, `20261126-115859`). Its rerun on `0c4d563` passed both variants at the first attempt (`20261127-030012`, `20261127-030224`), with the hotkey sent and EmuHawk in front, which also exercises #610's in-front path.
 
 **Not verified on the emulator.**
 
@@ -375,9 +375,7 @@ The pass ran on the feature tip, whose bot code is that of `bd96858`; the stamps
 - A chained hunt's milestone message.
 - A planned hunt's encounters per hour against the same milestone hunted without a plan.
 - The walk to Route 32 · grass's generated anchor from the QA save: it is stopped by a one-time story NPC, so the scenarios that hunt Route 32 set its anchor on the save's tile instead (#602). The HGSS navigator has no handling for a live story trigger on a walk (`NavigatorEvent.cs`).
-- `hgss-milestone-complete` on the final tip, until its rerun.
 - The Primo egg walk after #608, which changed only the navigator's constructor argument there (`HgssPrimoEggEvent.cs:62`); `hgss-primo-egg-hatch` was not run.
-- The path of the cheat hotkey that sends with EmuHawk in front, after #610, until a scenario that arms a cheat runs on the final tip.
 - The trainer stop beyond Youngster Joey on SoulSilver: no other trainer, no double battle, no HeartGold, no loss followed by the walk back.
 - A second unbeaten trainer's stop: observed once (Youngster Mikey, two messages, run `20261126-080735` in the N1c coder's worktree), not asserted.
 - The Friday half of `hgss-plan-weekday` on the SoulSilver save: its walk passes Lyra's one-time gatehouse scene, so `ss` is cancelled at midnight's walk line.
@@ -491,6 +489,7 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 - **2026-11-26, the owner on the Ruins of Alph card** (28 rows all named "Unown"). His words: "Letter in parentheses. Example "Unown (A)". We may later add stuff like Giratina (Altered)". A milestone row for one Unown letter is named `Unown (A)` to `Unown (Z)`, `Unown (!)` and `Unown (?)`, from the backend's row (`PokemonMetadataService.RowName`); an any-form row keeps the plain name. Only Unown gets a form name now; `Species (Form)` is the format for any later one. The Goals tab still names a line by its species, with the form code in its own column.
 - 2026-11-26 (N1b, #604): on HeartGold and SoulSilver a trainer's challenge during a navigator walk (a plan's walk, the walk to an anchor, a heal trip and its return) stops the walk, as the owner decided ("A trainer block should be a discord ping and waiting state. I resume when i beat the trainer."). It is recognised by script 3739 (`std_trainer_approach`) under the script task, by the walk's stall watch or its segment end; nothing is pressed, the route is dropped, Waiting goes over the leg with `StoppedForTrainer`, and `A trainer battle started on <map>.` is sent once, with the map's internal name (`R30`). Resume waits for the free field as on Ruby and Sapphire and the leg is planned again from the tile read then; a walk to an anchor stays one across the stop. Research: [milestone-builder.md, "HeartGold and SoulSilver: a trainer's challenge during a navigator walk"](../research/milestone-builder.md#heartgold-and-soulsilver-a-trainers-challenge-during-a-navigator-walk). Route 32's one-time story trigger keeps today's behaviour; the QA scenario is N1c.
 - 2026-11-26, close-out (#526): "As built", the QA table and "Evidence" brought up to the tip `0c4d563` (#605 to #610): the Unown row names, the plan list re-read and the card heading, the trainer stop, `hgss-headbutt-anchor` at Violet City; the new-scenario and regression results of the final pass written in, `hgss-milestone-complete` still to run; the open story-scene question.
+- 2026-11-27, close-out (#526): `hgss-milestone-complete`'s two results on `0c4d563` written in; it and the cheat hotkey's in-front path leave the not-verified list.
 
 ## Appendix: the maps and their names
 

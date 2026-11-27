@@ -328,8 +328,8 @@ $env:QA_HGSS_VARIANT = "back"; npx playwright test hgss-plan-morning-back   # ab
 $env:QA_HGSS_VARIANT = "complete-on-return"; npx playwright test hgss-plan-morning-back   # about 24.4 minutes
 $env:QA_HGSS_VARIANT = "hg"; npx playwright test hgss-plan-weekday   # about 14.3 minutes; the default
 $env:QA_HGSS_VARIANT = "ss"; npx playwright test hgss-plan-weekday   # about 17.6 minutes; needs hgss/qa-ss-route30.SaveRAM; checks the trainer stop
-$env:QA_HGSS_VARIANT = "no-plan"; npx playwright test hgss-milestone-complete   # about [QA: minutes]; the default
-$env:QA_HGSS_VARIANT = "plan"; npx playwright test hgss-milestone-complete   # about [QA: minutes]
+$env:QA_HGSS_VARIANT = "no-plan"; npx playwright test hgss-milestone-complete   # about 2 minutes; the default
+$env:QA_HGSS_VARIANT = "plan"; npx playwright test hgss-milestone-complete   # about 2 minutes
 Remove-Item Env:QA_HGSS_VARIANT
 npx playwright test hgss-headbutt-anchor   # about 2.9 minutes
 $env:QA_CLOCK_START = "2026-11-29T19:40:00"; npx playwright test hgss-plan-night   # a clock run whose launch took too long: an earlier InitialTime
@@ -682,6 +682,7 @@ A save moved by PKHeX keeps the old map's weather until a map change, and elevat
 Scenarios never save in-game, and the spike runs left both saves byte-identical to their backups. BizHawk still rewrites `SaveRAM` on close, so the harness should compare a save's hash before and after a run and fail if it changed. The exception is `rs-jirachi-soak`, which saves in-game by design: it installs a pristine copy, restores it afterwards, and compares the restored hash with the pristine one. The second exception is the `hgss-static-*` scenarios, whose Run saves once (FR-3 of the [Sinjoh static spec](sinjoh-static.md)): they restore `HG-Static` from the pristine `qa-sinjoh.SaveRAM`, not from the `.bak`, because BackupSaveram overwrites the `.bak` on every flush. The third exception is `rs-wild-catch-resume` and `rs-wild-catch-box`, whose Resume saves through the start menu (FR-13 of the [RS wild encounter spec](rs-wild-encounter.md)): they keep the end-state save in the run folder and restore `SA-Wild` from the pristine `qa-route101.SaveRAM`, as every rs-wild scenario does.
 
 ## Changelog
+- 2026-11-27: close-out: the two `hgss-milestone-complete` run times filled (#526).
 - 2026-11-26: final-pass fixes (#610): the arming sentence (the chord is sent only when EmuHawk holds the foreground; otherwise nothing is sent and the scenario fails naming the window that held it), and the `hgss-plan-night` row (every Route 30 row after the switch a night species at Lv 2 to 4, none a day species, in place of "a Spinarak or a Hoothoot in six"); `rs-rates-repel` judges "no encounter while the Repel lasts" by the order of the log lines.
 - 2026-11-26: close-out: the run-time markers filled from the final pass on the feature tip (#526).
 - 2026-11-26: `hgss-plan-weekday ss` checks the HGSS trainer stop on its Thursday walk and wins the battle by scenario presses; the beaten-trainer precondition and the known failure are gone from its row (#604).
