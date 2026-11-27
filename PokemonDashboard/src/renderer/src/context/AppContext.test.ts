@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponse, MilestoneRowsResponse, SubscriptionState } from '../types/api'
-import { applyEncounters, milestonesToReread, syncSubscriptions } from './AppContext'
+import { phaseCardRows } from '../components/PhaseCard'
+import type { GameEncounterResponse, PhaseInfoResponse, PhasePokemonInfo, SubscriptionState } from '../types/api'
+import { applyEncounters, applyReread, milestonesToReread, syncSubscriptions } from './AppContext'
 
 function sub(phase: string, gameName: string | null, withData = false): SubscriptionState {
   return {
@@ -9,13 +10,15 @@ function sub(phase: string, gameName: string | null, withData = false): Subscrip
     gameName,
     encounterData: withData ? ({ gameSpecificResponse: {} } as unknown as GameEncounterResponse) : null,
     phaseInfo: null,
-    milestone: null,
+    location: null,
+    live: false,
+    timeOfDay: null,
     notFound: false
   }
 }
 
-function generated(phase: string, gameName: string): SubscriptionState {
-  return { ...sub(phase, gameName), milestone: { id: phase, rows: [] } as unknown as MilestoneRowsResponse }
+function located(phase: string, gameName: string): SubscriptionState {
+  return { ...sub(phase, gameName), location: { rows: [], hiddenUntil: {} } }
 }
 
 describe('syncSubscriptions', () => {
@@ -86,20 +89,62 @@ describe('applyEncounters', () => {
 })
 
 describe('milestonesToReread', () => {
-  it('re-reads the rows of a generated milestone on a push to its file', () => {
-    const mA = generated('M', 'A')
+  it('re-reads the location of a milestone on a push to its file', () => {
+    const mA = located('M', 'A')
     const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
 
-    const result = milestonesToReread([mA, sub('P', 'A'), generated('M', 'B')], response, 'HGSS', 'M')
+    const result = milestonesToReread([mA, sub('P', 'A'), located('M', 'B')], response, 'HGSS', 'M')
 
     expect(result).toEqual([mA])
   })
 
-  it('does not re-read a stored phase', () => {
+  it('does not re-read a milestone with no location', () => {
     const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
 
-    const result = milestonesToReread([sub('P', 'A'), sub('P', null), generated('M', 'A')], response, 'HGSS', 'P')
+    const result = milestonesToReread([sub('P', 'A'), sub('P', null), located('M', 'A')], response, 'HGSS', 'P')
 
     expect(result).toEqual([])
+  })
+})
+
+describe('applyReread', () => {
+  function pokemon(name: string, speciesId: number): PhasePokemonInfo {
+    return { name, speciesId, amount: 1, formCode: name.toLowerCase(), requireSpecificForm: false, hasFemaleForm: false }
+  }
+
+  it('leaves every share on its own species after a row is removed and the rest reordered', () => {
+    const counts = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
+    const before: SubscriptionState = {
+      ...sub('M', 'A'),
+      encounterData: counts,
+      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Pidgey', 16), pokemon('Rattata', 19), pokemon('Sentret', 161)], isStatic: false },
+      location: {
+        rows: [
+          { key: '#16', times: ['Morning', 'Day'], share: 0.5, hiddenNow: false },
+          { key: '#19', times: ['Morning', 'Day', 'Night'], share: 0.3, hiddenNow: false },
+          { key: '#161', times: ['Morning', 'Day'], share: 0.2, hiddenNow: false }
+        ],
+        hiddenUntil: {}
+      }
+    }
+    const response = {
+      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Sentret', 161), pokemon('Pidgey', 16)], isStatic: false },
+      data: { gameSpecificResponse: {} },
+      live: true,
+      timeOfDay: 'Day',
+      location: {
+        rows: [
+          { key: '#161', times: ['Morning', 'Day'], share: 0.25, hiddenNow: false },
+          { key: '#16', times: ['Morning', 'Day'], share: 0.75, hiddenNow: false }
+        ],
+        hiddenUntil: {}
+      }
+    } as unknown as PhaseInfoResponse
+
+    const [after] = applyReread([before], sub('M', 'A'), response)
+    const rows = phaseCardRows(after.phaseInfo?.pokemon ?? [], undefined, undefined, after.location)
+
+    expect(rows.map((r) => [r.name, r.share])).toEqual([['Sentret', 0.25], ['Pidgey', 0.75]])
+    expect(after.encounterData).toBe(counts)
   })
 })

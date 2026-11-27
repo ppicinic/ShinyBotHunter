@@ -1,137 +1,138 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponseBase, MilestoneCardRow, MilestoneRowsResponse, PhaseEncounterResponse, PhasePokemonInfo } from '../types/api'
-import { milestoneCardRows, PhaseCard, phaseCardRows } from './PhaseCard'
-
-function row(key: string, formCode: string | null, changes: Partial<MilestoneCardRow> = {}): MilestoneCardRow {
-  return {
-    species: 167,
-    key,
-    formCode,
-    name: 'Spinarak',
-    sprite: formCode ?? 'spinarak',
-    hasFemaleForm: false,
-    wanted: 1,
-    caught: 0,
-    complete: false,
-    hidden: false,
-    isTarget: true,
-    encountersHere: 0,
-    encountersOnFile: 0,
-    shinyEncountersOnFile: 0,
-    share: null,
-    ...changes
-  }
-}
+import type { GameEncounterResponse, GameEncounterResponseBase, MilestoneLocation, PhaseEncounterResponse, PhasePokemonInfo, PlanTime } from '../types/api'
+import { PhaseCard, phaseCardRows } from './PhaseCard'
 
 function counts(encounters: number, shinyEncounters: number, shiniesCaught: number): { encounters: number; shinyEncounters: number; shiniesCaught: number } {
   return { encounters, shinyEncounters, shiniesCaught }
 }
 
-describe('milestoneCardRows', () => {
-  it('drops a hidden row', () => {
-    const result = milestoneCardRows([row('#1', null), row('#2', null, { hidden: true }), row('#3', null)])
+function pokemon(name: string, speciesId: number): PhasePokemonInfo {
+  return { name, speciesId, amount: 1, formCode: name.toLowerCase(), requireSpecificForm: false, hasFemaleForm: false }
+}
 
-    expect(result.map((r) => r.key)).toEqual(['#1', '#3'])
-  })
+function card(
+  rows: PhasePokemonInfo[],
+  location: MilestoneLocation | null,
+  live = true,
+  timeOfDay: PlanTime | null = null,
+  encounterData: GameEncounterResponse | null = null
+): string {
+  const phaseInfo = { gameName: 'HGSS', name: 'Route 30', pokemon: rows, isStatic: false }
+  const subscription = { game: 'HGSS', phase: 'Route 30', gameName: 'HG-QA', encounterData, phaseInfo, location, live, timeOfDay, notFound: false }
+  return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
+}
 
-  it('an amount 0 row is shown', () => {
-    const result = milestoneCardRows([row('#167', null, { wanted: 0, caught: 2 })])
+function at(key: string, times: PlanTime[], share: number | null, hiddenNow = false): MilestoneLocation['rows'][number] {
+  return { key, times, share, hiddenNow }
+}
 
-    expect(result).toHaveLength(1)
-    expect(result[0].amount).toBe(0)
-  })
-
-  it("Unown's 28 entries are 28 rows", () => {
-    const letters = [...'abcdefghijklmnopqrstuvwxyz'].concat(['exclamation', 'question'])
-    const rows = letters.map((l) => row(`unown-${l}`, `unown-${l}`, { species: 201, name: 'Unown' }))
-
-    const result = milestoneCardRows(rows)
-
-    expect(new Set(result.map((r) => r.key)).size).toBe(28)
-    expect(new Set(result.map((r) => r.sprite)).size).toBe(28)
-    expect([result[0].sprite, result[27].sprite]).toEqual(['unown-a', 'unown-question'])
-    expect(result.every((r) => r.genderSymbol === '')).toBe(true)
-  })
-
-  it('gender follows the form', () => {
-    const result = milestoneCardRows([
-      row('bidoof;f', 'bidoof;f', { hasFemaleForm: true }),
-      row('bidoof', 'bidoof', { hasFemaleForm: true }),
-      row('#399', null, { hasFemaleForm: true, sprite: 'bidoof' })
-    ])
-
-    expect(result.map((r) => [r.genderSymbol, r.sprite])).toEqual([['♀', 'bidoof;f'], ['♂', 'bidoof'], ['', 'bidoof']])
-  })
-
-  it('counts come from the row', () => {
-    const result = milestoneCardRows([
-      row('#1', null, { encountersHere: 5, encountersOnFile: 9, caught: 1, shinyEncountersOnFile: 3 }),
-      row('#2', null, { caught: 2, shinyEncountersOnFile: 1 })
-    ])
-
-    expect(result[0]).toMatchObject({ encountersHere: 5, encountersOnFile: 9, caught: 1, missed: 2 })
-    expect(result[1].missed).toBe(0)
-  })
-
-  it("carries each row's share", () => {
-    const result = milestoneCardRows([row('#1', null, { share: 0.25 }), row('#2', null, { share: 0.75 })])
-
-    expect(result.map((r) => r.share)).toEqual([0.25, 0.75])
-  })
-
-  it('drops a row at a zero share', () => {
-    const result = milestoneCardRows([row('#69', null, { share: 0.308 }), row('#19', null, { share: 0 }), row('#194', null, { share: 0.538 })])
-
-    expect(result.map((r) => r.key)).toEqual(['#69', '#194'])
-  })
-
-  it('keeps every row without shares', () => {
-    const result = milestoneCardRows([row('#1', null), row('#2', null), row('#3', null)])
-
-    expect(result.map((r) => r.key)).toEqual(['#1', '#2', '#3'])
-  })
-})
+// The card's header, up to the body below it
+function header(html: string): string {
+  return html.slice(html.indexOf('card-header'), html.indexOf('flex-1 overflow-hidden'))
+}
 
 describe('PhaseCard', () => {
-  function card(rows: MilestoneCardRow[], survive: number | null): string {
-    const milestone = { id: '36-land', name: 'Route 32 · grass', modality: 'Land', rows, survive, live: true, timeOfDay: 'Night' } as unknown as MilestoneRowsResponse
-    const subscription = { game: 'HGSS', phase: '36-land', gameName: 'HG-QA', encounterData: null, phaseInfo: null, milestone, notFound: false }
-    return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
-  }
+  it("a milestone with no location draws today's rows without a footer", () => {
+    const encounterData = {
+      gameSpecificResponse: { 'HG-QA': { pokemonEncounters: { '#16': counts(12, 0, 0) }, phaseEncounters: { 'Route 30': { phaseCount: 7, pokemonEncounters: { '#16': counts(5, 0, 0) } } } } }
+    } as unknown as GameEncounterResponse
 
-  it('draws the share under the name, with no Share column', () => {
-    const html = card([row('#69', null, { name: 'Bellsprout', share: 0.308 }), row('#41', null, { name: 'Zubat', share: 0 })], 0.65)
+    const html = card([pokemon('Pidgey', 16), pokemon('Rattata', 19)], null, false, null, encounterData)
+
+    expect([html.includes('Pidgey'), html.includes('Rattata'), html.includes('>5<'), html.includes('>12<')]).toEqual([true, true, true, true])
+    expect([html.includes('row-share'), html.includes('time-pill'), html.includes('hidden-summary'), html.includes('not live')]).toEqual([false, false, false, false])
+    expect(header(html)).toMatch(/Phase: <span[^>]*>7<\/span>/)
+    expect(html).not.toContain('border-t')
+  })
+
+  it('draws the phase count, the rate and not live in the header', () => {
+    const encounterData = { gameSpecificResponse: { 'HG-QA': { phaseEncounters: { 'Route 30': { phaseCount: 42 } } } } } as unknown as GameEncounterResponse
+    const location = { rows: [at('#16', ['Morning', 'Day'], null)], hiddenUntil: {} }
+
+    const html = card([pokemon('Pidgey', 16)], location, false, 'Night', encounterData)
+
+    expect(header(html)).toMatch(/Phase: <span[^>]*>42<\/span>/)
+    expect(header(html)).toMatch(/Rate: <span[^>]*>—<\/span>/)
+    expect(header(html)).toContain('not live (last seen night)')
+    expect(html).not.toContain('border-t')
+  })
+
+  it('says not live without a last-seen time', () => {
+    const location = { rows: [at('#16', ['Morning', 'Day'], null)], hiddenUntil: {} }
+
+    const html = card([pokemon('Pidgey', 16)], location, false, null)
+
+    expect(header(html)).toMatch(/>not live<\/span>/)
+  })
+
+  it('draws the share under the name for a milestone with a location', () => {
+    const location = { rows: [at('#69', ['Morning', 'Day', 'Night'], 0.308)], hiddenUntil: {} }
+
+    const html = card([pokemon('Bellsprout', 69)], location)
 
     expect(html).toMatch(/Bellsprout<\/span><div data-testid="row-share"[^>]*>30.8 %<\/div><\/td>/)
-    expect(html).not.toContain('Zubat')
     expect(html).not.toContain('>Share<')
-    expect(html).not.toContain('encounters survive')
   })
 
-  it('draws every row and no share without shares', () => {
-    const html = card([row('#69', null, { name: 'Bellsprout' }), row('#41', null, { name: 'Zubat' })], null)
+  it('marks a morning-and-day row with both pills and an all-day row with all day', () => {
+    const location = { rows: [at('#16', ['Morning', 'Day'], 0.4), at('#19', ['Morning', 'Day', 'Night'], 0.25)], hiddenUntil: {} }
 
-    expect([html.includes('Bellsprout'), html.includes('Zubat'), html.includes('row-share')]).toEqual([true, true, false])
+    const html = card([pokemon('Pidgey', 16), pokemon('Rattata', 19)], location)
+
+    expect(html).toMatch(/Pidgey<\/span><span data-testid="time-pill"[^>]*>morning<\/span><span data-testid="time-pill"[^>]*>day<\/span><div/)
+    expect(html).toMatch(/Rattata<\/span><span data-testid="time-pill"[^>]*>all day<\/span><div/)
   })
 
-  it('keeps the table when a Repel blocks every species', () => {
-    const html = card([row('#19', null, { name: 'Rattata', share: 0 })], 0)
+  it('draws no pill when no row of the location is timed', () => {
+    const location = { rows: [at('#263', ['Morning', 'Day', 'Night'], 0.45), at('#265', ['Morning', 'Day', 'Night'], 0.55)], hiddenUntil: {} }
 
-    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
+    const html = card([pokemon('Zigzagoon', 263), pokemon('Wurmple', 265)], location)
+
+    expect([html.includes('row-share'), html.includes('time-pill')]).toEqual([true, false])
   })
 
-  it('keeps the table when every shown row is at a zero share and a hidden one has the share', () => {
-    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true }), row('#19', null, { name: 'Rattata', share: 0 })], 1)
+  it('draws the rows hidden now as one dim last row', () => {
+    const location = {
+      rows: [at('#16', ['Morning', 'Day'], 0.6), at('#163', ['Night'], null, true), at('#167', ['Night'], null, true), at('#19', ['Morning', 'Day', 'Night'], 0.4)],
+      hiddenUntil: { Night: ['Hoothoot', 'Spinarak'] }
+    }
 
-    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
+    const html = card([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Spinarak', 167), pokemon('Rattata', 19)], location, true, 'Day')
+
+    const last = html.slice(html.lastIndexOf('<tr'))
+    expect(last).toMatch(/^<tr data-testid="hidden-summary"><td colSpan="5" class="[^"]*text-slate-500[^"]*">/)
+    expect(last).toMatch(/2 more at<span data-testid="time-pill"[^>]*>night<\/span>: Hoothoot, Spinarak/)
+    expect(html.slice(0, html.lastIndexOf('<tr'))).not.toMatch(/Hoothoot|Spinarak/)
   })
 
-  it('says there are no Pokémon when every row is hidden', () => {
-    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true })], 1)
+  it("draws two hidden groups in the response's order", () => {
+    const location = {
+      rows: [at('#163', ['Night'], null, true), at('#16', ['Morning'], null, true), at('#21', ['Day'], 1)],
+      hiddenUntil: { Night: ['Hoothoot'], Morning: ['Pidgey'] }
+    }
 
-    expect([html.includes('<table'), html.includes('No Pokémon defined for this milestone.')]).toEqual([false, true])
+    const html = card([pokemon('Hoothoot', 163), pokemon('Pidgey', 16), pokemon('Spearow', 21)], location, true, 'Day')
+
+    expect(html).toMatch(/1 more at<span[^>]*>night<\/span>: Hoothoot<\/span><span> · 1 more at<span[^>]*>morning<\/span>: Pidgey/)
+  })
+
+  it('keeps the table with only the summary row when every row is hidden now', () => {
+    const location = { rows: [at('#163', ['Night'], null, true)], hiddenUntil: { Night: ['Hoothoot'] } }
+
+    const html = card([pokemon('Hoothoot', 163)], location, true, 'Day')
+
+    expect([html.includes('<table'), html.includes('hidden-summary'), html.includes('No Pokémon')]).toEqual([true, true, false])
+    expect(html.match(/<tr/g)).toHaveLength(2)
+  })
+
+  it('a row blocked by Repel is neither drawn nor in the summary row', () => {
+    const location = { rows: [at('#19', ['Morning', 'Day', 'Night'], 0), at('#16', ['Morning', 'Day'], 1)], hiddenUntil: {} }
+
+    const html = card([pokemon('Rattata', 19), pokemon('Pidgey', 16)], location, true, 'Day')
+
+    expect([html.includes('Rattata'), html.includes('Pidgey'), html.includes('hidden-summary')]).toEqual([false, true, false])
   })
 })
 
@@ -147,22 +148,37 @@ describe('phaseCardRows', () => {
       pokemonEncounters: { '#167': counts(10, 3, 1), 'bidoof;f': counts(6, 1, 1), bidoof: counts(7, 0, 0) }
     } as unknown as GameEncounterResponseBase
 
-    const result = phaseCardRows(pokemon, phaseData, scopedData)
+    const result = phaseCardRows(pokemon, phaseData, scopedData, null)
 
     expect(result).toEqual([
-      { key: '#167', name: 'Spinarak', sprite: 'spinarak', genderSymbol: '', amount: 2, caught: 1, encountersHere: 4, encountersOnFile: 10, missed: 2 },
-      { key: 'bidoof;f', name: 'Bidoof', sprite: 'bidoof;f', genderSymbol: '♀', amount: 1, caught: 1, encountersHere: 2, encountersOnFile: 6, missed: 0 },
-      { key: 'bidoof', name: 'Bidoof', sprite: 'bidoof', genderSymbol: '♂', amount: 0, caught: 0, encountersHere: 0, encountersOnFile: 7, missed: 0 }
+      { key: '#167', name: 'Spinarak', sprite: 'spinarak', genderSymbol: '', amount: 2, caught: 1, encountersHere: 4, encountersOnFile: 10, missed: 2, share: null, times: [] },
+      { key: 'bidoof;f', name: 'Bidoof', sprite: 'bidoof;f', genderSymbol: '♀', amount: 1, caught: 1, encountersHere: 2, encountersOnFile: 6, missed: 0, share: null, times: [] },
+      { key: 'bidoof', name: 'Bidoof', sprite: 'bidoof', genderSymbol: '♂', amount: 0, caught: 0, encountersHere: 0, encountersOnFile: 7, missed: 0, share: null, times: [] }
     ])
   })
 
-  it("a stored phase's rows have no share", () => {
-    const pokemon: PhasePokemonInfo[] = [
-      { name: 'Spinarak', speciesId: 167, amount: 1, formCode: 'spinarak', requireSpecificForm: false, hasFemaleForm: false }
-    ]
+  it("takes each row's share and times from the location by position", () => {
+    const location = { rows: [at('#16', ['Morning', 'Day'], 0.4), at('#19', [], null)], hiddenUntil: {} }
 
-    const result = phaseCardRows(pokemon, undefined, undefined)
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Rattata', 19)], undefined, undefined, location)
 
-    expect(result[0].share).toBeUndefined()
+    expect(result.map((r) => [r.key, r.share, r.times])).toEqual([['#16', 0.4, ['Morning', 'Day']], ['#19', null, []]])
+  })
+
+  it('drops a row hidden now and a row at a zero share', () => {
+    const location = {
+      rows: [at('#16', ['Morning', 'Day'], 0.4), at('#163', ['Night'], null, true), at('#19', ['Morning', 'Day', 'Night'], 0), at('#21', ['Morning', 'Day'], 0.6)],
+      hiddenUntil: { Night: ['Hoothoot'] }
+    }
+
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19), pokemon('Spearow', 21)], undefined, undefined, location)
+
+    expect(result.map((r) => r.key)).toEqual(['#16', '#21'])
+  })
+
+  it('keeps every row without a location', () => {
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19)], undefined, undefined, null)
+
+    expect(result.map((r) => r.key)).toEqual(['#16', '#163', '#19'])
   })
 })

@@ -7,11 +7,9 @@ import type {
   AppConfig,
   DashboardConfig,
   GameEncounterResponse,
-  MilestoneRowsResponse,
-  PhaseInfo,
+  PhaseInfoResponse,
   PokemonData,
-  SubscriptionState,
-  WrappedPokemonPhase
+  SubscriptionState
 } from '../types/api'
 
 interface AppContextValue {
@@ -40,37 +38,18 @@ const AppContext = createContext<AppContextValue>({
   signalR: null
 })
 
-// Fetches phase info + initial encounter data from GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
-// The endpoint returns WrappedPokemonPhase: { phaseInfo, data }
+// Fetches phase info, initial encounter data and the location's rows from GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
 async function fetchWrappedPhaseInfo(
   apiUrl: string,
   game: string,
   phase: string,
   gameName?: string | null
-): Promise<{ phaseInfo: PhaseInfo; encounterData: GameEncounterResponse } | 'notFound' | null> {
+): Promise<PhaseInfoResponse | 'notFound' | null> {
   try {
     const response = await api.getSubscriptionPhaseInfo(apiUrl, game, phase, gameName)
     if (response.status === 404) return 'notFound'
     if (!response.ok) return null
-    const wrapped = (await response.json()) as WrappedPokemonPhase
-    return { phaseInfo: wrapped.phaseInfo, encounterData: wrapped.data }
-  } catch {
-    return null
-  }
-}
-
-// Fetches a generated milestone's rows and encounter data from GET /api/milestone/{game}/{milestoneId}/{gameFileName}
-async function fetchMilestoneRows(
-  apiUrl: string,
-  game: string,
-  milestoneId: string,
-  gameFileName: string
-): Promise<MilestoneRowsResponse | 'notFound' | null> {
-  try {
-    const response = await api.getMilestoneRows(apiUrl, game, milestoneId, gameFileName)
-    if (response.status === 404) return 'notFound'
-    if (!response.ok) return null
-    return (await response.json()) as MilestoneRowsResponse
+    return (await response.json()) as PhaseInfoResponse
   } catch {
     return null
   }
@@ -88,7 +67,7 @@ export function syncSubscriptions(
   const kept = current.filter((sub) => gamePhases.some((gp) => sameSubscription(gp, sub)))
   const added: SubscriptionState[] = []
   for (const { game, phase, gameName } of gamePhases) {
-    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null, milestone: null, notFound: false }
+    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null, location: null, live: false, timeOfDay: null, notFound: false }
     if (!kept.some((s) => sameSubscription(s, sub)) && !added.some((s) => sameSubscription(s, sub))) {
       added.push(sub)
     }
@@ -112,14 +91,21 @@ export function applyEncounters(
   return subs.map((sub) => (receivesPush(sub, response, game, phase) ? { ...sub, encounterData: response } : sub))
 }
 
-// The generated milestones a push reaches: their rows carry the counts, so they are read again
+// A re-read's rows and location, which the card pairs by position, so both come from the one response. The counts stay the
+// push's, so a late response cannot roll them back.
+export function applyReread(subs: SubscriptionState[], target: SubscriptionState, response: PhaseInfoResponse): SubscriptionState[] {
+  const { phaseInfo, location, live, timeOfDay } = response
+  return subs.map((sub) => (sameSubscription(sub, target) ? { ...sub, phaseInfo, location, live, timeOfDay } : sub))
+}
+
+// The milestones with a location a push reaches: their shares change at the first encounter of a new time of day, so they are read again
 export function milestonesToReread(
   subs: SubscriptionState[],
   response: GameEncounterResponse,
   game: string,
   phase: string
 ): SubscriptionState[] {
-  return subs.filter((sub) => sub.milestone !== null && receivesPush(sub, response, game, phase))
+  return subs.filter((sub) => sub.location !== null && receivesPush(sub, response, game, phase))
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }): JSX.Element {
@@ -157,9 +143,9 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing
   const rereadMilestones = (apiUrl: string, targets: SubscriptionState[]): void => {
     targets.forEach(async (target) => {
-      const rows = await fetchMilestoneRows(apiUrl, target.game, target.phase, target.gameName as string)
-      if (rows !== null && rows !== 'notFound') {
-        setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, target) ? { ...sub, milestone: rows } : sub)))
+      const result = await fetchWrappedPhaseInfo(apiUrl, target.game, target.phase, target.gameName)
+      if (result !== null && result !== 'notFound') {
+        setSubscriptions((prev) => applyReread(prev, target, result))
       }
     })
   }
@@ -168,7 +154,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   useEffect(() => {
     if (!config) return
     const timer = setInterval(
-      () => rereadMilestones(config.apiUrl, subscriptionsRef.current.filter((sub) => sub.milestone !== null)),
+      () => rereadMilestones(config.apiUrl, subscriptionsRef.current.filter((sub) => sub.location !== null)),
       config.encounterRatePollingIntervalMs ?? 60000
     )
     return () => clearInterval(timer)
@@ -233,20 +219,18 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
       added.forEach(async (fresh) => {
         // Fetch phase info + initial encounter data from REST API
         const result = await fetchWrappedPhaseInfo(cfg.apiUrl, fresh.game, fresh.phase, fresh.gameName)
-        // phaseinfo knows only stored phases; a generated milestone's card is filled from the rows endpoint, which needs a file
-        const rows = result === 'notFound' && fresh.gameName !== null
-          ? await fetchMilestoneRows(cfg.apiUrl, fresh.game, fresh.phase, fresh.gameName)
-          : null
-        if (result === 'notFound' && (fresh.gameName === null || rows === 'notFound')) {
+        if (result === 'notFound') {
           setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, fresh) ? { ...sub, notFound: true } : sub)))
           return
         }
-        const fill = result !== null && result !== 'notFound'
-          ? { phaseInfo: result.phaseInfo, encounterData: result.encounterData }
-          : rows !== null && rows !== 'notFound'
-            ? { milestone: rows, encounterData: rows.data }
-            : null
-        if (fill) {
+        if (result !== null) {
+          const fill = {
+            phaseInfo: result.phaseInfo,
+            encounterData: result.data,
+            location: result.location,
+            live: result.live,
+            timeOfDay: result.timeOfDay
+          }
           setSubscriptions((prev) =>
             prev.map((sub) =>
               sameSubscription(sub, fresh)

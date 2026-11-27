@@ -150,11 +150,31 @@ export interface PhaseInfo {
   isStatic: boolean
 }
 
-// Wrapper returned by GET /api/phaseinfo/{game}/{phase}
-// Matches C# WrappedPokemonPhase record in PhaseMetadataController.cs
-export interface WrappedPokemonPhase {
+// Returned by GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
+// Matches the response of GetPhaseInfo in PhaseMetadataController.cs; only the fields the card reads
+export interface PhaseInfoResponse {
   phaseInfo: PhaseInfo
   data: GameEncounterResponse
+  // False when no hunt runs on the file
+  live: boolean
+  // The time of day the file was last seen in; null without a file or when never seen since the backend started
+  timeOfDay: PlanTime | null
+  // Null for a milestone with no location, or a file whose ROM version is not known
+  location: MilestoneLocation | null
+}
+
+// The location block of PhaseInfoResponse: one row per phaseInfo.pokemon row, in the same order
+export interface MilestoneLocation {
+  rows: {
+    key: string
+    // When the species can be met here, in Morning, Day, Night order; empty when not at all
+    times: PlanTime[]
+    // The expected share now; null when there are no shares
+    share: number | null
+    hiddenNow: boolean
+  }[]
+  // The names of the rows hidden now, by the next time they can be met
+  hiddenUntil: Partial<Record<PlanTime, string[]>>
 }
 
 // ============================================================
@@ -209,9 +229,10 @@ export interface SubscriptionState {
   gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
-  // Set instead of phaseInfo for a generated milestone
-  milestone: MilestoneRowsResponse | null
-  // Neither endpoint knows the milestone, so the card says so instead of loading forever
+  location: MilestoneLocation | null
+  live: boolean
+  timeOfDay: PlanTime | null
+  // The endpoint does not know the milestone, so the card says so instead of loading forever
   notFound: boolean
 }
 
