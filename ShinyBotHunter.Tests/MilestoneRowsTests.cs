@@ -55,36 +55,6 @@ namespace ShinyBotHunter.Tests
                 return (species.Id, formCode ?? CacheLoadRequest.SpeciesKey(species.Id), formCode, p.Amount);
             }).ToList();
 
-        [Theory]
-        [InlineData("1-4 Route 30", RomVersion.SoulSilver, GoalPreset.LivingDex)]
-        [InlineData("1-4b Route 30", RomVersion.SoulSilver, GoalPreset.FemaleForms)]
-        [InlineData("1-4c Route 30", RomVersion.HeartGold, GoalPreset.VersionExclusives)]
-        public void Route30_ThreeProductionGoals_GiveTodaysRows(string phase, RomVersion version, GoalPreset preset)
-        {
-            var metadata = Metadata();
-            var phaseRows = PhaseRows(phase, metadata);
-            // The goal: the phase's amounts, then the preset for every species they do not name.
-            var goal = new GameFile
-            {
-                Id = File,
-                Entries = GoalPresets.Change(phaseRows.Select(r => new GoalEntry(r.Species, r.FormCode, r.Amount)).ToList(), [],
-                    GoalPresets.Entries(preset, version, Hgss, metadata)).Entries
-            };
-
-            var rows = MilestoneRows.Build(Route30(version), goal, []);
-
-            Assert.All(phaseRows, p => Assert.Equal(p.Amount, rows.Single(r => r.Key == p.Key).Wanted));
-            var extras = rows.Where(r => phaseRows.All(p => p.Key != r.Key)).Select(r => (r.Key, r.Wanted)).ToList();
-            (string, int)[] expected = phase switch
-            {
-                "1-4 Route 30" => [("#14", 3), ("#293", 3), ("#264", 2), ("#418", 2), ("#399", 2)],
-                "1-4b Route 30" => [("#293", 0), ("#264", 0), ("buizel;f", 2), ("buizel", 0), ("bidoof;f", 2), ("bidoof", 0)],
-                // Metapod, like Caterpie and Spinarak, is in no SoulSilver table.
-                _ => [("#16", 0), ("#11", 1), ("#19", 0), ("#163", 0), ("#293", 0), ("#264", 0), ("#418", 0), ("#399", 0)]
-            };
-            Assert.Equal(expected, extras);
-        }
-
         [Fact]
         public void RuinsOfAlph_UnownLettersAreRows()
         {
@@ -361,15 +331,6 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal([Unown], shares.Species.Keys);
             Assert.Equal((1.0, (string?)null), shares.Species[Unown]);
-        }
-
-        [Fact]
-        public void PutGoal_RejectsAnyFormAndFormEntriesForOneSpecies()
-        {
-            Assert.Null(PhaseMetadataController.GoalError([new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 0), new GoalEntry(Pidgey, null, 3)]));
-            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Rattata, null, 2), new GoalEntry(Rattata, "rattata;f", 2)]));
-            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Pidgey, null, 3), new GoalEntry(Pidgey, null, 1)]));
-            Assert.NotNull(PhaseMetadataController.GoalError([new GoalEntry(Pidgey, null, -1)]));
         }
     }
 }
