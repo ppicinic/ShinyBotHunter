@@ -47,8 +47,15 @@ namespace ShinyBotHunter.Controllers
             return phaseInfo;
         }
 
-        [HttpGet("phaseinfo/{game}/{phase}")]
-        public async Task<ActionResult<WrappedPokemonPhase>> GetPhaseInfo(string game, string phase)
+        // The count cache's key of a row.
+        private static string Key(PhasePokemonInfo pokemon) => pokemon.RequireSpecificForm ? pokemon.FormCode : CacheLoadRequest.SpeciesKey(pokemon.SpeciesId);
+
+        private bool IsLocation(GameFlavor flavor, string locationId)
+            => gameProfiles.Get(flavor).Milestones is { } milestones && PhaseInfoService.At(milestones, locationId).Count > 0;
+
+        // The editor without a game file, the card with one. Without a location, today's phaseInfo and data plus the new fields.
+        [HttpGet("phaseinfo/{game}/{phase}/{gameFileName?}")]
+        public async Task<ActionResult> GetPhaseInfo(string game, string phase, string? gameFileName)
         {
             var gameFlavor = Enum.Parse<GameFlavor>(game);
             var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
@@ -56,28 +63,150 @@ namespace ShinyBotHunter.Controllers
             {
                 return NotFound();
             }
-            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>()));
-            return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
+            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(Key).ToList(),
+                [phase], gameFileName is null ? [] : [gameFileName]));
+            var seen = gameFileName is null ? null : phaseInfoService.Seen(gameFileName);
+            SlotCondition? timeOfDay = seen?.Inputs.Hour is int h ? HuntPlan.TimeOfDay(h) : null;
+            return Ok(new
+            {
+                PhaseInfo = WithFormMetadata(phaseInfo),
+                Data = rsp,
+                Live = seen?.Live ?? false,
+                TimeOfDay = timeOfDay,
+                SuggestedLocation = phaseInfo.Location is null ? Backfill.Suggestion(phaseInfo.Name) : null,
+                Location = phaseInfo.Location is { } locationId ? LocationRows(gameFlavor, phaseInfo, locationId, gameFileName, seen, timeOfDay) : null
+            });
         }
 
-        [HttpGet("phaseinfo/{game}/{phase}/{gameFileName}")]
-        public async Task<ActionResult<WrappedPokemonPhase>> GetPhaseInfo(string game, string phase, string gameFileName)
+        // Each row's version mark, times and share at the milestone's location; built per request, never written onto the cached
+        // rows, which concurrent cards for other files read. On a card, times and shares are the file's version's; null when the
+        // file's ROM version is not known.
+        private object? LocationRows(GameFlavor flavor, PhaseInfo phaseInfo, string locationId, string? gameFileName,
+            (RateInputs Inputs, bool Live)? seen, SlotCondition? timeOfDay)
         {
-            var gameFlavor = Enum.Parse<GameFlavor>(game);
-            var phaseInfo = phaseInfoService.GetPhaseInfo(gameFlavor, phase);
-            if (phaseInfo is null)
+            var profile = gameProfiles.Get(flavor);
+            var milestones = profile.Milestones!;
+            var at = PhaseInfoService.At(milestones, locationId);
+            Milestone? milestone = null;
+            if (gameFileName is not null)
             {
-                return NotFound();
+                if (romInfoService.GetByHandle(gameFileName)?.Version is not { } version)
+                {
+                    return null;
+                }
+                milestone = at.GetValueOrDefault(version);
             }
-            var rsp = await pokemonPersistenceService.DashboardLoadRequestAsync(new CacheLoadRequest(gameFlavor, phaseInfo.Pokemon.Select(x => x.RequireSpecificForm ? x.FormCode : CacheLoadRequest.SpeciesKey(x.SpeciesId)).ToList(), new List<string>() { phase }, new List<string>() { gameFileName}));
-            return Ok(new WrappedPokemonPhase(WithFormMetadata(phaseInfo), rsp));
+            IEnumerable<Milestone> scope = gameFileName is null ? at.Values : milestone is null ? [] : [milestone];
+            var shares = milestone is null ? null : MilestoneRows.Shares(milestone, profile.Rates, seen);
+            var rows = phaseInfo.Pokemon.Select(p => (Pokemon: p, Times: PhaseInfoService.Times(scope, p.SpeciesId))).ToList();
+            var first = at.Values.First();
+            return new
+            {
+                first.Id,
+                first.Name,
+                first.Modality,
+                Survive = shares?.Survive,
+                Rows = rows.Select(r =>
+                {
+                    (double Share, string? Reason)? share = shares is { } s && s.Species.TryGetValue(r.Pokemon.SpeciesId, out var found) ? found : null;
+                    return new
+                    {
+                        Key = Key(r.Pokemon),
+                        Version = PhaseInfoService.OnlyVersion(milestones, at, r.Pokemon.SpeciesId),
+                        r.Times,
+                        Share = share?.Share,
+                        Reason = share?.Reason,
+                        HiddenNow = timeOfDay is { } now && r.Times.Length > 0 && !r.Times.Contains(now)
+                    };
+                }).ToList(),
+                HiddenUntil = PhaseInfoService.HiddenUntil(rows.Select(r =>
+                    (pokemonMetadataService.RowName(r.Pokemon.SpeciesId, r.Pokemon.RequireSpecificForm ? r.Pokemon.FormCode : null), r.Times)), timeOfDay)
+            };
         }
 
         [HttpPost("updatePhaseInfo/{game}/{phase}")]
         public async Task<ActionResult<PhaseInfo>> UpdatePhaseInfoAsync([FromBody] PhaseInfo phaseInfo)
         {
+            if (phaseInfo.Location is { } locationId && !IsLocation(phaseInfo.Game, locationId))
+            {
+                return BadRequest($"{locationId} is not a location of {phaseInfo.GameName}");
+            }
             return Ok(await phaseInfoService.AddOrUpdatePhaseInfoAsync(phaseInfo));
         }
+
+        // The editor's location dropdown: one entry per id across the game's versions.
+        [HttpGet("milestones/{game}/locations")]
+        public ActionResult GetLocations(string game)
+        {
+            var milestones = gameProfiles.Get(Enum.Parse<GameFlavor>(game)).Milestones;
+            if (milestones is null)
+            {
+                return NotFound();
+            }
+            return Ok(milestones.Values.SelectMany(v => v).DistinctBy(m => m.Id).OrderBy(m => m.Modality).ThenBy(m => m.Name)
+                .Select(m => new { m.Id, m.Name, m.Modality }));
+        }
+
+        // "New from game data": the location's rows at the preset's amounts, for the version filter (both when left out). Stores nothing.
+        [HttpGet("milestones/{game}/locations/{locationId}/seed")]
+        public ActionResult GetSeed(string game, string locationId, [FromQuery] GoalPreset preset = GoalPreset.None, [FromQuery] RomVersion? version = null)
+        {
+            var milestones = gameProfiles.Get(Enum.Parse<GameFlavor>(game)).Milestones;
+            if (milestones is null || PhaseInfoService.At(milestones, locationId) is not { Count: > 0 } at)
+            {
+                return NotFound();
+            }
+            if (version is { } v && !milestones.ContainsKey(v))
+            {
+                return BadRequest($"{v} is not a version of {game}");
+            }
+            List<(GoalEntry Entry, RomVersion? Version, SlotCondition[] Times)> rows;
+            try
+            {
+                rows = PhaseInfoService.Seed(milestones, locationId, version is { } only ? [only] : milestones.Keys.ToList(), preset, pokemonMetadataService);
+            }
+            catch (ArgumentException e)
+            {
+                // Ruby and Sapphire have no female forms preset.
+                return BadRequest(e.Message);
+            }
+            return Ok(new
+            {
+                at.Values.First().Name,
+                Location = locationId,
+                Rows = rows.Select(r =>
+                {
+                    var metadata = pokemonMetadataService.GetPokemonMetadata(r.Entry.Species);
+                    return new
+                    {
+                        SpeciesId = r.Entry.Species,
+                        Name = metadata.PokemonName,
+                        FormCode = r.Entry.FormCode ?? metadata.PokeApiName,
+                        RequireSpecificForm = r.Entry.FormCode is not null,
+                        metadata.HasFemaleForm,
+                        r.Entry.Amount,
+                        r.Version,
+                        r.Times
+                    };
+                })
+            });
+        }
+
+        // Attach and detach write only the milestone's location, never a row or an amount; seeded read-only milestones too.
+        [HttpPut("milestones/{game}/{name}/location/{locationId}")]
+        public async Task<ActionResult> AttachLocationAsync(string game, string name, string locationId)
+        {
+            var flavor = Enum.Parse<GameFlavor>(game);
+            if (!IsLocation(flavor, locationId))
+            {
+                return NotFound();
+            }
+            return await phaseInfoService.SetLocationAsync(flavor, name, locationId) ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("milestones/{game}/{name}/location")]
+        public async Task<ActionResult> DetachLocationAsync(string game, string name)
+            => await phaseInfoService.SetLocationAsync(Enum.Parse<GameFlavor>(game), name, null) ? NoContent() : NotFound();
 
         [HttpGet("phaseinfo/encounterRate/{game}/{phase}/{gameFileName?}")]
         public async Task<ActionResult<double>> GetEncounterRate(string game, string phase, string? gameFileName)
