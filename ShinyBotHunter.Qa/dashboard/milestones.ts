@@ -1,8 +1,10 @@
-// The pieces the hunt-plans-and-milestone-builder scenarios share (#525, Q1a; docs/specs/hunt-plans-and-milestone-builder.md,
-// QA): the local-stores guard, the throwaway ROM copies, the per-run clock config, the HGSS launch and Wild Encounter form,
-// the RAM set-up (clock, Repel, the lead's level and HP, a taught move), the REST and Mongo calls, the log lines and their
-// wait, the window reads in Electron's main and the milestone messages. Sixteen specs call them, so they live here once.
-// Every RAM call runs with the bot idle or Waiting, one awaited request at a time; nothing touches ApiHawk while the bot hunts.
+// The pieces the milestone and hunt-plan scenarios share (docs/specs/hunt-plans-and-milestone-builder.md and
+// milestone-builder-rework.md, QA; #525, #621): the local-stores guard, the throwaway ROM copies, the per-run clock config,
+// the HGSS launch and the Wild Encounter and Plan forms, the RAM set-up (clock, Repel, the lead's level and HP, a taught
+// move), the saved milestones and plans this run makes and the existing ones it changes, the REST and Mongo calls, the log
+// lines and their wait, the window reads in Electron's main, the hunt's card video and the milestone messages. Every
+// scenario of those features calls them, so they live here once. Every RAM call runs with the bot idle or Waiting, one
+// awaited request at a time; nothing touches ApiHawk while the bot hunts.
 import { spawnSync } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -36,9 +38,14 @@ const made = {
   throwaway: new Set<string>(),
   handles: new Set<string>(),
   plans: [] as { game: Game; name: string }[],
+  // Saved milestones this run made, deleted by game and name; and the fields keepExisting saved of ones it did not make.
+  milestones: [] as { game: Game; name: string }[],
+  kept: [] as { game: Game; name: string; fields: Record<string, unknown> }[],
   subscriptions: [] as Subscription[],
   phaseIds: [] as string[],
-  clock: null as { config: string; aside: string; asideSha: string | null } | null
+  clock: null as { config: string; aside: string; asideSha: string | null } | null,
+  // The card window's video, saved by cardWindow once the dashboard closes; awaited by the teardown.
+  cardVideo: null as Promise<void> | null
 }
 
 // --- the guard and the settings -----------------------------------------------------------------------------------
@@ -223,27 +230,37 @@ export async function launchHgss(admin: Page, handle: string, { clock = false, c
 }
 
 export type WildForm = {
-  phase?: string; plan?: string; target?: 'PhaseTarget' | 'ShinyTarget' | 'NoTarget'; mode?: 'Run' | 'Spin' | 'Headbutt'
+  phase: string; target?: 'PhaseTarget' | 'ShinyTarget' | 'NoTarget'; mode?: 'Run' | 'Spin' | 'Headbutt'
   xRange?: number; yRange?: number; train?: { type: 'Standard' | 'Switch'; targetLevel: number }
 }
 
+const choose = async (field: Locator, value: string): Promise<void> => {
+  await expect(field.locator(`option[value="${value}"]`), `${value} is not offered`).toBeAttached({ timeout: 30_000 })
+  await field.selectOption(value)
+}
+
+/** Clicks the form's Run; returns its ISO time once the action's button is gone, or throws the card's red refusal. */
+async function run(card: Locator, action: Locator, what: string): Promise<string> {
+  const runStart = new Date().toISOString()
+  await card.getByRole('button', { name: 'Run', exact: true }).click()
+  const refusal = card.locator('div[class~="bg-red-900/20"]')
+  await expect.poll(async () => (await action.count()) === 0 || (await refusal.count()) > 0, { timeout: 30_000 }).toBe(true)
+  if ((await refusal.count()) > 0) throw new Error(`the Run was refused: "${(await refusal.innerText()).trim()}"`)
+  step(`${what} started at ${runStart}`)
+  return runStart
+}
+
 /**
- * The card's Wild Encounter form through its `param-*` test ids: the milestone by its picker value (a generated id or a
- * custom phase name), or `plan` through `param-HuntPlan`; the target (PhaseTarget by default), the mode (Run by default),
- * the ranges and the training. Returns the Run click's ISO time; a refusal in the card's red box throws
- * `the Run was refused: "<the server's sentence>"`.
+ * The card's Wild Encounter form through its `param-*` test ids: the saved milestone by its name; the target (PhaseTarget
+ * by default), the mode (Run by default), the ranges and the training. Returns the Run click's ISO time; a refusal in the
+ * card's red box throws `the Run was refused: "<the server's sentence>"`.
  */
 export async function startWild(card: Locator, form: WildForm): Promise<string> {
   await card.page().getByRole('button', { name: 'Bot Control', exact: true }).click()
   const picker = card.getByRole('button', { name: WILD, exact: true })
   await picker.click()
-  const choose = async (field: Locator, value: string): Promise<void> => {
-    await expect(field.locator(`option[value="${value}"]`), `${value} is not offered`).toBeAttached({ timeout: 30_000 })
-    await field.selectOption(value)
-  }
-  if (form.plan) await choose(card.getByTestId('param-HuntPlan').locator('select').first(), form.plan)
-  // The milestone field holds the modality filter's select first and the milestone's last.
-  else await choose(card.getByTestId('param-PhaseName').locator('select').last(), form.phase!)
+  // The milestone picker's one select.
+  await choose(card.getByTestId('param-PhaseName').locator('select').last(), form.phase)
   await card.getByTestId('param-TargetType').locator('select').selectOption(form.target ?? 'PhaseTarget')
   await card.getByTestId('param-EncounterType').locator('select').selectOption(form.mode ?? 'Run')
   if (form.xRange !== undefined) await card.getByTestId('param-xRange').locator('input').fill(String(form.xRange))
@@ -252,13 +269,16 @@ export async function startWild(card: Locator, form: WildForm): Promise<string> 
     await card.getByTestId('param-TrainType').locator('select').selectOption(form.train.type)
     await card.getByTestId('param-TargetLevel').locator('input').fill(String(form.train.targetLevel))
   }
-  const runStart = new Date().toISOString()
-  await card.getByRole('button', { name: 'Run', exact: true }).click()
-  const refusal = card.locator('div[class~="bg-red-900/20"]')
-  await expect.poll(async () => (await picker.count()) === 0 || (await refusal.count()) > 0, { timeout: 30_000 }).toBe(true)
-  if ((await refusal.count()) > 0) throw new Error(`the Run was refused: "${(await refusal.innerText()).trim()}"`)
-  step(`${WILD} ${JSON.stringify(form)} started at ${runStart}`)
-  return runStart
+  return run(card, picker, `${WILD} ${JSON.stringify(form)}`)
+}
+
+/** The card's "Plan" action: the saved plan in `param-HuntPlan`'s select, then Run; returns and throws as startWild. */
+export async function startPlan(card: Locator, name: string): Promise<string> {
+  await card.page().getByRole('button', { name: 'Bot Control', exact: true }).click()
+  const picker = card.getByRole('button', { name: 'Plan', exact: true })
+  await picker.click()
+  await choose(card.getByTestId('param-HuntPlan').locator('select'), name)
+  return run(card, picker, `Plan ${name}`)
 }
 
 async function cancelOnce(card: Locator): Promise<void> {
@@ -315,12 +335,13 @@ async function closeEmuHawk(): Promise<void> {
 }
 
 /**
- * The finally, on every outcome. Up to two cancels through the card, the recorder and the dashboard closed, EmuHawk asked
- * to close, then the scenario's own `cleanup` (a cheat file, say). Once EmuHawk has exited: the backend's tree killed, every
- * staged copy unstaged and the clock config removed. Then, from Mongo, the plans, subscriptions and GameFiles documents
- * this run wrote and the phases it imported. If EmuHawk still runs after 60 s, the backend, EmuHawk, the copies and the
- * clock config are left (EmuHawk writes its config on close) and the steps log says so. Every part is tried; the failures
- * are thrown together at the end.
+ * The finally, on every outcome. Up to two cancels through the card, the recorder and the dashboard closed, the card's
+ * video saved, EmuHawk asked to close, then the scenario's own `cleanup` (a cheat file, say). Once EmuHawk has exited: the
+ * backend's tree killed, every staged copy unstaged and the clock config removed. Then, from Mongo (after the backend, which
+ * caches milestones): the plans this run made, the fields keepExisting saved put back, the milestones this run made, the
+ * subscriptions and GameFiles documents it wrote and the phases it imported. If EmuHawk still runs after 60 s, the backend,
+ * EmuHawk, the copies and the clock config are left (EmuHawk writes its config on close) and the steps log says so. Every
+ * part is tried; the failures are thrown together at the end.
  */
 export async function teardown(frame: Frame, cleanup?: () => Promise<void> | void): Promise<void> {
   const failures: string[] = []
@@ -335,6 +356,13 @@ export async function teardown(frame: Frame, cleanup?: () => Promise<void> | voi
   if (frame.app) await cancelLeftovers(frame.app)
   await stopRecorder()
   if (frame.app) await frame.app.close().catch(() => undefined)
+  if (made.cardVideo) {
+    await attempt('the card video', async () => {
+      await made.cardVideo
+      step('card.webm saved')
+    })
+    made.cardVideo = null
+  }
   if (emuHawkRunning()) await closeEmuHawk()
   if (cleanup) await attempt('the scenario cleanup', cleanup)
   if (emuHawkRunning()) {
@@ -346,9 +374,29 @@ export async function teardown(frame: Frame, cleanup?: () => Promise<void> | voi
   }
   if (made.plans.length > 0) {
     await attempt('the plans', () => {
-      for (const { game, name } of made.plans) mongo(`db.HuntPlans.deleteMany({ Game: ${game === 'HGSS' ? 0 : 1}, Name: ${JSON.stringify(name)} }).deletedCount`)
+      for (const { game, name } of made.plans) mongo(`db.Plans.deleteMany({ Game: ${game === 'HGSS' ? 0 : 1}, Name: ${JSON.stringify(name)} }).deletedCount`)
       step(`teardown: plans deleted: ${made.plans.map((p) => p.name).join(', ')}`)
       made.plans = []
+    })
+  }
+  if (made.kept.length > 0) {
+    await attempt('the existing milestones', () => {
+      for (const { game, name, fields } of made.kept) {
+        // A field the document did not have is unset again, so it reads as it did.
+        const set = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined))
+        const unset = Object.fromEntries(Object.keys(fields).filter((k) => fields[k] === undefined).map((k) => [k, '']))
+        const update = { ...(Object.keys(set).length > 0 ? { $set: set } : {}), ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}) }
+        mongo(`db.PhaseInfos.updateOne({ GameName: ${JSON.stringify(game)}, Name: ${JSON.stringify(name)} }, ${JSON.stringify(update)}).matchedCount`)
+      }
+      step(`teardown: existing milestones put back: ${JSON.stringify(made.kept)}`)
+      made.kept = []
+    })
+  }
+  if (made.milestones.length > 0) {
+    await attempt('the milestones', () => {
+      for (const { game, name } of made.milestones) mongo(`db.PhaseInfos.deleteMany({ GameName: ${JSON.stringify(game)}, Name: ${JSON.stringify(name)} }).deletedCount`)
+      step(`teardown: milestones deleted: ${made.milestones.map((m) => m.name).join(', ')}`)
+      made.milestones = []
     })
   }
   if (made.subscriptions.length > 0) {
@@ -481,11 +529,14 @@ export async function teachMove(slot: number, index: number, move: number, pp: n
 
 export type Game = 'HGSS' | 'RS'
 export type Res = { status: number; text: string; json: any }
-export type GoalEntry = { species: number; formCode?: string | null; amount: number }
 export type Preset = 'None' | 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
+export type Version = 'HeartGold' | 'SoulSilver' | 'Ruby' | 'Sapphire'
 export type Weekday = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'
-export type PlanRule = { times: ('Morning' | 'Day' | 'Night')[]; weekdays: Weekday[]; milestone: string }
-export type Plan = { name: string; default: string; rules: PlanRule[] }
+// A saved milestone's row as updatePhaseInfo takes it (PhasePokemonInfo); the server fills the name, species and form code.
+export type MilestoneRow = { name: string; speciesId: number; amount: number; formCode: string; requireSpecificForm: boolean }
+// A plan step's body is the one Bot Control posts to bot/startAction (NewEventArguments: EventName, PhaseName, ...).
+export type PlanStep = { times: ('Morning' | 'Day' | 'Night')[]; weekdays: Weekday[]; arguments: Record<string, unknown> }
+export type Plan = { name: string; rules: PlanStep[]; default: Record<string, unknown>; endWhenComplete: boolean }
 export type Subscription = { game: Game; phase: string; gameName?: string | null; followsHunt?: boolean }
 
 async function rest(method: string, route: string, body?: unknown): Promise<Res> {
@@ -505,21 +556,66 @@ async function rest(method: string, route: string, body?: unknown): Promise<Res>
 }
 const q = encodeURIComponent
 
-export async function putGoal(handle: string, entries: GoalEntry[]): Promise<Res> {
-  made.handles.add(handle)
-  return rest('PUT', `goal/${q(handle)}`, entries)
+/** "New from game data": the location's rows at the preset's amounts, for one version or both. Stores nothing. */
+export const seed = (game: Game, location: string, preset: Preset, version?: Version): Promise<Res> =>
+  rest('GET', `milestones/${game}/locations/${q(location)}/seed?preset=${preset}${version ? `&version=${version}` : ''}`)
+
+/**
+ * Records a saved milestone as this run's, for the teardown to delete; fails at once if a milestone of that game and name
+ * exists that this run did not make, so the owner's milestone is never overwritten or deleted. For one a scenario saves
+ * through the editor, before its Save.
+ */
+export function claimMilestone(game: Game, name: string): void {
+  if (made.milestones.some((m) => m.game === game && m.name === name)) return
+  const count = mongo(`db.PhaseInfos.countDocuments({ GameName: ${JSON.stringify(game)}, Name: ${JSON.stringify(name)} })`)
+  if (count !== 0) throw new Error(`a ${game} milestone named "${name}" exists and this run did not make it; rename the fixture or delete it by hand`)
+  made.milestones.push({ game, name })
+  step(`milestone ${game} "${name}" claimed for this run`)
 }
-export async function applyPreset(game: Game, handle: string, preset: Preset): Promise<Res> {
-  made.handles.add(handle)
-  return rest('POST', `goal/${game}/${q(handle)}/preset/${preset}`)
+
+/**
+ * Saves a milestone through updatePhaseInfo, claimed first. Without `pokemon` its rows are the location's seed at `preset`
+ * (Living dex by default), for both versions.
+ */
+export async function putMilestone({ game, name, location, gameFiles, archived, pokemon, preset = 'LivingDex' }: {
+  game: Game; name: string; location: string | null; gameFiles: string[]; archived: boolean; pokemon?: MilestoneRow[]; preset?: Preset
+}): Promise<Res> {
+  claimMilestone(game, name)
+  let rows = pokemon
+  if (!rows) {
+    const seeded = await seed(game, location!, preset)
+    expect(seeded.status, `the seed of ${location} at ${preset}`).toBe(200)
+    rows = (seeded.json.rows as MilestoneRow[]).map(({ name: n, speciesId, amount, formCode, requireSpecificForm }) => ({ name: n, speciesId, amount, formCode, requireSpecificForm }))
+  }
+  return rest('POST', `updatePhaseInfo/${game}/${q(name)}`, { gameName: game, name, pokemon: rows, isStatic: false, location, gameFiles, archived })
 }
-export async function setHidden(handle: string, row: { milestoneId: string; key: string }, hidden: boolean): Promise<Res> {
-  made.handles.add(handle)
-  return rest('PUT', `goal/${q(handle)}/hidden?hidden=${hidden}`, row)
+
+/**
+ * For a milestone this run did not make and will change (attach, detach, ticks, archive): saves its `Location`, `GameFiles`
+ * and `Archived` as stored, for the teardown to put back (a field the document lacked is unset again).
+ */
+export function keepExisting(game: Game, name: string): void {
+  const doc = milestoneDoc(game, name)
+  if (doc === null) throw new Error(`keepExisting: no ${game} milestone named "${name}"`)
+  const fields = { Location: doc.Location, GameFiles: doc.GameFiles, Archived: doc.Archived }
+  made.kept.push({ game, name, fields })
+  step(`milestone ${game} "${name}" kept: ${JSON.stringify(fields)}`)
 }
-export async function putPlan(game: Game, plan: Plan): Promise<Res> {
-  if (!made.plans.some((p) => p.game === game && p.name === plan.name)) made.plans.push({ game, name: plan.name })
-  return rest('PUT', `plans/${game}/${q(plan.name)}`, { game, ...plan })
+
+/** The card's GET phaseinfo: the rows, `location` (its rows' version marks, times and shares), `live`, `timeOfDay`. */
+export const phaseInfo = (game: Game, name: string, handle?: string): Promise<Res> =>
+  rest('GET', `phaseinfo/${game}/${q(name)}${handle ? `/${q(handle)}` : ''}`)
+export const attach = (game: Game, name: string, location: string): Promise<Res> => rest('PUT', `milestones/${game}/${q(name)}/location/${q(location)}`)
+export const detach = (game: Game, name: string): Promise<Res> => rest('DELETE', `milestones/${game}/${q(name)}/location`)
+
+/** PUT plans/{game}/{name}; fails at once on a plan of that name this run did not make, which is never overwritten. */
+export async function putPlan(game: Game, { name, ...plan }: Plan): Promise<Res> {
+  if (!made.plans.some((p) => p.game === game && p.name === name)) {
+    const existing = await rest('GET', `plans/${game}/${q(name)}`)
+    if (existing.status !== 404) throw new Error(`a ${game} plan named "${name}" exists and this run did not make it; rename the fixture or delete it by hand`)
+    made.plans.push({ game, name })
+  }
+  return rest('PUT', `plans/${game}/${q(name)}`, plan)
 }
 export async function deletePlan(game: Game, name: string): Promise<Res> {
   const res = await rest('DELETE', `plans/${game}/${q(name)}`)
@@ -537,8 +633,6 @@ export const setAnchorHere = (pos: number, milestone: string, xRange: number, yR
 export const clearAnchor = (pos: number, milestone: string): Promise<Res> => rest('DELETE', `bot/anchor/${pos}?milestone=${q(milestone)}`)
 /** GET bot/milestones/{pos}: the picker's milestones for the bot's file. */
 export const picker = (pos: number): Promise<Res> => rest('GET', `bot/milestones/${pos}`)
-/** GET milestone/{game}/{id}/{handle}: the generated milestone's rows, shares and TimeOfDay through the file's goal. */
-export const rows = (game: Game, id: string, handle: string): Promise<Res> => rest('GET', `milestone/${game}/${q(id)}/${q(handle)}`)
 export async function subscribe(sub: Subscription): Promise<Res> {
   made.subscriptions.push(sub)
   return rest('POST', 'subcribeGamePhase', sub)
@@ -564,6 +658,13 @@ export function deleteGameFile(handle: string): void {
   const deleted = mongo(`db.GameFiles.deleteOne({ _id: ${JSON.stringify(handle)} }).deletedCount`)
   made.handles.delete(handle)
   step(`GameFiles document of ${handle}: ${deleted} deleted`)
+}
+
+/** The saved milestone's PhaseInfos document without its _id (Pokemon, Location, GameFiles, Archived, ...), or null. */
+export function milestoneDoc(game: Game, name: string): any {
+  const doc = mongo(`db.PhaseInfos.findOne({ GameName: ${JSON.stringify(game)}, Name: ${JSON.stringify(name)} }, { _id: 0 })`)
+  step(`PhaseInfos ${game} "${name}": ${JSON.stringify(doc).slice(0, 300)}`)
+  return doc
 }
 
 export function gameFileCount(handle: string): number {
@@ -608,6 +709,8 @@ export const rowsFor = (handle: string, milestone: string, sinceIso: string): Ro
 export const PLAN_STOP = /\[BotService\] Plan (.+?): (.+) at map (\d+) \((\d+), (\d+)\), (.*)$/
 // BotService, at Start with an anchor (FR-23): `set on this file` or `generated` at the end.
 export const ANCHOR_HUNT = /\[BotService\] (.+?): hunting from the anchor map (\d+) \((\d+), (\d+)\), (.*) \((set on this file|generated)\)\s*$/
+// OrchestratorEvent at Init: where the hunt starts, after any walk to the anchor.
+export const START_TILE = /\[Orchestrator\] Start tile captured: map=(\d+) \((-?\d+),(-?\d+)\) facing=(\w+)/
 // BotService, a headbutt milestone's trainer ID (B1h).
 export const TRAINER_ID = /\[BotService\] Trainer ID (\d+) \(visible (\d+)\), (.*)$/
 // HuntPlanRun: a pick that walks, and the switch: before the walk on the plan's first pick when it is not the default, once
@@ -668,6 +771,23 @@ export async function windowInfo(app: ElectronApplication, title: string): Promi
   }, title)
   step(`window ${JSON.stringify(info)}`)
   return info
+}
+
+/**
+ * The counts card window titled `title` (`HGSS — <milestone> (<handle>)` for a fixed card, `HGSS — <handle>` for one that
+ * follows the hunt), once open; its video is saved as `card.webm` in the run folder when the dashboard closes, for
+ * compose-run-video.ps1. One card per run.
+ */
+export async function cardWindow(app: ElectronApplication, title: string): Promise<Page> {
+  const page = await windowByTitle(app, title, MINUTE)
+  const video = page.video()
+  expect(video, `no video for the card window "${title}"`).not.toBeNull()
+  const saving = video!.saveAs(path.join(runDir, 'card.webm'))
+  // Handled here so a failure before the teardown awaits it is not an unhandled rejection; the teardown still sees it.
+  saving.catch(() => undefined)
+  made.cardVideo = saving
+  step(`card window "${title}" open; its video is saved as card.webm when the dashboard closes`)
+  return page
 }
 
 // Admin's bounds before cover; set by cover, cleared by uncover, on the one test thread.
