@@ -25,7 +25,7 @@ function card(
 }
 
 function at(key: string, times: PlanTime[], share: number | null, hiddenNow = false): MilestoneLocation['rows'][number] {
-  return { key, times, share, hiddenNow }
+  return { key, version: null, times, share, hiddenNow }
 }
 
 // The card's header, up to the body below it

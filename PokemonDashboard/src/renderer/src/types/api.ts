@@ -167,12 +167,16 @@ export interface PhaseInfoResponse {
   timeOfDay: PlanTime | null
   // Null for a milestone with no location, or a file whose ROM version is not known
   location: MilestoneLocation | null
+  // The location the editor offers to attach a milestone with none to; null when it has one or there is no suggestion
+  suggestedLocation: string | null
 }
 
 // The location block of PhaseInfoResponse: one row per phaseInfo.pokemon row, in the same order
 export interface MilestoneLocation {
   rows: {
     key: string
+    // The only version the species is met in here; null when both
+    version: RomVersion | null
     // When the species can be met here, in Morning, Day, Night order; empty when not at all
     times: PlanTime[]
     // The expected share now; null when there are no shares
@@ -223,6 +227,16 @@ export interface AdminMetadata {
 // ============================================================
 
 export type Modality = 'Land' | 'Surf' | 'OldRod' | 'GoodRod' | 'SuperRod' | 'RockSmash' | 'Headbutt'
+
+// Matches C# RomVersion (RomInfo.cs)
+export type RomVersion = 'HeartGold' | 'SoulSilver' | 'Ruby' | 'Sapphire'
+
+// GET /api/milestones/{game}/locations: one entry per location id, by modality then name
+export interface LocationOption {
+  id: string
+  name: string
+  modality: Modality
+}
 
 // Matches C# Anchor (Milestone.cs): a tile on game map `map`, run left-right xRange or up-down yRange tiles each way, or with both 0 a spin.
 export interface Anchor {

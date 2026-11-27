@@ -92,6 +92,20 @@ export function getSubscriptionPhaseInfo(apiUrl: string, game: string, phase: st
   return request('GET', gameName ? `${base}/${encodeURIComponent(gameName)}` : base)
 }
 
+// The editor's location dropdown; 404 for a game with no generated locations.
+export function getLocations(apiUrl: string, game: string): Promise<Response> {
+  return request('GET', `${apiUrl}/api/milestones/${encodeURIComponent(game)}/locations`)
+}
+
+// Writes only the milestone's location, never a row or an amount; 404 when either is unknown.
+export function attachLocation(apiUrl: string, game: string, name: string, locationId: string): Promise<Response> {
+  return request('PUT', `${apiUrl}/api/milestones/${encodeURIComponent(game)}/${encodeURIComponent(name)}/location/${encodeURIComponent(locationId)}`)
+}
+
+export function detachLocation(apiUrl: string, game: string, name: string): Promise<Response> {
+  return request('DELETE', `${apiUrl}/api/milestones/${encodeURIComponent(game)}/${encodeURIComponent(name)}/location`)
+}
+
 export function getEncounterRate(apiUrl: string, game: string, phase: string, gameName?: string | null): Promise<Response> {
   const base = `${apiUrl}/api/phaseinfo/encounterRate/${game}/${encodeURIComponent(phase)}`
   return request('GET', gameName ? `${base}/${encodeURIComponent(gameName)}` : base)

@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { AdminMetadata, GameRomInfo, GoalPreset, PhaseInfo, PhasePokemonInfo } from '../../types/api'
+import type {
+  AdminMetadata,
+  GameRomInfo,
+  GoalPreset,
+  LocationOption,
+  MilestoneLocation,
+  Modality,
+  PhaseInfo,
+  PhaseInfoResponse,
+  PhasePokemonInfo,
+  PlanTime
+} from '../../types/api'
 
 // Ruby and Sapphire have no female forms preset.
 export function presetsFor(game: string): GoalPreset[] {
@@ -17,6 +28,40 @@ export function toggleFile(gameFiles: string[], handle: string, on: boolean): st
   const others = gameFiles.filter((f) => f !== handle)
   return on ? [...others, handle] : others
 }
+
+// The location dropdown's groups, each kind in the server's order.
+export function byModality(locations: LocationOption[]): [Modality, LocationOption[]][] {
+  const groups = new Map<Modality, LocationOption[]>()
+  for (const l of locations) groups.set(l.modality, [...(groups.get(l.modality) ?? []), l])
+  return Array.from(groups)
+}
+
+// A row's markers. A milestone with no row met at only one or two times carries none (Ruby and Sapphire, a location met
+// all day), nor does a row met at no time here.
+export function markerLabels(times: PlanTime[], anyTimed: boolean): string[] {
+  if (!anyTimed || times.length === 0) return []
+  if (times.length === 3) return ['all day']
+  return times.map((t) => t.toLowerCase())
+}
+
+// The count key the backend uses for a row.
+function rowKey(p: PhasePokemonInfo): string {
+  return p.requireSpecificForm ? p.formCode : `#${p.speciesId}`
+}
+
+const isTimed = (times: PlanTime[]): boolean => times.length === 1 || times.length === 2
+
+// The card's pill colours, by marker
+const PILL_COLORS: Record<string, string> = {
+  morning: 'text-amber-300 border-amber-300/40',
+  day: 'text-sky-300 border-sky-300/40',
+  night: 'text-violet-300 border-violet-300/40',
+  'all day': 'text-slate-400 border-card-border'
+}
+
+const INPUT = 'bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-50'
+const SELECT = 'bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500'
+const BUTTON = 'text-xs px-2 py-1 rounded border border-slate-600 text-slate-300 hover:text-white disabled:opacity-50'
 
 const EMPTY_POKEMON = (): PhasePokemonInfo => ({
   name: '',
@@ -37,6 +82,27 @@ const EMPTY_PHASE = (gameName: string, phaseName: string): PhaseInfo => ({
   archived: false
 })
 
+function LocationSelect({ value, onChange, locations, suggested, placeholder }: {
+  value: string
+  onChange: (id: string) => void
+  locations: LocationOption[]
+  suggested: string | null
+  placeholder?: string
+}): JSX.Element {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={`flex-1 min-w-0 ${SELECT}`}>
+      {placeholder && <option value="">{placeholder}</option>}
+      {byModality(locations).map(([modality, group]) => (
+        <optgroup key={modality} label={modality}>
+          {group.map((l) => (
+            <option key={l.id} value={l.id}>{l.id === suggested ? `${l.name} (suggested)` : l.name}</option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  )
+}
+
 export function PhaseEditorTab(): JSX.Element {
   const { config } = useAppContext()
   const apiUrl = config?.apiUrl ?? ''
@@ -44,6 +110,7 @@ export function PhaseEditorTab(): JSX.Element {
   // ── selection state ──────────────────────────────────────────
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
   const [roms, setRoms] = useState<GameRomInfo[]>([])
+  const [locations, setLocations] = useState<LocationOption[]>([])
   const [selectedGame, setSelectedGame] = useState<string>('')
   const [selectedPhase, setSelectedPhase] = useState<string>('')
   const [isNewPhase, setIsNewPhase] = useState(false)
@@ -51,6 +118,10 @@ export function PhaseEditorTab(): JSX.Element {
 
   // ── editor state ─────────────────────────────────────────────
   const [form, setForm] = useState<PhaseInfo | null>(null)
+  // A saved milestone's markers and version marks, by row key; null without a location
+  const [savedLocation, setSavedLocation] = useState<MilestoneLocation | null>(null)
+  const [suggested, setSuggested] = useState<string | null>(null)
+  const [attachChoice, setAttachChoice] = useState('')
   const [loadingPhase, setLoadingPhase] = useState(false)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean } | null>(null)
@@ -58,6 +129,12 @@ export function PhaseEditorTab(): JSX.Element {
   const showFeedback = (msg: string, isError = false): void => {
     setFeedback({ msg, isError })
     if (!isError) setTimeout(() => setFeedback(null), 3000)
+  }
+
+  const showLocation = (data: PhaseInfoResponse): void => {
+    setSavedLocation(data.location)
+    setSuggested(data.suggestedLocation)
+    setAttachChoice(data.suggestedLocation ?? '')
   }
 
   // Load metadata on mount
@@ -79,6 +156,19 @@ export function PhaseEditorTab(): JSX.Element {
       .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load the game files', true))
   }, [apiUrl])
 
+  // The game's locations, for attaching
+  useEffect(() => {
+    if (!apiUrl || !selectedGame) return
+    setLocations([])
+    api.getLocations(apiUrl, selectedGame)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Server returned ${r.status} for the locations`)
+        return r.json()
+      })
+      .then((data: LocationOption[]) => setLocations(data))
+      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load the locations', true))
+  }, [apiUrl, selectedGame])
+
   // Load phase info when selection changes (and not creating new)
   useEffect(() => {
     if (!apiUrl || !selectedGame || !selectedPhase || isNewPhase) return
@@ -90,7 +180,10 @@ export function PhaseEditorTab(): JSX.Element {
         if (!r.ok) throw new Error(`Server returned ${r.status}`)
         return r.json()
       })
-      .then((data: { phaseInfo: PhaseInfo }) => setForm(data.phaseInfo))
+      .then((data: PhaseInfoResponse) => {
+        setForm(data.phaseInfo)
+        showLocation(data)
+      })
       .catch((err) => {
         if (err instanceof Error && err.name === 'AbortError') return
         showFeedback(err instanceof Error ? err.message : 'Failed to load milestone', true)
@@ -119,12 +212,31 @@ export function PhaseEditorTab(): JSX.Element {
     setSelectedPhase('')
     setNewPhaseName('')
     setForm(EMPTY_PHASE(selectedGame, ''))
+    setSavedLocation(null)
     setFeedback(null)
   }
 
   const handleNewPhaseNameChange = (name: string): void => {
     setNewPhaseName(name)
     setForm((prev) => prev ? { ...prev, name } : null)
+  }
+
+  // Attach and detach change only the location: the reread replaces form.location and the markers, so unsaved row edits stay.
+  const handleLocation = async (locationId: string | null): Promise<void> => {
+    setFeedback(null)
+    try {
+      const r = locationId
+        ? await api.attachLocation(apiUrl, selectedGame, selectedPhase, locationId)
+        : await api.detachLocation(apiUrl, selectedGame, selectedPhase)
+      if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
+      const reread = await api.getPhaseInfo(apiUrl, selectedGame, selectedPhase, new AbortController().signal)
+      if (!reread.ok) throw new Error(`Server returned ${reread.status}`)
+      const data = await reread.json() as PhaseInfoResponse
+      setForm((prev) => prev && { ...prev, location: data.phaseInfo.location })
+      showLocation(data)
+    } catch (err) {
+      showFeedback(err instanceof Error ? err.message : 'Failed to change the location', true)
+    }
   }
 
   // ── pokemon list helpers ──────────────────────────────────────
@@ -196,6 +308,11 @@ export function PhaseEditorTab(): JSX.Element {
   // A seeded milestone's Pokémon are locked; its game files, Archived and location are not.
   const isReadOnly = !isNewPhase && (selectedPhaseInfo?.isStatic ?? form?.isStatic ?? false)
   const gameRoms = roms.filter((r) => r.flavor === selectedGame)
+  const locationName = (id: string): string => locations.find((l) => l.id === id)?.name ?? id
+
+  // Each row's markers and version mark, looked up by key since adding or removing rows shifts positions
+  const marks = new Map((savedLocation?.rows ?? []).map((r) => [r.key, r]))
+  const anyTimed = (savedLocation?.rows ?? []).some((r) => isTimed(r.times))
 
   return (
     <div className="p-3 space-y-4">
@@ -208,7 +325,7 @@ export function PhaseEditorTab(): JSX.Element {
           <select
             value={selectedGame}
             onChange={(e) => handleGameChange(e.target.value)}
-            className="bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            className={SELECT}
           >
             {availableGames.length === 0 && <option value="">Loading...</option>}
             {availableGames.map((g) => (
@@ -222,7 +339,7 @@ export function PhaseEditorTab(): JSX.Element {
               if (e.target.value === '__new__') handleNewPhase()
               else handleSelectPhase(e.target.value)
             }}
-            className="flex-1 bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+            className={`flex-1 ${SELECT}`}
             disabled={!selectedGame}
           >
             {availablePhases.map((p) => (
@@ -239,7 +356,7 @@ export function PhaseEditorTab(): JSX.Element {
               value={newPhaseName}
               onChange={(e) => handleNewPhaseNameChange(e.target.value)}
               placeholder="New milestone name"
-              className="w-full bg-card-border text-white text-sm rounded px-2 py-1.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500"
+              className={`w-full ${SELECT} placeholder-slate-500`}
             />
           </div>
         )}
@@ -248,6 +365,34 @@ export function PhaseEditorTab(): JSX.Element {
           <p className="mt-1.5 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1">
             This milestone is loaded from disk: its Pokémon cannot be edited.
           </p>
+        )}
+
+        {/* A new empty milestone is attached after its first Save. */}
+        {!isNewPhase && form && (
+          <div className="mt-2 space-y-1">
+            {form.location ? (
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-xs text-slate-300">Location: {locationName(form.location)}</span>
+                <button onClick={() => handleLocation(null)} className={BUTTON}>Detach</button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-400">Location: none. No anchor, no shares, no markers.</p>
+                <div className="flex items-center gap-2">
+                  <LocationSelect
+                    value={attachChoice}
+                    onChange={setAttachChoice}
+                    locations={locations}
+                    suggested={suggested}
+                    placeholder={suggested ? undefined : 'Pick a location...'}
+                  />
+                  <button onClick={() => handleLocation(attachChoice)} disabled={!attachChoice} className={BUTTON}>
+                    Attach to a location
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -273,83 +418,87 @@ export function PhaseEditorTab(): JSX.Element {
           {form.pokemon.length === 0 ? (
             <p className="text-slate-500 text-sm">No Pokémon defined.</p>
           ) : (
-            <div className="space-y-2">
-              {form.pokemon.map((pkmn, idx) => (
-                <div
-                  key={idx}
-                  className="bg-card-border/20 rounded-lg px-3 py-2 space-y-2 border border-slate-700/40"
-                >
-                  <div className="flex gap-2 items-center">
-                    {/* Name */}
-                    <div className="flex-1">
-                      <label className="block text-xs text-slate-500 mb-0.5">Name / Species</label>
-                      <input
-                        type="text"
-                        value={pkmn.name}
-                        onChange={(e) => updatePokemon(idx, { name: e.target.value })}
-                        placeholder="e.g. Rattata"
-                        disabled={isReadOnly}
-                        className="w-full bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-50"
-                      />
-                    </div>
-                    {/* Amount */}
-                    <div className="w-20">
-                      <label className="block text-xs text-slate-500 mb-0.5">Amount</label>
-                      {/* 0 is meaningful: the pokemon is tracked in the phase stats but not required,
-                          so it never blocks the milestone and the bot never stops for it. */}
-                      <input
-                        type="number"
-                        min={0}
-                        value={pkmn.amount}
-                        onChange={(e) => updatePokemon(idx, { amount: Number(e.target.value) })}
-                        disabled={isReadOnly}
-                        className="w-full bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 disabled:opacity-50"
-                      />
-                    </div>
-                    {/* Remove */}
-                    {!isReadOnly && (
-                      <button
-                        onClick={() => removePokemon(idx)}
-                        className="self-end mb-0.5 text-xs text-red-400 hover:text-red-300 transition-colors px-1"
-                        title="Remove"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 items-center">
-                    {/* Form code */}
-                    <div className="flex-1">
-                      <label className="block text-xs text-slate-500 mb-0.5">Form Code</label>
-                      <input
-                        type="text"
-                        value={pkmn.formCode}
-                        onChange={(e) => updatePokemon(idx, { formCode: e.target.value })}
-                        placeholder="e.g. rattata (optional)"
-                        disabled={isReadOnly}
-                        className="w-full bg-card-border text-white text-xs rounded px-2 py-1 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-50"
-                      />
-                    </div>
-                    {/* Require specific form */}
-                    <div className="flex items-center gap-1.5 self-end mb-1">
-                      <input
-                        type="checkbox"
-                        id={`rsf-${idx}`}
-                        checked={pkmn.requireSpecificForm}
-                        onChange={(e) => updatePokemon(idx, { requireSpecificForm: e.target.checked })}
-                        disabled={isReadOnly}
-                        className="accent-indigo-500 disabled:opacity-50"
-                      />
-                      <label htmlFor={`rsf-${idx}`} className="text-xs text-slate-400 cursor-pointer select-none">
-                        Require form
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="font-normal pb-1">Pokémon</th>
+                  <th className="font-normal pb-1">When</th>
+                  <th className="font-normal pb-1">Version</th>
+                  {/* 0 is meaningful: the pokemon is tracked in the phase stats but not required,
+                      so it never blocks the milestone and the bot never stops for it. */}
+                  <th className="font-normal pb-1 w-16">Amount</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {form.pokemon.map((pkmn, idx) => {
+                  const mark = marks.get(rowKey(pkmn))
+                  return (
+                    <tr key={idx} className="border-t border-slate-700/40 align-top">
+                      <td className="py-1 pr-2 space-y-1">
+                        <input
+                          type="text"
+                          value={pkmn.name}
+                          onChange={(e) => updatePokemon(idx, { name: e.target.value })}
+                          placeholder="e.g. Rattata"
+                          disabled={isReadOnly}
+                          className={`w-full ${INPUT}`}
+                        />
+                        <div className="flex gap-2 items-center">
+                          <input
+                            type="text"
+                            value={pkmn.formCode}
+                            onChange={(e) => updatePokemon(idx, { formCode: e.target.value })}
+                            placeholder="form code, e.g. rattata (optional)"
+                            disabled={isReadOnly}
+                            className={`flex-1 min-w-0 ${INPUT}`}
+                          />
+                          <label className="flex items-center gap-1 text-slate-400 select-none">
+                            <input
+                              type="checkbox"
+                              checked={pkmn.requireSpecificForm}
+                              onChange={(e) => updatePokemon(idx, { requireSpecificForm: e.target.checked })}
+                              disabled={isReadOnly}
+                              className="accent-indigo-500 disabled:opacity-50"
+                            />
+                            Require form
+                          </label>
+                        </div>
+                      </td>
+                      <td className="py-1 pr-2">
+                        {markerLabels(mark?.times ?? [], anyTimed).map((m) => (
+                          <span key={m} className={`mr-1 px-1 rounded border ${PILL_COLORS[m]}`}>{m}</span>
+                        ))}
+                      </td>
+                      <td className="py-1 pr-2">{mark && (mark.version ?? <span className="text-slate-500">both</span>)}</td>
+                      <td className="py-1 pr-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={pkmn.amount}
+                          onChange={(e) => updatePokemon(idx, { amount: Number(e.target.value) })}
+                          disabled={isReadOnly}
+                          className={`w-full ${INPUT}`}
+                        />
+                      </td>
+                      <td className="py-1">
+                        {!isReadOnly && (
+                          <button
+                            onClick={() => removePokemon(idx)}
+                            className="text-red-400 hover:text-red-300 transition-colors px-1"
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
+          <p className="mt-1 text-xs text-slate-500">Amount 0: shown and counted, never a target.</p>
 
           <div className="pt-3 space-y-1">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Game files</h3>
