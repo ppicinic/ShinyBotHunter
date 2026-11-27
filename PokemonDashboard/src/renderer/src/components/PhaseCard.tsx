@@ -99,7 +99,7 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
   const { config, connectionState } = useAppContext()
-  const { game, phase, gameName, encounterData, phaseInfo, location, notFound } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo, location, live, timeOfDay, notFound } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
   const scopedData: GameEncounterResponseBase | null | undefined = gameName
@@ -143,7 +143,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
     const observer = new ResizeObserver(measure)
     observer.observe(body)
     return () => observer.disconnect()
-  }, [rows.length])
+  }, [rows.length, hiddenGroups.length])
 
   // Leave room for the row's own vertical padding so sprites never force a row taller than its slot.
   const spriteSize = rowHeight === null
@@ -185,8 +185,17 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
           <span>
             Encounters: <span data-testid="phase-encounter-count" className="text-white font-semibold">{totalPhaseEncounters.toLocaleString()}</span>
           </span>
+          <span>
+            Phase: <span className="text-white font-semibold">{phaseCount !== null ? phaseCount.toLocaleString() : '—'}</span>
+          </span>
+          <span>
+            Rate: <span className="text-white font-semibold">{encounterRate !== null ? `${encounterRate.toFixed(2)}/hr` : '—'}</span>
+          </span>
           {totalPhaseShiny > 0 && (
             <span className="shiny-glow font-semibold">✨ {totalPhaseShiny}</span>
+          )}
+          {gameName !== null && location !== null && !live && (
+            <span>{timeOfDay === null ? 'not live' : `not live (last seen ${timeOfDay.toLowerCase()})`}</span>
           )}
           {windowChrome && (
             <>
@@ -293,22 +302,6 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
             </tbody>
           </table>
         )}
-      </div>
-
-      {/* Footer: phase count + encounter rate */}
-      <div className="flex items-center justify-end gap-4 px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
-        <span className="text-xs text-slate-400">
-          Phase:{' '}
-          <span className="text-white font-semibold">
-            {phaseCount !== null ? phaseCount.toLocaleString() : '—'}
-          </span>
-        </span>
-        <span className="text-xs text-slate-400">
-          Rate:{' '}
-          <span className="text-white font-semibold">
-            {encounterRate !== null ? `${encounterRate.toFixed(2)}/hr` : '—'}
-          </span>
-        </span>
       </div>
     </div>
   )

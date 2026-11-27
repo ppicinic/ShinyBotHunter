@@ -28,8 +28,13 @@ function at(key: string, times: PlanTime[], share: number | null, hiddenNow = fa
   return { key, times, share, hiddenNow }
 }
 
+// The card's header, up to the body below it
+function header(html: string): string {
+  return html.slice(html.indexOf('card-header'), html.indexOf('flex-1 overflow-hidden'))
+}
+
 describe('PhaseCard', () => {
-  it("a milestone with no location draws today's rows", () => {
+  it("a milestone with no location draws today's rows without a footer", () => {
     const encounterData = {
       gameSpecificResponse: { 'HG-QA': { pokemonEncounters: { '#16': counts(12, 0, 0) }, phaseEncounters: { 'Route 30': { phaseCount: 7, pokemonEncounters: { '#16': counts(5, 0, 0) } } } } }
     } as unknown as GameEncounterResponse
@@ -37,7 +42,29 @@ describe('PhaseCard', () => {
     const html = card([pokemon('Pidgey', 16), pokemon('Rattata', 19)], null, false, null, encounterData)
 
     expect([html.includes('Pidgey'), html.includes('Rattata'), html.includes('>5<'), html.includes('>12<')]).toEqual([true, true, true, true])
-    expect([html.includes('row-share'), html.includes('not live')]).toEqual([false, false])
+    expect([html.includes('row-share'), html.includes('time-pill'), html.includes('hidden-summary'), html.includes('not live')]).toEqual([false, false, false, false])
+    expect(header(html)).toMatch(/Phase: <span[^>]*>7<\/span>/)
+    expect(html).not.toContain('border-t')
+  })
+
+  it('draws the phase count, the rate and not live in the header', () => {
+    const encounterData = { gameSpecificResponse: { 'HG-QA': { phaseEncounters: { 'Route 30': { phaseCount: 42 } } } } } as unknown as GameEncounterResponse
+    const location = { rows: [at('#16', ['Morning', 'Day'], null)], hiddenUntil: {} }
+
+    const html = card([pokemon('Pidgey', 16)], location, false, 'Night', encounterData)
+
+    expect(header(html)).toMatch(/Phase: <span[^>]*>42<\/span>/)
+    expect(header(html)).toMatch(/Rate: <span[^>]*>—<\/span>/)
+    expect(header(html)).toContain('not live (last seen night)')
+    expect(html).not.toContain('border-t')
+  })
+
+  it('says not live without a last-seen time', () => {
+    const location = { rows: [at('#16', ['Morning', 'Day'], null)], hiddenUntil: {} }
+
+    const html = card([pokemon('Pidgey', 16)], location, false, null)
+
+    expect(header(html)).toMatch(/>not live<\/span>/)
   })
 
   it('draws the share under the name for a milestone with a location', () => {
