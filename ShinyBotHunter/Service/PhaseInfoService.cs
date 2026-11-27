@@ -119,6 +119,38 @@ namespace ShinyBotHunter.Service
             return info;
         }
 
+        // Writes only Location, never a row or an amount; false for an unknown milestone.
+        public async Task<bool> SetLocationAsync(GameFlavor game, string name, string? location)
+        {
+            var key = new GamePhase(game, name, null);
+            if (GetPhaseInfo(game, name) is null)
+            {
+                return false;
+            }
+            var builder = Builders<PhaseInfo>.Filter;
+            await phaseInfoCollection.UpdateOneAsync(builder.Eq(x => x.Name, name) & builder.Eq(x => x.GameName, game.ToString()),
+                Builders<PhaseInfo>.Update.Set(x => x.Location, location));
+            lock (phasesLock)
+            {
+                // Re-read under the lock, so a save that landed during the write keeps its rows.
+                phaseInfos[key] = WithLocation(phaseInfos[key], location);
+            }
+            return true;
+        }
+
+        // A copy with Location replaced; the cached instance is shared with concurrent readers, so it is never written in place.
+        internal static PhaseInfo WithLocation(PhaseInfo phaseInfo, string? location) => new()
+        {
+            GameName = phaseInfo.GameName,
+            Name = phaseInfo.Name,
+            Pokemon = phaseInfo.Pokemon,
+            Id = phaseInfo.Id,
+            IsStatic = phaseInfo.IsStatic,
+            Location = location,
+            GameFiles = phaseInfo.GameFiles,
+            Archived = phaseInfo.Archived
+        };
+
         public Dictionary<GameFlavor, PhaseInfo[]> GetAllPhases(IEnumerable<GameFlavor> games)
         {
             Dictionary<GameFlavor, PhaseInfo[]> result = new Dictionary<GameFlavor, PhaseInfo[]>();
@@ -213,6 +245,12 @@ namespace ShinyBotHunter.Service
         [BsonGuidRepresentation(GuidRepresentation.Standard)]
         public Guid Id { get; set; }
         public bool IsStatic { get; set; } = false;
+        // A generated milestone id ("34-land"), or null for none; a document stored without these three reads as today (FR-42).
+        public string? Location { get; set; }
+        // The game files it is offered on; empty is every file.
+        public List<string> GameFiles { get; set; } = new();
+        // Hidden from the launch form only.
+        public bool Archived { get; set; }
     }
 
     public class PhasePokemonInfo
