@@ -1,33 +1,31 @@
+using ShinyBotHunter.BotEvents.Target;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Milestones
 {
-    // One line of a milestone seen through a game file's goal (FR-10, FR-12). Caught is global per file (FR-9).
-    public record MilestoneRow(int Species, string Key, string? FormCode, int Wanted, int Caught, bool Hidden)
-    {
-        public bool Complete => Wanted > 0 && Caught >= Wanted;
-
-        public bool IsTarget => Wanted > 0 && Caught < Wanted && !Hidden;
-    }
-
     public static class MilestoneRows
     {
-        // Every slot species is a row, in slot order: one per form entry where the goal has form entries for it, otherwise one at
-        // its any-form entry's amount, or at 0 when the goal has no entry.
-        public static List<MilestoneRow> Build(Milestone milestone, GameFile gameFile, IEnumerable<CaughtPokemon> caught)
+        // The saved milestone's rows that count on a file of this version: at its location, a row whose species only another
+        // version has there is left out (default 5). With no location, an unscanned file or no generated data, every row counts.
+        public static List<PhasePokemonInfo> Counted(PhaseInfo phase, IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones, RomVersion? version)
         {
-            var rows = new List<MilestoneRow>();
-            foreach (int species in milestone.Slots.Select(s => s.Species).Distinct())
+            if (PhaseTarget.FindMilestone(milestones, version, phase.Location) is not { } here)
             {
-                var entries = gameFile.Entries.Where(e => e.Species == species).ToList();
-                var forms = entries.Where(e => e.FormCode is not null).ToList();
-                IEnumerable<GoalEntry> rowEntries = forms.Count > 0 ? forms : [entries.SingleOrDefault() ?? new GoalEntry(species, null, 0)];
-                rows.AddRange(rowEntries.Select(e => new MilestoneRow(species, e.Key, e.FormCode, e.Amount, e.CaughtIn(caught, gameFile.Id),
-                    gameFile.Hidden.Contains(new HiddenRow(milestone.Id, e.Key)))));
+                return phase.Pokemon;
             }
-            return rows;
+            var anyVersion = milestones!.Values.SelectMany(v => v).Where(m => m.Id == here.Id).SelectMany(m => m.Slots).Select(s => s.Species).ToHashSet();
+            return phase.Pokemon.Where(r => here.Slots.Any(s => s.Species == r.SpeciesId) || !anyVersion.Contains(r.SpeciesId)).ToList();
         }
+
+        // A row is short while the file has fewer shiny catches of it than its amount; fileCaught is the file's catches.
+        public static bool Short(PhasePokemonInfo row, IEnumerable<CaughtPokemon> fileCaught)
+            => fileCaught.Count(x => x.Pokemon.IsShiny && (row.RequireSpecificForm ? x.Pokemon.FormCode == row.FormCode : x.Pokemon.Name == row.Name)) < row.Amount;
+
+        // The species of the rows still short, which pick the file's headbutt tree.
+        public static HashSet<int> Wanted(IEnumerable<PhasePokemonInfo> rows, IEnumerable<CaughtPokemon> fileCaught)
+            => rows.Where(r => Short(r, fileCaught)).Select(r => r.SpeciesId).ToHashSet();
 
         // FR-27 and FR-28: each slot species' share now, the reason a share is zero, and the survive share. Live, the inputs the
         // decision last read; otherwise the last-seen time of day with no Repel and no lead. Null with no rate rule, on headbutt

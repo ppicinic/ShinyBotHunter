@@ -341,7 +341,7 @@ namespace ShinyBotHunter.Service
             {
                 leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
                 var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [generated], party);
+                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
                 (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
             }
             else
@@ -353,13 +353,13 @@ namespace ShinyBotHunter.Service
                     return (p.Generated, Leg: ValidateAndBuildLeg(legArgs, bot.GameFileName, bot.GameFlavor));
                 }).ToList();
                 var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, planLegs.Select(p => p.Generated), party);
+                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, planLegs.Select(p => (p.Leg.PhaseName, p.Generated)), party);
                 var reach = new List<(string Name, MilestoneAnchor? Anchor)>();
                 var stops = new Dictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)>();
                 foreach (var (stopGenerated, planLeg) in planLegs)
                 {
                     var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile, trainerId, caught);
-                    string name = stopGenerated?.Name ?? stopLeg.PhaseName;
+                    string name = stopLeg.PhaseName;
                     reach.Add((name, stopAnchor));
                     if (stopAnchor is not null)
                     {
@@ -459,17 +459,11 @@ namespace ShinyBotHunter.Service
             }
         }
 
-        // FR-15a and B2's type rule for one milestone, before anything is read; the generated milestone, or null for a stored phase.
+        // FR-15a and B2's type rule for one milestone, before anything is read; its location, or null for none.
         private Milestone? RefuseMilestone(IBot bot, string? phaseName, EncounterType? type)
         {
             RefuseNoHuntYet(bot, phaseName);
-            // A stored phase of the same name wins, as it does in PhaseTarget, so with no replacement stored a stored phase has
-            // no anchor and is hunted where the bot stands (FR-42).
-            Milestone? generated = phaseName is null ? null : PhaseTarget.FindMilestone(bot.Profile.Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, phaseName);
-            if (generated is not null && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName!) is not null)
-            {
-                generated = null;
-            }
+            Milestone? generated = Located(bot, phaseName);
             if (EncounterTypeRefusal(generated, type) is { } wrongType)
             {
                 throw new ArgumentException(wrongType);
@@ -477,12 +471,23 @@ namespace ShinyBotHunter.Service
             return generated;
         }
 
+        // The saved milestone's location on the file's version, or null: no anchor and no location checks, so it is hunted where
+        // the bot stands. The saved milestone is looked up only when there is generated data and a version to read it with.
+        private Milestone? Located(IBot bot, string? phaseName)
+            => phaseName is not null && bot.Profile.Milestones is not null && romInfoService.GetByHandle(bot.GameFileName)?.Version is { } version
+                ? PhaseTarget.FindMilestone(bot.Profile.Milestones, version, provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName)?.Location)
+                : null;
+
         // FR-44a, FR-24 and FR-23 for one validated leg on the file: the leg hunted from its anchor, and the anchor, or null.
         private (EventLeg Leg, MilestoneAnchor? Anchor) AnchoredLeg(IBot bot, EventLeg leg, Milestone? generated, GameFile gameFile,
             uint? trainerId, IReadOnlyList<CaughtPokemon> caught)
         {
             RefuseLinked(bot, gameFile, leg.PhaseName);
-            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated, trainerId, caught);
+            // A location comes only from a saved milestone (Located), so there is one whenever generated is set.
+            IEnumerable<int> wanted = generated is null ? [] : MilestoneRows.Wanted(MilestoneRows.Counted(
+                provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, leg.PhaseName)!, bot.Profile.Milestones,
+                romInfoService.GetByHandle(bot.GameFileName)?.Version), caught.Where(c => c.GameFileName == bot.GameFileName));
+            MilestoneAnchor? anchor = gameFile.AnchorFor(leg.PhaseName, generated, trainerId, wanted);
             if (anchor is not null && generated is { Modality: Modality.Land }
                 && AnchorTileStop(generated, anchor.Anchor, bot.Profile.Maps!, bot.Profile.LandTileKind!(generated)) is { } notOfTheKind)
             {
@@ -503,17 +508,17 @@ namespace ShinyBotHunter.Service
 
         internal const string TrainerIdUnreadable = "The trainer ID could not be read; start the hunt once the game is in the field.";
 
-        // FR-21 and FR-42: the trainer ID and the catches are read only when a leg is a generated headbutt milestone with no
-        // replacement on the file. A stored phase's generated milestone is null (RefuseMilestone), so it reads nothing new.
-        internal static bool NeedsTrainerId(IEnumerable<Milestone?> generated, GameFile gameFile)
-            => generated.Any(m => m is { Modality: Modality.Headbutt } && gameFile.Anchors.All(a => a.Milestone != m.Id));
+        // FR-21 and FR-42: the trainer ID and the catches are read only when a leg's saved milestone is at a headbutt location
+        // with no replacement under its name on the file. One with no location has no generated milestone, so it reads nothing new.
+        internal static bool NeedsTrainerId(IEnumerable<(string Milestone, Milestone? Generated)> legs, GameFile gameFile)
+            => legs.Any(l => l.Generated is { Modality: Modality.Headbutt } && gameFile.Anchors.All(a => a.Milestone != l.Milestone));
 
         // The ID is a local of this Start, never kept. The party is the one the Headbutt check read, which a headbutt leg
         // always has.
         private async Task<(uint? TrainerId, IReadOnlyList<CaughtPokemon> Caught)> HeadbuttTreeInputsAsync(IBot bot, GameFile gameFile,
-            IEnumerable<Milestone?> generated, PokemonState? party)
+            IEnumerable<(string Milestone, Milestone? Generated)> legs, PokemonState? party)
         {
-            if (!NeedsTrainerId(generated, gameFile))
+            if (!NeedsTrainerId(legs, gameFile))
             {
                 return (null, []);
             }
@@ -1032,13 +1037,11 @@ namespace ShinyBotHunter.Service
             return party;
         }
 
-        // FR-15a: a generated milestone no EncounterType hunts (surf, the rods, rock smash) is refused before anything is read. A
-        // stored phase of the same name wins, as it does in PhaseTarget, so no stored phase is refused (FR-42).
+        // FR-15a: a saved milestone at a location no EncounterType hunts (surf, the rods, rock smash) is refused before anything
+        // is read. One with no location is never refused (FR-42).
         private void RefuseNoHuntYet(IBot bot, string? phaseName)
         {
-            if (phaseName is not null
-                && NoHuntYet(PhaseTarget.FindMilestone(profiles.Get(bot.GameFlavor).Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version, phaseName)) is { } refusal
-                && provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName) is null)
+            if (NoHuntYet(Located(bot, phaseName)) is { } refusal)
             {
                 throw new ArgumentException(refusal);
             }
@@ -1099,18 +1102,13 @@ namespace ShinyBotHunter.Service
             {
                 return null;
             }
-            RomVersion? version = romInfoService.GetByHandle(bot.GameFileName)?.Version;
-            var milestones = profiles.Get(bot.GameFlavor).Milestones;
-            IReadOnlyList<Milestone> generated = version is not null && milestones is not null && milestones.TryGetValue(version.Value, out var versionMilestones)
-                ? versionMilestones
-                : [];
-            var gameFileDao = provider.GetRequiredService<MongoGameFileDao>();
             // FR-21: the 4-byte read alone, no party read; a failed read (the title screen) gives no headbutt anchor.
             uint? trainerId = bot.Profile.Capabilities.HasHeadbuttTrees
                 ? await ReadTrainerIdAsync(bot, (HgssPointerService)bot.Addresses, CancellationToken.None)
                 : null;
-            var list = MilestonePicker.List(generated, provider.GetRequiredService<PhaseInfoService>().GetAllPhases([bot.GameFlavor])[bot.GameFlavor],
-                await gameFileDao.LoadAsync(bot.GameFileName), await gameFileDao.AssignedPhasesAsync(),
+            var list = MilestonePicker.List(provider.GetRequiredService<PhaseInfoService>().GetAllPhases([bot.GameFlavor])[bot.GameFlavor],
+                profiles.Get(bot.GameFlavor).Milestones, romInfoService.GetByHandle(bot.GameFileName)?.Version,
+                await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName),
                 await provider.GetRequiredService<PokemonPersistenceService>().GetCaughtPokemonAsync(bot.GameFlavor), trainerId);
             return new BotMilestones(bot.GameFileName, list);
         }

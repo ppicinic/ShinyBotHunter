@@ -233,15 +233,12 @@ namespace ShinyBotHunter.Tests
             [new Slot(0, CommonSpecies, 1, 1, 100, SlotCondition.CommonTree), new Slot(1, RareSpecies, 1, 1, 100, SlotCondition.RareTree)],
             [new HeadbuttTree(false, [[0, 0]], new Anchor(1, 0, 1, 0, 0), Direction.Up, 10), new HeadbuttTree(false, [[5, 0]], new Anchor(1, 5, 1, 0, 0), Direction.Down, 20)]);
 
-        private static CaughtPokemon CaughtOn(string file, int species)
-            => new() { Pokemon = new PokemonData { Species = (ushort)species }, Phase = "1-headbutt", GameFileName = file };
-
         [Fact]
         public void AnchorFor_Headbutt_TheFilesTreeWithItsFacing()
         {
-            var file = new GameFile { Id = "file", Entries = [new GoalEntry(CommonSpecies, null, 1)] };
+            var file = new GameFile { Id = "file" };
 
-            Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 0, 1, 0, 0), Direction.Up), file.AnchorFor("1-headbutt", TwoTrees(), 10, []));
+            Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 0, 1, 0, 0), Direction.Up), file.AnchorFor("1-headbutt", TwoTrees(), 10, [CommonSpecies]));
         }
 
         // FR-42: a stored replacement comes back whatever the ID.
@@ -268,33 +265,34 @@ namespace ShinyBotHunter.Tests
         [Fact]
         public void AnchorFor_Headbutt_CaughtTargetChangesTheKind()
         {
-            var file = new GameFile { Id = "file", Entries = [new GoalEntry(CommonSpecies, null, 1), new GoalEntry(RareSpecies, null, 1)] };
+            var file = new GameFile { Id = "file" };
 
-            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [])!.Anchor.X);
-            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [CaughtOn("another file", CommonSpecies)])!.Anchor.X);
+            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [CommonSpecies, RareSpecies])!.Anchor.X);
             Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 5, 1, 0, 0), Direction.Down),
-                file.AnchorFor("1-headbutt", TwoTrees(), 10, [CaughtOn("file", CommonSpecies)]));
+                file.AnchorFor("1-headbutt", TwoTrees(), 10, [RareSpecies]));
         }
 
         [Fact]
         public void AnchorFor_Land_Unchanged()
         {
             Assert.Equal(new MilestoneAnchor("34-land", new Anchor(34, 547, 304, 0, 6), Direction.None),
-                new GameFile { Id = "file" }.AnchorFor("34-land", Route30, OwnersId, [CaughtOn("file", 16)]));
+                new GameFile { Id = "file" }.AnchorFor("34-land", Route30, OwnersId, [16]));
         }
 
-        // FR-42: a stored phase (generated null), a replacement or a land milestone reads no trainer ID; only a generated
-        // headbutt milestone with no replacement does, in a single leg or as one stop of a plan.
+        // FR-42: a saved milestone with no location (generated null), a replacement under its name or a land location reads no
+        // trainer ID; only one at a headbutt location with no replacement does, in a single leg or as one stop of a plan.
         [Fact]
         public void NeedsTrainerId_OnlyAGeneratedHeadbuttWithNoReplacement()
         {
-            var replaced = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("1-headbutt", new Anchor(1, 9, 9, 0, 0), Direction.Left)] };
+            var replaced = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("2-3c Azalea", new Anchor(1, 9, 9, 0, 0), Direction.Left)] };
+            var byId = new GameFile { Id = "file", Anchors = [new MilestoneAnchor("1-headbutt", new Anchor(1, 9, 9, 0, 0), Direction.Left)] };
 
-            Assert.True(BotService.NeedsTrainerId([TwoTrees()], new GameFile { Id = "file" }));
-            Assert.True(BotService.NeedsTrainerId([Route30, null, TwoTrees()], new GameFile { Id = "file" }));
-            Assert.False(BotService.NeedsTrainerId([TwoTrees()], replaced));
-            Assert.False(BotService.NeedsTrainerId([null], new GameFile { Id = "file" }));
-            Assert.False(BotService.NeedsTrainerId([Route30], new GameFile { Id = "file" }));
+            Assert.True(BotService.NeedsTrainerId([("2-3c Azalea", TwoTrees())], new GameFile { Id = "file" }));
+            Assert.True(BotService.NeedsTrainerId([("1-4 Route 30", Route30), ("X", null), ("2-3c Azalea", TwoTrees())], new GameFile { Id = "file" }));
+            Assert.False(BotService.NeedsTrainerId([("2-3c Azalea", TwoTrees())], replaced));
+            Assert.True(BotService.NeedsTrainerId([("2-3c Azalea", TwoTrees())], byId));
+            Assert.False(BotService.NeedsTrainerId([("X", null)], new GameFile { Id = "file" }));
+            Assert.False(BotService.NeedsTrainerId([("1-4 Route 30", Route30)], new GameFile { Id = "file" }));
         }
 
         private static readonly HgssPointerService Table = new();
