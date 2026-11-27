@@ -278,6 +278,10 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [CommonSpecies, RareSpecies])!.Anchor.X);
             Assert.Equal(new MilestoneAnchor("1-headbutt", new Anchor(1, 5, 1, 0, 0), Direction.Down),
                 file.AnchorFor("1-headbutt", TwoTrees(), 10, [RareSpecies]));
+            // A hand-added species no tree has does not choose: alone it leaves the cheapest tree, beside a slot species that one's.
+            const int handAdded = 58;
+            Assert.Equal(0, file.AnchorFor("1-headbutt", TwoTrees(), 10, [handAdded])!.Anchor.X);
+            Assert.Equal(5, file.AnchorFor("1-headbutt", TwoTrees(), 10, [handAdded, RareSpecies])!.Anchor.X);
         }
 
         [Fact]

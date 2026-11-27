@@ -1,7 +1,5 @@
 using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.Games;
-using ShinyBotHunter.Persistence.MongoDb;
-using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Milestones
@@ -19,11 +17,12 @@ namespace ShinyBotHunter.Milestones
 
         // FR-21 to FR-23: the file's replacement, else the generated land anchor with the facing the bot has, else for a headbutt
         // milestone with the trainer ID the file's tree for the species still wanted, else null, which is hunted where the bot stands.
+        // Only wanted species the milestone's slots have choose the tree, so hand-added ones alone leave the cheapest tree.
         public MilestoneAnchor? AnchorFor(string milestone, Milestone? generated, uint? trainerId, IEnumerable<int> wanted)
             => Anchors.FirstOrDefault(a => a.Milestone == milestone)
                 ?? (generated?.Anchor is { } anchor ? new MilestoneAnchor(milestone, anchor, Direction.None) : null)
                 ?? (generated is { Modality: Modality.Headbutt } && trainerId is { } id
-                    ? HeadbuttTrees.AnchorFor(generated, id, wanted.ToHashSet())
+                    ? HeadbuttTrees.AnchorFor(generated, id, wanted.Where(s => generated.Slots.Any(x => x.Species == s)).ToHashSet())
                     : null);
     }
 
@@ -33,11 +32,6 @@ namespace ShinyBotHunter.Milestones
         // The count cache's key: the form code, or the species key for any form.
         [BsonIgnore]
         public string Key => FormCode ?? CacheLoadRequest.SpeciesKey(Species);
-
-        public bool Matches(PokemonData pokemon) => pokemon.Species == Species && (FormCode is null || pokemon.FormCode == FormCode);
-
-        public int CaughtIn(IEnumerable<CaughtPokemon> caught, string gameFileName)
-            => caught.Count(c => c.Pokemon.IsShiny && c.GameFileName == gameFileName && Matches(c.Pokemon));
     }
 
     // A milestone's replacement anchor on one file (FR-22). A list entry rather than a dictionary because a milestone name can

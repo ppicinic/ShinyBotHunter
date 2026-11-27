@@ -146,37 +146,5 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Empty(GoalPresets.Entries(GoalPreset.None, RomVersion.HeartGold, Hgss, Metadata()));
         }
-
-        [Fact]
-        public void GoalEntry_Matches_SpeciesAndFormWhenSet()
-        {
-            var anyForm = new GoalEntry(Zubat, null, 3);
-            var female = new GoalEntry(Zubat, "zubat;f", 2);
-
-            Assert.Equal("#41", anyForm.Key);
-            Assert.Equal("zubat;f", female.Key);
-            Assert.True(anyForm.Matches(Pokemon(Zubat, "zubat")));
-            Assert.True(anyForm.Matches(Pokemon(Zubat, "zubat;f")));
-            Assert.True(female.Matches(Pokemon(Zubat, "zubat;f")));
-            Assert.False(female.Matches(Pokemon(Zubat, "zubat")));
-            Assert.False(anyForm.Matches(Pokemon(42, "golbat")));
-        }
-
-        [Fact]
-        public void GoalEntry_CaughtIn_CountsShiniesOfThisFileThatMatch()
-        {
-            var female = new GoalEntry(Zubat, "zubat;f", 2);
-            CaughtPokemon Caught(PokemonData pokemon, string file) => new CaughtPokemon { Pokemon = pokemon, Phase = "1-4", GameFileName = file };
-            var caught = new[]
-            {
-                Caught(Pokemon(Zubat, "zubat;f"), "Pokemon SoulSilver"),
-                Caught(Pokemon(Zubat, "zubat;f"), "Pokemon SoulSilver"),
-                Caught(Pokemon(Zubat, "zubat;f", shiny: false), "Pokemon SoulSilver"),
-                Caught(Pokemon(Zubat, "zubat"), "Pokemon SoulSilver"),
-                Caught(Pokemon(Zubat, "zubat;f"), "Pokemon HeartGold"),
-            };
-
-            Assert.Equal(2, female.CaughtIn(caught, "Pokemon SoulSilver"));
-        }
     }
 }

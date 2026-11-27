@@ -357,7 +357,8 @@ namespace ShinyBotHunter.Tests
 
             var result = await new BotController(service).StartAction(0, args);
 
-            // Chained reads no game file, so past the guards the hunt starts; the party was read once, by the guards.
+            // Chained reads no game file, so Start passes the guards (one party read) and returns; the chain then fails at once in
+            // OrchestratorEvent's constructor, since the stub provider has no PokemonMetadataService.
             Assert.IsType<OkObjectResult>(result.Result);
             Assert.Equal(1, bot.PartyReads);
             await service.CancelBotOrEventAsync(0);
