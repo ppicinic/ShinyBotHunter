@@ -230,6 +230,36 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
+        public void OffFile_Archived_Refused()
+        {
+            PhaseInfo archived = Phase("Route 30 Night");
+            archived.Archived = true;
+
+            Assert.Equal("Route 30 Night is archived.", BotService.OffFileRefusal(archived, File));
+        }
+
+        [Fact]
+        public void OffFile_TickedForAnotherFile_Refused_TickedForThisOne_Accepted()
+        {
+            PhaseInfo ticked = Phase("Route 30 Night");
+            ticked.GameFiles = ["other.nds"];
+
+            Assert.Equal($"Route 30 Night is not ticked for {File}.", BotService.OffFileRefusal(ticked, File));
+            ticked.GameFiles.Add(File);
+            Assert.Null(BotService.OffFileRefusal(ticked, File));
+        }
+
+        // The owner's existing milestones have no ticks, so they are offered and hunted on every file; a name that is no saved
+        // milestone is left to the checks after this one.
+        [Fact]
+        public void OffFile_NoTicks_AcceptedOnAnyFile()
+        {
+            Assert.Null(BotService.OffFileRefusal(Phase("Route 30 Night"), File));
+            Assert.Null(BotService.OffFileRefusal(Phase("Route 30 Night"), "other.nds"));
+            Assert.Null(BotService.OffFileRefusal(null, File));
+        }
+
+        [Fact]
         public void NoHuntYet_SurfRodsRockSmash_Refused()
         {
             var soulSilver = Hgss[RomVersion.SoulSilver];

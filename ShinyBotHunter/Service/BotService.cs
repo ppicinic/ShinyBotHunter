@@ -329,6 +329,13 @@ namespace ShinyBotHunter.Service
                 }
             }
             Milestone? generated = RefuseMilestone(bot, args.PhaseName, args.EncounterType);
+            // The Plan Editor offers every milestone of the game, so a step's is checked against the file here, as the launch list is.
+            // As in Located, the saved milestone is looked up only when there is generated data and a version to read it with.
+            if (args.PhaseName is { } phaseName && bot.Profile.Milestones is not null && romInfoService.GetByHandle(bot.GameFileName)?.Version is not null
+                && OffFileRefusal(provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName), bot.GameFileName) is { } offFile)
+            {
+                throw new ArgumentException(offFile);
+            }
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -1073,6 +1080,15 @@ namespace ShinyBotHunter.Service
             { type: EncounterType.Run } => $"run up-down ±{encounter.yRange}",
             { type: EncounterType.Spin } => "spin",
             _ => "headbutt",
+        };
+
+        // FR-15 at Start: a saved milestone that is archived, or ticked only for other files, is not hunted on this one; one ticked
+        // for no file, or a name that is no saved milestone, is.
+        internal static string? OffFileRefusal(PhaseInfo? phase, string gameFileName) => phase switch
+        {
+            { Archived: true } => $"{phase.Name} is archived.",
+            { GameFiles.Count: > 0 } when !phase.GameFiles.Contains(gameFileName) => $"{phase.Name} is not ticked for {gameFileName}.",
+            _ => null,
         };
 
         internal static string? NoHuntYet(Milestone? generated) => generated is { Huntable: false } ? $"{generated.Name}: no hunt yet." : null;
