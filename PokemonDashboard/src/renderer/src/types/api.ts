@@ -228,15 +228,12 @@ export interface Anchor {
 }
 
 export interface PickerMilestone {
-  // A generated milestone's id ("34-land"), or a custom phase's name. Sent as PhaseName at Start.
-  id: string
+  // A saved milestone's name. Sent as PhaseName at Start.
   name: string
-  // Null for a custom phase.
+  // Its location's modality on this file's version; null with no location.
   modality: Modality | null
   huntable: boolean
   complete: boolean
-  archived: boolean
-  order: string | null
   // Where the hunt starts on this file; null is hunted where the bot stands.
   anchor: Anchor | null
   // True when this file stores a replacement, false when the anchor is the generated one.
@@ -245,7 +242,7 @@ export interface PickerMilestone {
 
 export interface BotMilestones {
   gameFileName: string
-  // In the server's order: labelled entries first, then by name.
+  // The saved milestones ticked for this file, or for none, and not archived; natural order by name.
   milestones: PickerMilestone[]
 }
 
