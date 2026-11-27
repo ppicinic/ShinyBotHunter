@@ -1,5 +1,5 @@
 import type { Appearance } from '../../../shared/windowContracts'
-import type { GoalPreset, PhaseInfo, RomVersion } from '../types/api'
+import type { GoalPreset, PhaseInfo, Plan, RomVersion } from '../types/api'
 
 // Every request the dashboard makes to the backend, one function per endpoint. Each goes through
 // the main process and returns a Response; the call sites keep their own status and error handling.
@@ -142,8 +142,8 @@ export function getPlans(apiUrl: string, game: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/plans/${encodeURIComponent(game)}`)
 }
 
-// Saved under the route's game and name whatever the body says, but the body must carry a name; 400 with the reason.
-export function savePlan(apiUrl: string, game: string, name: string, plan: import('../types/api').HuntPlan): Promise<Response> {
+// Saved under the route's game and name whatever the body says; 400 with the reason.
+export function savePlan(apiUrl: string, game: string, name: string, plan: Plan): Promise<Response> {
   return request('PUT', `${apiUrl}/api/plans/${encodeURIComponent(game)}/${encodeURIComponent(name)}`, plan)
 }
 

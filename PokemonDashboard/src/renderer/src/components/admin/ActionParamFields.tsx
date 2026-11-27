@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PickerMilestone } from '../../types/api'
 import { romLabel } from '../../types/api'
 import { choiceOptions, encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
-import { HuntPlanEditor } from './HuntPlanEditor'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
@@ -25,8 +24,7 @@ export function ActionParamFields({
   party,
   onReloadParty,
   partyLoading,
-  games,
-  onPlanDirtyChange
+  games
 }: {
   schema: EventArgumentOptions
   params: Record<string, string>
@@ -38,8 +36,6 @@ export function ActionParamFields({
   // Detected ROMs, for schemas whose entries pick a game (the starter hunt's legs do). When absent,
   // GameName falls through to a plain text input like any other parameter.
   games?: GameRomInfo[]
-  // Told whether the plan editor holds unsaved changes, so the card can grey what would drop them.
-  onPlanDirtyChange?: (dirty: boolean) => void
 }): JSX.Element {
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   // A milestone with a location is a wild one, so only an encounter form (Wild Encounter, a chain's leg) offers it;
@@ -64,7 +60,7 @@ export function ActionParamFields({
       {schema.requiredParameters?.map((param) => (
         // The milestone picker carries param-PhaseName on the wrapper of its one milestone select, not on the row, so
         // the row's Incomplete only box is not inside it.
-        <div key={param} data-testid={param === 'PhaseName' && !params['HuntPlan'] ? undefined : `param-${param}`} className="flex items-center gap-2">
+        <div key={param} data-testid={param === 'PhaseName' ? undefined : `param-${param}`} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
           {param === 'GameName' && games ? (
             <select
@@ -77,11 +73,6 @@ export function ActionParamFields({
                 <option key={game.handle} value={game.handle}>{romLabel(game)}</option>
               ))}
             </select>
-          ) : param === 'PhaseName' && params['HuntPlan'] ? (
-            // The server ignores the form's milestone when a plan is given (C3b); the value is kept for No plan.
-            <span className="flex-1 text-xs text-slate-400">
-              Set by the plan &quot;{params['HuntPlan']}&quot;: it starts on its default and follows the in-game clock.
-            </span>
           ) : param === 'PhaseName' ? (
             <div className="flex-1 space-y-1">
               <div data-testid="param-PhaseName" className="space-y-1">
@@ -171,13 +162,6 @@ export function ActionParamFields({
                     <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
                   ))}
                 </select>
-              ) : param === 'HuntPlan' ? (
-                <HuntPlanEditor
-                  value={params[param] ?? ''}
-                  onChange={(v) => onChange(param, v)}
-                  milestones={availablePhases}
-                  onDirtyChange={(dirty) => onPlanDirtyChange?.(dirty)}
-                />
               ) : (
                 <input
                   type="text"
@@ -189,11 +173,6 @@ export function ActionParamFields({
               )}
             </div>
           ))}
-          {params['HuntPlan'] && (
-            <div className="text-xs text-slate-400 mt-0.5">
-              The plan picks each milestone and hunts it from its anchor. Encounter Type must suit all of them: Run or Spin for grass and caves, Headbutt for trees. A Follows the hunt window follows the bot.
-            </div>
-          )}
         </div>
       )}
       {visibleConditionals.length > 0 && (

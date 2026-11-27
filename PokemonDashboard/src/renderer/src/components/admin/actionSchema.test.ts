@@ -11,15 +11,12 @@ import {
   legsVisible,
   paramsFromArguments,
   pickupChoice,
-  planPick,
-  planPreview,
-  planTime,
   requiredParamsFilled,
   stepArguments,
   visibleConditionalsOf,
   visibleParamNames
 } from './actionSchema'
-import type { EventArgumentOptions, GameRomInfo, PlanRule } from '../../types/api'
+import type { EventArgumentOptions, GameRomInfo } from '../../types/api'
 
 describe('getParamLabel', () => {
   it('maps a known parameter to its display label', () => {
@@ -439,71 +436,19 @@ describe('paramsFromArguments', () => {
   })
 })
 
-// The same cases as HuntPlanTests.cs, so the preview and the hunt pick alike.
-describe('hunt plans', () => {
-  const plan = (...rules: PlanRule[]): { default: string; rules: PlanRule[] } => ({ default: '36-land', rules })
+describe('the Plan action', () => {
+  const plan: EventArgumentOptions = { name: 'Plan', requiredParameters: ['HuntPlan'], choices: { HuntPlan: ['Johto nights', 'Pickup days'] } }
 
-  it('planTime has HuntPlan.TimeOfDay boundaries', () => {
-    expect([3, 4, 9, 10, 19, 20, 23, 0].map(planTime)).toEqual(['Night', 'Morning', 'Morning', 'Day', 'Day', 'Night', 'Night', 'Night'])
+  it('labels the field Plan', () => {
+    expect(getParamLabel('HuntPlan')).toBe('Plan')
   })
 
-  it('planPick: the first matching rule wins', () => {
-    const p = plan({ times: ['Night'], weekdays: [], milestone: '34-land' }, { times: ['Night'], weekdays: [], milestone: '33-land' })
-
-    expect(planPick(p, 'Monday', 21)).toEqual({ milestone: '34-land', rule: 1 })
+  it('a Plan action with no plan picked is not filled, and with one it is', () => {
+    expect(requiredParamsFilled(plan, initialParamsFor(plan))).toBe(false)
+    expect(requiredParamsFilled(plan, { HuntPlan: 'Johto nights' })).toBe(true)
   })
 
-  it('planPick: no rule matching is the default', () => {
-    expect(planPick(plan({ times: ['Night'], weekdays: [], milestone: '34-land' }), 'Monday', 12)).toEqual({ milestone: '36-land', rule: null })
-  })
-
-  it('planPick: a weekday matches only its day', () => {
-    const p = plan({ times: [], weekdays: ['Friday'], milestone: 'Union Cave' })
-
-    expect(planPick(p, 'Friday', 12)).toEqual({ milestone: 'Union Cave', rule: 1 })
-    expect(planPick(p, 'Thursday', 12)).toEqual({ milestone: '36-land', rule: null })
-  })
-
-  it('planPick: empty sets match any', () => {
-    const p = plan({ times: [], weekdays: [], milestone: '34-land' })
-
-    expect(planPick(p, 'Sunday', 0).milestone).toBe('34-land')
-    expect(planPick(p, 'Wednesday', 12).milestone).toBe('34-land')
-  })
-
-  it('planPreview follows the rule order for a weekday', () => {
-    const night: PlanRule = { times: ['Night'], weekdays: [], milestone: '34-land' }
-    const friday: PlanRule = { times: [], weekdays: ['Friday'], milestone: '99-land' }
-
-    expect(planPreview(plan(night, friday), 'Sunday')).toEqual([
-      { from: 0, to: 4, milestone: '34-land', rule: 1 },
-      { from: 4, to: 20, milestone: '36-land', rule: null },
-      { from: 20, to: 24, milestone: '34-land', rule: 1 }
-    ])
-    expect(planPreview(plan(night, friday), 'Friday')).toEqual([
-      { from: 0, to: 4, milestone: '34-land', rule: 1 },
-      { from: 4, to: 20, milestone: '99-land', rule: 2 },
-      { from: 20, to: 24, milestone: '34-land', rule: 1 }
-    ])
-    expect(planPreview(plan(friday, night), 'Friday')).toEqual([{ from: 0, to: 24, milestone: '99-land', rule: 1 }])
-  })
-
-  it('a chosen plan stands in for the milestone; with none the milestone is required, as before (FR-42)', () => {
-    const schema = { name: 'Wild Encounter', requiredParameters: ['PhaseName', 'TargetType'] }
-
-    expect(requiredParamsFilled(schema, { PhaseName: '', TargetType: 'ShinyTarget', HuntPlan: 'Johto' })).toBe(true)
-    expect(requiredParamsFilled(schema, { PhaseName: '', TargetType: 'ShinyTarget', HuntPlan: '' })).toBe(false)
-    expect(requiredParamsFilled(schema, { PhaseName: '', TargetType: '', HuntPlan: 'Johto' })).toBe(false)
-  })
-
-  it('with no plan chosen the Start body is what it was without the field (FR-42)', () => {
-    const today = { PhaseName: '34-land', TargetType: 'ShinyTarget', EncounterType: 'Spin', TrainType: 'None' }
-
-    expect(buildLegBody({ ...today, HuntPlan: '' })).toStrictEqual(buildLegBody(today))
-    expect(buildLegBody({ ...today, HuntPlan: 'Johto' })).toStrictEqual({ ...buildLegBody(today), HuntPlan: 'Johto' })
-  })
-
-  it('labels the field Hunt Plan', () => {
-    expect(getParamLabel('HuntPlan')).toBe('Hunt Plan')
+  it('the Start body carries the picked plan', () => {
+    expect(buildLegBody({ HuntPlan: 'Johto nights' })).toStrictEqual({ HuntPlan: 'Johto nights' })
   })
 })
