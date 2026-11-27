@@ -276,7 +276,7 @@ namespace ShinyBotHunter.Service
         {
             if (!slots.Entries.ContainsKey(pos))
             {
-                throw new ArgumentException($"There is not bot at position: {pos}");
+                throw new ArgumentException($"There is no bot at position: {pos}");
             }
             var entry = EventRegistry.Get(args.EventName);
             // Before the valid-actions check, which would refuse a filtered-out action without
@@ -872,7 +872,7 @@ namespace ShinyBotHunter.Service
         {
             if (!slots.Entries.ContainsKey(pos) || slots.Entries[pos].Bot is null)
             {
-                throw new ArgumentException($"There is not bot at position: {pos}");
+                throw new ArgumentException($"There is no bot at position: {pos}");
             }
             var reader = provider.GetRequiredService<PokemonStateReader>();
             var partyState = await reader.GetPartyState(slots.Entries[pos].Bot!);
@@ -1121,7 +1121,7 @@ namespace ShinyBotHunter.Service
         {
             if (GetBotAt(pos) is not { } bot)
             {
-                throw new ArgumentException($"There is not bot at position: {pos}");
+                throw new ArgumentException($"There is no bot at position: {pos}");
             }
             if (!bot.Profile.Capabilities.HasOverworldNavigation)
             {
@@ -1150,7 +1150,7 @@ namespace ShinyBotHunter.Service
         {
             if (GetBotAt(pos) is not { } bot)
             {
-                throw new ArgumentException($"There is not bot at position: {pos}");
+                throw new ArgumentException($"There is no bot at position: {pos}");
             }
             await provider.GetRequiredService<MongoGameFileDao>().ClearAnchorAsync(bot.GameFileName, milestone);
         }

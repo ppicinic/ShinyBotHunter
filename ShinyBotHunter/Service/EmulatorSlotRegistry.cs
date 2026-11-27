@@ -19,7 +19,10 @@ namespace ShinyBotHunter.Service
         // and an event waiting on the gate while a canceller holds it and awaits that event would
         // deadlock. The dictionary is concurrent so their enumeration is safe against a writer's add
         // or remove, and they read each entry field once into a local. A writer must never call
-        // another writer: the gate is not re-entrant.
+        // another writer: the gate is not re-entrant. BotService.DeletePlanAsync and RenamePlanAsync
+        // are not writers, but they also hold the gate across their in-use check and their Mongo
+        // calls, so that a plan is never deleted or renamed between Start's read of it and its
+        // hunt's event name (FR-37b).
         public SemaphoreSlim Gate { get; } = new(1, 1);
 
         // Written only under Gate; concurrent so the lock-free readers can enumerate it.

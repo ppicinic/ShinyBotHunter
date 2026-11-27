@@ -1,7 +1,7 @@
 # Decisions: Global
 
 Status: Living document
-Last updated: 2026-11-15
+Last updated: 2026-11-25
 
 Project-wide decisions that are not tied to one feature. Feature-specific decisions live in their own file in this folder (for example `persistence.md`, `bot-engine.md`, `dashboard.md`), created when the first decision for that area is made. A decision is never deleted; when it changes, mark the old section **Superseded** and link to the new one.
 
@@ -326,3 +326,20 @@ Every shiny a Gen 3 hunt finds is checked with PKHeX (`LegalityService.Analyze`)
 - Pokémon that are not shiny are not analysed unless a hunt's config asks for it (the starter hunt's `LogLegalityForEveryEncounter`), so the check costs nothing between shinies.
 - Today: the RS starter hunt (`StarterHuntEvent`, also run by `MultiStarterHuntEvent`) and the RS wild hunt (`RsBattleEvent`) analyse every shiny; `WishmakerJirachiEvent` is the exception. Both write an illegal shiny's encounter row marked so that it does not count as a shiny; the starter hunt analyses a shiny starter before writing its row (#421, owner: "yes make the starter hunt match").
 - 2026-11-16 (owner, #414: "lets log it. the data will be useful in the future."): the RS wild hunt writes an illegal shiny to the encounter log with `IsShiny` false. `IsShiny` means "counts as a shiny", and a row with a shiny value of 0 to 7 and `IsShiny` false is one that failed the check. The dashboard's and Discord's shiny counts do not include it. The RS starter hunt does the same since #421, and still resets past the shiny.
+
+---
+
+## QA runs once, at the end of a feature
+
+Status: Accepted
+Date: 2026-11-24 (owner)
+
+### Context
+During the hunt plans and milestone builder feature (epic #508), each task's plan carried its own emulator, window and database checks, so the emulator was busy with QA between almost every merge. The owner: "why so much QA while working through this. can we QA at the end please". Until now this was recorded only in that feature's changelog ([spec](../specs/hunt-plans-and-milestone-builder.md), 2026-11-24).
+
+### Decision
+A task PR merges on its review and the local checks (`Scripts/ci-local.ps1`). Emulator, window and database QA runs once, on the feature branch tip, when every task has merged. Each task lists the checks it would have run on the feature's QA issue (as on #525), and the feature's scenarios are written and run from that list.
+
+### Consequences
+- No coder runs scenarios on a task branch; a task PR says what it did not verify on the emulator.
+- The close-out names every check the feature's QA run did not make as not verified.
