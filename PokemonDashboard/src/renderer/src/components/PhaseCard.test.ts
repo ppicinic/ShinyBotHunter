@@ -1,137 +1,39 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponseBase, MilestoneCardRow, MilestoneRowsResponse, PhaseEncounterResponse, PhasePokemonInfo } from '../types/api'
-import { milestoneCardRows, PhaseCard, phaseCardRows } from './PhaseCard'
-
-function row(key: string, formCode: string | null, changes: Partial<MilestoneCardRow> = {}): MilestoneCardRow {
-  return {
-    species: 167,
-    key,
-    formCode,
-    name: 'Spinarak',
-    sprite: formCode ?? 'spinarak',
-    hasFemaleForm: false,
-    wanted: 1,
-    caught: 0,
-    complete: false,
-    hidden: false,
-    isTarget: true,
-    encountersHere: 0,
-    encountersOnFile: 0,
-    shinyEncountersOnFile: 0,
-    share: null,
-    ...changes
-  }
-}
+import type { GameEncounterResponse, GameEncounterResponseBase, MilestoneLocation, PhaseEncounterResponse, PhasePokemonInfo, PlanTime } from '../types/api'
+import { PhaseCard, phaseCardRows } from './PhaseCard'
 
 function counts(encounters: number, shinyEncounters: number, shiniesCaught: number): { encounters: number; shinyEncounters: number; shiniesCaught: number } {
   return { encounters, shinyEncounters, shiniesCaught }
 }
 
-describe('milestoneCardRows', () => {
-  it('drops a hidden row', () => {
-    const result = milestoneCardRows([row('#1', null), row('#2', null, { hidden: true }), row('#3', null)])
+function pokemon(name: string, speciesId: number): PhasePokemonInfo {
+  return { name, speciesId, amount: 1, formCode: name.toLowerCase(), requireSpecificForm: false, hasFemaleForm: false }
+}
 
-    expect(result.map((r) => r.key)).toEqual(['#1', '#3'])
-  })
-
-  it('an amount 0 row is shown', () => {
-    const result = milestoneCardRows([row('#167', null, { wanted: 0, caught: 2 })])
-
-    expect(result).toHaveLength(1)
-    expect(result[0].amount).toBe(0)
-  })
-
-  it("Unown's 28 entries are 28 rows", () => {
-    const letters = [...'abcdefghijklmnopqrstuvwxyz'].concat(['exclamation', 'question'])
-    const rows = letters.map((l) => row(`unown-${l}`, `unown-${l}`, { species: 201, name: 'Unown' }))
-
-    const result = milestoneCardRows(rows)
-
-    expect(new Set(result.map((r) => r.key)).size).toBe(28)
-    expect(new Set(result.map((r) => r.sprite)).size).toBe(28)
-    expect([result[0].sprite, result[27].sprite]).toEqual(['unown-a', 'unown-question'])
-    expect(result.every((r) => r.genderSymbol === '')).toBe(true)
-  })
-
-  it('gender follows the form', () => {
-    const result = milestoneCardRows([
-      row('bidoof;f', 'bidoof;f', { hasFemaleForm: true }),
-      row('bidoof', 'bidoof', { hasFemaleForm: true }),
-      row('#399', null, { hasFemaleForm: true, sprite: 'bidoof' })
-    ])
-
-    expect(result.map((r) => [r.genderSymbol, r.sprite])).toEqual([['♀', 'bidoof;f'], ['♂', 'bidoof'], ['', 'bidoof']])
-  })
-
-  it('counts come from the row', () => {
-    const result = milestoneCardRows([
-      row('#1', null, { encountersHere: 5, encountersOnFile: 9, caught: 1, shinyEncountersOnFile: 3 }),
-      row('#2', null, { caught: 2, shinyEncountersOnFile: 1 })
-    ])
-
-    expect(result[0]).toMatchObject({ encountersHere: 5, encountersOnFile: 9, caught: 1, missed: 2 })
-    expect(result[1].missed).toBe(0)
-  })
-
-  it("carries each row's share", () => {
-    const result = milestoneCardRows([row('#1', null, { share: 0.25 }), row('#2', null, { share: 0.75 })])
-
-    expect(result.map((r) => r.share)).toEqual([0.25, 0.75])
-  })
-
-  it('drops a row at a zero share', () => {
-    const result = milestoneCardRows([row('#69', null, { share: 0.308 }), row('#19', null, { share: 0 }), row('#194', null, { share: 0.538 })])
-
-    expect(result.map((r) => r.key)).toEqual(['#69', '#194'])
-  })
-
-  it('keeps every row without shares', () => {
-    const result = milestoneCardRows([row('#1', null), row('#2', null), row('#3', null)])
-
-    expect(result.map((r) => r.key)).toEqual(['#1', '#2', '#3'])
-  })
-})
+function card(
+  rows: PhasePokemonInfo[],
+  location: MilestoneLocation | null,
+  live = true,
+  timeOfDay: PlanTime | null = null,
+  encounterData: GameEncounterResponse | null = null
+): string {
+  const phaseInfo = { gameName: 'HGSS', name: 'Route 30', pokemon: rows, isStatic: false }
+  const subscription = { game: 'HGSS', phase: 'Route 30', gameName: 'HG-QA', encounterData, phaseInfo, location, live, timeOfDay, notFound: false }
+  return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
+}
 
 describe('PhaseCard', () => {
-  function card(rows: MilestoneCardRow[], survive: number | null): string {
-    const milestone = { id: '36-land', name: 'Route 32 · grass', modality: 'Land', rows, survive, live: true, timeOfDay: 'Night' } as unknown as MilestoneRowsResponse
-    const subscription = { game: 'HGSS', phase: '36-land', gameName: 'HG-QA', encounterData: null, phaseInfo: null, milestone, notFound: false }
-    return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
-  }
+  it("a milestone with no location draws today's rows", () => {
+    const encounterData = {
+      gameSpecificResponse: { 'HG-QA': { pokemonEncounters: { '#16': counts(12, 0, 0) }, phaseEncounters: { 'Route 30': { phaseCount: 7, pokemonEncounters: { '#16': counts(5, 0, 0) } } } } }
+    } as unknown as GameEncounterResponse
 
-  it('draws the share under the name, with no Share column', () => {
-    const html = card([row('#69', null, { name: 'Bellsprout', share: 0.308 }), row('#41', null, { name: 'Zubat', share: 0 })], 0.65)
+    const html = card([pokemon('Pidgey', 16), pokemon('Rattata', 19)], null, false, null, encounterData)
 
-    expect(html).toMatch(/Bellsprout<\/span><div data-testid="row-share"[^>]*>30.8 %<\/div><\/td>/)
-    expect(html).not.toContain('Zubat')
-    expect(html).not.toContain('>Share<')
-    expect(html).not.toContain('encounters survive')
-  })
-
-  it('draws every row and no share without shares', () => {
-    const html = card([row('#69', null, { name: 'Bellsprout' }), row('#41', null, { name: 'Zubat' })], null)
-
-    expect([html.includes('Bellsprout'), html.includes('Zubat'), html.includes('row-share')]).toEqual([true, true, false])
-  })
-
-  it('keeps the table when a Repel blocks every species', () => {
-    const html = card([row('#19', null, { name: 'Rattata', share: 0 })], 0)
-
-    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
-  })
-
-  it('keeps the table when every shown row is at a zero share and a hidden one has the share', () => {
-    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true }), row('#19', null, { name: 'Rattata', share: 0 })], 1)
-
-    expect([html.includes('<table'), html.includes('Rattata'), html.includes('No Pokémon')]).toEqual([true, false, false])
-  })
-
-  it('says there are no Pokémon when every row is hidden', () => {
-    const html = card([row('#194', null, { name: 'Wooper', share: 1, hidden: true })], 1)
-
-    expect([html.includes('<table'), html.includes('No Pokémon defined for this milestone.')]).toEqual([false, true])
+    expect([html.includes('Pidgey'), html.includes('Rattata'), html.includes('>5<'), html.includes('>12<')]).toEqual([true, true, true, true])
+    expect([html.includes('row-share'), html.includes('not live')]).toEqual([false, false])
   })
 })
 
@@ -154,15 +56,5 @@ describe('phaseCardRows', () => {
       { key: 'bidoof;f', name: 'Bidoof', sprite: 'bidoof;f', genderSymbol: '♀', amount: 1, caught: 1, encountersHere: 2, encountersOnFile: 6, missed: 0 },
       { key: 'bidoof', name: 'Bidoof', sprite: 'bidoof', genderSymbol: '♂', amount: 0, caught: 0, encountersHere: 0, encountersOnFile: 7, missed: 0 }
     ])
-  })
-
-  it("a stored phase's rows have no share", () => {
-    const pokemon: PhasePokemonInfo[] = [
-      { name: 'Spinarak', speciesId: 167, amount: 1, formCode: 'spinarak', requireSpecificForm: false, hasFemaleForm: false }
-    ]
-
-    const result = phaseCardRows(pokemon, undefined, undefined)
-
-    expect(result[0].share).toBeUndefined()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GameEncounterResponse, MilestoneRowsResponse, SubscriptionState } from '../types/api'
+import type { GameEncounterResponse, SubscriptionState } from '../types/api'
 import { applyEncounters, milestonesToReread, syncSubscriptions } from './AppContext'
 
 function sub(phase: string, gameName: string | null, withData = false): SubscriptionState {
@@ -9,13 +9,15 @@ function sub(phase: string, gameName: string | null, withData = false): Subscrip
     gameName,
     encounterData: withData ? ({ gameSpecificResponse: {} } as unknown as GameEncounterResponse) : null,
     phaseInfo: null,
-    milestone: null,
+    location: null,
+    live: false,
+    timeOfDay: null,
     notFound: false
   }
 }
 
-function generated(phase: string, gameName: string): SubscriptionState {
-  return { ...sub(phase, gameName), milestone: { id: phase, rows: [] } as unknown as MilestoneRowsResponse }
+function located(phase: string, gameName: string): SubscriptionState {
+  return { ...sub(phase, gameName), location: { rows: [], hiddenUntil: {} } }
 }
 
 describe('syncSubscriptions', () => {
@@ -86,19 +88,19 @@ describe('applyEncounters', () => {
 })
 
 describe('milestonesToReread', () => {
-  it('re-reads the rows of a generated milestone on a push to its file', () => {
-    const mA = generated('M', 'A')
+  it('re-reads the location of a milestone on a push to its file', () => {
+    const mA = located('M', 'A')
     const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
 
-    const result = milestonesToReread([mA, sub('P', 'A'), generated('M', 'B')], response, 'HGSS', 'M')
+    const result = milestonesToReread([mA, sub('P', 'A'), located('M', 'B')], response, 'HGSS', 'M')
 
     expect(result).toEqual([mA])
   })
 
-  it('does not re-read a stored phase', () => {
+  it('does not re-read a milestone with no location', () => {
     const response = { gameSpecificResponse: { A: {} } } as unknown as GameEncounterResponse
 
-    const result = milestonesToReread([sub('P', 'A'), sub('P', null), generated('M', 'A')], response, 'HGSS', 'P')
+    const result = milestonesToReread([sub('P', 'A'), sub('P', null), located('M', 'A')], response, 'HGSS', 'P')
 
     expect(result).toEqual([])
   })
