@@ -178,48 +178,6 @@ export interface MilestoneLocation {
 }
 
 // ============================================================
-// Generated milestone rows (GET /api/milestone/{game}/{milestoneId}/{gameFileName})
-// Matches the response of GetMilestoneRowsAsync in PhaseMetadataController.cs
-// ============================================================
-
-export interface MilestoneCardRow {
-  species: number
-  // The count key: "#<species>" for an any-form row, else the form code
-  key: string
-  // Null for an any-form row
-  formCode: string | null
-  name: string
-  // The form code, or the species' sprite slug for an any-form row
-  sprite: string
-  hasFemaleForm: boolean
-  wanted: number
-  caught: number
-  complete: boolean
-  // Hidden on this game file
-  hidden: boolean
-  isTarget: boolean
-  encountersHere: number
-  encountersOnFile: number
-  shinyEncountersOnFile: number
-  // The species' expected share; null when the response has no shares (see survive)
-  share: number | null
-}
-
-export interface MilestoneRowsResponse {
-  id: string
-  name: string
-  modality: Modality
-  rows: MilestoneCardRow[]
-  // The share of encounters Repel lets through; null when no shares: no rate rule, a headbutt milestone, or never seen with timed slots
-  survive: number | null
-  // False when no hunt runs on the file: the shares are the last-seen time of day's, with no Repel and no lead
-  live: boolean
-  // The time of day the file was last seen in; null when never seen since the backend started
-  timeOfDay: 'Morning' | 'Day' | 'Night' | null
-  data: GameEncounterResponse
-}
-
-// ============================================================
 // Subscription state (internal frontend state)
 // ============================================================
 
@@ -444,74 +402,11 @@ export type GameFlavor = 'HGSS' | 'RS'
 export type BotDashboardState = Record<number, EmulatorState>
 
 // ============================================================
-// A game file's goal (GET /api/goal/{gameFileName}, GET /api/species/{game})
-// Matches C# GameFile, GoalEntry, HiddenRow, MilestoneLink (Goal.cs) and GoalPreset (GoalPresets.cs)
+// The preset a milestone's seed is filled by (GET /api/milestones/{game}/locations/{locationId}/seed)
+// Matches C# GoalPreset (GoalPresets.cs)
 // ============================================================
-
-// A species in any form (formCode null) or one form; an amount of 0 is a row that is never a target.
-export interface GoalEntry {
-  species: number
-  formCode: string | null
-  amount: number
-  // The count key: the form code, or "#<species>" for any form. Read only; PUT goal is not sent it.
-  key: string
-}
-
-export interface HiddenRow {
-  milestoneId: string
-  key: string
-}
-
-export interface MilestoneLink {
-  phase: string
-  milestoneId: string
-}
-
-// Only the fields the dashboard reads; the server's GameFile also has archived, order and anchors.
-export interface GameFile {
-  // The game file name
-  id: string
-  entries: GoalEntry[]
-  // The preset that supplied the default amounts (FR-8); "None" for a file that never picked one
-  preset: GoalPreset
-  hidden: HiddenRow[]
-  assigned: string[]
-  links: MilestoneLink[]
-}
 
 export type GoalPreset = 'None' | 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
-
-// POST /api/goal/{game}/{gameFileName}/preset/{preset}: the saved goal, and how many species took the new preset's entries
-// (changed) and how many hand-edited species were kept.
-export interface PresetChange {
-  preset: GoalPreset
-  entries: GoalEntry[]
-  changed: number
-  kept: number
-}
-
-export interface SpeciesName {
-  species: number
-  name: string
-}
-
-// ============================================================
-// Linking a milestone you made on a game file (GET /api/goal/{game}/{gameFileName}/backfill/{phase})
-// Matches C# CopyOffer (Backfill.cs) and the response of GetBackfillAsync in PhaseMetadataController.cs
-// ============================================================
-
-// One species of the phase: what a copy would write beside what the goal has for it now.
-export interface CopyOffer {
-  species: number
-  phase: GoalEntry[]
-  goal: GoalEntry[]
-}
-
-export interface BackfillOffer {
-  // The generated milestone the research doc maps the phase to on this file's version; null when there is none.
-  suggested: { id: string; name: string } | null
-  copy: CopyOffer[]
-}
 
 // ============================================================
 // Saved hunt plans (GET /api/plans/{game}, PUT, DELETE and POST .../rename on /api/plans/{game}/{name})

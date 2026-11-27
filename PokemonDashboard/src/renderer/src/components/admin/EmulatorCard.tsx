@@ -2,10 +2,9 @@ import React, { useState } from 'react'
 import type { Dispatch } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { Anchor, BotMilestones, EventArgumentOptions, GameFlavor, Modality, PartySlotInfo } from '../../types/api'
+import type { Anchor, BotMilestones, EventArgumentOptions, Modality, PartySlotInfo } from '../../types/api'
 import { requiredParamsFilled } from './actionSchema'
 import { ActionParamFields } from './ActionParamFields'
-import { MilestoneRowsPanel } from './MilestoneRowsPanel'
 import type { BotPositionsAction } from './botPositions'
 
 // Matches BotService.HowHunted's wording, so the card and the backend log read the same: a headbutt milestone is headbutted
@@ -28,7 +27,6 @@ export function cardHeading(name: string, milestones: BotMilestones | undefined)
 export function EmulatorCard({
   pos,
   name,
-  game,
   milestones,
   onMilestonesChanged,
   actions: availableActions,
@@ -48,7 +46,6 @@ export function EmulatorCard({
 }: {
   pos: number
   name: string
-  game: GameFlavor
   milestones: BotMilestones | undefined
   onMilestonesChanged: () => void
   actions: EventArgumentOptions[]
@@ -260,10 +257,6 @@ export function EmulatorCard({
                     )}
                     {anchorError && <div className="text-xs text-red-400">{anchorError}</div>}
                   </div>
-                )}
-                {/* FR-12: only a generated milestone has rows to hide on this file. */}
-                {anchorMilestone && anchorMilestone.modality !== null && milestones && (
-                  <MilestoneRowsPanel game={game} gameFileName={milestones.gameFileName} milestoneId={anchorMilestone.id} />
                 )}
               </div>
             )
