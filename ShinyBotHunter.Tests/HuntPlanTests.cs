@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Rs;
@@ -124,23 +125,108 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["36-land", "34-land"], plan.Milestones);
         }
 
-        [Fact]
-        public void HuntPlan_BsonRoundTrip()
+        private static NewEventArguments Wild(string milestone) => new()
         {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("Union Cave", [], [DayOfWeek.Friday, DayOfWeek.Saturday]));
+            EventName = "Wild Encounter", PhaseName = milestone, TargetType = "ShinyTarget", EncounterType = EncounterType.Run,
+        };
+
+        private static NewEventArguments WaitStep() => new() { EventName = "Wait" };
+
+        private static PlanStep Step(SlotCondition[] times, DayOfWeek[] weekdays, NewEventArguments arguments) => new([.. times], [.. weekdays], arguments);
+
+        private static Plan Steps(NewEventArguments @default, params PlanStep[] rules) => new(GameFlavor.HGSS, "Johto nights", [.. rules], @default, false);
+
+        [Fact]
+        public void PlanPick_FirstMatchingRuleWins()
+        {
+            var first = Step([SlotCondition.Night], [], Wild("1-4 Route 30"));
+            var plan = Steps(Wild("2-1 Route 32"), first, Step([SlotCondition.Night], [], Wild("1-5 Route 31")));
+
+            Assert.Same(first.Arguments, plan.Pick(DayOfWeek.Monday, 21));
+        }
+
+        [Fact]
+        public void PlanPick_NoRuleMatches_IsTheDefault()
+        {
+            var plan = Steps(Wild("2-1 Route 32"), Step([SlotCondition.Night], [], Wild("1-4 Route 30")));
+
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 12));
+        }
+
+        [Fact]
+        public void PlanPick_Weekday_MatchesOnlyItsDay()
+        {
+            var friday = Step([], [DayOfWeek.Friday], Wild("Union Cave"));
+            var plan = Steps(Wild("2-1 Route 32"), friday);
+
+            Assert.Same(friday.Arguments, plan.Pick(DayOfWeek.Friday, 12));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Thursday, 12));
+        }
+
+        [Fact]
+        public void PlanPick_EmptyLists_MatchAny()
+        {
+            var any = Step([], [], Wild("1-4 Route 30"));
+            var plan = Steps(Wild("2-1 Route 32"), any);
+
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Sunday, 0));
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Wednesday, 12));
+        }
+
+        [Theory]
+        [InlineData(3, false)]
+        [InlineData(4, true)]
+        [InlineData(9, true)]
+        [InlineData(10, false)]
+        public void PlanPick_TimeBoundaries(int hour, bool matches)
+        {
+            var morning = Step([SlotCondition.Morning], [], Wild("1-4 Route 30"));
+            var plan = Steps(Wild("2-1 Route 32"), morning);
+
+            Assert.Same(matches ? morning.Arguments : plan.Default, plan.Pick(DayOfWeek.Monday, hour));
+        }
+
+        [Fact]
+        public void Plan_BsonRoundTrip()
+        {
+            var run = Wild("1-4 Route 30");
+            run.xRange = 2;
+            run.TrainType = TrainType.Standard;
+            run.Pickup = true;
+            var plan = new Plan(GameFlavor.HGSS, "Johto nights",
+                [Step([SlotCondition.Night], [], run), Step([SlotCondition.Morning], [DayOfWeek.Friday, DayOfWeek.Saturday], WaitStep())],
+                Wild("2-1 Route 32"), true);
             var document = plan.ToBsonDocument();
             document.InsertAt(0, new BsonElement("_id", ObjectId.GenerateNewId()));
 
-            var read = BsonSerializer.Deserialize<HuntPlan>(document);
+            var read = BsonSerializer.Deserialize<Plan>(document);
 
-            Assert.Equal(plan.Game, read.Game);
-            Assert.Equal(plan.Name, read.Name);
-            Assert.Equal(plan.Default, read.Default);
+            Assert.Equal((plan.Game, plan.Name, plan.EndWhenComplete), (read.Game, read.Name, read.EndWhenComplete));
             Assert.Equal(2, read.Rules.Count);
-            Assert.Equal(plan.Rules[0].Times, read.Rules[0].Times);
-            Assert.Equal(plan.Rules[1].Weekdays, read.Rules[1].Weekdays);
-            Assert.Equal("Union Cave", read.Rules[1].Milestone);
-            Assert.False(document.Contains(nameof(HuntPlan.Milestones)));
+            Assert.Equal([SlotCondition.Night], read.Rules[0].Times);
+            Assert.Empty(read.Rules[0].Weekdays);
+            NewEventArguments readRun = read.Rules[0].Arguments;
+            Assert.Equal(("Wild Encounter", "1-4 Route 30", "ShinyTarget", EncounterType.Run), (readRun.EventName, readRun.PhaseName, readRun.TargetType, readRun.EncounterType));
+            Assert.Equal((2, (int?)null, TrainType.Standard, true), (readRun.xRange, readRun.yRange, readRun.TrainType, readRun.Pickup));
+            Assert.Equal([SlotCondition.Morning], read.Rules[1].Times);
+            Assert.Equal([DayOfWeek.Friday, DayOfWeek.Saturday], read.Rules[1].Weekdays);
+            Assert.Equal("Wait", read.Rules[1].Arguments.EventName);
+            Assert.Null(read.Rules[1].Arguments.PhaseName);
+            Assert.Equal(("Wild Encounter", "2-1 Route 32"), (read.Default.EventName, read.Default.PhaseName));
+        }
+
+        [Fact]
+        public void Plan_BsonRead_IgnoresAnArgumentFieldNoLongerDefined()
+        {
+            var document = Steps(Wild("2-1 Route 32"), Step([], [], WaitStep())).ToBsonDocument();
+            document.InsertAt(0, new BsonElement("_id", ObjectId.GenerateNewId()));
+            document["Default"].AsBsonDocument.Add("Removed", "gone");
+            document["Rules"][0]["Arguments"].AsBsonDocument.Add("Removed", 3);
+
+            var read = BsonSerializer.Deserialize<Plan>(document);
+
+            Assert.Equal("2-1 Route 32", read.Default.PhaseName);
+            Assert.Equal("Wait", read.Rules[0].Arguments.EventName);
         }
 
         [Fact]
