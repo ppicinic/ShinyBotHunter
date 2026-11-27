@@ -1298,8 +1298,8 @@ namespace ShinyBotHunter.Service
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
-                // A plan's entry names its current step: "Plan <name>: <step>".
-                string name = x.Value.Event is PlanEvent plan ? $"{x.Value.GetName(x.Key)}: {plan.StepName}" : x.Value.GetName(x.Key);
+                // A plan's entry names its current step, "Plan <name>: <step>", once the first clock read has picked one.
+                string name = x.Value.Event is PlanEvent { StepName.Length: > 0 } plan ? $"{x.Value.GetName(x.Key)}: {plan.StepName}" : x.Value.GetName(x.Key);
                 return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(name, top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
             }).ToDictionary();
         }

@@ -132,6 +132,8 @@ namespace ShinyBotHunter.BotEvents
         private async Task<(NewEventArguments? Pick, DayOfWeek Weekday, int Hour)> WaitAsync(GameState state, DayOfWeek weekday, int hour, CancellationToken ct)
         {
             StepName = Plan.Wait;
+            // Running, not the Init or Complete left under it: Bot Control offers actions on Complete, and nothing is parked.
+            state.SwapState(EventState.Running);
             await RefreshDashboardAsync(state);
             Console.WriteLine($"[Plan] {plan.Name}: {weekday} {hour}h picks {Plan.Wait}");
             (DayOfWeek Weekday, int Hour) seen = (weekday, hour);

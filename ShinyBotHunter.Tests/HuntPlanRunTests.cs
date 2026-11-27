@@ -291,15 +291,17 @@ namespace ShinyBotHunter.Tests
             FakeBot bot = BotWith(clock, pressed);
             GameState state = StartState(bot);
             List<Entry> made = [];
-            List<string> stepAtRead = [];
+            List<(string, EventState)> atRead = [];
             PlanEvent plan = Event(provider, WaitAtNight(), Hunt(made, (_, _, _, _) => EventState.Waiting));
-            clock.OnRead = _ => stepAtRead.Add(plan.StepName);
+            clock.OnRead = _ => atRead.Add((plan.StepName, state.State.Peek()));
 
             await plan.ExecuteWithResultAsync(state, CancellationToken.None);
 
             Assert.Equal(3, clock.Reads);
             Assert.Equal([DefaultLeg], made.Select(m => m.Leg));
-            Assert.Equal(["", Plan.Wait, Plan.Wait], stepAtRead);
+            // During the Wait the dashboard reads Running, which offers no action and no Resume.
+            Assert.Equal([("", EventState.Init), (Plan.Wait, EventState.Running), (Plan.Wait, EventState.Running)], atRead);
+            Assert.Equal([EventState.Init], made[0].Stack);
             Assert.Empty(bot.Macros);
             Assert.Empty(pressed);
             Assert.Equal([Route32], Follows(pushes));
