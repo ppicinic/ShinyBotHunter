@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
@@ -5,6 +7,7 @@ using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
+using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
@@ -229,13 +232,120 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("Wait", read.Rules[0].Arguments.EventName);
         }
 
+        private static readonly GameCapabilities Hgss = HgssProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>()), new GraphService()).Capabilities;
+
+        private static string? Error(Plan plan) => PhaseMetadataController.PlanError(plan, Hgss);
+
+        private static string? RuleError(NewEventArguments rule) => Error(Steps(WaitStep(), Step([], [], rule)));
+
         [Fact]
-        public void PlanError_RefusesAPlanWithoutItsMilestones()
+        public void PlanError_ValidPlan_IsNull()
         {
-            Assert.Null(PhaseMetadataController.PlanError(Plan(Rule("34-land", [SlotCondition.Night], []))));
-            Assert.Equal("The plan has no default milestone", PhaseMetadataController.PlanError(Plan() with { Default = " " }));
-            Assert.Equal("Rule 2 names no milestone",
-                PhaseMetadataController.PlanError(Plan(Rule("34-land", [SlotCondition.Night], []), Rule("", [], [DayOfWeek.Friday]))));
+            var run = Wild("1-4 Route 30");
+            run.xRange = 2;
+            run.yRange = 1;
+            var spinTrained = Wild("1-5 Route 31");
+            spinTrained.EncounterType = EncounterType.Spin;
+            spinTrained.TrainType = TrainType.Standard;
+            spinTrained.TargetLevel = 101;
+            spinTrained.Pickup = true;
+            var headbuttSwitch = Wild("2-2 Route 33");
+            headbuttSwitch.EncounterType = EncounterType.Headbutt;
+            headbuttSwitch.TargetType = "PhaseTarget";
+            headbuttSwitch.TrainType = TrainType.Switch;
+            headbuttSwitch.SwitchSlot = 2;
+            var headbuttUntrained = Wild("2-2 Route 33");
+            headbuttUntrained.EncounterType = EncounterType.Headbutt;
+            headbuttUntrained.TrainType = TrainType.None;
+
+            Assert.Null(Error(Steps(Wild("2-1 Route 32"), Step([SlotCondition.Night], [], run), Step([], [DayOfWeek.Friday], spinTrained),
+                Step([SlotCondition.Morning], [], headbuttSwitch), Step([], [], headbuttUntrained), Step([SlotCondition.Day], [], WaitStep()))));
+            Assert.Null(Error(Steps(WaitStep(), Step([SlotCondition.Night], [], run))));
+        }
+
+        [Theory]
+        [InlineData("Chained Encounter")]
+        [InlineData("HGSS Primo Egg")]
+        [InlineData("HGSS Togepi Egg")]
+        [InlineData("HGSS Static Encounter")]
+        [InlineData("Launch Bot")]
+        public void PlanError_StepNotYet_Refused(string action)
+        {
+            Assert.Equal($"Rule 1: {action} cannot be a plan step yet; a step is Wild Encounter or Wait.", RuleError(new NewEventArguments { EventName = action }));
+        }
+
+        [Fact]
+        public void PlanError_UnknownAction_Refused()
+        {
+            Assert.Equal("Rule 1: Fly is not an action.", RuleError(new NewEventArguments { EventName = "Fly" }));
+        }
+
+        [Fact]
+        public void PlanError_NoAction_Refused()
+        {
+            Assert.Equal("Rule 1 has no action.", RuleError(new NewEventArguments { EventName = " " }));
+            Assert.Equal("The default has no action.", Error(Steps(null!)));
+        }
+
+        [Fact]
+        public void PlanError_UndeclaredParameter_Refused()
+        {
+            var withPlan = Wild("1-4 Route 30");
+            withPlan.HuntPlan = "Johto nights";
+
+            Assert.Equal("Rule 1: HuntPlan is not a parameter of Wild Encounter.", RuleError(withPlan));
+            Assert.Equal("Rule 1: PhaseName is not a parameter of Wait.", RuleError(new NewEventArguments { EventName = "Wait", PhaseName = "1-4 Route 30" }));
+        }
+
+        [Fact]
+        public void PlanError_ConditionUnmet_Refused()
+        {
+            var pickupUntrained = Wild("1-4 Route 30");
+            pickupUntrained.TrainType = TrainType.None;
+            pickupUntrained.Pickup = true;
+            var spinRange = Wild("1-4 Route 30");
+            spinRange.EncounterType = EncounterType.Spin;
+            spinRange.xRange = 2;
+
+            Assert.Equal("Rule 1: Pickup applies only when TrainType is not None.", RuleError(pickupUntrained));
+            Assert.Equal("Rule 1: xRange applies only when EncounterType is Run.", RuleError(spinRange));
+        }
+
+        [Fact]
+        public void PlanError_MissingRequired_Refused()
+        {
+            var noType = Wild("1-5 Route 31");
+            noType.EncounterType = null;
+            var noMilestone = Wild(" ");
+
+            Assert.Equal("Rule 2: Wild Encounter needs EncounterType.", Error(Steps(WaitStep(), Step([], [], Wild("1-4 Route 30")), Step([], [], noType))));
+            Assert.Equal("The default: Wild Encounter needs PhaseName.", Error(Steps(noMilestone)));
+        }
+
+        [Fact]
+        public void PlanError_NoClock_Refused()
+        {
+            var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())).Capabilities;
+
+            Assert.Equal("RS has no in-game clock, so it has no plans.", PhaseMetadataController.PlanError(Steps(WaitStep()) with { Game = GameFlavor.RS }, rs));
+        }
+
+        // E1: the old Wild Encounter parameter is refused after the clock check, before anything is read.
+        [Fact]
+        public async Task WildEncounterWithAPlan_IsRefused()
+        {
+            var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
+            var service = new BotService(settings, new FakeBotFactory(settings, Task.CompletedTask, null), null!, null!, null!, null!);
+            await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
+            var args = Wild("1-4 Route 30");
+            args.HuntPlan = "Johto nights";
+
+            var result = await new BotController(service).StartAction(0, args);
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal("A Wild Encounter no longer takes a plan; start the Plan action with it.", content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
         // The in-use check reads only the entry's event, bot and name, so the event never runs.

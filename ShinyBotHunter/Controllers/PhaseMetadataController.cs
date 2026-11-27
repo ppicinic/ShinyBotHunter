@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Macro;
 using ShinyBotHunter.Milestones;
@@ -225,22 +227,39 @@ namespace ShinyBotHunter.Controllers
             return Ok(Enumerable.Range(1, last).Select(s => new { Species = s, Name = pokemonMetadataService.GetPokemonMetadata(s).PokemonName }));
         }
 
-        // The game's saved hunt plans (FR-37a).
+        // The game's saved plans, sorted by name (FR-37a).
         [HttpGet("plans/{game}")]
-        public async Task<ActionResult<List<HuntPlan>>> GetPlansAsync(string game) => Ok(await huntPlanDao.ListAsync(Enum.Parse<GameFlavor>(game)));
+        public async Task<ActionResult<List<Plan>>> GetPlansAsync(string game) => Ok(await huntPlanDao.ListAsync(Enum.Parse<GameFlavor>(game)));
 
-        // Saves the plan under the game and name of the route, whatever the body says. Its milestones are checked at Start against
-        // the hunt's game file, because anchors and completion are per file (FR-35).
+        // The schema of each action a plan step may be, for the editor, which has no running bot to ask. A literal segment, so it
+        // is routed ahead of plans/{game}.
+        [HttpGet("plans/steps")]
+        public ActionResult<EventArgumentOptions[]> GetPlanSteps() => Ok(Plan.StepActions.Select(StepSchema).ToArray());
+
+        [HttpGet("plans/{game}/{name}")]
+        public async Task<ActionResult<Plan>> GetPlanAsync(string game, string name)
+            => await huntPlanDao.LoadAsync(Enum.Parse<GameFlavor>(game), name) is { } plan ? Ok(plan) : NotFound();
+
+        // Saves the plan under the game and name of the route, whatever the body says. A step is checked against its action's
+        // schema only; whether its milestone and party can run it is checked when the step starts.
         [HttpPut("plans/{game}/{name}")]
-        public async Task<ActionResult> PutPlanAsync(string game, string name, [FromBody] HuntPlan plan)
+        public async Task<ActionResult> PutPlanAsync(string game, string name, [FromBody] Plan plan)
         {
-            string? error = PlanError(plan);
-            if (error is not null)
+            GameFlavor flavor = Enum.Parse<GameFlavor>(game);
+            plan = plan with { Game = flavor, Name = name };
+            if (PlanError(plan, gameProfiles.Get(flavor).Capabilities) is { } error)
             {
-                return BadRequest(error);
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = error, ContentType = "text/plain" };
             }
-            await huntPlanDao.SaveAsync(plan with { Game = Enum.Parse<GameFlavor>(game), Name = name });
-            return NoContent();
+            try
+            {
+                await botService.SavePlanAsync(plan);
+                return NoContent();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                return new ContentResult { StatusCode = StatusCodes.Status400BadRequest, Content = ex.Message, ContentType = "text/plain" };
+            }
         }
 
         // FR-37b: refused while a hunt uses the plan, with the same mapping as BotController.StartAction.
@@ -272,15 +291,84 @@ namespace ShinyBotHunter.Controllers
             }
         }
 
-        // PUT plans is the boundary for a plan: the default and every rule name a milestone.
-        internal static string? PlanError(HuntPlan plan)
+        // Wait has no registry entry, so its schema is empty.
+        private static EventArgumentOptions StepSchema(string action)
+            => action == Plan.Wait ? new EventArgumentOptions { Name = Plan.Wait } : EventRegistry.Get(action).Options;
+
+        // Read from the body as the dashboard posts it: the property names are the schema's, enums their names.
+        private static readonly JsonSerializerOptions StepJson = new() { Converters = { new JsonStringEnumConverter() } };
+
+        // PUT plans is the boundary for a plan: every step is a step action, with only its action's parameters, each where its
+        // condition holds, and every required one. The rules are checked first, then the default; the first refusal is returned.
+        internal static string? PlanError(Plan plan, GameCapabilities caps)
         {
-            if (string.IsNullOrWhiteSpace(plan.Default))
+            if (!caps.HasHuntPlans)
             {
-                return "The plan has no default milestone";
+                return $"{plan.Game} has no in-game clock, so it has no plans.";
             }
-            int empty = plan.Rules.FindIndex(r => string.IsNullOrWhiteSpace(r.Milestone));
-            return empty < 0 ? null : $"Rule {empty + 1} names no milestone";
+            for (int i = 0; i < plan.Rules.Count; i++)
+            {
+                if (StepError(plan.Rules[i].Arguments, $"Rule {i + 1}") is { } error)
+                {
+                    return error;
+                }
+            }
+            return StepError(plan.Default, "The default");
+        }
+
+        private static string? StepError(NewEventArguments? body, string step)
+        {
+            if (string.IsNullOrWhiteSpace(body?.EventName))
+            {
+                return $"{step} has no action.";
+            }
+            string action = body.EventName;
+            if (action != Plan.Wait && EventRegistry.All.All(e => e.Name != action))
+            {
+                return $"{step}: {action} is not an action.";
+            }
+            if (!Plan.StepActions.Contains(action))
+            {
+                return $"{step}: {action} cannot be a plan step yet; a step is {string.Join(" or ", Plan.StepActions)}.";
+            }
+            EventArgumentOptions schema = StepSchema(action);
+            var set = new Dictionary<string, string>();
+            foreach (JsonProperty p in JsonSerializer.SerializeToElement(body, StepJson).EnumerateObject())
+            {
+                if (p.Name == nameof(NewEventArguments.EventName) || p.Value.ValueKind == JsonValueKind.Null || p.Value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(p.Value.GetString()))
+                {
+                    continue;
+                }
+                set[p.Name] = p.Value.ValueKind switch
+                {
+                    JsonValueKind.String => p.Value.GetString()!,
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => p.Value.GetRawText()
+                };
+            }
+            string[] declared = [.. schema.RequiredParameters ?? [], .. schema.OptionalParameters ?? [], .. schema.ConditionalParameters.Select(c => c.Name)];
+            if (set.Keys.FirstOrDefault(name => !declared.Contains(name)) is { } undeclared)
+            {
+                return $"{step}: {undeclared} is not a parameter of {action}.";
+            }
+            foreach (ConditionalParameters cp in schema.ConditionalParameters.Where(c => set.ContainsKey(c.Name)))
+            {
+                bool equal = set.TryGetValue(cp.Condition.Name, out string? value) && value == cp.Condition.Value;
+                if (cp.Condition.ConditionType == ConditionType.Eq && !equal)
+                {
+                    return $"{step}: {cp.Name} applies only when {cp.Condition.Name} is {cp.Condition.Value}.";
+                }
+                if (cp.Condition.ConditionType == ConditionType.Neq && equal)
+                {
+                    return $"{step}: {cp.Name} applies only when {cp.Condition.Name} is not {cp.Condition.Value}.";
+                }
+            }
+            if ((schema.RequiredParameters ?? []).FirstOrDefault(name => !set.ContainsKey(name)) is { } missing)
+            {
+                return $"{step}: {action} needs {missing}.";
+            }
+            return null;
         }
     }
 }
