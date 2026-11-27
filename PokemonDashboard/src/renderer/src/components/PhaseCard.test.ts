@@ -19,7 +19,7 @@ function card(
   timeOfDay: PlanTime | null = null,
   encounterData: GameEncounterResponse | null = null
 ): string {
-  const phaseInfo = { gameName: 'HGSS', name: 'Route 30', pokemon: rows, isStatic: false }
+  const phaseInfo = { gameName: 'HGSS', name: 'Route 30', pokemon: rows, isStatic: false, location: null, gameFiles: [], archived: false }
   const subscription = { game: 'HGSS', phase: 'Route 30', gameName: 'HG-QA', encounterData, phaseInfo, location, live, timeOfDay, notFound: false }
   return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
 }

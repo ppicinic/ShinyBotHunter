@@ -148,6 +148,12 @@ export interface PhaseInfo {
   name: string
   pokemon: PhasePokemonInfo[]
   isStatic: boolean
+  // A location id ("34-land"), or null for none
+  location: string | null
+  // The game files it is offered on; empty is every file
+  gameFiles: string[]
+  // Hidden from the launch form only
+  archived: boolean
 }
 
 // Returned by GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]

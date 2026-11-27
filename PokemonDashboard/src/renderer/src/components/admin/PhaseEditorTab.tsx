@@ -1,11 +1,21 @@
 import React, { useEffect, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { AdminMetadata, GoalPreset, PhaseInfo, PhasePokemonInfo } from '../../types/api'
+import type { AdminMetadata, GameRomInfo, GoalPreset, PhaseInfo, PhasePokemonInfo } from '../../types/api'
 
 // Ruby and Sapphire have no female forms preset.
 export function presetsFor(game: string): GoalPreset[] {
   return game === 'HGSS' ? ['None', 'LivingDex', 'FemaleForms', 'VersionExclusives'] : ['None', 'LivingDex', 'VersionExclusives']
+}
+
+// A new milestone's name may not be a saved one's: the save route upserts by name, so it would replace that milestone.
+export function nameTaken(phases: PhaseInfo[], name: string): boolean {
+  return phases.some((p) => p.name === name.trim())
+}
+
+export function toggleFile(gameFiles: string[], handle: string, on: boolean): string[] {
+  const others = gameFiles.filter((f) => f !== handle)
+  return on ? [...others, handle] : others
 }
 
 const EMPTY_POKEMON = (): PhasePokemonInfo => ({
@@ -21,7 +31,10 @@ const EMPTY_PHASE = (gameName: string, phaseName: string): PhaseInfo => ({
   gameName,
   name: phaseName,
   pokemon: [EMPTY_POKEMON()],
-  isStatic: false
+  isStatic: false,
+  location: null,
+  gameFiles: [],
+  archived: false
 })
 
 export function PhaseEditorTab(): JSX.Element {
@@ -30,6 +43,7 @@ export function PhaseEditorTab(): JSX.Element {
 
   // ── selection state ──────────────────────────────────────────
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+  const [roms, setRoms] = useState<GameRomInfo[]>([])
   const [selectedGame, setSelectedGame] = useState<string>('')
   const [selectedPhase, setSelectedPhase] = useState<string>('')
   const [isNewPhase, setIsNewPhase] = useState(false)
@@ -59,6 +73,10 @@ export function PhaseEditorTab(): JSX.Element {
         setSelectedPhase(firstPhase)
       })
       .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load metadata', true))
+    api.getAllGames(apiUrl)
+      .then((r) => r.json())
+      .then((data: GameRomInfo[]) => setRoms(data))
+      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load the game files', true))
   }, [apiUrl])
 
   // Load phase info when selection changes (and not creating new)
@@ -134,6 +152,10 @@ export function PhaseEditorTab(): JSX.Element {
     if (!form) return
     const phaseName = isNewPhase ? newPhaseName.trim() : selectedPhase
     if (!phaseName) { showFeedback('Milestone name is required', true); return }
+    if (isNewPhase && nameTaken(availablePhases, phaseName)) {
+      showFeedback(`A milestone named "${phaseName}" already exists; choose another name.`, true)
+      return
+    }
     // An empty milestone is legitimate: with no requirements UpdateMilestoneState treats it as
     // already satisfied, so it never blocks a run. That makes it the catch-all bucket for training,
     // keeping those encounters out of a real milestone's phase counters.
@@ -171,7 +193,9 @@ export function PhaseEditorTab(): JSX.Element {
   const availableGames = Object.keys(metadata?.games ?? {})
   const availablePhases = selectedGame ? (metadata?.games[selectedGame]?.phases ?? []) : []
   const selectedPhaseInfo = availablePhases.find((p) => p.name === selectedPhase)
+  // A seeded milestone's Pokémon are locked; its game files, Archived and location are not.
   const isReadOnly = !isNewPhase && (selectedPhaseInfo?.isStatic ?? form?.isStatic ?? false)
+  const gameRoms = roms.filter((r) => r.flavor === selectedGame)
 
   return (
     <div className="p-3 space-y-4">
@@ -222,7 +246,7 @@ export function PhaseEditorTab(): JSX.Element {
 
         {isReadOnly && (
           <p className="mt-1.5 text-xs text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded px-2 py-1">
-            This milestone is static (loaded from disk) and cannot be edited.
+            This milestone is loaded from disk: its Pokémon cannot be edited.
           </p>
         )}
       </div>
@@ -327,18 +351,43 @@ export function PhaseEditorTab(): JSX.Element {
             </div>
           )}
 
-          {/* Save button */}
-          {!isReadOnly && (
-            <div className="pt-2">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded transition-colors font-medium"
-              >
-                {saving ? 'Saving...' : 'Save Milestone'}
-              </button>
+          <div className="pt-3 space-y-1">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Game files</h3>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {gameRoms.map((rom) => (
+                <label key={rom.handle} className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={form.gameFiles.includes(rom.handle)}
+                    onChange={(e) => setForm((prev) => prev && { ...prev, gameFiles: toggleFile(prev.gameFiles, rom.handle, e.target.checked) })}
+                    className="accent-indigo-500"
+                  />
+                  {rom.handle}
+                </label>
+              ))}
             </div>
-          )}
+            <p className="text-xs text-slate-500">None ticked: offered on every game file.</p>
+            <label className="flex items-center gap-1.5 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={form.archived}
+                onChange={(e) => setForm((prev) => prev && { ...prev, archived: e.target.checked })}
+                className="accent-indigo-500"
+              />
+              Archived: hide from the launch form
+            </label>
+          </div>
+
+          {/* Save button */}
+          <div className="pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm rounded transition-colors font-medium"
+            >
+              {saving ? 'Saving...' : 'Save Milestone'}
+            </button>
+          </div>
         </div>
       ) : null}
 
