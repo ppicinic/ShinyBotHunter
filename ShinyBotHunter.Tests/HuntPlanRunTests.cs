@@ -377,5 +377,20 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(4, clock.Reads);
             Assert.Equal(Plan.Wait, plan.StepName);
         }
+
+        // Default 7: a step's Start refusal is re-thrown with the step's label and its own type, so it stays a 400. Plan Start
+        // itself loads the plan from Mongo, so it is not driven here.
+        [Fact]
+        public async Task StartPlan_StepRefusal_NamesTheStepAndKeepsItsType()
+        {
+            var argument = await Assert.ThrowsAsync<ArgumentException>(() => BotService.RefusedAsStepAsync<int>("The default",
+                () => throw new ArgumentException("No Pokémon in the party has Pickup.")));
+            var invalid = await Assert.ThrowsAsync<InvalidOperationException>(() => BotService.RefusedAsStepAsync<int>("Rule 2",
+                () => throw new InvalidOperationException("The anchor is not set.")));
+
+            Assert.Equal("The default: No Pokémon in the party has Pickup.", argument.Message);
+            Assert.Equal("Rule 2: The anchor is not set.", invalid.Message);
+            Assert.Equal(7, await BotService.RefusedAsStepAsync("Rule 1", () => Task.FromResult(7)));
+        }
     }
 }

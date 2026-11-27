@@ -79,11 +79,11 @@ namespace ShinyBotHunter.Games
                 new EventArgumentOptions() { Name = "HGSS Static Encounter", RequiredParameters = ["PhaseName", "StaticEncounter"] },
                 (nameof(GameCapabilities.HasStaticEncounter), c => c.HasStaticEncounter), OwnsEmulators: false,
                 (s, args, pos) => s.StartStaticEncounterAsync(args, pos)),
-            // A saved plan by name; its choices are the game's saved plans, filled per listing by BotController. R6b builds the run.
+            // A saved plan by name; its choices are the game's saved plans, filled per listing by BotController.
             new("Plan",
                 new EventArgumentOptions() { Name = "Plan", RequiredParameters = ["HuntPlan"] },
                 (nameof(GameCapabilities.HasHuntPlans), c => c.HasHuntPlans), OwnsEmulators: false,
-                (_, _, _) => throw new ArgumentException("A plan cannot be started yet: running one is not built.")),
+                (s, args, pos) => s.StartPlanAsync(args, pos)),
             new("Resume",
                 new EventArgumentOptions() { Name = "Resume" },
                 null, OwnsEmulators: false, (s, args, pos) => s.ResumeAsync(args, pos)),

@@ -295,7 +295,29 @@ namespace ShinyBotHunter.Service
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
-            IBot bot = slots.Entries[pos].Bot!;
+            var (leg, anchor, lead) = await BuildWildLegAsync(slots.Entries[pos].Bot!, args);
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
+            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            if (lead is not null)
+            {
+                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
+                foreach (string line in lines)
+                {
+                    Console.WriteLine($"[BotService] {line}");
+                }
+                slots.Entries[pos].GameState!.SpeedLines = lines;
+                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+            }
+            slots.Entries[pos].GameState!.State.Push(EventState.Init);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
+        // Every refusal a Wild Encounter Start makes, and its leg and anchor; shared by the Wild Encounter Start and each Wild
+        // Encounter step of a plan. The lead is read only where the game has the wild run checks.
+        private async Task<(EventLeg Leg, MilestoneAnchor? Anchor, PokemonData? Lead)> BuildWildLegAsync(IBot bot, NewEventArguments args)
+        {
             GameCapabilities caps = bot.Profile.Capabilities;
             // A greyed choice is refused with its reason before anything is read.
             var ruledOut = DisabledByCapabilities(caps);
@@ -321,28 +343,54 @@ namespace ShinyBotHunter.Service
             {
                 lead = await WildRefusalAsync(bot);
             }
-            PokemonState? party = await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
-            EventLeg leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
+            PokemonState? party = await RefuseFromFreshPartyAsync(bot, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
+            EventLeg leg = ValidateAndBuildLeg(args.ToLeg(), bot.GameFileName, bot.GameFlavor);
             var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
             var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
             (leg, MilestoneAnchor? anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
+            return (leg, anchor, lead);
+        }
 
-            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
-            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
-            if (lead is not null)
+        // The Plan action (R6b): each step is refused at Start as its own action's Start would refuse it, named by the step
+        // (default 7). The run reads the clock first thing, so nothing is read for the pick here.
+        internal async Task<Dictionary<int, EmulatorState>> StartPlanAsync(NewEventArguments args, int pos)
+        {
+            IBot bot = slots.Entries[pos].Bot!;
+            Plan plan = await provider.GetRequiredService<MongoHuntPlanDao>().LoadAsync(bot.GameFlavor, args.HuntPlan!)
+                ?? throw new ArgumentException($"No hunt plan named {args.HuntPlan}.");
+            var steps = new List<(NewEventArguments Body, string Name, EventLeg? Leg, MilestoneAnchor? Anchor)>();
+            foreach (var (body, label) in plan.Rules.Select((r, i) => (r.Arguments, $"Rule {i + 1}")).Append((plan.Default, "The default")))
             {
-                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
-                foreach (string line in lines)
+                if (body.EventName == Plan.Wait)
                 {
-                    Console.WriteLine($"[BotService] {line}");
+                    steps.Add((body, Plan.Wait, null, null));
+                    continue;
                 }
-                slots.Entries[pos].GameState!.SpeedLines = lines;
-                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+                var (leg, anchor, _) = await RefusedAsStepAsync(label, () => BuildWildLegAsync(bot, body));
+                steps.Add((body, leg.PhaseName, leg, anchor));
             }
-            slots.Entries[pos].GameState!.State.Push(EventState.Init);
-            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
-
+            var state = new GameState { Profile = bot.Profile, BotService = this, Bot = bot };
+            state.State.Push(EventState.Init);
+            slots.Entries[pos].GameState = state;
+            runner.StartEvent(pos, slots.Entries[pos], new PlanEvent(provider, plan, steps), state, PlanEventName(plan.Name), removeWhenDone: false);
             return GetBotDashboardState();
+        }
+
+        // A step's refusal with the step's label in front, keeping its type and so its 400.
+        internal static async Task<T> RefusedAsStepAsync<T>(string label, Func<Task<T>> build)
+        {
+            try
+            {
+                return await build();
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException($"{label}: {ex.Message}", ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException($"{label}: {ex.Message}", ex);
+            }
         }
 
         // Start names a plan's hunt with this, and the in-use check looks for it.
@@ -1250,7 +1298,9 @@ namespace ShinyBotHunter.Service
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
-                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
+                // A plan's entry names its current step: "Plan <name>: <step>".
+                string name = x.Value.Event is PlanEvent plan ? $"{x.Value.GetName(x.Key)}: {plan.StepName}" : x.Value.GetName(x.Key);
+                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(name, top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
             }).ToDictionary();
         }
 

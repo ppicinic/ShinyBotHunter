@@ -125,20 +125,6 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task StartPlan_RefusedUntilTheRunIsBuilt()
-        {
-            var service = Build();
-            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
-
-            var result = await new BotController(service).StartAction(0, new NewEventArguments { EventName = "Plan", HuntPlan = "Johto nights" });
-
-            var content = Assert.IsType<ContentResult>(result.Result);
-            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
-            Assert.Equal("A plan cannot be started yet: running one is not built.", content.Content);
-            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
-        }
-
-        [Fact]
         public void Wait_IsNotARegistryName()
         {
             Assert.DoesNotContain(EventRegistry.All, e => e.Name == Milestones.Plan.Wait);
