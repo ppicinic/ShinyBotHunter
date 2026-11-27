@@ -71,6 +71,38 @@ His words: "I wanted to remove the footer and have the encounter rate be below t
 - The share is under the Pokémon's name (as #603 built for generated milestones), now for every milestone with a location.
 - The footer is removed. Built as the orchestrator's default, for him to correct: the phase count and encounters per hour move to the card's header; the rows hidden now are one dim last row of the table ("2 more at night: Hoothoot, Spinarak"); "not live" joins the header.
 
-## Size
+## Defaults the orchestrator chose, for the owner to correct
 
-Large: the editor, the launch form, goal storage and the picker on the backend, the plan editor, the card, about ten QA scenarios, the guide. It goes through the feature workflow as new tasks on `feature/hunt-plans-milestones` once this doc is agreed.
+Asked of nobody yet; built as written unless he says otherwise.
+
+1. A milestone with no game file ticked is offered on every file, as today, so his 20 need no ticking.
+2. Archived is one flag per milestone.
+3. Per-file hidden rows are gone: amount 0, or remove the row.
+4. A saved milestone's name is its key in the encounter log. The name is free when it is made; renaming one that has encounters is refused with the reason.
+5. On a file of one version, a row only the other version has is ignored: it is not a target and does not hold completion back.
+6. Plan steps on the first cut: Wild Encounter in all its modes, and Wait. The eggs follow the research (R5). Static and Chained Encounter are refused as steps with the reason until then.
+7. A party a step cannot run with (no free slot for an egg, no Pickup holder) is refused at Start with the reason.
+8. On returning to a training step the level target carries on; a complete step is skipped.
+9. A plan runs until cancelled unless it is set to end when every shiny-hunt step is complete.
+10. Saved plans in the old shape are dropped: only local data has any.
+11. The seeded read-only milestones can be ticked, archived and attached.
+12. "Plan" is HGSS only, and Ruby and Sapphire cards carry no markers: they have no clock.
+
+Open, his: may a plan save the game by itself when it arrives at an egg step? Without it the egg hunt's reset undoes the wild step's levels and Pickup items.
+
+## Task split
+
+| Task | Issue | Size | After |
+|---|---|---|---|
+| R1 the saved milestone gains a location, game files and archived; seed and attach endpoints | #613 | M | none |
+| R5 research: switching a plan between hunts of different types | #614 | S | none |
+| R2 the hunt reads the saved milestone: target, completion, anchor, Start checks, launch list | #615 | L | R1 |
+| R4 the counts card: markers, hidden-now row, header counts, no footer | #616 | S | R1 |
+| R3 the Milestone Editor from game data, file checkboxes, archive, attach; the launch form lists saved milestones | #617 | L | R1, R4 |
+| R6a the plan model: steps are whole hunts with time rules; storage, endpoints, the "Plan" action | #618 | M | R1 |
+| R6b the plan's run: a parent event that ends one step at its safe point and starts the next | #619 | L | R2, R5, R6a |
+| R7 the Plan Editor tab, the "Plan" action in Bot Control, a card from a plan | #620 | M | R3, R6a |
+| R8 QA scenarios for the rework | #621 | L | R2, R3; the plan scenarios after R6b and R7 |
+| R9 docs: the guide, the architecture doc, decisions, the feature doc's requirement rows | #622 | S | all others |
+
+R1 and R5 start at once. After R1: R2, R4 and R6a have disjoint files. `types/api.ts` and `apiClient.ts` go R4, then R3, then R7. Between R1 and R3 the dashboard calls endpoints that are gone; nothing is QA'd until R1 to R4 are in.
