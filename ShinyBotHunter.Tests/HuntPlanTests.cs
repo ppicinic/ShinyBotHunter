@@ -45,13 +45,15 @@ namespace ShinyBotHunter.Tests
 
         private static Plan Steps(NewEventArguments @default, params PlanStep[] rules) => new(GameFlavor.HGSS, "Johto nights", [.. rules], @default, false);
 
+        private static readonly HashSet<NewEventArguments> NoneDone = [];
+
         [Fact]
         public void PlanPick_FirstMatchingRuleWins()
         {
             var first = Step([SlotCondition.Night], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), first, Step([SlotCondition.Night], [], Wild("1-5 Route 31")));
 
-            Assert.Same(first.Arguments, plan.Pick(DayOfWeek.Monday, 21));
+            Assert.Same(first.Arguments, plan.Pick(DayOfWeek.Monday, 21, NoneDone));
         }
 
         [Fact]
@@ -59,7 +61,7 @@ namespace ShinyBotHunter.Tests
         {
             var plan = Steps(Wild("2-1 Route 32"), Step([SlotCondition.Night], [], Wild("1-4 Route 30")));
 
-            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 12));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 12, NoneDone));
         }
 
         [Fact]
@@ -68,8 +70,8 @@ namespace ShinyBotHunter.Tests
             var friday = Step([], [DayOfWeek.Friday], Wild("Union Cave"));
             var plan = Steps(Wild("2-1 Route 32"), friday);
 
-            Assert.Same(friday.Arguments, plan.Pick(DayOfWeek.Friday, 12));
-            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Thursday, 12));
+            Assert.Same(friday.Arguments, plan.Pick(DayOfWeek.Friday, 12, NoneDone));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Thursday, 12, NoneDone));
         }
 
         [Fact]
@@ -78,8 +80,8 @@ namespace ShinyBotHunter.Tests
             var any = Step([], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), any);
 
-            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Sunday, 0));
-            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Wednesday, 12));
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Sunday, 0, NoneDone));
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Wednesday, 12, NoneDone));
         }
 
         [Theory]
@@ -92,7 +94,21 @@ namespace ShinyBotHunter.Tests
             var morning = Step([SlotCondition.Morning], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), morning);
 
-            Assert.Same(matches ? morning.Arguments : plan.Default, plan.Pick(DayOfWeek.Monday, hour));
+            Assert.Same(matches ? morning.Arguments : plan.Default, plan.Pick(DayOfWeek.Monday, hour, NoneDone));
+        }
+
+        // Default 8: a done step is skipped, so a done matching rule falls to the next matching rule, then to the default, and
+        // with the default also done nothing is open.
+        [Fact]
+        public void PlanPick_DoneRuleSkipped_ThenDefault_ThenNull()
+        {
+            var first = Step([SlotCondition.Night], [], Wild("1-4 Route 30"));
+            var second = Step([SlotCondition.Night], [], Wild("1-5 Route 31"));
+            var plan = Steps(Wild("2-1 Route 32"), first, second);
+
+            Assert.Same(second.Arguments, plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments }));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments, second.Arguments }));
+            Assert.Null(plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments, second.Arguments, plan.Default }));
         }
 
         [Fact]

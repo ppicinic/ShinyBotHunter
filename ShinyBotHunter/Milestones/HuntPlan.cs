@@ -26,12 +26,13 @@ namespace ShinyBotHunter.Milestones
             _ => SlotCondition.Night
         };
 
-        // The first rule whose times and weekdays match, else the default.
-        public NewEventArguments Pick(DayOfWeek weekday, int hour)
+        // The first rule whose times and weekdays match and whose step is not done, else the default if it is not done, else
+        // null. Done holds the steps whose hunt ended on its own in this run.
+        public NewEventArguments? Pick(DayOfWeek weekday, int hour, IReadOnlySet<NewEventArguments> done)
         {
             var time = TimeOfDay(hour);
-            return Rules.FirstOrDefault(r => (r.Times.Count == 0 || r.Times.Contains(time)) && (r.Weekdays.Count == 0 || r.Weekdays.Contains(weekday)))
-                ?.Arguments ?? Default;
+            return Rules.FirstOrDefault(r => (r.Times.Count == 0 || r.Times.Contains(time)) && (r.Weekdays.Count == 0 || r.Weekdays.Contains(weekday))
+                && !done.Contains(r.Arguments))?.Arguments ?? (done.Contains(Default) ? null : Default);
         }
     }
 }
