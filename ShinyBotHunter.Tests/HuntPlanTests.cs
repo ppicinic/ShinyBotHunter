@@ -20,12 +20,6 @@ namespace ShinyBotHunter.Tests
 {
     public class HuntPlanTests
     {
-        private static readonly HashSet<string> None = [];
-
-        private static HuntPlan Plan(params PlanRule[] rules) => new(GameFlavor.HGSS, "Johto", "36-land", [.. rules]);
-
-        private static PlanRule Rule(string milestone, SlotCondition[] times, DayOfWeek[] weekdays) => new([.. times], [.. weekdays], milestone);
-
         [Theory]
         [InlineData(3, SlotCondition.Night)]
         [InlineData(4, SlotCondition.Morning)]
@@ -37,95 +31,7 @@ namespace ShinyBotHunter.Tests
         [InlineData(0, SlotCondition.Night)]
         public void TimeOfDay_Boundaries(int hour, SlotCondition expected)
         {
-            Assert.Equal(expected, HuntPlan.TimeOfDay(hour));
-        }
-
-        [Fact]
-        public void Pick_FirstMatchingRuleWins()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("33-land", [SlotCondition.Night], []));
-
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 21, None));
-        }
-
-        [Fact]
-        public void Pick_NoRuleMatches_IsTheDefault()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []));
-
-            Assert.Equal("36-land", plan.Pick(DayOfWeek.Monday, 12, None));
-        }
-
-        [Fact]
-        public void Pick_Weekday_MatchesOnlyItsDay()
-        {
-            var plan = Plan(Rule("Union Cave", [], [DayOfWeek.Friday]));
-
-            Assert.Equal("Union Cave", plan.Pick(DayOfWeek.Friday, 12, None));
-            Assert.Equal("36-land", plan.Pick(DayOfWeek.Thursday, 12, None));
-        }
-
-        [Fact]
-        public void Pick_EmptySets_MatchAny()
-        {
-            var plan = Plan(Rule("34-land", [], []));
-
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Sunday, 0, None));
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Wednesday, 12, None));
-        }
-
-        [Fact]
-        public void Pick_CompleteRule_IsSkipped()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("33-land", [SlotCondition.Night], []));
-
-            Assert.Equal("33-land", plan.Pick(DayOfWeek.Monday, 21, new HashSet<string> { "34-land" }));
-            Assert.Equal("36-land", plan.Pick(DayOfWeek.Monday, 21, new HashSet<string> { "34-land", "33-land" }));
-        }
-
-        [Fact]
-        public void Pick_EveryMilestoneComplete_IsNull()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []));
-
-            Assert.Null(plan.Pick(DayOfWeek.Monday, 21, new HashSet<string> { "36-land", "34-land" }));
-            Assert.Null(plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land", "34-land" }));
-        }
-
-        [Fact]
-        public void Pick_DefaultCompleteNoRuleMatches_IsFirstOpenRule()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("Union Cave", [], [DayOfWeek.Friday]),
-                Rule("33-land", [SlotCondition.Night], []));
-
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land" }));
-            Assert.Equal("Union Cave", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land", "34-land" }));
-        }
-
-        [Fact]
-        public void Pick_DefaultComplete_MatchingOpenRuleBeatsStandIn()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("Union Cave", [], [DayOfWeek.Friday]));
-
-            Assert.Equal("Union Cave", plan.Pick(DayOfWeek.Friday, 12, new HashSet<string> { "36-land" }));
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 12, new HashSet<string> { "36-land" }));
-        }
-
-        [Fact]
-        public void Pick_DefaultComplete_MatchingOpenRule_StillPicked()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []));
-
-            Assert.Equal("34-land", plan.Pick(DayOfWeek.Monday, 21, new HashSet<string> { "36-land" }));
-        }
-
-        [Fact]
-        public void Milestones_DefaultFirst_Distinct()
-        {
-            var plan = Plan(Rule("34-land", [SlotCondition.Night], []), Rule("36-land", [SlotCondition.Morning], []),
-                Rule("34-land", [], [DayOfWeek.Friday]));
-
-            Assert.Equal(["36-land", "34-land"], plan.Milestones);
+            Assert.Equal(expected, Plan.TimeOfDay(hour));
         }
 
         private static NewEventArguments Wild(string milestone) => new()
@@ -139,13 +45,15 @@ namespace ShinyBotHunter.Tests
 
         private static Plan Steps(NewEventArguments @default, params PlanStep[] rules) => new(GameFlavor.HGSS, "Johto nights", [.. rules], @default, false);
 
+        private static readonly HashSet<NewEventArguments> NoneDone = [];
+
         [Fact]
         public void PlanPick_FirstMatchingRuleWins()
         {
             var first = Step([SlotCondition.Night], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), first, Step([SlotCondition.Night], [], Wild("1-5 Route 31")));
 
-            Assert.Same(first.Arguments, plan.Pick(DayOfWeek.Monday, 21));
+            Assert.Same(first.Arguments, plan.Pick(DayOfWeek.Monday, 21, NoneDone));
         }
 
         [Fact]
@@ -153,7 +61,7 @@ namespace ShinyBotHunter.Tests
         {
             var plan = Steps(Wild("2-1 Route 32"), Step([SlotCondition.Night], [], Wild("1-4 Route 30")));
 
-            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 12));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 12, NoneDone));
         }
 
         [Fact]
@@ -162,8 +70,8 @@ namespace ShinyBotHunter.Tests
             var friday = Step([], [DayOfWeek.Friday], Wild("Union Cave"));
             var plan = Steps(Wild("2-1 Route 32"), friday);
 
-            Assert.Same(friday.Arguments, plan.Pick(DayOfWeek.Friday, 12));
-            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Thursday, 12));
+            Assert.Same(friday.Arguments, plan.Pick(DayOfWeek.Friday, 12, NoneDone));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Thursday, 12, NoneDone));
         }
 
         [Fact]
@@ -172,8 +80,8 @@ namespace ShinyBotHunter.Tests
             var any = Step([], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), any);
 
-            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Sunday, 0));
-            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Wednesday, 12));
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Sunday, 0, NoneDone));
+            Assert.Same(any.Arguments, plan.Pick(DayOfWeek.Wednesday, 12, NoneDone));
         }
 
         [Theory]
@@ -186,7 +94,21 @@ namespace ShinyBotHunter.Tests
             var morning = Step([SlotCondition.Morning], [], Wild("1-4 Route 30"));
             var plan = Steps(Wild("2-1 Route 32"), morning);
 
-            Assert.Same(matches ? morning.Arguments : plan.Default, plan.Pick(DayOfWeek.Monday, hour));
+            Assert.Same(matches ? morning.Arguments : plan.Default, plan.Pick(DayOfWeek.Monday, hour, NoneDone));
+        }
+
+        // Default 8: a done step is skipped, so a done matching rule falls to the next matching rule, then to the default, and
+        // with the default also done nothing is open.
+        [Fact]
+        public void PlanPick_DoneRuleSkipped_ThenDefault_ThenNull()
+        {
+            var first = Step([SlotCondition.Night], [], Wild("1-4 Route 30"));
+            var second = Step([SlotCondition.Night], [], Wild("1-5 Route 31"));
+            var plan = Steps(Wild("2-1 Route 32"), first, second);
+
+            Assert.Same(second.Arguments, plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments }));
+            Assert.Same(plan.Default, plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments, second.Arguments }));
+            Assert.Null(plan.Pick(DayOfWeek.Monday, 21, new HashSet<NewEventArguments> { first.Arguments, second.Arguments, plan.Default }));
         }
 
         [Fact]
@@ -340,24 +262,6 @@ namespace ShinyBotHunter.Tests
             var rs = RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())).Capabilities;
 
             Assert.Equal("RS has no in-game clock, so it has no plans.", PhaseMetadataController.PlanError(Steps(WaitStep()) with { Game = GameFlavor.RS }, rs));
-        }
-
-        // E1: the old Wild Encounter parameter is refused after the clock check, before anything is read.
-        [Fact]
-        public async Task WildEncounterWithAPlan_IsRefused()
-        {
-            var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
-            var service = new BotService(settings, new FakeBotFactory(settings, Task.CompletedTask, null), null!, null!, null!, null!);
-            await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
-            var args = Wild("1-4 Route 30");
-            args.HuntPlan = "Johto nights";
-
-            var result = await new BotController(service).StartAction(0, args);
-
-            var content = Assert.IsType<ContentResult>(result.Result);
-            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
-            Assert.Equal("A Wild Encounter no longer takes a plan; start the Plan action with it.", content.Content);
-            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
         }
 
         // The in-use check reads only the entry's event, bot and name, so the event never runs.

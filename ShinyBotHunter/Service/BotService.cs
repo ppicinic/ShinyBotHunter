@@ -295,7 +295,29 @@ namespace ShinyBotHunter.Service
 
         internal async Task<Dictionary<int, EmulatorState>> StartWildEncounter(NewEventArguments args, int pos)
         {
-            IBot bot = slots.Entries[pos].Bot!;
+            var (leg, anchor, lead) = await BuildWildLegAsync(slots.Entries[pos].Bot!, args);
+            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor);
+            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
+            if (lead is not null)
+            {
+                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
+                foreach (string line in lines)
+                {
+                    Console.WriteLine($"[BotService] {line}");
+                }
+                slots.Entries[pos].GameState!.SpeedLines = lines;
+                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+            }
+            slots.Entries[pos].GameState!.State.Push(EventState.Init);
+            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, leg.PhaseName, removeWhenDone: false);
+
+            return GetBotDashboardState();
+        }
+
+        // Every refusal a Wild Encounter Start makes, and its leg and anchor; shared by the Wild Encounter Start and each Wild
+        // Encounter step of a plan. The lead is read only where the game has the wild run checks.
+        private async Task<(EventLeg Leg, MilestoneAnchor? Anchor, PokemonData? Lead)> BuildWildLegAsync(IBot bot, NewEventArguments args)
+        {
             GameCapabilities caps = bot.Profile.Capabilities;
             // A greyed choice is refused with its reason before anything is read.
             var ruledOut = DisabledByCapabilities(caps);
@@ -306,18 +328,14 @@ namespace ShinyBotHunter.Service
                     throw new ArgumentException(reason);
                 }
             }
-            HuntPlan? plan = null;
-            if (args.HuntPlan is not null)
+            Milestone? generated = RefuseMilestone(bot, args.PhaseName, args.EncounterType);
+            // The Plan Editor offers every milestone of the game, so a step's is checked against the file here, as the launch list is.
+            // As in Located, the saved milestone is looked up only when there is generated data and a version to read it with.
+            if (args.PhaseName is { } phaseName && bot.Profile.Milestones is not null && romInfoService.GetByHandle(bot.GameFileName)?.Version is not null
+                && OffFileRefusal(provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(bot.GameFlavor, phaseName), bot.GameFileName) is { } offFile)
             {
-                if (!caps.HasHuntPlans)
-                {
-                    throw new ArgumentException($"Hunt plans need the in-game clock; {bot.GameFlavor} has none.");
-                }
-                throw new ArgumentException("A Wild Encounter no longer takes a plan; start the Plan action with it.");
+                throw new ArgumentException(offFile);
             }
-            // With a plan the form's milestone is ignored, and each of the plan's is refused as the form's would be (binding answer 6).
-            Milestone? generated = plan is null ? RefuseMilestone(bot, args.PhaseName, args.EncounterType) : null;
-            var planMilestones = plan?.Milestones.Select(m => (Milestone: m, Generated: RefuseMilestone(bot, m, args.EncounterType))).ToList();
             // A ROM whose address table has no per-game part cannot train; refused before anything is read (FR-12).
             if ((args.TrainType ?? TrainType.None) != TrainType.None && bot.Profile.TrainingRefusal?.Invoke(bot.Addresses) is { } refusal)
             {
@@ -332,71 +350,54 @@ namespace ShinyBotHunter.Service
             {
                 lead = await WildRefusalAsync(bot);
             }
-            PokemonState? party = await RefuseFromFreshPartyAsync(slots.Entries[pos].Bot!, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
-            EventLeg leg;
-            MilestoneAnchor? anchor;
-            HuntPlanRun? run = null;
-            if (plan is null)
-            {
-                leg = ValidateAndBuildLeg(args.ToLeg(), slots.Entries[pos].Bot!.GameFileName, slots.Entries[pos].Bot!.GameFlavor);
-                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
-                (leg, anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
-            }
-            else
-            {
-                var planLegs = planMilestones!.Select(p =>
-                {
-                    NewEventLegArguments legArgs = args.ToLeg();
-                    legArgs.PhaseName = p.Milestone;
-                    return (p.Generated, Leg: ValidateAndBuildLeg(legArgs, bot.GameFileName, bot.GameFlavor));
-                }).ToList();
-                var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
-                var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, planLegs.Select(p => (p.Leg.PhaseName, p.Generated)), party);
-                var reach = new List<(string Name, MilestoneAnchor? Anchor)>();
-                var stops = new Dictionary<string, (EventLeg Leg, MilestoneAnchor Anchor, string Name)>();
-                foreach (var (stopGenerated, planLeg) in planLegs)
-                {
-                    var (stopLeg, stopAnchor) = AnchoredLeg(bot, planLeg, stopGenerated, gameFile, trainerId, caught);
-                    string name = stopLeg.PhaseName;
-                    reach.Add((name, stopAnchor));
-                    if (stopAnchor is not null)
-                    {
-                        stops[stopLeg.PhaseName] = (stopLeg, stopAnchor, name);
-                    }
-                }
-                int map = await bot.Overworld.GetMapIdAsync(CancellationToken.None);
-                var (x, y) = await bot.Overworld.GetPositionAsync(CancellationToken.None);
-                Direction facing = await bot.Overworld.GetFacingAsync(CancellationToken.None);
-                if (await HuntPlanRun.ReachRefusalAsync(plan.Name, bot.Profile.Pathfinding!, (map, x, y, facing), reach) is { } unreachable)
-                {
-                    throw new InvalidOperationException(unreachable);
-                }
-                run = new HuntPlanRun(plan, stops);
-                foreach (var (stopLeg, stopAnchor, name) in stops.Values)
-                {
-                    Console.WriteLine($"[BotService] Plan {plan.Name}: {name} at map {stopAnchor.Anchor.Map} ({stopAnchor.Anchor.X}, {stopAnchor.Anchor.Y}), {HowHunted(stopLeg.EncounterParams)}");
-                }
-                // The first decision walks to the clock's pick, so no Init walk runs.
-                (leg, anchor) = (stops[plan.Default].Leg, null);
-            }
+            PokemonState? party = await RefuseFromFreshPartyAsync(bot, args.EncounterType == EncounterType.Headbutt, args.Pickup == true);
+            EventLeg leg = ValidateAndBuildLeg(args.ToLeg(), bot.GameFileName, bot.GameFlavor);
+            var gameFile = await provider.GetRequiredService<MongoGameFileDao>().LoadAsync(bot.GameFileName);
+            var (trainerId, caught) = await HeadbuttTreeInputsAsync(bot, gameFile, [(leg.PhaseName, generated)], party);
+            (leg, MilestoneAnchor? anchor) = AnchoredLeg(bot, leg, generated, gameFile, trainerId, caught);
+            return (leg, anchor, lead);
+        }
 
-            var wildPokemonEvent = new OrchestratorEvent(provider, leg.EncounterParams, anchor, run);
-            slots.Entries[pos].GameState = NewGameStateForLeg(pos, leg);
-            if (lead is not null)
+        // The Plan action (R6b): each step is refused at Start as its own action's Start would refuse it, named by the step
+        // (default 7). The run reads the clock first thing, so nothing is read for the pick here.
+        internal async Task<Dictionary<int, EmulatorState>> StartPlanAsync(NewEventArguments args, int pos)
+        {
+            IBot bot = slots.Entries[pos].Bot!;
+            Plan plan = await provider.GetRequiredService<MongoHuntPlanDao>().LoadAsync(bot.GameFlavor, args.HuntPlan!)
+                ?? throw new ArgumentException($"No hunt plan named {args.HuntPlan}.");
+            var steps = new List<(NewEventArguments Body, string Name, EventLeg? Leg, MilestoneAnchor? Anchor)>();
+            foreach (var (body, label) in plan.Rules.Select((r, i) => (r.Arguments, $"Rule {i + 1}")).Append((plan.Default, "The default")))
             {
-                IReadOnlyList<string> lines = SpeedLinesAtRun(lead);
-                foreach (string line in lines)
+                if (body.EventName == Plan.Wait)
                 {
-                    Console.WriteLine($"[BotService] {line}");
+                    steps.Add((body, Plan.Wait, null, null));
+                    continue;
                 }
-                slots.Entries[pos].GameState!.SpeedLines = lines;
-                slots.Entries[pos].GameState!.LeadLevel = lead.Level;
+                var (leg, anchor, _) = await RefusedAsStepAsync(label, () => BuildWildLegAsync(bot, body));
+                steps.Add((body, leg.PhaseName, leg, anchor));
             }
-            slots.Entries[pos].GameState!.State.Push(EventState.Init);
-            runner.StartEvent(pos, slots.Entries[pos], wildPokemonEvent, slots.Entries[pos].GameState!, plan is null ? leg.PhaseName : PlanEventName(plan.Name), removeWhenDone: false);
-
+            var state = new GameState { Profile = bot.Profile, BotService = this, Bot = bot };
+            state.State.Push(EventState.Init);
+            slots.Entries[pos].GameState = state;
+            runner.StartEvent(pos, slots.Entries[pos], new PlanEvent(provider, plan, steps), state, PlanEventName(plan.Name), removeWhenDone: false);
             return GetBotDashboardState();
+        }
+
+        // A step's refusal with the step's label in front, keeping its type and so its 400.
+        internal static async Task<T> RefusedAsStepAsync<T>(string label, Func<Task<T>> build)
+        {
+            try
+            {
+                return await build();
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException($"{label}: {ex.Message}", ex);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException($"{label}: {ex.Message}", ex);
+            }
         }
 
         // Start names a plan's hunt with this, and the in-use check looks for it.
@@ -1081,6 +1082,15 @@ namespace ShinyBotHunter.Service
             _ => "headbutt",
         };
 
+        // FR-15 at Start: a saved milestone that is archived, or ticked only for other files, is not hunted on this one; one ticked
+        // for no file, or a name that is no saved milestone, is.
+        internal static string? OffFileRefusal(PhaseInfo? phase, string gameFileName) => phase switch
+        {
+            { Archived: true } => $"{phase.Name} is archived.",
+            { GameFiles.Count: > 0 } when !phase.GameFiles.Contains(gameFileName) => $"{phase.Name} is not ticked for {gameFileName}.",
+            _ => null,
+        };
+
         internal static string? NoHuntYet(Milestone? generated) => generated is { Huntable: false } ? $"{generated.Name}: no hunt yet." : null;
 
         // FR-15: the milestone picker for the bot's game file, worked out on each request; null when no bot is at the position.
@@ -1304,7 +1314,9 @@ namespace ShinyBotHunter.Service
             {
                 GameState? gameState = x.Value.GameState;
                 EventState top = gameState is not null && gameState.State.TryPeek(out var peeked) ? peeked : EventState.None;
-                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(x.Value.GetName(x.Key), top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
+                // A plan's entry names its current step, "Plan <name>: <step>", once the first clock read has picked one.
+                string name = x.Value.Event is PlanEvent { StepName.Length: > 0 } plan ? $"{x.Value.GetName(x.Key)}: {plan.StepName}" : x.Value.GetName(x.Key);
+                return new KeyValuePair<int, EmulatorState>(x.Key, new EmulatorState(name, top, x.Value.Bot?.GameFlavor ?? gameState?.GameFlavor ?? GameFlavor.HGSS, gameState?.SpeedLines));
             }).ToDictionary();
         }
 

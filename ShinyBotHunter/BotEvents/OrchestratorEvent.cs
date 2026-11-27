@@ -52,17 +52,17 @@ namespace ShinyBotHunter.BotEvents
         private readonly MilestoneAnchor? anchor;
         // True from the Init that walks to the anchor until that walk ends; one orchestrator runs one bot loop in sequence, no lock.
         private bool walkingToAnchor;
-        // The saved plan the hunt moves by (FR-33), or null; its own fields say how they are protected.
-        private readonly HuntPlanRun? plan;
-        // FR-34a with no plan: null until Init's read, true once the milestone was complete at Start or has been told; written
-        // and read only by the orchestrator's one loop, no lock.
+        // A plan's question at the decision: true ends this step's hunt there. Null outside a plan.
+        private readonly Func<GameState, bool>? endsHere;
+        // FR-34a: null until Init's read, true once the milestone was complete at Start or has been told; written and read
+        // only by the orchestrator's one loop, no lock.
         private bool? milestoneTold;
 
-        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null, HuntPlanRun? plan = null)
+        public OrchestratorEvent(IServiceProvider provider, EncounterParams encounterParams, MilestoneAnchor? anchor = null, Func<GameState, bool>? endsHere = null)
         {
             this.encounterParams = encounterParams;
             this.anchor = anchor;
-            this.plan = plan;
+            this.endsHere = endsHere;
             this.provider = provider;
             this.reader = provider.GetRequiredService<PokemonStateReader>();
             this.metadataService = provider.GetRequiredService<PokemonMetadataService>();
@@ -102,11 +102,7 @@ namespace ShinyBotHunter.BotEvents
                     Console.WriteLine($"[Orchestrator] State: {topState}");
                     if(topState == EventState.DecideOverworldAction)
                     {
-                        // With a plan, the step's answer sets walkingToAnchor: true from the walk it starts until that walk ends.
-                        await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken,
-                            plan is null ? null : async s => walkingToAnchor = await plan.StepAsync(s,
-                                m => provider.GetRequiredService<AdminService>().FollowHuntAsync(s.GameFlavor, s.Bot.GameFileName, m), UpdateMilestoneState,
-                                m => TellAsync(provider.GetRequiredService<ShinyAlertService>().NotifyStopAsync, m), cancellationToken));
+                        await DecideOverworldAction(state, reader, metadataService.GetPokemonMoveMetadata, pickupTally, cancellationToken, endsHere);
                         if (state.RatesSeen is { } seen)
                         {
                             phaseInfoService.RecordLive(state.Bot.GameFileName, seen);
@@ -114,7 +110,7 @@ namespace ShinyBotHunter.BotEvents
                     }
                     else if(topState == EventState.Encountering)
                     {
-                        await BuildEncounter(state.Bot, plan?.Stops[state.Milestone].Leg.EncounterParams ?? encounterParams).ExecuteAsync(state, cancellationToken);
+                        await BuildEncounter(state.Bot, encounterParams).ExecuteAsync(state, cancellationToken);
                     }
                     else if(topState == EventState.BattleStart)
                     {
@@ -137,13 +133,7 @@ namespace ShinyBotHunter.BotEvents
                         await (navigatorEvent ??= state.Bot.Profile.CreateNavigatorEvent!(provider)).ExecuteWithResultAsync(state, cancellationToken);
                         if (walkingToAnchor)
                         {
-                            walkingToAnchor = plan?.Pending is { } next
-                                ? AnchorWalkGoesOn(state, plan.Stops[next].Anchor.Anchor, plan.Stops[next].Name)
-                                : AnchorWalkGoesOn(state, anchor!.Anchor, state.Milestone);
-                            if (plan is not null && state.State.Peek() == EventState.DecideOverworldAction)
-                            {
-                                plan.WalkEnded = true;
-                            }
+                            walkingToAnchor = AnchorWalkGoesOn(state, anchor!.Anchor, state.Milestone);
                         }
                     }
                 }
@@ -327,27 +317,11 @@ namespace ShinyBotHunter.BotEvents
                 // MilestoneComplete is not read for these targets.
                 return;
             }
-            if (plan is null)
-            {
-                bool milestoneComplete = await IsCompleteAsync(state, state.Milestone);
-                milestoneTold = await TellIfCompleteAsync(milestoneTold, milestoneComplete,
-                    () => $"{state.Milestone} is complete on {state.Bot.GameFileName}.",
-                    s => TellAsync(provider.GetRequiredService<ShinyAlertService>().NotifyStopAsync, s));
-                state.MilestoneComplete = milestoneComplete;
-                return;
-            }
-            // FR-34: the plan skips a complete stop; read here, at Init, the catch check, the plan's switch of milestone and a
-            // decision that finds no stop left, never on a decision that keeps its milestone.
-            var complete = new HashSet<string>();
-            foreach (string stop in plan.Stops.Keys)
-            {
-                if (await IsCompleteAsync(state, stop))
-                {
-                    complete.Add(stop);
-                }
-            }
-            plan.Complete = complete;
-            state.MilestoneComplete = complete.Contains(state.Milestone);
+            bool milestoneComplete = await IsCompleteAsync(state, state.Milestone);
+            milestoneTold = await TellIfCompleteAsync(milestoneTold, milestoneComplete,
+                () => $"{state.Milestone} is complete on {state.Bot.GameFileName}.",
+                s => TellAsync(provider.GetRequiredService<ShinyAlertService>().NotifyStopAsync, s));
+            state.MilestoneComplete = milestoneComplete;
         }
 
         private async Task<bool> IsCompleteAsync(GameState state, string milestone)
@@ -367,7 +341,7 @@ namespace ShinyBotHunter.BotEvents
         internal static bool IsPhaseComplete(IEnumerable<PhasePokemonInfo> rows, IEnumerable<CaughtPokemon> caughtPokemon)
             => rows.All(r => !MilestoneRows.Short(r, caughtPokemon));
 
-        // FR-34a with no plan: told once when the milestone becomes complete mid-hunt; null is before Init's read, where a
+        // FR-34a: told once when the milestone becomes complete mid-hunt; null is before Init's read, where a
         // milestone already complete counts as told. Static with its inputs passed in, so a test can drive it.
         internal static async Task<bool> TellIfCompleteAsync(bool? told, bool complete, Func<string> sentence, Func<string, Task> tell)
         {
@@ -445,7 +419,7 @@ namespace ShinyBotHunter.BotEvents
 
         // Static with its services passed in, so a test can drive the decisions without the services that open a database.
         internal static async Task DecideOverworldAction(GameState state, PokemonStateReader reader, Func<int, PokemonMoveMetadata> moveMetadata,
-            PickupTally pickupTally, CancellationToken cancellationToken, Func<GameState, Task<bool>>? followPlan = null)
+            PickupTally pickupTally, CancellationToken cancellationToken, Func<GameState, bool>? endsHere = null)
         {
             // Party only. This runs before every encounter and reads nothing but the lead and the
             // battler, so the box dump GetPokemonState performs -- 72KB and ~540 decrypts -- would be
@@ -463,11 +437,6 @@ namespace ShinyBotHunter.BotEvents
             {
                 ChainBlockResult[] repel = await state.Bot.ReadChainBlocksAsync([new(rs.RepelStepCount, [], 2)], ct: cancellationToken);
                 state.RatesSeen = RateInputs.Of(null, null, BitConverter.ToUInt16(repel[0].Bytes, 0), pokeState);
-            }
-            // FR-33: a saved plan's step, on the clock just read; true when it took the stack to walk or to park.
-            if (followPlan is not null && await followPlan(state))
-            {
-                return;
             }
             bool training = state.TrainType != TrainType.None;
 
@@ -490,6 +459,13 @@ namespace ShinyBotHunter.BotEvents
             if (milestoneSatisfied && (!training || state.TrainingComplete))
             {
                 await FinishAsync(state);
+                return;
+            }
+            // A plan ends this step's hunt here, on the clock just read, before a heal trip or a Pickup visit: nothing is in
+            // flight at the decision, and nothing is pressed or walked, since the next step walks to its own anchor.
+            if (endsHere is not null && endsHere(state))
+            {
+                state.SwapState(EventState.Complete);
                 return;
             }
             if (state.OriginalBattleMode == BattleMode.Flee || CanFightNextEncounter(state, pokeState, lead, moveMetadata))
