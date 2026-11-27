@@ -215,3 +215,24 @@ export function buildLegBody(params: Record<string, string>): NewEventLegArgumen
   }
   return leg
 }
+
+/** A plan step's body: the action's Start body built from only the fields the form shows, since the plan's save refuses a
+ *  conditional sent while its condition is unmet (a Spin step's seeded ranges). */
+export function stepArguments(schema: EventArgumentOptions, params: Record<string, string>): { eventName: string } & Record<string, unknown> {
+  const visible = visibleParamNames(schema, params)
+  const shown = Object.fromEntries(Object.entries(params).filter(([key]) => visible.has(key)))
+  return { eventName: schema.name, ...buildLegBody(shown) }
+}
+
+/** A saved step's body back into the form's params: the schema's seeds, overwritten by each field the body sets. The body is
+ *  camelCase with null for every unset field. */
+export function paramsFromArguments(schema: EventArgumentOptions, args: Record<string, unknown>): Record<string, string> {
+  const params = initialParamsFor(schema)
+  for (const param of Object.keys(params)) {
+    const key = Object.keys(args).find((k) => k.toLowerCase() === param.toLowerCase())
+    const value = key === undefined ? null : args[key]
+    if (value === null || value === undefined) continue
+    params[param] = String(value)
+  }
+  return params
+}
