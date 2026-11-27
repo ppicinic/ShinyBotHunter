@@ -24,18 +24,22 @@ export function ActionParamFields({
   party,
   onReloadParty,
   partyLoading,
-  games
+  games,
+  offerIncompleteOnly = true
 }: {
   schema: EventArgumentOptions
   params: Record<string, string>
   onChange: (param: string, value: string) => void
   availablePhases: PickerMilestone[]
   party: PartySlotInfo[] | undefined
-  onReloadParty: () => void
+  // Absent where there is no bot, so no party to reload.
+  onReloadParty?: () => void
   partyLoading: boolean
   // Detected ROMs, for schemas whose entries pick a game (the starter hunt's legs do). When absent,
   // GameName falls through to a plain text input like any other parameter.
   games?: GameRomInfo[]
+  // False in the Plan Editor, where no milestone reads as complete.
+  offerIncompleteOnly?: boolean
 }): JSX.Element {
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   // A milestone with a location is a wild one, so only an encounter form (Wild Encounter, a chain's leg) offers it;
@@ -90,10 +94,12 @@ export function ActionParamFields({
                   ))}
                 </select>
               </div>
-              <label className="flex items-center gap-1 text-xs text-slate-500">
-                <input type="checkbox" checked={incompleteOnly} onChange={(e) => setIncompleteOnly(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
-                Incomplete only
-              </label>
+              {offerIncompleteOnly && (
+                <label className="flex items-center gap-1 text-xs text-slate-500">
+                  <input type="checkbox" checked={incompleteOnly} onChange={(e) => setIncompleteOnly(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
+                  Incomplete only
+                </label>
+              )}
             </div>
           ) : param === 'TargetType' ? (
             <select
@@ -220,7 +226,7 @@ export function ActionParamFields({
                     className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
                   />
                 )}
-                {cp.name === 'SwitchSlot' && (
+                {cp.name === 'SwitchSlot' && onReloadParty && (
                   <button
                     type="button"
                     onClick={onReloadParty}
