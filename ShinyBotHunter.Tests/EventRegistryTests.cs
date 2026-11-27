@@ -62,7 +62,7 @@ namespace ShinyBotHunter.Tests
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
 
-            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg", "HGSS Static Encounter"], names);
+            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg", "HGSS Static Encounter", "Plan"], names);
         }
 
         [Fact]
@@ -93,16 +93,55 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task IdleHgssBot_WildEncounterOffersHuntPlan()
+        public async Task IdleHgssBot_PlanTakesTheHuntPlan()
         {
             var service = Build();
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
 
             var actions = await service.GetBotActionsAsync(0);
 
-            Assert.Equal(["TrainType", "HuntPlan"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
             Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Chained Encounter").LegParameters!.OptionalParameters!);
-            Assert.Equal(["TrainType"], EventRegistry.Get("Wild Encounter").Options.OptionalParameters!);
+            Assert.Equal(["HuntPlan"], actions.Single(a => a.Name == "Plan").RequiredParameters!);
+        }
+
+        [Fact]
+        public void PlanChoices_AreTheSavedNamesSorted()
+        {
+            EventArgumentOptions plan = EventRegistry.PlanChoices(["Pickup days", "Johto nights"]);
+
+            Assert.Equal(["HuntPlan"], plan.Choices!.Keys);
+            Assert.Equal(["Johto nights", "Pickup days"], plan.Choices["HuntPlan"]);
+            Assert.Null(EventRegistry.Get("Plan").Options.Choices);
+        }
+
+        [Fact]
+        public void PlanEntry_NeedsTheClock()
+        {
+            EventRegistration entry = EventRegistry.Get("Plan");
+
+            Assert.Equal(nameof(GameCapabilities.HasHuntPlans), entry.Requires?.Capability);
+            Assert.False(entry.OwnsEmulators);
+        }
+
+        [Fact]
+        public async Task StartPlan_RefusedUntilTheRunIsBuilt()
+        {
+            var service = Build();
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var result = await new BotController(service).StartAction(0, new NewEventArguments { EventName = "Plan", HuntPlan = "Johto nights" });
+
+            var content = Assert.IsType<ContentResult>(result.Result);
+            Assert.Equal(StatusCodes.Status400BadRequest, content.StatusCode);
+            Assert.Equal("A plan cannot be started yet: running one is not built.", content.Content);
+            Assert.Equal(EventState.None, service.GetBotDashboardState()[0].EventState);
+        }
+
+        [Fact]
+        public void Wait_IsNotARegistryName()
+        {
+            Assert.DoesNotContain(EventRegistry.All, e => e.Name == Milestones.Plan.Wait);
         }
 
         [Fact]

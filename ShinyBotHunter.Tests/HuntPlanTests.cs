@@ -268,6 +268,7 @@ namespace ShinyBotHunter.Tests
         [InlineData("HGSS Primo Egg")]
         [InlineData("HGSS Togepi Egg")]
         [InlineData("HGSS Static Encounter")]
+        [InlineData("Plan")]
         [InlineData("Launch Bot")]
         public void PlanError_StepNotYet_Refused(string action)
         {
