@@ -142,6 +142,8 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(body)
+    // The summary row grows when its names wrap to another line
+    if (summaryRef.current) observer.observe(summaryRef.current)
     return () => observer.disconnect()
   }, [rows.length, hiddenGroups.length])
 

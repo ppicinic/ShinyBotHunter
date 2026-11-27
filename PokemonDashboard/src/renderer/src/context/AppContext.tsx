@@ -91,6 +91,13 @@ export function applyEncounters(
   return subs.map((sub) => (receivesPush(sub, response, game, phase) ? { ...sub, encounterData: response } : sub))
 }
 
+// A re-read's rows and location, which the card pairs by position, so both come from the one response. The counts stay the
+// push's, so a late response cannot roll them back.
+export function applyReread(subs: SubscriptionState[], target: SubscriptionState, response: PhaseInfoResponse): SubscriptionState[] {
+  const { phaseInfo, location, live, timeOfDay } = response
+  return subs.map((sub) => (sameSubscription(sub, target) ? { ...sub, phaseInfo, location, live, timeOfDay } : sub))
+}
+
 // The milestones with a location a push reaches: their shares change at the first encounter of a new time of day, so they are read again
 export function milestonesToReread(
   subs: SubscriptionState[],
@@ -133,14 +140,12 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     subscriptionsRef.current = subscriptions
   }, [subscriptions])
 
-  // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing. The counts stay the
-  // push's, so a late response cannot roll them back.
+  // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing
   const rereadMilestones = (apiUrl: string, targets: SubscriptionState[]): void => {
     targets.forEach(async (target) => {
       const result = await fetchWrappedPhaseInfo(apiUrl, target.game, target.phase, target.gameName)
       if (result !== null && result !== 'notFound') {
-        const { location, live, timeOfDay } = result
-        setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, target) ? { ...sub, location, live, timeOfDay } : sub)))
+        setSubscriptions((prev) => applyReread(prev, target, result))
       }
     })
   }
