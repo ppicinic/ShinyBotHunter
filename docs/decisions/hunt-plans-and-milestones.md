@@ -122,3 +122,18 @@ The walk stops as a Ruby and Sapphire hunt stops on a trainer (#604; research #6
 ### Consequences
 - A second unbeaten trainer on the same walk is a new stop with its own message.
 - A one-time story scene on a walk (Route 32's "Wait up!" NPC; Lyra's gatehouse scene on map 97 on the SoulSilver save) is not a trainer stop: it ends in the navigator's timeout and a Waiting with no message. Whether it should share the stop is open for the owner.
+
+## A one-time story scene on a walk is not a stop of its own
+
+Status: Accepted
+Date: 2026-11-26 (owner)
+
+### Context
+The trainer stop left one question open: whether a one-time story scene met on an HGSS navigator walk (Route 32's "Wait up!" NPC; Lyra's gatehouse scene on map 97 on the SoulSilver save) should send a Discord message and park in Waiting as a trainer's challenge does. Asked on 2026-11-26, the owner: "Leave as is".
+
+### Decision
+Nothing is built. Such a walk ends in the navigator's timeout and a Waiting with no message, as before.
+
+### Consequences
+- The operator plays a save past its one-time scenes before a hunt walks through them.
+- The QA scenarios keep their workarounds: Route 32's anchor set on the save's tile (#602), and `hgss-plan-weekday ss` cancelled at midnight's walk line.
