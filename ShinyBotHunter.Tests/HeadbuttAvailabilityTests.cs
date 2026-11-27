@@ -357,12 +357,11 @@ namespace ShinyBotHunter.Tests
 
             var result = await new BotController(service).StartAction(0, args);
 
-            // The stub provider has no game file store for the link check, so it fails after the guards.
-            var content = Assert.IsType<ContentResult>(result.Result);
-            Assert.DoesNotContain(NeedsTrainMode, content.Content);
-            Assert.DoesNotContain(NoPickup, content.Content);
-            Assert.Contains(nameof(Persistence.MongoDb.MongoGameFileDao), content.Content);
+            // Chained reads no game file, so Start passes the guards (one party read) and returns; the chain then fails at once in
+            // OrchestratorEvent's constructor, since the stub provider has no PokemonMetadataService.
+            Assert.IsType<OkObjectResult>(result.Result);
             Assert.Equal(1, bot.PartyReads);
+            await service.CancelBotOrEventAsync(0);
         }
 
         [Fact]

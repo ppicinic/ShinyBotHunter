@@ -47,6 +47,11 @@ namespace ShinyBotHunter.Tests
 
         private static PhaseInfo Phase(string name) => new() { Name = name, Pokemon = [] };
 
+        private static PhaseInfo Located(string name, string location, params PhasePokemonInfo[] rows) => new() { Name = name, Location = location, Pokemon = [.. rows] };
+
+        private static PhasePokemonInfo Row(string name, int species, int amount)
+            => new() { Name = name, SpeciesId = species, Amount = amount, FormCode = name.ToLowerInvariant() };
+
         // UpdateMilestoneState's loop, copied verbatim from OrchestratorEvent.cs at e5c50cd. It is the FR-42 oracle; do not edit it.
         private static bool MainIsComplete(PhaseInfo phaseInfo, List<CaughtPokemon> caughtPokemon)
         {
@@ -91,7 +96,7 @@ namespace ShinyBotHunter.Tests
                         var caught = phase.Pokemon.SelectMany(p => Enumerable.Range(0, Math.Min(caughtCount, p.Amount)).Select(_ => Caught(p.Name, p.SpeciesId, p.FormCode))).ToList();
 
                         bool expected = MainIsComplete(phase, caught);
-                        Assert.Equal(expected, OrchestratorEvent.IsPhaseComplete(phase, caught));
+                        Assert.Equal(expected, OrchestratorEvent.IsPhaseComplete(phase.Pokemon, caught));
                         cases++;
                         complete += expected ? 1 : 0;
                     }
@@ -100,40 +105,36 @@ namespace ShinyBotHunter.Tests
             Assert.True(cases > 40 && complete > 0 && complete < cases, $"{complete} complete in {cases} cases");
         }
 
+        // FR-42: the 20 have no location, no ticked file and are not archived, so each is on every file, hunted where the bot stands.
         [Fact]
-        public void Picker_NoGoalNoSettings_ListsEveryStoredPhase()
+        public void Picker_ProductionPhases_ListedOnEveryFile()
         {
             var phases = ProductionPhases(Metadata());
-            var versions = new[] { (GameFlavor.HGSS, RomVersion.SoulSilver, Hgss[RomVersion.SoulSilver], 398), (GameFlavor.RS, RomVersion.Sapphire, Rs[RomVersion.Sapphire], 226) };
+            var versions = new[] { (GameFlavor.HGSS, Hgss, RomVersion.SoulSilver), (GameFlavor.RS, Rs, RomVersion.Sapphire) };
 
-            foreach (var (game, version, generated, generatedCount) in versions)
+            foreach (var (game, milestones, version) in versions)
             {
                 var stored = phases.Where(p => p.Game == game).ToList();
                 var caught = new List<CaughtPokemon> { Caught("Pidgey", Pidgey, "pidgey") };
 
-                var list = MilestonePicker.List(generated, stored, new GameFile { Id = File }, new HashSet<string>(), caught, null);
+                var list = MilestonePicker.List(stored, milestones, version, new GameFile { Id = File }, caught, null);
 
-                var custom = list.Where(e => e.Modality is null).ToList();
-                Assert.Equal(stored.Select(p => p.Name).Order(), custom.Select(e => e.Id).Order());
-                Assert.All(custom, e =>
+                Assert.Equal(stored.Select(p => p.Name).Order(), list.Select(e => e.Name).Order());
+                Assert.All(list, e =>
                 {
-                    Assert.Equal(e.Id, e.Name);
-                    Assert.True(e.Huntable);
-                    Assert.False(e.Archived);
-                    Assert.Null(e.Order);
+                    Assert.Equal((null, true, null, false), (e.Modality, e.Huntable, e.Anchor, e.AnchorSet));
                     Assert.Equal(MainIsComplete(stored.Single(p => p.Name == e.Name), caught), e.Complete);
                 });
-                Assert.Equal(generatedCount, list.Count(e => e.Modality is not null));
             }
             Assert.Equal(20, phases.Count);
         }
 
         [Fact]
-        public void Picker_NoLabels_ProductionNamesInTheOwnersOrder()
+        public void Picker_ProductionNamesInTheOwnersOrder()
         {
             var hgss = ProductionPhases(Metadata()).Where(p => p.Game == GameFlavor.HGSS).Reverse().ToList();
 
-            var list = MilestonePicker.List([], hgss, new GameFile { Id = File }, new HashSet<string>(), [], null);
+            var list = MilestonePicker.List(hgss, null, null, new GameFile { Id = File }, [], null);
 
             Assert.Equal(
             [
@@ -144,96 +145,51 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void Picker_EveryGeneratedMilestone_PerVersion()
+        public void Picker_GeneratedMilestonesNeverListed()
         {
-            var versions = new[]
-            {
-                (Hgss[RomVersion.HeartGold], 398, 150), (Hgss[RomVersion.SoulSilver], 398, 150),
-                (Rs[RomVersion.Ruby], 226, 46), (Rs[RomVersion.Sapphire], 226, 46)
-            };
-
-            foreach (var (generated, count, huntable) in versions)
-            {
-                var list = MilestonePicker.List(generated, [], new GameFile { Id = File }, new HashSet<string>(), [], null);
-
-                Assert.Equal(count, list.Count);
-                Assert.Equal(generated.Select(m => m.Id).Order(), list.Select(e => e.Id).Order());
-                Assert.Equal(huntable, list.Count(e => e.Huntable));
-            }
+            Assert.Equal(["X"], MilestonePicker.List([Phase("X")], Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null).Select(e => e.Name));
+            Assert.Empty(MilestonePicker.List([], Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null));
         }
 
         [Fact]
-        public void Picker_UnassignedPhase_OnEveryFile_AssignedPhase_OnlyOnItsFiles()
+        public void Picker_GameFiles_TickedFileOnly_NoneTickedEveryFile()
         {
-            PhaseInfo[] phases = [Phase("X"), Phase("Y")];
-            var fileA = new GameFile { Id = "A", Assigned = ["X"] };
-            var fileB = new GameFile { Id = "B" };
-            var assigned = new HashSet<string> { "X" };
+            var x = Phase("X");
+            x.GameFiles = ["A"];
+            PhaseInfo[] phases = [x, Phase("Y")];
 
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, assigned, [], null).Select(e => e.Id));
-            Assert.Equal(["Y"], MilestonePicker.List([], phases, fileB, assigned, [], null).Select(e => e.Id));
-
-            fileA.Assigned.Clear();
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileA, new HashSet<string>(), [], null).Select(e => e.Id));
-            Assert.Equal(["X", "Y"], MilestonePicker.List([], phases, fileB, new HashSet<string>(), [], null).Select(e => e.Id));
+            Assert.Equal(["X", "Y"], MilestonePicker.List(phases, null, null, new GameFile { Id = "A" }, [], null).Select(e => e.Name));
+            Assert.Equal(["Y"], MilestonePicker.List(phases, null, null, new GameFile { Id = "B" }, [], null).Select(e => e.Name));
         }
 
         [Fact]
-        public void Picker_LinkedPhase_LeftOutOnItsFileOnly()
+        public void Picker_Archived_LeftOut_TargetUnchanged()
         {
-            PhaseInfo[] phases = [Phase("1-4 Route 30"), Phase("1-8 Route 32")];
-            var generated = Hgss[RomVersion.SoulSilver];
-            var fileA = new GameFile { Id = "A", Links = [new MilestoneLink("1-4 Route 30", "34-land")] };
-            var fileB = new GameFile { Id = "B" };
-            var unlinked = new GameFile { Id = "A" };
+            var plain = Located("1-4 Route 30", "34-land", Row("Pidgey", Pidgey, 1));
+            var archived = Located("1-4 Route 30", "34-land", Row("Pidgey", Pidgey, 1));
+            archived.Archived = true;
+            var pidgey = new PokemonData { Name = "Pidgey", Species = Pidgey, FormCode = "pidgey" };
 
-            var listA = MilestonePicker.List(generated, phases, fileA, new HashSet<string>(), [], null);
-            var listB = MilestonePicker.List(generated, phases, fileB, new HashSet<string>(), [], null);
-            var before = MilestonePicker.List(generated, phases, unlinked, new HashSet<string>(), [], null);
-
-            Assert.DoesNotContain(listA, e => e.Id == "1-4 Route 30");
-            Assert.Contains(listA, e => e.Id == "1-8 Route 32");
-            Assert.Contains(listA, e => e.Id == "34-land");
-            Assert.Contains(listB, e => e.Id == "1-4 Route 30");
-            Assert.Equal(before, listB);
-            Assert.Equal(before.Where(e => e.Id != "1-4 Route 30"), listA);
-        }
-
-        [Fact]
-        public void Picker_Archived_FlaggedAndNothingElseChanges()
-        {
-            var generated = Hgss[RomVersion.SoulSilver];
-            var milestone = generated.Single(m => m.Id == "34-land");
-            var caught = new List<CaughtPokemon>();
-            var plain = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
-            var archived = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)], Archived = ["34-land"] };
-
-            var before = MilestonePicker.List(generated, [], plain, new HashSet<string>(), caught, null);
-            var after = MilestonePicker.List(generated, [], archived, new HashSet<string>(), caught, null);
-
-            Assert.True(after.Single(e => e.Id == "34-land").Archived);
-            Assert.Equal(before.Single(e => e.Id == "34-land") with { Archived = true }, after.Single(e => e.Id == "34-land"));
-            Assert.Equal(before.Where(e => e.Id != "34-land"), after.Where(e => e.Id != "34-land"));
-            Assert.Equal(MilestoneRows.Build(milestone, plain, caught), MilestoneRows.Build(milestone, archived, caught));
-            var pidgey = new PokemonData { Species = Pidgey, FormCode = "pidgey" };
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", plain, caught, pidgey));
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", archived, caught, pidgey));
+            Assert.Single(MilestonePicker.List([plain], Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null));
+            Assert.Empty(MilestonePicker.List([archived], Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null));
+            Assert.True(PhaseTarget.IsPhaseTarget(MilestoneRows.Counted(plain, Hgss, RomVersion.SoulSilver), [], pidgey));
+            Assert.True(PhaseTarget.IsPhaseTarget(MilestoneRows.Counted(archived, Hgss, RomVersion.SoulSilver), [], pidgey));
         }
 
         [Fact]
         public void Picker_Anchor_GeneratedAndReplaced()
         {
-            var generated = Hgss[RomVersion.SoulSilver];
             var replacement = new Anchor(34, 546, 300, 2, 0);
-            var replaced = new GameFile { Id = File, Anchors = [new MilestoneAnchor("34-land", replacement, Direction.Left)] };
+            var replaced = new GameFile { Id = File, Anchors = [new MilestoneAnchor("1-4 Route 30", replacement, Direction.Left)] };
+            PhaseInfo[] phases = [Located("1-4 Route 30", "34-land"), Phase("X")];
 
-            var before = MilestonePicker.List(generated, [Phase("X")], new GameFile { Id = File }, new HashSet<string>(), [], null);
-            var after = MilestonePicker.List(generated, [Phase("X")], replaced, new HashSet<string>(), [], null);
+            var before = MilestonePicker.List(phases, Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null);
+            var after = MilestonePicker.List(phases, Hgss, RomVersion.SoulSilver, replaced, [], null);
 
-            Assert.Equal((new Anchor(34, 547, 304, 0, 6), false), (before.Single(e => e.Id == "34-land").Anchor, before.Single(e => e.Id == "34-land").AnchorSet));
-            Assert.Equal((replacement, true), (after.Single(e => e.Id == "34-land").Anchor, after.Single(e => e.Id == "34-land").AnchorSet));
-            Assert.Equal((null, false), (before.Single(e => e.Id == "X").Anchor, before.Single(e => e.Id == "X").AnchorSet));
-            Assert.Equal(before.Where(e => e.Id != "34-land"), after.Where(e => e.Id != "34-land"));
+            Assert.Equal((Modality.Land, new Anchor(34, 547, 304, 0, 6), false), (before[0].Modality, before[0].Anchor, before[0].AnchorSet));
+            Assert.Equal((replacement, true), (after[0].Anchor, after[0].AnchorSet));
+            Assert.Equal((null, false), (before[1].Anchor, before[1].AnchorSet));
+            Assert.Equal(before[1], after[1]);
         }
 
         // FR-21 (#567): the owner's HG-Headbutt ID (15613, 35374) wanting Heracross gets the file's Azalea tree; no ID, no anchor.
@@ -242,12 +198,11 @@ namespace ShinyBotHunter.Tests
         {
             const int heracross = 214;
             const uint ownersId = 2318286077;
-            var generated = Hgss[RomVersion.HeartGold];
-            var azalea = generated.Single(m => m.Id == "74-headbutt");
-            var file = new GameFile { Id = File, Entries = [new GoalEntry(heracross, null, 1)] };
+            var azalea = Hgss[RomVersion.HeartGold].Single(m => m.Id == "74-headbutt");
+            PhaseInfo[] phases = [Located("2-3c Azalea Town Headbutt", "74-headbutt", Row("Heracross", heracross, 1))];
 
-            var entry = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], ownersId).Single(e => e.Id == "74-headbutt");
-            var noId = MilestonePicker.List(generated, [], file, new HashSet<string>(), [], null).Single(e => e.Id == "74-headbutt");
+            var entry = Assert.Single(MilestonePicker.List(phases, Hgss, RomVersion.HeartGold, new GameFile { Id = File }, [], ownersId));
+            var noId = Assert.Single(MilestonePicker.List(phases, Hgss, RomVersion.HeartGold, new GameFile { Id = File }, [], null));
 
             Assert.NotNull(entry.Anchor);
             Assert.Equal((HeadbuttTrees.AnchorFor(azalea, ownersId, new HashSet<int> { heracross })!.Anchor, false), (entry.Anchor, entry.AnchorSet));
@@ -255,32 +210,23 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void Picker_Order_LabelsFirstNaturalThenName()
+        public void Picker_Complete_ByItsOwnAmounts()
         {
-            PhaseInfo[] phases = [Phase("Echo"), Phase("Alpha"), Phase("Bravo"), Phase("Delta"), Phase("Charlie")];
-            var file = new GameFile
-            {
-                Id = File,
-                Order = [new MilestoneLabel("Alpha", "1-10"), new MilestoneLabel("Echo", "1-4"), new MilestoneLabel("Bravo", "2-2c")]
-            };
+            PhaseInfo[] phases = [Located("1-4 Route 30", "34-land", Row("Pidgey", Pidgey, 1))];
 
-            var list = MilestonePicker.List([], phases, file, new HashSet<string>(), [], null);
-
-            Assert.Equal(["Echo", "Alpha", "Bravo", "Charlie", "Delta"], list.Select(e => e.Name));
-            Assert.Equal(["1-4", "1-10", "2-2c", null, null], list.Select(e => e.Order));
-        }
-
-        [Fact]
-        public void Picker_Complete_FollowsTheGoal()
-        {
-            var generated = Hgss[RomVersion.SoulSilver];
-            var file = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
-
-            bool Complete(List<CaughtPokemon> caught) => MilestonePicker.List(generated, [], file, new HashSet<string>(), caught, null).Single(e => e.Id == "34-land").Complete;
+            bool Complete(List<CaughtPokemon> caught) => MilestonePicker.List(phases, Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, caught, null).Single().Complete;
 
             Assert.False(Complete([]));
             Assert.False(Complete([Caught("Pidgey", Pidgey, "pidgey", "Pokemon HeartGold")]));
             Assert.True(Complete([Caught("Pidgey", Pidgey, "pidgey")]));
+        }
+
+        [Fact]
+        public void Picker_UnhuntableLocation_HuntableFalse()
+        {
+            var entry = Assert.Single(MilestonePicker.List([Located("Route 30 surf", "34-surf")], Hgss, RomVersion.SoulSilver, new GameFile { Id = File }, [], null));
+
+            Assert.Equal((Modality.Surf, false), (entry.Modality, entry.Huntable));
         }
 
         [Fact]
@@ -297,18 +243,6 @@ namespace ShinyBotHunter.Tests
             Assert.Null(BotService.NoHuntYet(soulSilver.First(m => m.Modality == Modality.Headbutt)));
             Assert.Null(BotService.NoHuntYet(sapphire.First(m => m.Modality == Modality.Land)));
             Assert.Null(BotService.NoHuntYet(null));
-        }
-
-        [Fact]
-        public void GeneratedComplete_ByRows_AndAnUnknownNameIsComplete()
-        {
-            var milestone = Hgss[RomVersion.SoulSilver].Single(m => m.Id == "34-land");
-            var file = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
-
-            Assert.False(OrchestratorEvent.IsGeneratedComplete(milestone, file, []));
-            Assert.True(OrchestratorEvent.IsGeneratedComplete(milestone, file, [Caught("Pidgey", Pidgey, "pidgey")]));
-            Assert.True(OrchestratorEvent.IsGeneratedComplete(milestone, new GameFile { Id = File }, []));
-            Assert.True(OrchestratorEvent.IsGeneratedComplete(null, file, []));
         }
     }
 }

@@ -1,38 +1,38 @@
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Games;
 using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Milestones
 {
-    // One entry of the bot control's milestone picker: a generated milestone, or a custom phase with Modality null and its name as Id.
-    // Anchor is where its hunt starts on this file (GameFile.AnchorFor), null when hunted where the bot stands; AnchorSet is true
-    // when the file stores a replacement.
-    public record PickerMilestone(string Id, string Name, Modality? Modality, bool Huntable, bool Complete, bool Archived, string? Order,
-        Anchor? Anchor, bool AnchorSet);
+    // One entry of the bot control's milestone picker: a saved milestone, with its location's modality on this file's version, or
+    // null with no location. Anchor is where its hunt starts on this file (GameFile.AnchorFor), null when hunted where the bot
+    // stands; AnchorSet is true when the file stores a replacement under its name.
+    public record PickerMilestone(string Name, Modality? Modality, bool Huntable, bool Complete, Anchor? Anchor, bool AnchorSet);
 
     public static class MilestonePicker
     {
-        // FR-15 to FR-18: every generated milestone of the file's version (each has at least one row, since every slot species is
-        // one), and every custom phase assigned to the file or to no file and not linked on it (FR-44); labelled entries first by
-        // label, then by name. A null trainerId gives a headbutt milestone no generated anchor.
-        public static List<PickerMilestone> List(IReadOnlyList<Milestone> generated, IEnumerable<PhaseInfo> phases, GameFile file,
-            IReadOnlySet<string> assignedAnywhere, IReadOnlyList<CaughtPokemon> caught, uint? trainerId)
+        // FR-15: the saved milestones ticked for the file, or for no file, that are not archived, in natural name order. A null
+        // trainerId gives a headbutt milestone no generated anchor.
+        public static List<PickerMilestone> List(IEnumerable<PhaseInfo> phases, IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones,
+            RomVersion? version, GameFile file, IReadOnlyList<CaughtPokemon> caught, uint? trainerId)
         {
             var fileCaught = caught.Where(c => c.GameFileName == file.Id).ToList();
-            var custom = phases.Where(p => (file.Assigned.Contains(p.Name) || !assignedAnywhere.Contains(p.Name)) && file.Links.All(l => l.Phase != p.Name))
-                .Select(p => Entry(file, p.Name, p.Name, null, null, true, OrchestratorEvent.IsPhaseComplete(p, fileCaught), trainerId, caught));
-            var milestones = generated.Select(m => Entry(file, m.Id, m.Name, m.Modality, m, m.Huntable, OrchestratorEvent.IsGeneratedComplete(m, file, caught), trainerId, caught));
-            return custom.Concat(milestones)
-                .OrderBy(e => e.Order is null)
-                .ThenBy(e => e.Order, Natural)
-                .ThenBy(e => e.Name, Natural)
+            return phases.Where(p => !p.Archived && (p.GameFiles.Count == 0 || p.GameFiles.Contains(file.Id)))
+                .Select(p => Entry(p, milestones, version, file, fileCaught, trainerId))
+                .OrderBy(e => e.Name, Natural)
                 .ToList();
         }
 
-        private static PickerMilestone Entry(GameFile file, string id, string name, Modality? modality, Milestone? milestone, bool huntable, bool complete,
-            uint? trainerId, IReadOnlyList<CaughtPokemon> caught)
-            => new(id, name, modality, huntable, complete, file.Archived.Contains(id), file.Order.FirstOrDefault(l => l.Milestone == id)?.Label,
-                file.AnchorFor(id, milestone, trainerId, caught)?.Anchor, file.Anchors.Any(a => a.Milestone == id));
+        private static PickerMilestone Entry(PhaseInfo phase, IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones, RomVersion? version,
+            GameFile file, List<CaughtPokemon> fileCaught, uint? trainerId)
+        {
+            Milestone? located = PhaseTarget.FindMilestone(milestones, version, phase.Location);
+            var rows = MilestoneRows.Counted(phase, milestones, version);
+            return new(phase.Name, located?.Modality, located?.Huntable ?? true, OrchestratorEvent.IsPhaseComplete(rows, fileCaught),
+                file.AnchorFor(phase.Name, located, trainerId, MilestoneRows.Wanted(rows, fileCaught))?.Anchor, file.Anchors.Any(a => a.Milestone == phase.Name));
+        }
 
         private static readonly NaturalComparer Natural = new();
 

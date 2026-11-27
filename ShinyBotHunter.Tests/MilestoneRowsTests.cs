@@ -1,6 +1,6 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
-using ShinyBotHunter.Controllers;
+using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -12,7 +12,7 @@ namespace ShinyBotHunter.Tests
     public class MilestoneRowsTests
     {
         private const int Caterpie = 10, Metapod = 11, Weedle = 13, Kakuna = 14, Pidgey = 16, Rattata = 19, Hoothoot = 163, Ledyba = 165;
-        private const int Spinarak = 167, Unown = 201, Linoone = 264, Whismur = 293, Bidoof = 399, Buizel = 418;
+        private const int Spinarak = 167, Unown = 201;
         private const string File = "Pokemon SoulSilver";
 
         // The species with a female form in the families on Route 30 (production's PokemonMetadata, read-only export, 2026-11-25).
@@ -39,32 +39,90 @@ namespace ShinyBotHunter.Tests
         private static Milestone Route30(RomVersion version) => Hgss[version].Single(m => m.Id == "34-land");
 
         // TID 0, SID 0 and PID 0 give shiny value 0; PID 0x00080000 gives 8, not shiny.
-        private static CaughtPokemon Caught(int species, string formCode, string gameFileName, string phase = "34-land", bool shiny = true) => new()
+        private static CaughtPokemon Caught(string name, int species, string gameFileName, bool shiny = true) => new()
         {
-            Pokemon = new PokemonData { Species = (ushort)species, FormCode = formCode, PID = shiny ? 0u : 0x00080000u },
-            Phase = phase,
+            Pokemon = new PokemonData { Name = name, Species = (ushort)species, FormCode = name.ToLowerInvariant(), PID = shiny ? 0u : 0x00080000u },
+            Phase = "1-4 Route 30",
             GameFileName = gameFileName
         };
 
-        // Today's phase rows, keyed as the phase card keys them, with the species resolved as PhaseInfoService.InitAsync does.
-        private static List<(int Species, string Key, string? FormCode, int Amount)> PhaseRows(string name, PokemonMetadataService metadata)
-            => ProductionPhases.Single(p => p.GameName == "HGSS" && p.Name == name).Pokemon.Select(p =>
-            {
-                var species = p.SpeciesId != 0 ? metadata.GetPokemonMetadata(p.SpeciesId) : metadata.GetPokemonMetadata(p.Name);
-                string? formCode = p.RequireSpecificForm ? (string.IsNullOrEmpty(p.FormCode) ? species.PokeApiName : p.FormCode) : null;
-                return (species.Id, formCode ?? CacheLoadRequest.SpeciesKey(species.Id), formCode, p.Amount);
-            }).ToList();
+        private static PhasePokemonInfo Row(string name, int species, int amount = 1)
+            => new() { Name = name, SpeciesId = species, Amount = amount, FormCode = name.ToLowerInvariant() };
+
+        // Every species of both versions' Route 30, in HeartGold's slot order then SoulSilver's new ones, and Growlithe, which
+        // neither has there.
+        private static PhaseInfo Route30Milestone(string? location = "34-land") => new()
+        {
+            Name = "1-4 Route 30",
+            Location = location,
+            Pokemon =
+            [
+                Row("Caterpie", Caterpie), Row("Metapod", Metapod), Row("Spinarak", Spinarak), Row("Ledyba", Ledyba), Row("Weedle", Weedle),
+                Row("Kakuna", Kakuna), Row("Pidgey", Pidgey), Row("Rattata", Rattata), Row("Hoothoot", Hoothoot), Row("Growlithe", Growlithe)
+            ]
+        };
+
+        private const int Growlithe = 58;
 
         [Fact]
-        public void RuinsOfAlph_UnownLettersAreRows()
+        public void Counted_NoLocation_EveryRow()
         {
-            var goal = new GameFile { Id = File, Entries = GoalPresets.Entries(GoalPreset.LivingDex, RomVersion.SoulSilver, Hgss, Metadata()).ToList() };
+            Assert.Equal(20, ProductionPhases.Count);
+            Assert.All(ProductionPhases, p => Assert.All(new[] { RomVersion.HeartGold, RomVersion.SoulSilver },
+                v => Assert.Equal(p.Pokemon, MilestoneRows.Counted(p, Hgss, v))));
+        }
 
-            var rows = MilestoneRows.Build(Hgss[RomVersion.SoulSilver].Single(m => m.Id == "315-land"), goal, []);
+        [Theory]
+        [InlineData(RomVersion.HeartGold, new[] { Weedle, Kakuna, Ledyba })]
+        [InlineData(RomVersion.SoulSilver, new[] { Caterpie, Metapod, Spinarak })]
+        public void Counted_Route30_LeavesOutTheOtherVersionsSpecies(RomVersion version, int[] leftOut)
+        {
+            var phase = Route30Milestone();
 
-            Assert.Equal(28, rows.Count);
-            Assert.All(rows, r => Assert.Equal((Unown, 1, true), (r.Species, r.Wanted, r.IsTarget)));
-            Assert.Equal(["unown-a", "unown-question"], new[] { rows[0].Key, rows[27].Key });
+            var counted = MilestoneRows.Counted(phase, Hgss, version);
+
+            Assert.Equal(phase.Pokemon.Where(r => !leftOut.Contains(r.SpeciesId)), counted);
+            Assert.Contains(counted, r => r.SpeciesId == Pidgey);
+        }
+
+        [Fact]
+        public void Counted_VersionUnknown_EveryRow()
+        {
+            var phase = Route30Milestone();
+
+            Assert.Equal(phase.Pokemon, MilestoneRows.Counted(phase, Hgss, null));
+            Assert.Equal(phase.Pokemon, MilestoneRows.Counted(phase, null, RomVersion.HeartGold));
+        }
+
+        [Theory]
+        [InlineData(RomVersion.HeartGold)]
+        [InlineData(RomVersion.SoulSilver)]
+        public void Counted_HandAddedRow_Kept(RomVersion version)
+        {
+            Assert.Contains(MilestoneRows.Counted(Route30Milestone(), Hgss, version), r => r.SpeciesId == Growlithe);
+        }
+
+        [Fact]
+        public void Wanted_RowsStillShort()
+        {
+            PhasePokemonInfo[] rows = [Row("Pidgey", Pidgey, 1), Row("Rattata", Rattata, 0), Row("Hoothoot", Hoothoot, 1)];
+
+            Assert.Equal([Pidgey, Hoothoot], MilestoneRows.Wanted(rows, []));
+            Assert.Equal([Hoothoot], MilestoneRows.Wanted(rows, [Caught("Pidgey", Pidgey, File)]));
+            Assert.Equal([Pidgey, Hoothoot], MilestoneRows.Wanted(rows, [Caught("Pidgey", Pidgey, File, shiny: false)]));
+            // The caller passes the file's catches, as PhaseTarget and the picker do.
+            var otherFile = new[] { Caught("Pidgey", Pidgey, "Pokemon HeartGold") };
+            Assert.Equal([Pidgey, Hoothoot], MilestoneRows.Wanted(rows, otherFile.Where(c => c.GameFileName == File)));
+        }
+
+        [Fact]
+        public void IsPhaseComplete_OtherVersionRowDoesNotHoldItBack()
+        {
+            var phase = new PhaseInfo { Name = "1-4 Route 30", Location = "34-land", Pokemon = [Row("Weedle", Weedle), Row("Pidgey", Pidgey)] };
+            CaughtPokemon[] caught = [Caught("Pidgey", Pidgey, File)];
+
+            Assert.True(OrchestratorEvent.IsPhaseComplete(MilestoneRows.Counted(phase, Hgss, RomVersion.HeartGold), caught));
+            Assert.False(OrchestratorEvent.IsPhaseComplete(MilestoneRows.Counted(phase, Hgss, RomVersion.SoulSilver), caught));
         }
 
         [Fact]
@@ -99,78 +157,6 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(["Pidgey", "Ledyba", "Ledyba", "Giratina"],
                 new[] { metadata.RowName(Pidgey, null), metadata.RowName(Ledyba, "ledyba;f"), metadata.RowName(Ledyba, "ledyba"), metadata.RowName(487, "giratina-origin") });
-        }
-
-        [Fact]
-        public void SpeciesWithoutEntry_IsRowAtZero_NeverTarget()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 3)] };
-
-            var rows = MilestoneRows.Build(Route30(RomVersion.SoulSilver), goal, [Caught(Weedle, "weedle", File)]);
-
-            var weedle = rows.Single(r => r.Species == Weedle);
-            Assert.Equal(("#13", 0, 1, false, false), (weedle.Key, weedle.Wanted, weedle.Caught, weedle.IsTarget, weedle.Complete));
-            Assert.Equal([Ledyba, Weedle, Kakuna, Pidgey, Hoothoot, Rattata, Whismur, Linoone, Buizel, Bidoof], rows.Select(r => r.Species));
-        }
-
-        [Fact]
-        public void CompleteRow_IsShownComplete_NotTarget()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)] };
-
-            var rows = MilestoneRows.Build(Route30(RomVersion.SoulSilver), goal, [Caught(Pidgey, "pidgey", File), Caught(Pidgey, "pidgey", File)]);
-
-            var pidgey = rows.Single(r => r.Species == Pidgey);
-            Assert.Equal((2, 2, true, false), (pidgey.Wanted, pidgey.Caught, pidgey.Complete, pidgey.IsTarget));
-        }
-
-        [Fact]
-        public void HiddenRow_IsNotTarget_StillARow()
-        {
-            var goal = new GameFile
-            {
-                Id = File,
-                Entries = [new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 1)],
-                Hidden = [new HiddenRow("34-land", "rattata")]
-            };
-
-            var rows = MilestoneRows.Build(Route30(RomVersion.SoulSilver), goal, []);
-
-            Assert.Equal([("rattata;f", false, true), ("rattata", true, false)],
-                rows.Where(r => r.Species == Rattata).Select(r => (r.Key, r.Hidden, r.IsTarget)));
-        }
-
-        [Fact]
-        public void Caught_IsGlobalPerFile()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 3), new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 1)] };
-            CaughtPokemon[] caught =
-            [
-                Caught(Pidgey, "pidgey", File, phase: "1-2 Route 29"),
-                Caught(Pidgey, "pidgey", "Pokemon HeartGold"),
-                Caught(Pidgey, "pidgey", File, shiny: false),
-                Caught(Rattata, "rattata;f", File, phase: "1-3 Route 46")
-            ];
-
-            var rows = MilestoneRows.Build(Route30(RomVersion.SoulSilver), goal, caught);
-
-            Assert.Equal(1, rows.Single(r => r.Species == Pidgey).Caught);
-            Assert.Equal([("rattata;f", 1), ("rattata", 0)], rows.Where(r => r.Species == Rattata).Select(r => (r.Key, r.Caught)));
-        }
-
-        [Fact]
-        public void Milestone_CompleteWhenNoRowIsTarget()
-        {
-            var goal = new GameFile
-            {
-                Id = File,
-                Entries = [new GoalEntry(Caterpie, null, 1), new GoalEntry(Spinarak, null, 1), new GoalEntry(Metapod, null, 0)],
-                Hidden = [new HiddenRow("34-land", "#167")]
-            };
-            var route30 = Route30(RomVersion.HeartGold);
-
-            Assert.False(MilestoneRows.Build(route30, goal, []).All(r => !r.IsTarget));
-            Assert.True(MilestoneRows.Build(route30, goal, [Caught(Caterpie, "caterpie", File)]).All(r => !r.IsTarget));
         }
 
         private const int Ekans = 23, Zubat = 41, Bellsprout = 69, Mareep = 179, Hoppip = 187, Wooper = 194, Azurill = 298;

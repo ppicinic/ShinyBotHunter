@@ -83,7 +83,7 @@ namespace ShinyBotHunter.Tests
                             var pokemon = Shiny(entry.Name, entry.SpeciesId, formCode);
 
                             bool expected = MainIsTarget(phase, caught, pokemon);
-                            Assert.Equal(expected, PhaseTarget.IsPhaseTarget(phase, caught, pokemon));
+                            Assert.Equal(expected, PhaseTarget.IsPhaseTarget(phase.Pokemon, caught, pokemon));
                             cases++;
                             targets += expected ? 1 : 0;
                         }
@@ -94,97 +94,62 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public void ProductionPhases_ResolveToThePhasePath()
+        public void FindMilestone_ByLocationId()
         {
-            var phases = ProductionPhases(Metadata());
-            var rs = MilestoneFile.Load(Path.Combine(RepoPaths.AppProject, "Data", "RS"));
-            var versions = new Dictionary<GameFlavor, (IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> Milestones, RomVersion[] Versions)>
-            {
-                [GameFlavor.HGSS] = (Hgss, [RomVersion.HeartGold, RomVersion.SoulSilver]),
-                [GameFlavor.RS] = (rs, [RomVersion.Ruby, RomVersion.Sapphire])
-            };
-
-            // No stored phase name is a generated id of its own game's versions, so no stored phase can leave today's path
-            // whichever lookup came first.
-            Assert.Equal(versions.Keys.ToHashSet(), phases.Select(p => p.Game).ToHashSet());
-            Assert.All(phases, p => Assert.All(versions[p.Game].Versions, v =>
-            {
-                Assert.NotEmpty(versions[p.Game].Milestones[v]);
-                Assert.Null(PhaseTarget.FindMilestone(versions[p.Game].Milestones, v, p.Name));
-            }));
             Assert.Equal("34-land", PhaseTarget.FindMilestone(Hgss, RomVersion.SoulSilver, "34-land")!.Id);
             Assert.Null(PhaseTarget.FindMilestone(Hgss, null, "34-land"));
             Assert.Null(PhaseTarget.FindMilestone(null, RomVersion.SoulSilver, "34-land"));
+            Assert.Null(PhaseTarget.FindMilestone(Hgss, RomVersion.SoulSilver, null));
         }
 
         private static readonly IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> Hgss =
             MilestoneFile.Load(Path.Combine(RepoPaths.AppProject, "Data", "HGSS"));
 
-        private const int Pidgey = 16, Rattata = 19, Growlithe = 58;
+        private const int Caterpie = 10, Weedle = 13, Pidgey = 16, Growlithe = 58;
 
-        private static CaughtPokemon Caught(int species, string formCode, bool shiny = true)
-            => new() { Pokemon = new PokemonData { Species = (ushort)species, FormCode = formCode, PID = shiny ? 0u : 0x00080000u }, Phase = "34-land", GameFileName = File };
+        private static PhasePokemonInfo Row(string name, int species, int amount)
+            => new() { Name = name, SpeciesId = species, Amount = amount, FormCode = name.ToLowerInvariant() };
 
-        private static PokemonData Wild(int species, string formCode) => new() { Species = (ushort)species, FormCode = formCode };
+        private static PhaseInfo Route30Milestone(params PhasePokemonInfo[] rows) => new() { Name = "1-4 Route 30", Pokemon = [.. rows], Location = "34-land" };
+
+        // As PhaseTarget.IsTargetAsync decides it: the rows that count on a file of this version, and that file's catches.
+        private static bool IsTarget(PhaseInfo phase, RomVersion version, IEnumerable<CaughtPokemon> caught, PokemonData pokemon)
+            => PhaseTarget.IsPhaseTarget(MilestoneRows.Counted(phase, Hgss, version), caught.Where(c => c.GameFileName == File), pokemon);
+
+        private static CaughtPokemon CaughtOn(string gameFileName, string name, int species)
+            => new() { Pokemon = Shiny(name, species, name.ToLowerInvariant()), Phase = "1-4 Route 30", GameFileName = gameFileName };
 
         [Fact]
-        public void Generated_ShinyWantedIncomplete_IsTarget()
+        public void Located_OwnAmounts_TargetUntilCaughtOnThisFile()
         {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)] };
+            var phase = Route30Milestone(Row("Pidgey", Pidgey, 2));
+            var pidgey = Shiny("Pidgey", Pidgey, "pidgey");
 
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey")], Wild(Pidgey, "pidgey")));
+            Assert.True(IsTarget(phase, RomVersion.SoulSilver, [], pidgey));
+            Assert.True(IsTarget(phase, RomVersion.SoulSilver, [CaughtOn(File, "Pidgey", Pidgey)], pidgey));
+            Assert.False(IsTarget(phase, RomVersion.SoulSilver, [CaughtOn(File, "Pidgey", Pidgey), CaughtOn(File, "Pidgey", Pidgey)], pidgey));
+            Assert.True(IsTarget(phase, RomVersion.SoulSilver, [CaughtOn("Pokemon HeartGold", "Pidgey", Pidgey), CaughtOn("Pokemon HeartGold", "Pidgey", Pidgey)], pidgey));
         }
 
-        [Fact]
-        public void Generated_AmountZero_NotTarget()
+        // Weedle is SoulSilver's on Route 30 and Caterpie HeartGold's (default 5).
+        [Theory]
+        [InlineData(RomVersion.HeartGold, false, true)]
+        [InlineData(RomVersion.SoulSilver, true, false)]
+        public void Located_OtherVersionRow_NotATarget(RomVersion version, bool weedle, bool caterpie)
         {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 0)] };
+            var phase = Route30Milestone(Row("Weedle", Weedle, 1), Row("Caterpie", Caterpie, 1));
 
-            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Pidgey, "pidgey")));
-            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", new GameFile { Id = File }, [], Wild(Pidgey, "pidgey")));
+            Assert.Equal(weedle, IsTarget(phase, version, [], Shiny("Weedle", Weedle, "weedle")));
+            Assert.Equal(caterpie, IsTarget(phase, version, [], Shiny("Caterpie", Caterpie, "caterpie")));
         }
 
-        [Fact]
-        public void Generated_Complete_NotTarget()
+        [Theory]
+        [InlineData(RomVersion.HeartGold)]
+        [InlineData(RomVersion.SoulSilver)]
+        public void Located_HandAddedRow_StillATarget(RomVersion version)
         {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)] };
-
-            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey"), Caught(Pidgey, "pidgey")], Wild(Pidgey, "pidgey")));
-        }
-
-        [Fact]
-        public void Generated_Hidden_NotTarget()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 2)], Hidden = [new HiddenRow("34-land", "#16")] };
-
-            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Pidgey, "pidgey")));
-            Assert.True(PhaseTarget.IsGeneratedTarget("46-land", goal, [], Wild(Pidgey, "pidgey")));
-        }
-
-        [Fact]
-        public void Generated_NonShinyCatch_NotCounted()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Pidgey, null, 1)] };
-
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [Caught(Pidgey, "pidgey", shiny: false)], Wild(Pidgey, "pidgey")));
-        }
-
-        [Fact]
-        public void Generated_FormEntry_DecidesByForm()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Rattata, "rattata;f", 2), new GoalEntry(Rattata, "rattata", 0)] };
-
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Rattata, "rattata;f")));
-            Assert.False(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Rattata, "rattata")));
-        }
-
-        [Fact]
-        public void Generated_SpeciesNotInTableButWanted_IsTarget()
-        {
-            var goal = new GameFile { Id = File, Entries = [new GoalEntry(Growlithe, null, 1)] };
-
-            Assert.DoesNotContain(Hgss[RomVersion.SoulSilver].Single(m => m.Id == "34-land").Slots, s => s.Species == Growlithe);
-            Assert.True(PhaseTarget.IsGeneratedTarget("34-land", goal, [], Wild(Growlithe, "growlithe")));
+            Assert.DoesNotContain(Hgss[version].Single(m => m.Id == "34-land").Slots, s => s.Species == Growlithe);
+            Assert.True(IsTarget(Route30Milestone(Row("Growlithe", Growlithe, 1)), version, [], Shiny("Growlithe", Growlithe, "growlithe")));
         }
     }
 }
