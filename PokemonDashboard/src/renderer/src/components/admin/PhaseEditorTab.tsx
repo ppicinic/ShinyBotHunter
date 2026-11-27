@@ -11,12 +11,18 @@ import type {
   PhaseInfo,
   PhaseInfoResponse,
   PhasePokemonInfo,
-  PlanTime
+  PlanTime,
+  RomVersion,
+  SeedRow
 } from '../../types/api'
 
 // Ruby and Sapphire have no female forms preset.
 export function presetsFor(game: string): GoalPreset[] {
   return game === 'HGSS' ? ['None', 'LivingDex', 'FemaleForms', 'VersionExclusives'] : ['None', 'LivingDex', 'VersionExclusives']
+}
+
+export function versionsOf(game: string): RomVersion[] {
+  return game === 'HGSS' ? ['HeartGold', 'SoulSilver'] : ['Ruby', 'Sapphire']
 }
 
 // A new milestone's name may not be a saved one's: the save route upserts by name, so it would replace that milestone.
@@ -51,6 +57,52 @@ function rowKey(p: PhasePokemonInfo): string {
 
 const isTimed = (times: PlanTime[]): boolean => times.length === 1 || times.length === 2
 
+// A milestone made from game data, until Save. Changing the preset or the version replaces only the seed, so typed amounts,
+// removals and added rows stay; changing the location starts over.
+export interface Draft {
+  // The seed's location id
+  location: string
+  // Null: both versions
+  version: RomVersion | null
+  preset: GoalPreset
+  // The last seed fetched for location, version and preset
+  seed: SeedRow[]
+  // Amounts typed by hand, by row key
+  edited: Record<string, number>
+  // Keys of seed rows removed by hand
+  removed: string[]
+  // Rows added by hand, drawn after the seed rows
+  added: PhasePokemonInfo[]
+}
+
+// The rows to show and save: the seed rows not removed, at the typed amount if any, then the added rows.
+export function draftRows(draft: Draft): PhasePokemonInfo[] {
+  const seeded = draft.seed
+    .filter((r) => !draft.removed.includes(rowKey(r)))
+    .map((r) => ({
+      name: r.name,
+      speciesId: r.speciesId,
+      amount: draft.edited[rowKey(r)] ?? r.amount,
+      formCode: r.formCode,
+      requireSpecificForm: r.requireSpecificForm,
+      hasFemaleForm: r.hasFemaleForm
+    }))
+  return [...seeded, ...draft.added]
+}
+
+export function savePayload(form: PhaseInfo, draft: Draft | null, gameName: string, name: string): PhaseInfo {
+  return draft
+    ? { ...form, gameName, name, location: draft.location, pokemon: draftRows(draft) }
+    : { ...form, gameName, name }
+}
+
+const PRESET_LABELS: Record<GoalPreset, string> = {
+  None: 'None (all 0)',
+  LivingDex: 'Living dex',
+  FemaleForms: 'Female forms',
+  VersionExclusives: 'Version exclusives'
+}
+
 // The card's pill colours, by marker
 const PILL_COLORS: Record<string, string> = {
   morning: 'text-amber-300 border-amber-300/40',
@@ -81,6 +133,17 @@ const EMPTY_PHASE = (gameName: string, phaseName: string): PhaseInfo => ({
   gameFiles: [],
   archived: false
 })
+
+// One drawn row: a saved milestone's, a draft's seed row (only its amount is typed) or a draft's added row.
+interface EditorRow {
+  key: string
+  pokemon: PhasePokemonInfo
+  // Undefined for a row with no location data: drawn with empty When and Version cells
+  mark: { version: RomVersion | null; times: PlanTime[] } | undefined
+  seeded: boolean
+  patch: (patch: Partial<PhasePokemonInfo>) => void
+  remove: () => void
+}
 
 function LocationSelect({ value, onChange, locations, suggested, placeholder }: {
   value: string
@@ -118,6 +181,8 @@ export function PhaseEditorTab(): JSX.Element {
 
   // ── editor state ─────────────────────────────────────────────
   const [form, setForm] = useState<PhaseInfo | null>(null)
+  // Set while a new milestone is made from game data; its rows are drawn from it, not from form
+  const [draft, setDraft] = useState<Draft | null>(null)
   // A saved milestone's markers and version marks, by row key; null without a location
   const [savedLocation, setSavedLocation] = useState<MilestoneLocation | null>(null)
   const [suggested, setSuggested] = useState<string | null>(null)
@@ -156,7 +221,7 @@ export function PhaseEditorTab(): JSX.Element {
       .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load the game files', true))
   }, [apiUrl])
 
-  // The game's locations, for attaching
+  // The game's locations, for "New from game data" and for attaching
   useEffect(() => {
     if (!apiUrl || !selectedGame) return
     setLocations([])
@@ -192,18 +257,37 @@ export function PhaseEditorTab(): JSX.Element {
     return () => controller.abort()
   }, [apiUrl, selectedGame, selectedPhase, isNewPhase])
 
+  // Refetch the seed on each change of location, version or preset. A response is kept only while the draft still asks for
+  // it, so a slow one for an earlier choice is dropped.
+  const seedLocation = draft?.location
+  const seedVersion = draft?.version
+  const seedPreset = draft?.preset
+  useEffect(() => {
+    if (!apiUrl || seedLocation === undefined || seedVersion === undefined || seedPreset === undefined) return
+    api.getSeed(apiUrl, selectedGame, seedLocation, seedPreset, seedVersion)
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.text()) || `Server returned ${r.status}`)
+        return r.json()
+      })
+      .then((data: { name: string; location: string; rows: SeedRow[] }) => setDraft((d) =>
+        d && d.location === seedLocation && d.version === seedVersion && d.preset === seedPreset ? { ...d, seed: data.rows } : d))
+      .catch((err) => showFeedback(err instanceof Error ? err.message : 'Failed to load the game data', true))
+  }, [apiUrl, selectedGame, seedLocation, seedVersion, seedPreset])
+
   const handleGameChange = (game: string): void => {
     setSelectedGame(game)
     const firstPhase = metadata?.games[game]?.phases[0]?.name ?? ''
     setSelectedPhase(firstPhase)
     setIsNewPhase(false)
     setNewPhaseName('')
+    setDraft(null)
   }
 
   const handleSelectPhase = (phase: string): void => {
     setSelectedPhase(phase)
     setIsNewPhase(false)
     setNewPhaseName('')
+    setDraft(null)
     setFeedback(null)
   }
 
@@ -212,8 +296,20 @@ export function PhaseEditorTab(): JSX.Element {
     setSelectedPhase('')
     setNewPhaseName('')
     setForm(EMPTY_PHASE(selectedGame, ''))
+    setDraft(null)
     setSavedLocation(null)
     setFeedback(null)
+  }
+
+  // A new location starts the draft over, its name prefilled; the version and preset stay.
+  const startDraft = (location: LocationOption): void => {
+    setDraft((d) => ({ location: location.id, version: d?.version ?? null, preset: d?.preset ?? 'LivingDex', seed: [], edited: {}, removed: [], added: [] }))
+    setNewPhaseName(location.name)
+  }
+
+  const handleNewFromData = (): void => {
+    handleNewPhase()
+    startDraft(locations[0])
   }
 
   const handleNewPhaseNameChange = (name: string): void => {
@@ -249,7 +345,8 @@ export function PhaseEditorTab(): JSX.Element {
   }
 
   const addPokemon = (): void => {
-    setForm((prev) => prev ? { ...prev, pokemon: [...prev.pokemon, EMPTY_POKEMON()] } : prev)
+    if (draft) setDraft((d) => d && { ...d, added: [...d.added, EMPTY_POKEMON()] })
+    else setForm((prev) => prev ? { ...prev, pokemon: [...prev.pokemon, EMPTY_POKEMON()] } : prev)
   }
 
   const removePokemon = (idx: number): void => {
@@ -275,7 +372,7 @@ export function PhaseEditorTab(): JSX.Element {
     setSaving(true)
     setFeedback(null)
     try {
-      const payload: PhaseInfo = { ...form, gameName: selectedGame, name: phaseName }
+      const payload = savePayload(form, draft, selectedGame, phaseName)
       const res = await api.updatePhaseInfo(apiUrl, selectedGame, phaseName, payload)
       if (!res.ok) {
         const text = await res.text()
@@ -294,6 +391,7 @@ export function PhaseEditorTab(): JSX.Element {
         setIsNewPhase(false)
         setSelectedPhase(phaseName)
         setNewPhaseName('')
+        setDraft(null)
       }
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : 'Save failed', true)
@@ -310,9 +408,42 @@ export function PhaseEditorTab(): JSX.Element {
   const gameRoms = roms.filter((r) => r.flavor === selectedGame)
   const locationName = (id: string): string => locations.find((l) => l.id === id)?.name ?? id
 
-  // Each row's markers and version mark, looked up by key since adding or removing rows shifts positions
+  // Each row's markers and version mark: a draft's from its seed, a saved milestone's looked up by key, since adding or
+  // removing rows shifts positions.
   const marks = new Map((savedLocation?.rows ?? []).map((r) => [r.key, r]))
-  const anyTimed = (savedLocation?.rows ?? []).some((r) => isTimed(r.times))
+  const anyTimed = draft ? draft.seed.some((r) => isTimed(r.times)) : (savedLocation?.rows ?? []).some((r) => isTimed(r.times))
+  const rows: EditorRow[] = draft
+    ? [
+        ...draft.seed.filter((r) => !draft.removed.includes(rowKey(r))).map((r): EditorRow => {
+          const key = rowKey(r)
+          return {
+            key,
+            pokemon: { ...r, amount: draft.edited[key] ?? r.amount },
+            mark: r,
+            seeded: true,
+            patch: (patch) => {
+              if (patch.amount !== undefined) setDraft((d) => d && { ...d, edited: { ...d.edited, [key]: patch.amount! } })
+            },
+            remove: () => setDraft((d) => d && { ...d, removed: [...d.removed, key] })
+          }
+        }),
+        ...draft.added.map((a, i): EditorRow => ({
+          key: `added-${i}`,
+          pokemon: a,
+          mark: undefined,
+          seeded: false,
+          patch: (patch) => setDraft((d) => d && { ...d, added: d.added.map((x, j) => (j === i ? { ...x, ...patch } : x)) }),
+          remove: () => setDraft((d) => d && { ...d, added: d.added.filter((_, j) => j !== i) })
+        }))
+      ]
+    : (form?.pokemon ?? []).map((p, i): EditorRow => ({
+        key: `row-${i}`,
+        pokemon: p,
+        mark: marks.get(rowKey(p)),
+        seeded: false,
+        patch: (patch) => updatePokemon(i, patch),
+        remove: () => removePokemon(i)
+      }))
 
   return (
     <div className="p-3 space-y-4">
@@ -334,20 +465,60 @@ export function PhaseEditorTab(): JSX.Element {
           </select>
 
           <select
-            value={isNewPhase ? '__new__' : selectedPhase}
-            onChange={(e) => {
-              if (e.target.value === '__new__') handleNewPhase()
-              else handleSelectPhase(e.target.value)
-            }}
+            value={isNewPhase ? '' : selectedPhase}
+            onChange={(e) => handleSelectPhase(e.target.value)}
             className={`flex-1 ${SELECT}`}
             disabled={!selectedGame}
           >
+            {isNewPhase && <option value="">New milestone</option>}
             {availablePhases.map((p) => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
-            <option value="__new__">+ New milestone…</option>
           </select>
+          <button onClick={handleNewFromData} disabled={locations.length === 0} className={BUTTON}>New from game data</button>
+          <button onClick={handleNewPhase} disabled={!selectedGame} className={BUTTON}>New empty</button>
         </div>
+
+        {draft && (
+          <div className="mt-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 w-24 flex-shrink-0">Location</span>
+              <LocationSelect
+                value={draft.location}
+                onChange={(id) => startDraft(locations.find((l) => l.id === id)!)}
+                locations={locations}
+                suggested={null}
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-500 w-24 flex-shrink-0">Load species of</span>
+              {[null, ...versionsOf(selectedGame)].map((v) => (
+                <button
+                  key={v ?? 'both'}
+                  onClick={() => setDraft((d) => d && { ...d, version: v })}
+                  className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                    draft.version === v ? 'bg-indigo-700 text-white' : 'bg-card-border text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {v ? `${v} only` : 'Both versions'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 w-24 flex-shrink-0">Preset</span>
+              <select
+                value={draft.preset}
+                onChange={(e) => setDraft((d) => d && { ...d, preset: e.target.value as GoalPreset })}
+                className={SELECT}
+              >
+                {presetsFor(selectedGame).map((p) => (
+                  <option key={p} value={p}>{PRESET_LABELS[p]}</option>
+                ))}
+              </select>
+              <span className="text-xs text-slate-500">Fills the amounts. An amount you typed yourself is kept.</span>
+            </div>
+          </div>
+        )}
 
         {isNewPhase && (
           <div className="mt-2">
@@ -415,7 +586,7 @@ export function PhaseEditorTab(): JSX.Element {
             )}
           </div>
 
-          {form.pokemon.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="text-slate-500 text-sm">No Pokémon defined.</p>
           ) : (
             <table className="w-full text-xs">
@@ -431,70 +602,67 @@ export function PhaseEditorTab(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {form.pokemon.map((pkmn, idx) => {
-                  const mark = marks.get(rowKey(pkmn))
-                  return (
-                    <tr key={idx} className="border-t border-slate-700/40 align-top">
-                      <td className="py-1 pr-2 space-y-1">
+                {rows.map((row) => (
+                  <tr key={row.key} className="border-t border-slate-700/40 align-top">
+                    <td className="py-1 pr-2 space-y-1">
+                      <input
+                        type="text"
+                        value={row.pokemon.name}
+                        onChange={(e) => row.patch({ name: e.target.value })}
+                        placeholder="e.g. Rattata"
+                        disabled={isReadOnly || row.seeded}
+                        className={`w-full ${INPUT}`}
+                      />
+                      <div className="flex gap-2 items-center">
                         <input
                           type="text"
-                          value={pkmn.name}
-                          onChange={(e) => updatePokemon(idx, { name: e.target.value })}
-                          placeholder="e.g. Rattata"
-                          disabled={isReadOnly}
-                          className={`w-full ${INPUT}`}
+                          value={row.pokemon.formCode}
+                          onChange={(e) => row.patch({ formCode: e.target.value })}
+                          placeholder="form code, e.g. rattata (optional)"
+                          disabled={isReadOnly || row.seeded}
+                          className={`flex-1 min-w-0 ${INPUT}`}
                         />
-                        <div className="flex gap-2 items-center">
+                        <label className="flex items-center gap-1 text-slate-400 select-none">
                           <input
-                            type="text"
-                            value={pkmn.formCode}
-                            onChange={(e) => updatePokemon(idx, { formCode: e.target.value })}
-                            placeholder="form code, e.g. rattata (optional)"
-                            disabled={isReadOnly}
-                            className={`flex-1 min-w-0 ${INPUT}`}
+                            type="checkbox"
+                            checked={row.pokemon.requireSpecificForm}
+                            onChange={(e) => row.patch({ requireSpecificForm: e.target.checked })}
+                            disabled={isReadOnly || row.seeded}
+                            className="accent-indigo-500 disabled:opacity-50"
                           />
-                          <label className="flex items-center gap-1 text-slate-400 select-none">
-                            <input
-                              type="checkbox"
-                              checked={pkmn.requireSpecificForm}
-                              onChange={(e) => updatePokemon(idx, { requireSpecificForm: e.target.checked })}
-                              disabled={isReadOnly}
-                              className="accent-indigo-500 disabled:opacity-50"
-                            />
-                            Require form
-                          </label>
-                        </div>
-                      </td>
-                      <td className="py-1 pr-2">
-                        {markerLabels(mark?.times ?? [], anyTimed).map((m) => (
-                          <span key={m} className={`mr-1 px-1 rounded border ${PILL_COLORS[m]}`}>{m}</span>
-                        ))}
-                      </td>
-                      <td className="py-1 pr-2">{mark && (mark.version ?? <span className="text-slate-500">both</span>)}</td>
-                      <td className="py-1 pr-2">
-                        <input
-                          type="number"
-                          min={0}
-                          value={pkmn.amount}
-                          onChange={(e) => updatePokemon(idx, { amount: Number(e.target.value) })}
-                          disabled={isReadOnly}
-                          className={`w-full ${INPUT}`}
-                        />
-                      </td>
-                      <td className="py-1">
-                        {!isReadOnly && (
-                          <button
-                            onClick={() => removePokemon(idx)}
-                            className="text-red-400 hover:text-red-300 transition-colors px-1"
-                            title="Remove"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
+                          Require form
+                        </label>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-2">
+                      {markerLabels(row.mark?.times ?? [], anyTimed).map((m) => (
+                        <span key={m} className={`mr-1 px-1 rounded border ${PILL_COLORS[m]}`}>{m}</span>
+                      ))}
+                    </td>
+                    <td className="py-1 pr-2">{row.mark && (row.mark.version ?? <span className="text-slate-500">both</span>)}</td>
+                    <td className="py-1 pr-2">
+                      <input
+                        type="number"
+                        min={0}
+                        value={row.pokemon.amount}
+                        onChange={(e) => row.patch({ amount: Number(e.target.value) })}
+                        disabled={isReadOnly}
+                        className={`w-full ${INPUT}`}
+                      />
+                    </td>
+                    <td className="py-1">
+                      {!isReadOnly && (
+                        <button
+                          onClick={row.remove}
+                          className="text-red-400 hover:text-red-300 transition-colors px-1"
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
@@ -536,6 +704,7 @@ export function PhaseEditorTab(): JSX.Element {
             >
               {saving ? 'Saving...' : 'Save Milestone'}
             </button>
+            {draft && <p className="mt-1 text-xs text-slate-500">Nothing is stored before Save.</p>}
           </div>
         </div>
       ) : null}

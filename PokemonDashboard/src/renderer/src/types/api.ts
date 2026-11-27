@@ -187,6 +187,13 @@ export interface MilestoneLocation {
   hiddenUntil: Partial<Record<PlanTime, string[]>>
 }
 
+// A row of GET /api/milestones/{game}/locations/{locationId}/seed: the row to save, plus the only version it is met in
+// (null: both) and when it is met, in Morning, Day, Night order
+export interface SeedRow extends PhasePokemonInfo {
+  version: RomVersion | null
+  times: PlanTime[]
+}
+
 // ============================================================
 // Subscription state (internal frontend state)
 // ============================================================

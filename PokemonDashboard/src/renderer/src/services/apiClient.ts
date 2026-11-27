@@ -1,5 +1,5 @@
 import type { Appearance } from '../../../shared/windowContracts'
-import type { PhaseInfo } from '../types/api'
+import type { GoalPreset, PhaseInfo, RomVersion } from '../types/api'
 
 // Every request the dashboard makes to the backend, one function per endpoint. Each goes through
 // the main process and returns a Response; the call sites keep their own status and error handling.
@@ -95,6 +95,12 @@ export function getSubscriptionPhaseInfo(apiUrl: string, game: string, phase: st
 // The editor's location dropdown; 404 for a game with no generated locations.
 export function getLocations(apiUrl: string, game: string): Promise<Response> {
   return request('GET', `${apiUrl}/api/milestones/${encodeURIComponent(game)}/locations`)
+}
+
+// "New from game data": the location's rows at the preset's amounts, for one version or both (null). Stores nothing.
+export function getSeed(apiUrl: string, game: string, locationId: string, preset: GoalPreset, version: RomVersion | null): Promise<Response> {
+  const query = version ? `preset=${preset}&version=${version}` : `preset=${preset}`
+  return request('GET', `${apiUrl}/api/milestones/${encodeURIComponent(game)}/locations/${encodeURIComponent(locationId)}/seed?${query}`)
 }
 
 // Writes only the milestone's location, never a row or an amount; 404 when either is unknown.
