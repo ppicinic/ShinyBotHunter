@@ -9,9 +9,7 @@ using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Macro;
-using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
-using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
@@ -85,11 +83,7 @@ namespace ShinyBotHunter.Tests
         private static Task<BotService> LaunchAsync(int map, int x, int y, GameScreen screen, params byte[][] party)
             => LaunchAsync(Admin([]), map, x, y, screen, party);
 
-        private static Task<BotService> LaunchAsync(AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
-            => LaunchAsync(new GameFile { Id = "fake.nds" }, admin, map, x, y, screen, party);
-
-        // The file is the game file Run reads for its links (FR-44a).
-        private static async Task<BotService> LaunchAsync(GameFile file, AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
+        private static async Task<BotService> LaunchAsync(AdminService admin, int map, int x, int y, GameScreen screen, params byte[][] party)
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
             GameProfile profile = Profile();
@@ -100,7 +94,6 @@ namespace ShinyBotHunter.Tests
                 .AddSingleton(new PokemonPersistenceService(null!, null!, null!))
                 .AddSingleton(new ShinyAlertService(null!, settings))
                 .AddSingleton(admin)
-                .AddSingleton(new MongoGameFileDao(_ => Task.FromResult(file)))
                 .BuildServiceProvider();
             var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(profile));
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
@@ -215,15 +208,6 @@ namespace ShinyBotHunter.Tests
             var service = await LaunchAsync(522, 8, 1, GameScreen.FieldFree, Block(493));
 
             await AssertRefusedAsync(service, Run(), NoPath);
-        }
-
-        [Fact]
-        public async Task LinkedPhaseIsRefused()
-        {
-            var file = new GameFile { Id = "fake.nds", Links = [new MilestoneLink("Dialga", "34-land")] };
-            var service = await LaunchAsync(file, Admin([]), 522, 16, 14, GameScreen.FieldFree, Block(493));
-
-            await AssertRefusedAsync(service, Run(), "Dialga is linked to 34-land on fake.nds; start 34-land, or remove the link.");
         }
 
         [Fact]

@@ -79,9 +79,17 @@ namespace ShinyBotHunter.Tests
 
             var loaded = BsonSerializer.Deserialize<GameFile>(file.ToBsonDocument());
             var stored = BsonSerializer.Deserialize<GameFile>(new BsonDocument { ["_id"] = "Pokemon HeartGold", ["Entries"] = new BsonArray() });
+            // A document written before the rework, with the goal and picker fields this class no longer has.
+            var beforeRework = file.ToBsonDocument();
+            beforeRework["Entries"] = new BsonArray { new BsonDocument { ["Species"] = 16, ["FormCode"] = BsonNull.Value, ["Amount"] = 1 } };
+            beforeRework["Hidden"] = new BsonArray { new BsonDocument { ["MilestoneId"] = "34-land", ["Key"] = "#16" } };
+            beforeRework["Links"] = new BsonArray { new BsonDocument { ["Phase"] = "1-4 Route 30", ["MilestoneId"] = "34-land" } };
+            beforeRework["Archived"] = new BsonArray { "34-land" };
+            beforeRework["Order"] = new BsonArray { new BsonDocument { ["Milestone"] = "34-land", ["Label"] = "1-4" } };
 
             Assert.Equal(file.Anchors, loaded.Anchors);
             Assert.Empty(stored.Anchors);
+            Assert.Equal(file.Anchors, BsonSerializer.Deserialize<GameFile>(beforeRework).Anchors);
         }
 
         // The acceptance test: (550, 304) is the path just east of Route 30's grass column.
