@@ -1,4 +1,7 @@
-﻿using ShinyBotHunter.Macro;
+﻿using ShinyBotHunter.Games;
+using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
+using ShinyBotHunter.Persistence.MongoDb;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 
@@ -6,19 +9,21 @@ namespace ShinyBotHunter.BotEvents.Target
 {
     public class PhaseTarget : ITarget
     {
-        private PhaseInfo phaseInfo;
+        // Set once in the constructor, as the fields below are: the saved milestone's rows that count on this file.
+        private readonly List<PhasePokemonInfo> rows;
         private PokemonPersistenceService persistenceService;
         private GameFlavor game;
         private string gameFileName;
         public PhaseTarget(IServiceProvider provider, GameFlavor game, string phase, string gameFileName)
         {
-            var phaseInfoTemp = provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(game, phase);
+            var phaseInfo = provider.GetRequiredService<PhaseInfoService>().GetPhaseInfo(game, phase);
             persistenceService = provider.GetRequiredService<PokemonPersistenceService>();
-            if(phaseInfoTemp is null)
+            if(phaseInfo is null)
             {
                 throw new ArgumentException($"{game.ToString()}:{phase} does not exist");
             }
-            phaseInfo = phaseInfoTemp;
+            rows = MilestoneRows.Counted(phaseInfo, provider.GetRequiredService<GameProfiles>().Get(game).Milestones,
+                provider.GetRequiredService<RomInfoService>().GetByHandle(gameFileName)?.Version);
             this.game = game;
             this.gameFileName = gameFileName;
         }
@@ -31,7 +36,20 @@ namespace ShinyBotHunter.BotEvents.Target
                 return false;
             }
             var caughtPokemon = (await persistenceService.GetCaughtPokemonAsync(game)).Where(x => x.GameFileName == gameFileName);
-            foreach (var targetPokemon in phaseInfo.Pokemon.Where(x => x.Name == pokemon.Name))
+            return IsPhaseTarget(rows, caughtPokemon, pokemon);
+        }
+
+        // The generated milestone of the file's version with this id, or null when there is no id, the file is not scanned or the
+        // flavor has no milestones.
+        internal static Milestone? FindMilestone(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones, RomVersion? version, string? id)
+            => id is not null && version is not null && milestones is not null && milestones.TryGetValue(version.Value, out var versionMilestones)
+                ? versionMilestones.SingleOrDefault(m => m.Id == id)
+                : null;
+
+        // Today's phase rule, unchanged (FR-42): rows matched by name, and caught counted without an IsShiny filter.
+        internal static bool IsPhaseTarget(IEnumerable<PhasePokemonInfo> rows, IEnumerable<CaughtPokemon> caughtPokemon, PokemonData pokemon)
+        {
+            foreach (var targetPokemon in rows.Where(x => x.Name == pokemon.Name))
             {
                 if (targetPokemon.RequireSpecificForm)
                 {

@@ -9,8 +9,10 @@ import {
   isConditionMet,
   LEG_PARAM_KEYS,
   legsVisible,
+  paramsFromArguments,
   pickupChoice,
   requiredParamsFilled,
+  stepArguments,
   visibleConditionalsOf,
   visibleParamNames
 } from './actionSchema'
@@ -339,5 +341,114 @@ describe('pickupChoice', () => {
     expect(pickupChoice({ name: 'Wild Encounter' }, 'true').checked).toBe(true)
     expect(pickupChoice({ name: 'Wild Encounter' }, undefined).checked).toBe(false)
     expect(pickupChoice({ name: 'Wild Encounter' }, 'false').checked).toBe(false)
+  })
+})
+
+// GET api/plans/steps as R6a serves it.
+const wild: EventArgumentOptions = {
+  name: 'Wild Encounter',
+  requiredParameters: ['PhaseName', 'TargetType', 'EncounterType'],
+  optionalParameters: ['TrainType'],
+  conditionalParameters: [
+    { condition: { conditionType: 'Eq', name: 'EncounterType', value: 'Run' }, name: 'xRange', hideIfConditionNotMet: true, required: false },
+    { condition: { conditionType: 'Eq', name: 'EncounterType', value: 'Run' }, name: 'yRange', hideIfConditionNotMet: true, required: false },
+    { condition: { conditionType: 'Neq', name: 'TrainType', value: 'None' }, name: 'TargetLevel', hideIfConditionNotMet: true, required: false },
+    { condition: { conditionType: 'Eq', name: 'TrainType', value: 'Switch' }, name: 'SwitchSlot', hideIfConditionNotMet: true, required: false },
+    { condition: { conditionType: 'Neq', name: 'TrainType', value: 'None' }, name: 'Pickup', hideIfConditionNotMet: true, required: false }
+  ],
+  disabledChoices: null,
+  choices: null
+}
+const wait: EventArgumentOptions = { name: 'Wait', conditionalParameters: [] }
+
+describe('stepArguments', () => {
+  it("a Run step is Bot Control's body with eventName", () => {
+    const params = { ...initialParamsFor(wild), PhaseName: '1-4 Route 30', TargetType: 'PhaseTarget', EncounterType: 'Run', xRange: '2', TrainType: 'Standard', Pickup: 'true' }
+
+    expect(stepArguments(wild, params)).toStrictEqual({
+      eventName: 'Wild Encounter',
+      phaseName: '1-4 Route 30',
+      targetType: 'PhaseTarget',
+      encounterType: 'Run',
+      xRange: 2,
+      yRange: 0,
+      trainType: 'Standard',
+      pickup: true
+    })
+  })
+
+  it('a Spin step sends no ranges', () => {
+    const params = { ...initialParamsFor(wild), PhaseName: '2-1 Route 32', TargetType: 'ShinyTarget', EncounterType: 'Spin' }
+
+    expect(initialParamsFor(wild).xRange).toBe('0')
+    expect(stepArguments(wild, params)).toStrictEqual({
+      eventName: 'Wild Encounter',
+      phaseName: '2-1 Route 32',
+      targetType: 'ShinyTarget',
+      encounterType: 'Spin',
+      trainType: 'None'
+    })
+  })
+
+  it('TrainType None sends no Pickup, TargetLevel or SwitchSlot', () => {
+    const params = { ...initialParamsFor(wild), PhaseName: '2-1 Route 32', TargetType: 'ShinyTarget', EncounterType: 'Spin', TargetLevel: '50', Pickup: 'true' }
+
+    const body = stepArguments(wild, params)
+
+    expect(body).not.toHaveProperty('pickup')
+    expect(body).not.toHaveProperty('targetLevel')
+    expect(body).not.toHaveProperty('switchSlot')
+  })
+
+  it('Wait is its eventName only', () => {
+    expect(stepArguments(wait, initialParamsFor(wait))).toStrictEqual({ eventName: 'Wait' })
+  })
+})
+
+describe('paramsFromArguments', () => {
+  const nulls = { phaseName: null, targetType: null, encounterType: null, xRange: null, yRange: null, trainType: null, targetLevel: null, switchSlot: null, pickup: null, huntPlan: null, soundOn: null }
+  const withoutNulls = (body: Record<string, unknown>): Record<string, unknown> => Object.fromEntries(Object.entries(body).filter(([, v]) => v !== null))
+
+  it("reads R6a's camelCase body with nulls back into the form's params", () => {
+    const body = { ...nulls, eventName: 'Wild Encounter', phaseName: '1-4 Route 30', targetType: 'PhaseTarget', encounterType: 'Run', xRange: 2, yRange: 0, trainType: 'Standard', pickup: true }
+
+    expect(paramsFromArguments(wild, body)).toEqual({
+      PhaseName: '1-4 Route 30',
+      TargetType: 'PhaseTarget',
+      EncounterType: 'Run',
+      TrainType: 'Standard',
+      xRange: '2',
+      yRange: '0',
+      TargetLevel: '',
+      SwitchSlot: '2',
+      Pickup: 'true'
+    })
+  })
+
+  it('round-trips', () => {
+    const run = { ...nulls, eventName: 'Wild Encounter', phaseName: '1-4 Route 30', targetType: 'PhaseTarget', encounterType: 'Run', xRange: 2, yRange: 2, trainType: 'Standard', targetLevel: 101, pickup: true }
+    const spin = { ...nulls, eventName: 'Wild Encounter', phaseName: '2-1 Route 32', targetType: 'ShinyTarget', encounterType: 'Spin', trainType: 'None' }
+    const waitBody = { ...nulls, eventName: 'Wait' }
+
+    for (const [schema, body] of [[wild, run], [wild, spin], [wait, waitBody]] as const) {
+      expect(stepArguments(schema, paramsFromArguments(schema, body))).toStrictEqual(withoutNulls(body))
+    }
+  })
+})
+
+describe('the Plan action', () => {
+  const plan: EventArgumentOptions = { name: 'Plan', requiredParameters: ['HuntPlan'], choices: { HuntPlan: ['Johto nights', 'Pickup days'] } }
+
+  it('labels the field Plan', () => {
+    expect(getParamLabel('HuntPlan')).toBe('Plan')
+  })
+
+  it('a Plan action with no plan picked is not filled, and with one it is', () => {
+    expect(requiredParamsFilled(plan, initialParamsFor(plan))).toBe(false)
+    expect(requiredParamsFilled(plan, { HuntPlan: 'Johto nights' })).toBe(true)
+  })
+
+  it('the Start body carries the picked plan', () => {
+    expect(buildLegBody({ HuntPlan: 'Johto nights' })).toStrictEqual({ HuntPlan: 'Johto nights' })
   })
 })

@@ -1,11 +1,13 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Games.Hgss
 {
@@ -20,9 +22,10 @@ namespace ShinyBotHunter.Games.Hgss
         public const string DataDirectory = ".\\data\\HGSS";
 
         public static GameProfile Create(PokemonMetadataService metadata)
-            => Create(metadata, new MapService(DataDirectory), new GraphService(DataDirectory));
+            => Create(metadata, new MapService(DataDirectory), new GraphService(DataDirectory), MilestoneFile.Load(DataDirectory));
 
-        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps, GraphService graph) => new(
+        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps, GraphService graph,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null) => new(
             GameFlavor.HGSS,
             new GameCapabilities(
                 HasOverworldNavigation: true,
@@ -37,7 +40,8 @@ namespace ShinyBotHunter.Games.Hgss
                 HasStaticEncounter: true,
                 HasHeadbuttTrees: true,
                 HasPickup: true,
-                HasWildRunChecks: false),
+                HasWildRunChecks: false,
+                HasHuntPlans: true),
             revisions: [0],
             Addresses,
             new HgssPokemonParser(metadata),
@@ -53,6 +57,10 @@ namespace ShinyBotHunter.Games.Hgss
                 bot.RunMacroString(MacroRegistry.Instance.GetMacro(GameFlavor.HGSS, "SaveGame"));
                 await bot.WaitForMacroAsync();
             },
-            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>());
+            createNavigatorEvent: provider => provider.GetRequiredService<NavigatorEvent>(),
+            // A land milestone with grass is hunted in its grass; one without is a cave, hunted on its floor.
+            landTileKind: m => m.HasGrass ? Constant.MAP_Grass : Constant.MAP_Free,
+            rates: HgssRates.Compute,
+            milestones: milestones);
     }
 }

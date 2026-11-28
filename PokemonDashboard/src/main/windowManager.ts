@@ -143,7 +143,9 @@ function openCardWindow({ name, kind, title, query }: OpenCardWindowOptions): vo
     title,
     backgroundColor: '#0d0d1a',
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js')
+      preload: join(__dirname, '../preload/index.js'),
+      // A covered phase window must still paint a new milestone (docs/research/time-mover.md, "The blank window, explained").
+      backgroundThrottling: kind !== 'phase'
     }
   })
 
@@ -234,7 +236,8 @@ export function syncPhaseWindows(requests: PhaseWindowRequest[]): void {
       query: {
         card: 'phase',
         game: request.game,
-        phase: request.phase,
+        // A follows-the-hunt window reads its milestone from the pushed config, so its URL holds none.
+        ...(request.followsHunt ? {} : { phase: request.phase }),
         ...(request.gameName ? { gameName: request.gameName } : {})
       }
     })

@@ -25,6 +25,7 @@ export interface ActiveSubscription {
   game: string
   phase: string
   gameName?: string | null
+  followsHunt?: boolean
 }
 
 export interface DashboardConfig {
@@ -147,13 +148,52 @@ export interface PhaseInfo {
   name: string
   pokemon: PhasePokemonInfo[]
   isStatic: boolean
+  // A location id ("34-land"), or null for none
+  location: string | null
+  // The game files it is offered on; empty is every file
+  gameFiles: string[]
+  // Hidden from the launch form only
+  archived: boolean
 }
 
-// Wrapper returned by GET /api/phaseinfo/{game}/{phase}
-// Matches C# WrappedPokemonPhase record in PhaseMetadataController.cs
-export interface WrappedPokemonPhase {
+// Returned by GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
+// Matches the response of GetPhaseInfo in PhaseMetadataController.cs; only the fields the card reads
+export interface PhaseInfoResponse {
   phaseInfo: PhaseInfo
+  // The card's name of each phaseInfo.pokemon row, in the same order: "Unown (A)" for a letter row
+  rowNames: string[]
   data: GameEncounterResponse
+  // False when no hunt runs on the file
+  live: boolean
+  // The time of day the file was last seen in; null without a file or when never seen since the backend started
+  timeOfDay: PlanTime | null
+  // Null for a milestone with no location, or a file whose ROM version is not known
+  location: MilestoneLocation | null
+  // The location the editor offers to attach a milestone with none to; null when it has one or there is no suggestion
+  suggestedLocation: string | null
+}
+
+// The location block of PhaseInfoResponse: one row per phaseInfo.pokemon row, in the same order
+export interface MilestoneLocation {
+  rows: {
+    key: string
+    // The only version the species is met in here; null when both
+    version: RomVersion | null
+    // When the species can be met here, in Morning, Day, Night order; empty when not at all
+    times: PlanTime[]
+    // The expected share now; null when there are no shares
+    share: number | null
+    hiddenNow: boolean
+  }[]
+  // The names of the rows hidden now, by the next time they can be met
+  hiddenUntil: Partial<Record<PlanTime, string[]>>
+}
+
+// A row of GET /api/milestones/{game}/locations/{locationId}/seed: the row to save, plus the only version it is met in
+// (null: both) and when it is met, in Morning, Day, Night order
+export interface SeedRow extends PhasePokemonInfo {
+  version: RomVersion | null
+  times: PlanTime[]
 }
 
 // ============================================================
@@ -166,6 +206,12 @@ export interface SubscriptionState {
   gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
+  rowNames: string[]
+  location: MilestoneLocation | null
+  live: boolean
+  timeOfDay: PlanTime | null
+  // The endpoint does not know the milestone, so the card says so instead of loading forever
+  notFound: boolean
 }
 
 // ============================================================
@@ -183,6 +229,51 @@ export interface AdminMetadata {
   games: Record<string, GameMetadata>
   // Backend ApplicationSettings.EnableMacroRecording — gates the dev-mode recorder tab.
   macroRecordingEnabled: boolean
+}
+
+// ============================================================
+// Milestone picker (GET /api/bot/milestones/{pos})
+// Matches C# PickerMilestone (MilestonePicker.cs) and BotMilestones (BotDtos.cs)
+// ============================================================
+
+export type Modality = 'Land' | 'Surf' | 'OldRod' | 'GoodRod' | 'SuperRod' | 'RockSmash' | 'Headbutt'
+
+// Matches C# RomVersion (RomInfo.cs)
+export type RomVersion = 'HeartGold' | 'SoulSilver' | 'Ruby' | 'Sapphire'
+
+// GET /api/milestones/{game}/locations: one entry per location id, by modality then name
+export interface LocationOption {
+  id: string
+  name: string
+  modality: Modality
+}
+
+// Matches C# Anchor (Milestone.cs): a tile on game map `map`, run left-right xRange or up-down yRange tiles each way, or with both 0 a spin.
+export interface Anchor {
+  map: number
+  x: number
+  y: number
+  xRange: number
+  yRange: number
+}
+
+export interface PickerMilestone {
+  // A saved milestone's name. Sent as PhaseName at Start.
+  name: string
+  // Its location's modality on this file's version; null with no location.
+  modality: Modality | null
+  huntable: boolean
+  complete: boolean
+  // Where the hunt starts on this file; null is hunted where the bot stands.
+  anchor: Anchor | null
+  // True when this file stores a replacement, false when the anchor is the generated one.
+  anchorSet: boolean
+}
+
+export interface BotMilestones {
+  gameFileName: string
+  // The saved milestones ticked for this file, or for none, and not archived; natural order by name.
+  milestones: PickerMilestone[]
 }
 
 // ============================================================
@@ -336,3 +427,40 @@ export type GameFlavor = 'HGSS' | 'RS'
 // Maps emulator position (int) -> EmulatorState
 // JSON keys are numbers serialized as strings by System.Text.Json
 export type BotDashboardState = Record<number, EmulatorState>
+
+// ============================================================
+// The preset a milestone's seed is filled by (GET /api/milestones/{game}/locations/{locationId}/seed)
+// Matches C# GoalPreset (GoalPresets.cs)
+// ============================================================
+
+export type GoalPreset = 'None' | 'LivingDex' | 'FemaleForms' | 'VersionExclusives'
+
+// ============================================================
+// Saved plans: GET /api/plans/steps, GET /api/plans/{game}, and GET, PUT, DELETE and POST .../rename?to= on /api/plans/{game}/{name}
+// Matches C# PlanStep and Plan (Milestones/HuntPlan.cs)
+// ============================================================
+
+// The SlotCondition values a rule uses: morning 4 to 10, day 10 to 20, night 20 to 4.
+export type PlanTime = 'Morning' | 'Day' | 'Night'
+
+// C# DayOfWeek as JsonStringEnumConverter writes it.
+export type Weekday = 'Sunday' | 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday'
+
+// A step's body: exactly the Start body Bot Control posts for that action, eventName included; null for every unset field.
+export type StepArguments = { eventName: string } & Record<string, unknown>
+
+// An empty times or weekdays matches any.
+export interface PlanStep {
+  times: PlanTime[]
+  weekdays: Weekday[]
+  arguments: StepArguments
+}
+
+// Rules are checked in order and the first match wins; default runs when none matches. A PUT's game and name are the route's.
+export interface Plan {
+  game: GameFlavor
+  name: string
+  rules: PlanStep[]
+  default: StepArguments
+  endWhenComplete: boolean
+}

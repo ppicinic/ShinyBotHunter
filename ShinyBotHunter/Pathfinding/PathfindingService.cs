@@ -513,13 +513,22 @@ namespace ShinyBotHunter.Pathfinding
                 ? mapService.GetGameMapIds(destBotMapId.Value)
                 : null;
             // A building exit warps on a step into the wall beyond its mat, which need not be the way the route arrived.
-            Direction? overshoot = overshootFinalStep ? ExitDirection(mapService.GetMap(mapId), destX, destY) ?? point.Direction : null;
+            // A kind-2 door tile warps on a press into its wall while standing on it, never on the step onto it.
+            Map map = mapService.GetMap(mapId);
+            Direction? overshoot = overshootFinalStep ? ExitDirection(map, destX, destY) ?? point.Direction
+                : destGameMapIds is not null && map[destY, destX] == Constant.MAP_Portal2 ? ExitDirection(map, destX, destY)
+                : null;
             return CreateMacro(path, destGameMapIds, overshoot);
         }
 
         // The direction from an exit tile into its one blocked or off-map neighbour; null when that is not exactly one.
+        // A tile in a run of kind-2 tiles counts only the two neighbours across the run, so the wall closing the run's end does not count.
         internal static Direction? ExitDirection(Map map, int x, int y)
         {
+            bool OffMap(int nx, int ny) => ny < 0 || ny >= map.Height || nx < 0 || nx >= map.Width;
+            bool Portal2(int nx, int ny) => !OffMap(nx, ny) && map[ny, nx] == Constant.MAP_Portal2;
+            bool inVerticalRun = map[y, x] == Constant.MAP_Portal2 && (Portal2(x, y - 1) || Portal2(x, y + 1));
+            bool inHorizontalRun = map[y, x] == Constant.MAP_Portal2 && (Portal2(x - 1, y) || Portal2(x + 1, y));
             (Direction Direction, int X, int Y)[] neighbours =
             [
                 (Direction.Up, x, y - 1),
@@ -528,7 +537,8 @@ namespace ShinyBotHunter.Pathfinding
                 (Direction.Right, x + 1, y),
             ];
             Direction[] walls = neighbours
-                .Where(n => n.Y < 0 || n.Y >= map.Height || n.X < 0 || n.X >= map.Width || map[n.Y, n.X] == Constant.MAP_Blocked)
+                .Where(n => !(inVerticalRun && n.X == x) && !(inHorizontalRun && n.Y == y))
+                .Where(n => OffMap(n.X, n.Y) || map[n.Y, n.X] == Constant.MAP_Blocked)
                 .Select(n => n.Direction)
                 .ToArray();
             return walls.Length == 1 ? walls[0] : null;

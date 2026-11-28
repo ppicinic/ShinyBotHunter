@@ -158,10 +158,11 @@ test('HGSS Route 32 through the dashboard: heal trip to Violet City, close the t
     // Each warp wait logs every (Screen, map) change; its last line must be on its destination map with the field free.
     const warps = backendLines(/\[Navigator\] Warp to map/)
     expect(warps.filter((l) => l.includes('Screen = FieldTask')).length, 'fewer than two door warps seen as FieldTask').toBeGreaterThanOrEqual(2)
-    const destOf = (line: string): string => /Warp to map (\d+):/.exec(line)![1]
+    const destOf = (line: string): string => /Warp to map (\d+(?:\/\d+)*):/.exec(line)![1]
     warps.forEach((line, i) => {
       if (i + 1 === warps.length || destOf(warps[i + 1]) !== destOf(line)) {
-        expect(line, `warp wait to map ${destOf(line)} did not end there with the field free`).toMatch(new RegExp(`on map ${destOf(line)}, .*Screen = FieldFree`))
+        expect(line, `warp wait to map ${destOf(line)} did not end there with the field free`).toMatch(/on map \d+, .*Screen = FieldFree/)
+        expect(destOf(line).split('/'), `warp wait to map ${destOf(line)} did not end there with the field free`).toContain(/on map (\d+),/.exec(line)![1])
       }
     })
 

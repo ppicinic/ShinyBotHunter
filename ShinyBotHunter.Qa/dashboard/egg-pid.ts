@@ -13,7 +13,7 @@ const PERM = ['ABCD', 'ABDC', 'ACBD', 'ACDB', 'ADBC', 'ADCB', 'BACD', 'BADC', 'B
 const shuffleOf = (pid: number): number => ((pid & 0x3e000) >>> 13) % 24
 
 /** XORs each u16 with the high half of the LCG s = s * 0x41C64E6D + 0x6073; the same call encrypts and decrypts. */
-function crypt(data: Buffer, seed: number): Buffer {
+export function crypt(data: Buffer, seed: number): Buffer {
   const out = Buffer.alloc(data.length)
   let s = seed >>> 0
   for (let i = 0; i < data.length; i += 2) {

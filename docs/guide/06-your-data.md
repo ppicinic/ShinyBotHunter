@@ -1,9 +1,9 @@
-<!-- Derived from: ShinyBotHunter/Persistence/PostgreSQL/PersistPokemonDataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoCaughtPokemonDao.cs, docs/architecture/system-overview.md, ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, the model snapshot), ShinyBotHunter/Persistence/MongoDb/MongoDbMetadataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, ShinyBotHunter/Persistence/MongoDb/BaseGameState.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Service/StarterHuntStateStore.cs, ShinyBotHunter/Service/PokemonMetadataService.cs (GetGender), ShinyBotHunter/BotEvents/StarterHuntGameState.cs, ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs (encounter time is UTC), ShinyBotHunter/Macro/GameFlavor.cs, ShinyBotHunter/Pokemon/PokemonData.cs, ShinyBotHunter/Pokemon/Gen3PokemonParser.cs, ShinyBotHunter/Pokemon/HgssPokemonParser.cs, ShinyBotHunter/appsettings.json (placeholders), PokemonDashboard/README.md (form codes), https://www.postgresql.org/docs/current/app-pgdump.html, https://www.postgresql.org/docs/current/app-pgrestore.html, https://www.tigerdata.com/docs/self-hosted/latest/backup-and-restore/logical-backup (restore sequence; no -j), https://www.mongodb.com/docs/database-tools/mongodump/, https://www.mongodb.com/docs/database-tools/mongorestore/ (--drop), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (save written in CloseGame through FlushSaveRAM) -->
+<!-- Derived from: ShinyBotHunter/Persistence/PostgreSQL/PersistPokemonDataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoCaughtPokemonDao.cs, docs/architecture/system-overview.md, ShinyBotHunter/Persistence/PostgreSQL/PokemonDbContext.cs, ShinyBotHunter/Migrations/* (InitialCreate, V2Schema, the model snapshot), ShinyBotHunter/Persistence/MongoDb/MongoDbMetadataDao.cs, ShinyBotHunter/Persistence/MongoDb/MongoDbConnection.cs, ShinyBotHunter/Persistence/MongoDb/BaseGameState.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Persistence/MongoDb/MongoGameFileDao.cs, ShinyBotHunter/Milestones/Goal.cs, ShinyBotHunter/Persistence/MongoDb/MongoHuntPlanDao.cs, ShinyBotHunter/Milestones/HuntPlan.cs, ShinyBotHunter/Service/StarterHuntStateStore.cs, ShinyBotHunter/Service/PokemonMetadataService.cs (GetGender), ShinyBotHunter/BotEvents/StarterHuntGameState.cs, ShinyBotHunter/BotEvents/MultiShinyHunterEvent.cs, ShinyBotHunter/BotEvents/BattleOrchestratorEvent.cs (encounter time is UTC), ShinyBotHunter/Macro/GameFlavor.cs, ShinyBotHunter/Pokemon/PokemonData.cs, ShinyBotHunter/Pokemon/Gen3PokemonParser.cs, ShinyBotHunter/Pokemon/HgssPokemonParser.cs, ShinyBotHunter/appsettings.json (placeholders), PokemonDashboard/README.md (form codes), https://www.postgresql.org/docs/current/app-pgdump.html, https://www.postgresql.org/docs/current/app-pgrestore.html, https://www.tigerdata.com/docs/self-hosted/latest/backup-and-restore/logical-backup (restore sequence; no -j), https://www.mongodb.com/docs/database-tools/mongodump/, https://www.mongodb.com/docs/database-tools/mongorestore/ (--drop), ppicinic/BizHawk@2.11.2-savepaths.2:src/BizHawk.Client.EmuHawk/MainForm.cs (save written in CloseGame through FlushSaveRAM) -->
 # Your data
 
 Part of the [ShinyBotHunter guide](README.md)
 
-The bot keeps everything it records in two databases on your PC: PostgreSQL and MongoDB. This page says what is kept where, how to look at it, and how to back it up. Looking is safe; this page never asks you to change anything in the databases.
+The bot keeps everything it records in two databases on your PC: PostgreSQL and MongoDB. This page says what is kept where, how to look at it, and how to back it up. Looking is safe; apart from one clean-up you may skip ([The old HuntPlans collection](#the-old-huntplans-collection)), this page never asks you to change anything in the databases.
 
 ## What does the bot keep, and where?
 
@@ -11,7 +11,9 @@ The bot keeps everything it records in two databases on your PC: PostgreSQL and 
 |---|---|
 | Every encounter, one row each | PostgreSQL, table `encounters` |
 | Shinies the bot actually caught | MongoDB, collection `CaughtPokemon` |
-| Your milestones | MongoDB, collection `PhaseInfos` |
+| Your milestones, each with its location, its ticked game files and whether it is archived | MongoDB, collection `PhaseInfos` |
+| The anchors you set (see [Set or clear an anchor](04-hunts/01-wild-encounter.md#set-or-clear-an-anchor)), keyed by the milestone's name | MongoDB, collection `GameFiles`, one document per game file |
+| Your saved plans (see [Make a plan](03-dashboard.md#make-a-plan)) | MongoDB, collection `Plans`, one document per game and plan name |
 | How far each starter hunt has got | MongoDB, collection `PhaseStates` |
 | Pokémon species and move reference data, filled in when you set the bot up (see [Install](01-install.md)) | MongoDB, collections `PokemonMetadata` and `PokemonMoveMetadata` |
 | Your game files and their saves, including the copies the hunts make | Your game folder (see [Install](01-install.md)) |
@@ -106,7 +108,7 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
    db.CaughtPokemon.find({ Phase: "YOUR MILESTONE" })
    ```
 
-   **Milestones.** Each record holds the game (`GameName`, `HGSS` or `RS`), the milestone's name (`Name`), its list of Pokémon with the amount wanted (`Pokemon`), and whether it came with the bot (`IsStatic`).
+   **Milestones.** Each record holds the game (`GameName`, `HGSS` or `RS`), the milestone's name (`Name`), its list of Pokémon with the amount wanted (`Pokemon`), whether it came with the bot (`IsStatic`), the id of its location such as `34-land`, or null for none (`Location`), the game files it is ticked for, empty for every file (`GameFiles`), and whether it is archived (`Archived`).
 
    ```
    db.PhaseInfos.find()
@@ -135,6 +137,18 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
 4. Type `exit` and press Enter to leave.
 
 Make and change milestones in the dashboard, never here; see [The dashboard](03-dashboard.md).
+
+A `GameFiles` document written before milestones were made from the game's data can still hold that time's goal, preset, hidden rows, archived milestones, order labels, assignments and links. The bot ignores them: only `Anchors` is read.
+
+### The old HuntPlans collection
+
+Plans are kept in `Plans`. The collection `HuntPlans`, where plans were kept before, is no longer read, and a plan saved there is not carried over: make it again in the [Plan Editor](03-dashboard.md#make-a-plan). If you want it gone, drop it by hand in `mongosh`, as above:
+
+```
+db.HuntPlans.drop()
+```
+
+Nothing reads it, so this changes nothing the bot does. Leaving it there does no harm either.
 
 ## Back up your data
 

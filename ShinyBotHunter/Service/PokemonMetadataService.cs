@@ -119,6 +119,24 @@ namespace ShinyBotHunter.Service
             }
         }
 
+        // A goal row's name: an Unown letter row reads "Unown (A)" (the owner, 2026-11-26); every other row is the species name.
+        internal string RowName(int species, string? formCode)
+        {
+            string name = _metadata[species].PokemonName;
+            // The Goals tab's form field is free text, and a copy can carry a stored row's "unown": no letter, no form name.
+            if (species != 201 || formCode is null || !formCode.StartsWith("unown-") || formCode.Length == "unown-".Length)
+            {
+                return name;
+            }
+            string letter = formCode["unown-".Length..] switch
+            {
+                "exclamation" => "!",
+                "question" => "?",
+                var c => c.ToUpperInvariant()
+            };
+            return $"{name} ({letter})";
+        }
+
         public static readonly Dictionary<int, byte> GenderThresholds = new Dictionary<int, byte>()
     {
         { 1, 31 }, { 2, 31 }, { 3, 31 }, { 4, 31 }, { 5, 31 }, { 6, 31 }, { 7, 31 }, { 8, 31 }, { 9, 31 }, { 10, 127 },

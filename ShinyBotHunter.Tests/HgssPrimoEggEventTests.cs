@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Context;
@@ -207,7 +208,7 @@ namespace ShinyBotHunter.Tests
             Stand(memory, 73, 469, 258, Direction.Up);
             FakeBot bot = new(Task.CompletedTask) { State = new ScriptedReader(FieldFree), Overworld = new HgssOverworldReader(memory, Table) };
 
-            await HgssPrimoEggEvent.WalkToLineAsync(bot, new NavigatorEvent(new PokemonStateReader()), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
+            await HgssPrimoEggEvent.WalkToLineAsync(bot, new NavigatorEvent(new PokemonStateReader(), _ => Task.CompletedTask), PrimoEggConfig.Load(PrimoEggConfig.DefaultPath),
                 CancellationToken.None);
 
             Assert.Empty(bot.Macros);
@@ -258,8 +259,10 @@ namespace ShinyBotHunter.Tests
         {
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 1 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, EggProfile);
-            var provider = new ServiceCollection().AddSingleton(new PokemonStateReader()).BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            var provider = new ServiceCollection()
+                .AddSingleton(new PokemonStateReader())
+                .BuildServiceProvider();
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(EggProfile));
             await service.ExecuteNewBotOrSpecialEvent(new NewEventArguments { EventName = "Launch Bot", GameName = "fake.nds" });
             FakeBot bot = factory.Bots[0];
             bot.PartyBlocks = Enumerable.Range(0, partySize).Select(_ => new byte[0xEC]).ToArray();

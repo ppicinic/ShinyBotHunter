@@ -1,4 +1,4 @@
-<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (training, the switch, the level-up box, the new move, evolution, the faint, TrainerSentence), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (the walk, the nurse, every stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (DecideOverworldAction, CanFightNextEncounter, HealTripLine), ShinyBotHunter/BotEvents/BattleReadiness.cs, ShinyBotHunter/Pathfinding/RouteSearch.cs, ShinyBotHunter/Service/DiscordBotService.cs (SendNewMoveDecisionAndWaitAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (capabilities, seekLockHandOff, trainingRefusal), ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter"), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md, docs/specs/rs-navigation-and-training.md -->
+<!-- Derived from: ShinyBotHunter/Service/BotService.cs (StartWildEncounter, WildRefusalAsync, DisabledByCapabilities, SpeedLinesAtRun, StartLaunchBotAndContinueAsync), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (ResumeAsync, CheckForCatchAsync, FinishAsync, LogEncounterAndAskTargetAsync), ShinyBotHunter/Service/PokemonStateReader.cs (GetPokemonState), ShinyBotHunter/BotEvents/SpinEncounterEvent.cs, ShinyBotHunter/BotEvents/RunEncounterEvent.cs, ShinyBotHunter/BotEvents/RsBattleEvent.cs (training, the switch, the level-up box, the new move, evolution, the faint, TrainerSentence), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (the walk, the nurse, every stop), ShinyBotHunter/BotEvents/OrchestratorEvent.cs (DecideOverworldAction, CanFightNextEncounter, HealTripLine), ShinyBotHunter/BotEvents/BattleReadiness.cs, ShinyBotHunter/Pathfinding/RouteSearch.cs, ShinyBotHunter/Service/DiscordBotService.cs (SendNewMoveDecisionAndWaitAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (capabilities, seekLockHandOff, trainingRefusal), ShinyBotHunter/Games/GameStateWait.cs (GameStateTimeoutException), ShinyBotHunter/Service/RsStartMenuService.cs, ShinyBotHunter/Service/LegalityService.cs, ShinyBotHunter/Macro/Configs/RS/*.yaml, ShinyBotHunter/Games/EventRegistry.cs ("Wild Encounter", "Chained Encounter", "Plan" needs HasHuntPlans), PokemonDashboard/src/renderer/src/components/PhaseCard.tsx (pills only where a row is timed), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (speed lines), PokemonDashboard/src/renderer/src/components/admin/actionSchema.ts (choiceOptions), docs/research/rs-wild-encounter.md ("Tuned for speed", "Reaching 304 an hour", "A failed escape"), docs/specs/rs-wild-encounter.md, docs/specs/rs-navigation-and-training.md, ShinyBotHunter/Milestones/MilestonePicker.cs, PokemonDashboard/src/renderer/src/components/admin/ActionParamFields.tsx (the milestone picker), ShinyBotHunter/Milestones/Goal.cs (GameFile.AnchorFor), OrchestratorEvent.cs (UseAnchor), ShinyBotHunter/Service/BotService.cs (AnchorTileStop, AnchorLeg, SetAnchorAsync), ShinyBotHunter/Games/Rs/RsProfile.cs (landTileKind), ShinyBotHunter/BotEvents/RsNavigatorEvent.cs (No route back to the start tile), docs/specs/hunt-plans-and-milestone-builder.md (24 of 46 RS land anchors, Route 111), PokemonDashboard/src/renderer/src/components/admin/EmulatorCard.tsx (the anchor line, Set anchor here, Clear) -->
 # Ruby and Sapphire wild encounters
 
 Part of the [ShinyBotHunter guide](../README.md)
@@ -16,12 +16,12 @@ Every button press is checked against the game's memory before the next one.
 ## What does your save need?
 
 1. **An emulator started with Launch Bot + Continue**, as [the dashboard page](../03-dashboard.md) describes. Its entry appears once you are standing in the field.
-2. **Your character standing in tall grass, on the tile you want to hunt from.** The bot remembers that tile when the hunt starts. Water and caves are untested.
+2. **Your character standing in tall grass, on the tile you want to hunt from,** unless the milestone has an anchor: then the bot walks to the anchor first (see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor)). The bot remembers that tile when the hunt starts. Water and caves are untested.
 3. **A first Pokémon that has not fainted.** One faster than the Pokémon living there gets away first time. A slower one may need several tries, and after 12 the bot stops.
 4. **Poké Balls**, for you to catch with.
 5. **For Encounter Type Run: the Running Shoes.** The bot holds B for the whole walk, so your character runs. Without the shoes it walks, which checks for an encounter half as often.
 6. **Every menu and message closed.**
-7. **A milestone for the game RS**, made in the [Milestone Editor](../03-dashboard.md#make-a-milestone).
+7. **A milestone of the game file**: one you saved for the game RS in the [Milestone Editor](../03-dashboard.md#make-a-milestone), made from the game's data, such as from `Route 101 · grass`, or from nothing.
 8. **To train (Train Type Standard or Switch):** a US Ruby or Sapphire ROM, and a Pokémon Center your character can walk to from the start tile without any HM. The bot uses no Cut, Surf, Strength, Rock Smash, Waterfall or Dive. Every trainer on the way must already be beaten: the bot stops at any trainer who has not been. The fighting Pokémon needs more than a quarter of its HP and at least 3 PP across its damaging moves; otherwise the bot heals first.
 
 ## Start a hunt
@@ -40,10 +40,10 @@ Every button press is checked against the game's memory before the next one.
 
 | What it means | Field on the dashboard |
 |---|---|
-| The milestone the encounters are filed under, and the list of shiny Pokémon the hunt is trying to complete. | Milestone |
+| The milestone the encounters are filed under, and the list of shiny Pokémon the hunt is trying to complete. Only saved milestones are listed; one at a surf, rod or rock smash place reads `(no hunt yet)` and Run is refused at it. A milestone with an anchor is hunted from it; see [Where the hunt starts: the anchor](#where-the-hunt-starts-the-anchor). See [the Milestone field](../03-dashboard.md#the-milestone-field). | Milestone |
 | What counts as found. **PhaseTarget**: a shiny Pokémon the milestone still needs, counting only the ones caught in this game file. **ShinyTarget**: any shiny Pokémon. Either way the hunt also ends once the milestone is complete. **NoTarget**: nothing is a target; it needs a train mode, and the hunt ends when the Pokémon reaches the target level. | Target Type |
 | How to meet wild Pokémon. **Spin**: turn on the spot. **Run**: run back and forth in a straight line. Headbutt is greyed out. | Encounter Type |
-| How many tiles to run each way from the start tile, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. | X Range, Y Range |
+| How many tiles to run each way from the start tile, left and right (X Range) or up and down (Y Range). Shown only for Run. Fill in exactly one of the two, with a number above 0, and leave the other at 0. At a milestone with an anchor, the anchor decides Run or Spin and the range instead, but these must still be filled in correctly. | X Range, Y Range |
 | Whether to fight. **None**: run from every battle. **Standard**: the Pokémon in your first party slot fights every battle. **Switch**: the Pokémon in your first slot is sent out, then the bot switches to the Battler, which does the fighting; the first Pokémon still earns experience. Standard and Switch need a US Ruby or Sapphire ROM. Pickup shows with them, greyed out. | Train Type |
 | The level to train to. Shown when Train Type is not None. A whole number above 0. Training is done when the Pokémon in your first party slot reaches it. 101 is never reached, so the bot keeps fighting until you cancel it. | Target Level (101 = no end) |
 | The party slot of the Pokémon that fights in Switch training, from 2 to 6. Shown only for Switch. It starts at 2. | Battler |
@@ -57,6 +57,19 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 | Encounter Type Headbutt | `Ruby and Sapphire have no Headbutt trees.` |
 | Pickup, once a train type is chosen | `Pickup is not available on Ruby and Sapphire.` |
 
+## Where the hunt starts: the anchor
+
+It works as on HeartGold and SoulSilver: the card shows the picked milestone's anchor under the Wild Encounter settings, **Set anchor here** and **Clear** change it for this game file, and the anchor decides Run or Spin and the range. [Where the hunt starts: the anchor](01-wild-encounter.md#where-the-hunt-starts-the-anchor) on that page explains the card and the buttons. With no anchor, the hunt starts where your character stands.
+
+Ruby and Sapphire have no clock, so there is no **Plan** action, and their counts windows show no time-of-day pills.
+
+What is different on Ruby and Sapphire:
+
+- **The walk to the anchor** is the walk to a Pokémon Center (see [When it heals](#when-it-heals)): planned over Hoenn's maps from where your character stands, run with B held, with no HM, running from every wild battle on the way. A trainer who has not been beaten stops it, as on a heal trip. It needs no train type.
+- **24 of the 46 grass and cave locations** come with a generated anchor, which a milestone made from one of them has. The others have none until you set one.
+- **Route 111's generated anchor is in the desert,** which needs the Go-Goggles. What the walk does there, with and without them, has not been checked on the emulator yet.
+- **Run checks the anchor's tile** against the game's map before any walk. Every grass and cave milestone needs a tile that starts wild battles, so the sentence for a cave milestone ends `is not cave.`
+
 ## Spin and Run
 
 - **Spin** turns Up, Left, Down, Right, starting with the direction after the one you face, and never leaves the tile. Before every round of turning, the bot checks you are on the tile the hunt started on.
@@ -64,6 +77,8 @@ A choice Ruby and Sapphire cannot run is greyed out, with the reason in brackets
 - Both check for an encounter every 8 frames (7.5 times a second), so neither is faster than the other.
 - While your character is free to walk, there is no time limit.
 - If the field stops being free (a message, a script, a trainer), the bot stops turning or running after 4 s and looks at what locked it. A trainer stops the bot at once (see [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume)). Anything else that does not become a battle stops the bot about 15 s after the field locked.
+
+On a Run hunt with a US Ruby or Sapphire ROM, the bot closes "REPEL's effect wore off..." itself, about 4 s after it appears: once the text has finished and the box waits, it presses A once, waits for your character to be free to walk, and runs on. Nothing else is pressed while the box is up. On other ROMs the message stops the bot as other messages do. Spin takes no steps, so a Repel never wears off on it.
 
 ## What happens in each encounter?
 
@@ -188,6 +203,7 @@ The backend's window also shows:
 - `[RsBattle] legality OK` or `[RsBattle] legality FAIL` for each shiny, with PKHeX's report after a FAIL.
 - `[Spin] seek:` or `[Run] seek:`: how long it took to find the battle.
 - `[Run] from (<x>, <y>) macro=<macro>` before every run.
+- `[Run] REPEL's effect wore off: closed with <n> A, confirmed by lock 0 (<script state>)` each time the bot closes the Repel message on a Run hunt, and `[Run] lock handed over: not the Repel message (<script state>)` when a lock that lasted 4 s was something else.
 - When training: `[RsBattle]` lines for each move chosen, each level-up box, each new move (`asking Discord: …; nothing is pressed until the answer`), each switch, and `party after the battle` with each Pokémon's level and moves. Party slots and move slots in these lines count from 0: your first Pokémon is slot 0, the dashboard's Battler 2 is slot 1, and a Pokémon's first move is move 0.
 - `[Orchestrator] heal trip: …` when the bot goes to heal. Its `switch slot <n>` is the dashboard's number, from 2 to 6.
 - `[Navigator]` lines for each walk: `plan to <place> from <place>` with its cost and number of segments, one line per segment, `arrived on <place>`, and at the Pokémon Center the nurse's presses and `nurse: party HP … (full)`.
@@ -223,6 +239,10 @@ Text in `code` is quoted exactly as the bot shows it; a word in angle brackets, 
 **It means** a greyed-out choice was sent anyway, for example from outside the dashboard.
 **Do** pick a choice that is not greyed out.
 
+**You see** Run refused with "<milestone>: the anchor (<x>, <y>) is not grass." or the same ending `is not cave.`
+**It means** the milestone's anchor is not a tile that starts wild battles on the game's map. It is checked when you press Run, before any walk. Usually it is an anchor you set while standing off the grass. Milestones with no location are not checked.
+**Do** stand your character in the milestone's grass and press **Set anchor here** again, or press **Clear** to go back to the generated anchor.
+
 **You see** Run refused with "Training needs a US Ruby or Sapphire ROM (game code AXVE or AXPE)."
 **It means** Train Type Standard or Switch was chosen on a ROM that is not the US Ruby or Sapphire. The bot only knows where those two keep what training reads.
 **Do** leave Train Type at None, or train on a US ROM.
@@ -239,6 +259,9 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **You see** `[Run] The player is off the run line. At (<x>, <y>); the line is <x or y> +-<range> from (<x>, <y>).`
 **It means** before a run, your character was not on the line, or was past one of its ends.
 
+**You see** `[Run] The Repel message did not close. Waited for <what>; the script state stayed <state>`, or the same ending `the game state stayed <state>`.
+**It means** on a Run hunt, "REPEL's effect wore off..." came up, and pressing A did not close it, or the box never reached the point where it waits for A, or your character was not free to walk afterwards. `<what>` is `the Repel message to wait for A`, `the Repel message to take the A` or `the field free after the Repel message`. You can close the box yourself, or simply press **Resume**: the B that Run holds closes it.
+
 **You see** `[Spin] Something other than a wild battle started. Waited for a battle within 15 s of the field leaving free; the game state stayed <state>`, or the same starting with `[Run]`.
 **It means** the game left the field for something other than a message or a script, such as a loading screen, and no battle started within 15 s.
 
@@ -246,7 +269,7 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **It means** a trainer challenged your character. See [When a trainer stops you](#when-a-trainer-stops-you-win-the-battle-and-press-resume).
 
 **You see** `[RsBattle] stopped: Something other than a wild battle started.` followed by what the game showed, or by `battle type 0x<flags>, <state>`.
-**It means** the field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one (a Safari Zone battle, for example).
+**It means** the field locked (a message, a script), it was not a trainer, and no battle started within about 15 s of the lock; or, with `battle type`, the battle is not a wild one (a Safari Zone battle, for example). On a Run hunt with a US ROM, the Repel message is not one of these: the bot closes it.
 
 **You see** `[RsBattle] stopped: The first Pokémon fainted. <state>`
 **It means** your first Pokémon fainted in the battle.
@@ -267,7 +290,7 @@ Each of these appears in the backend's window, and the entry shows the bot waiti
 **It means** a press while fighting, switching or answering a new move was not followed by what it should change, and nothing in the game changed for 30 s. In a hunt that is not training, "Use next POKéMON?" ends this way (see [When a Pokémon faints](#when-a-pokémon-faints)). [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) lists every `<what>`.
 
 **You see** `[Navigator] stopped:` followed by `No route to a Pokémon Center on foot from <place>.`, `No route back to the start tile <place> from <place>.`, `Stuck walking to <place>.`, `The last step to <place> did not end (…).`, a `Waited for …` at the nurse, or `The party's HP was not full after the nurse: …`.
-**It means** the walk to the Pokémon Center or back, or the nurse, did not go as planned. A place is the game's name for the map and the tile, for example `Route101 (14, 4)`. [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) explains each.
+**It means** the walk to the Pokémon Center or back, the walk to the milestone's anchor at the start of the hunt, or the nurse, did not go as planned. On the walk to the anchor the start tile is the anchor, so a hunt that cannot reach its anchor stops with `No route back to the start tile <place> from <place>.` before anything is hunted; cancel it, walk your character nearer the anchor, and press **Run** again. A place is the game's name for the map and the tile, for example `Route101 (14, 4)`. [When something goes wrong](../07-when-something-goes-wrong.md#a-ruby-or-sapphire-hunt-stops-while-training-or-walking) explains each.
 
 **Do**, for each of these: look at that emulator to see what the game shows. Finish it yourself: run from or end the battle, close the message. Put your character back on the start tile (Spin) or on the line (Run). Then press **Resume**. Resume goes back to the field and checks the tile again. After a lost battle, or a stop at the nurse or on a walk, your character is somewhere else, so walk it back to the start tile first; otherwise Resume stops again with `The player moved while turning` or `The player is off the run line`. If a Pokémon still needs healing, the bot then walks to the Pokémon Center again by itself.
 

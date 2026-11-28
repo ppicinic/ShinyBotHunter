@@ -2,9 +2,11 @@ using ShinyBotHunter.Bot;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
+using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.BattlePokemonParser;
 using ShinyBotHunter.Service.Pointers;
 
@@ -60,6 +62,17 @@ namespace ShinyBotHunter.Games
         /// <summary>Why a ROM's address table cannot train, or null when it can. Null when every table of the flavor can.</summary>
         public Func<IPointerService, string?>? TrainingRefusal { get; }
 
+        /// <summary>The species shares and survive share of a milestone: (milestone, time of day or for headbutt the tree kind,
+        /// Repel level or null, lead ability, lead level, lead is egg). Null when the flavor has no milestones.</summary>
+        public Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? Rates { get; }
+
+        /// <summary>Each version's generated milestones, from the flavor's milestone file. Null when the flavor has none.</summary>
+        public IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? Milestones { get; }
+
+        /// <summary>The map data's tile kind of a land milestone's encounter tiles, which its anchor must stand on (FR-24).
+        /// Null when the flavor has no milestones.</summary>
+        public Func<Milestone, byte>? LandTileKind { get; }
+
         /// <param name="revisions">The revisions <paramref name="addresses"/> has a table for. Only the box check reads it.</param>
         public GameProfile(
             GameFlavor flavor,
@@ -77,7 +90,10 @@ namespace ShinyBotHunter.Games
             Func<IServiceProvider, IBot, Task>? saveGame = null,
             TimeSpan? seekLockHandOff = null,
             Func<IServiceProvider, IBotEvent<GameState>>? createNavigatorEvent = null,
-            Func<IPointerService, string?>? trainingRefusal = null)
+            Func<IPointerService, string?>? trainingRefusal = null,
+            Func<Milestone, SlotCondition, int?, byte, int, bool, (IReadOnlyDictionary<int, double> Shares, double Survive)>? rates = null,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null,
+            Func<Milestone, byte>? landTileKind = null)
         {
             if (capabilities.HasOverworldNavigation && createOverworldReader is null)
             {
@@ -156,6 +172,9 @@ namespace ShinyBotHunter.Games
             SeekLockHandOff = seekLockHandOff;
             CreateNavigatorEvent = createNavigatorEvent;
             TrainingRefusal = trainingRefusal;
+            Rates = rates;
+            Milestones = milestones;
+            LandTileKind = landTileKind;
         }
     }
 }

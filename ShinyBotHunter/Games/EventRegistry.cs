@@ -79,6 +79,11 @@ namespace ShinyBotHunter.Games
                 new EventArgumentOptions() { Name = "HGSS Static Encounter", RequiredParameters = ["PhaseName", "StaticEncounter"] },
                 (nameof(GameCapabilities.HasStaticEncounter), c => c.HasStaticEncounter), OwnsEmulators: false,
                 (s, args, pos) => s.StartStaticEncounterAsync(args, pos)),
+            // A saved plan by name; its choices are the game's saved plans, filled per listing by BotController.
+            new("Plan",
+                new EventArgumentOptions() { Name = "Plan", RequiredParameters = ["HuntPlan"] },
+                (nameof(GameCapabilities.HasHuntPlans), c => c.HasHuntPlans), OwnsEmulators: false,
+                (s, args, pos) => s.StartPlanAsync(args, pos)),
             new("Resume",
                 new EventArgumentOptions() { Name = "Resume" },
                 null, OwnsEmulators: false, (s, args, pos) => s.ResumeAsync(args, pos)),
@@ -86,6 +91,10 @@ namespace ShinyBotHunter.Games
 
         public static EventRegistration Get(string name)
             => All.FirstOrDefault(e => e.Name == name) ?? throw new ArgumentException($"{name} does not exist.");
+
+        // The Plan action offering these saved plan names, sorted. A copy, so the registry's own options are never touched.
+        public static EventArgumentOptions PlanChoices(IEnumerable<string> names)
+            => Get("Plan").Options with { Choices = new() { ["HuntPlan"] = [.. names.Order()] } };
 
         // The parameters of a single encounter. Also serves as the per-leg schema of a chain, so the
         // dashboard renders one set of fields per leg without a second definition to keep in sync.

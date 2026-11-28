@@ -42,7 +42,8 @@ namespace ShinyBotHunter.Tests
                 HasStaticEncounter: true,
                 HasHeadbuttTrees: true,
                 HasPickup: true,
-                HasWildRunChecks: false), profile.Capabilities);
+                HasWildRunChecks: false,
+                HasHuntPlans: true), profile.Capabilities);
             Assert.NotNull(profile.BattleParser);
             Assert.NotNull(profile.CreateOverworldReader);
             Assert.NotNull(profile.CreateStateReader);
@@ -52,7 +53,7 @@ namespace ShinyBotHunter.Tests
             Assert.NotNull(profile.Pathfinding);
             Assert.NotNull(profile.CreateBattleEvent);
             Assert.NotNull(profile.SaveGame);
-            NavigatorEvent navigator = new(new PokemonStateReader());
+            NavigatorEvent navigator = new(new PokemonStateReader(), _ => Task.CompletedTask);
             Assert.Same(navigator, profile.CreateNavigatorEvent!(new ServiceCollection().AddSingleton(navigator).BuildServiceProvider()));
             Assert.Null(profile.TrainingRefusal);
         }

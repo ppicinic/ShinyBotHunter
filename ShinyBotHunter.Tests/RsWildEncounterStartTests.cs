@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
@@ -65,7 +66,8 @@ namespace ShinyBotHunter.Tests
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
             var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            // A ROM directory never scanned: no game file has a version, so no phase name is a generated milestone.
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(profile));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             FakeBot bot = factory.Bots[0];
             bot.PartyBlocks = party;

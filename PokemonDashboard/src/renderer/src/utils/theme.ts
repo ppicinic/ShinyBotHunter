@@ -49,6 +49,7 @@ export function windowLabel(name: string): string {
   const [kind, ...parts] = name.split(':').map(decodeURIComponent)
   if (kind === 'phase') {
     const [game, phase, gameFile] = parts
+    if (phase === '') return `${game} / ${gameFile} (follows the hunt)`
     return `${game} / ${phase}${gameFile ? ` (${gameFile})` : ''}`
   }
   if (kind === 'pickup') return `Pickup Items (${parts[0]})`

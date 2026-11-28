@@ -7,10 +7,10 @@ namespace ShinyBotHunter.Service.Pointers
     ///
     /// The RAM table is shared by both games at every revision. Measured from the pret symbol tables: all 403
     /// EWRAM and 324 IWRAM symbols sit at identical addresses across Ruby and Sapphire and across
-    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and five
+    /// rev0/rev1/rev2. A function or script the bot compares against a RAM pointer is a ROM address, and six
     /// of those, <see cref="WaitForAorBPress"/>, <see cref="DeleteMoveYesNo"/>, <see cref="StopLearningYesNo"/>,
-    /// <see cref="UseNextPokemonYesNo"/> and <see cref="PartyMenuMainCallback2"/>, differ between the games: that is the
-    /// per-game part, chosen by
+    /// <see cref="UseNextPokemonYesNo"/>, <see cref="PartyMenuMainCallback2"/> and <see cref="RepelWoreOffReturn"/>, differ
+    /// between the games: that is the per-game part, chosen by
     /// <see cref="For"/> from the game code.
     ///
     /// Unlike Gen 4 these are absolute, not offsets from a pointer that moves: Gen 3 does not
@@ -25,11 +25,13 @@ namespace ShinyBotHunter.Service.Pointers
         {
             WaitForAorBPress = 0x080670E5, DeleteMoveYesNo = 0x081D8ED2, StopLearningYesNo = 0x081D8EE1,
             UseNextPokemonYesNo = 0x081D8C56, PartyMenuMainCallback2 = 0x0806AF01,
+            RepelWoreOffReturn = 0x081C3394,
         };
         private static readonly RsPointerService Ruby = new()
         {
             WaitForAorBPress = 0x080670E1, DeleteMoveYesNo = 0x081D8F42, StopLearningYesNo = 0x081D8F51,
             UseNextPokemonYesNo = 0x081D8CC6, PartyMenuMainCallback2 = 0x0806AEFD,
+            RepelWoreOffReturn = 0x081C3404,
         };
 
         /// <summary>
@@ -75,6 +77,13 @@ namespace ShinyBotHunter.Service.Pointers
         // in-battle switch, read frame by frame" S1, S10), both 1.1 values decomp only; QA: none yet: rs-train-switch
         // (Ruby: none yet: rs-train-switch-ruby)
         public uint? PartyMenuMainCallback2 { get; private init; }
+
+        // S_RepelWoreOff + 8, the field script's return address as stack[0] holds it at depth 1 while "REPEL's effect wore
+        // off..." waits for A: what names the box as the Repel one; ROM data, no Thumb bit (symbol tables: rev 1
+        // equal to rev 2); constant, per game; observed on Sapphire 1.2 and Ruby 1.2 (docs/research/milestone-builder.md,
+        // "The Repel message on Ruby and Sapphire"), both 1.1 values from the symbol tables only; QA: none yet:
+        // rs-rates-repel (#525)
+        public uint? RepelWoreOffReturn { get; private init; }
 
         // gPlayerPartyCount = 0x03004350, gPlayerParty = 0x03004360, both in IWRAM. Anchor is the
         // count, so the party sits a fixed 0x10 beyond it and the existing offset fields still apply.
@@ -231,6 +240,11 @@ namespace ShinyBotHunter.Service.Pointers
         // the length of Vars in bytes: VARS_COUNT 256 u16s (include/constants/global.h:47); QA: none yet: rs-nav-heal-return
         public int VarBytes => 0x200;
 
+        // gSaveBlock1 + 0x1382, script variable 0x4021 VAR_REPEL_STEP_COUNT (u16): 0 with no Repel, one down per step; root
+        // (absolute; Vars + 0x42); observed on Ruby 1.2 and Sapphire 1.0 (docs/research/milestone-builder.md "B3r: the
+        // Repel counter on Ruby and Sapphire"); QA: none yet: rs-rates-repel
+        public uint RepelStepCount => 0x02026AB6;
+
         // gTrainerBattleOpponent (u16), the trainer id from the first locked frame of a trainer's approach; root
         // (absolute; pret symbols line 210); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet: rs-nav-trainer
         public uint TrainerBattleOpponent => 0x0202FF5E;
@@ -251,6 +265,12 @@ namespace ShinyBotHunter.Service.Pointers
         // script; root (absolute; pret symbols line 468); observed on Sapphire 1.2 and Ruby 1.2; QA: none yet:
         // rs-nav-heal-return
         public uint ScriptContextMode => 0x030005B9;
+
+        // sGlobalScriptContext, 16 bytes from + 0: stackDepth (u8) + 0, mode + 1, nativePtr + 4, stack[0] (u32) + 0xC
+        // (include/script.h); root (absolute; pret symbols line 468); observed on Sapphire 1.2 and Ruby 1.2
+        // (docs/research/milestone-builder.md, "The Repel message on Ruby and Sapphire"); QA: none yet:
+        // rs-rates-repel (#525)
+        public uint ScriptContext => 0x030005B8;
 
         // gPlayerAvatar (0x0202E858) + 2, runningState (u8, include/global.fieldmap.h): 2 while moving, 1 through a turn in
         // place, 0 at rest; tileTransitionState is the next byte; root (absolute; pret symbols line 130, pret/pokeruby

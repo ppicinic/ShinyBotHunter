@@ -1,5 +1,6 @@
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.BotEvents
 {
@@ -68,6 +69,7 @@ namespace ShinyBotHunter.BotEvents
                 {
                     Console.WriteLine($"[Chain] Starting leg {CurrentLegNumber}/{LegCount}: phase={leg.PhaseName} train={leg.TrainType} targetLevel={leg.TargetLevel} switchSlot={leg.SwitchSlot}");
                     ApplyLeg(state, leg);
+                    await provider.GetRequiredService<AdminService>().FollowHuntAsync(state.Bot.GameFlavor, state.Bot.GameFileName, leg.PhaseName);
                     currentLegEvent = new OrchestratorEvent(provider, leg.EncounterParams);
                 }
 

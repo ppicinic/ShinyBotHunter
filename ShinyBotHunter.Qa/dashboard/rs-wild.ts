@@ -308,7 +308,8 @@ export async function assertUnarmed(): Promise<void> {
 
 /** The hotkey during a battle; then the battle bit (the hotkey's Select landed in the battle) and three frozen reads. */
 export async function armCheat(): Promise<void> {
-  expect(sendCheatHotkey(), 'EmuHawk was not the foreground window when the arming hotkey was sent').toBe(true)
+  const hotkey = sendCheatHotkey()
+  expect(hotkey.sent, `EmuHawk was not the foreground window when the arming hotkey was sent; the foreground was ${hotkey.foreground}`).toBe(true)
   expect(await readBattleBit(), 'the hotkey landed after the battle: the battle bit reads 0').toBe(1)
   const values = await rngReads(3)
   expect(values.every((v) => v === RNG_FROZEN), `the cheat is not armed: gRngValue read ${values.map(hex).join(', ')}`).toBe(true)
@@ -317,7 +318,8 @@ export async function armCheat(): Promise<void> {
 
 /** The hotkey again, with the bot Waiting in the battle: gRngValue moves again, and the battle bit is still set. */
 export async function disarmCheat(): Promise<void> {
-  expect(sendCheatHotkey(), 'EmuHawk was not the foreground window when the disarming hotkey was sent').toBe(true)
+  const hotkey = sendCheatHotkey()
+  expect(hotkey.sent, `EmuHawk was not the foreground window when the disarming hotkey was sent; the foreground was ${hotkey.foreground}`).toBe(true)
   const values = await rngReads(3)
   expect(values.every((v) => v === RNG_FROZEN), `the cheat is still armed: gRngValue read ${values.map(hex).join(', ')}`).toBe(false)
   expect(await readBattleBit(), '"the cheat disarmed during that battle": the battle bit reads 0').toBe(1)

@@ -5,7 +5,7 @@ using ShinyBotHunter.Service;
 
 namespace ShinyBotHunter.Controllers
 {
-    public record GamePhaseRaw(string game, string phase, string? gameName);
+    public record GamePhaseRaw(string game, string phase, string? gameName, bool followsHunt = false);
     public class AdminController : ApiControllerBase
     {
         private AdminService adminService;
@@ -24,14 +24,18 @@ namespace ShinyBotHunter.Controllers
         [HttpPost("subcribeGamePhase")]
         public async Task<IActionResult> SubscribeGamePhase([FromBody] GamePhaseRaw gamePhase)
         {
-            await adminService.SubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName);
+            if (gamePhase.followsHunt && gamePhase.gameName == null)
+            {
+                return BadRequest("A card that follows the hunt needs a game file.");
+            }
+            await adminService.SubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName, gamePhase.followsHunt);
             return Ok();
         }
 
         [HttpPost("unsubcribeGamePhase")]
         public async Task<IActionResult> UnsubscribeGamePhase([FromBody] GamePhaseRaw gamePhase)
         {
-            await adminService.UnsubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName);
+            await adminService.UnsubscribeGamePhaseAsync(gamePhase.game, gamePhase.phase, gamePhase.gameName, gamePhase.followsHunt);
             return Ok();
         }
 

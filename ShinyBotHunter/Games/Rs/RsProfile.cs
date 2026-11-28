@@ -1,9 +1,11 @@
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pathfinding;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Service;
 using ShinyBotHunter.Service.Pointers;
+using ShinyBotHunter.Util;
 
 namespace ShinyBotHunter.Games.Rs
 {
@@ -21,9 +23,10 @@ namespace ShinyBotHunter.Games.Rs
 
         // RS plans over the maps alone (RouteSearch), so they carry elevation and events and there is no graph or pathfinding.
         public static GameProfile Create(PokemonMetadataService metadata)
-            => Create(metadata, new MapService(DataDirectory, withElevationAndEvents: true));
+            => Create(metadata, new MapService(DataDirectory, withElevationAndEvents: true), MilestoneFile.Load(DataDirectory));
 
-        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps) => new(
+        internal static GameProfile Create(PokemonMetadataService metadata, MapService maps,
+            IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>>? milestones = null) => new(
             GameFlavor.RS,
             new GameCapabilities(
                 HasOverworldNavigation: true,
@@ -64,11 +67,15 @@ namespace ShinyBotHunter.Games.Rs
             // one one-frame read, false because the script status is 2, and the battle then goes on as normal.
             seekLockHandOff: TimeSpan.FromSeconds(4),
             createNavigatorEvent: provider => new RsNavigatorEvent(provider.GetRequiredService<PokemonStateReader>()),
+            // Every RS land encounter tile is kind 3, caves included (RsMapProcessor).
+            landTileKind: _ => Constant.MAP_Grass,
             // Training reads the per-game part (the new-move questions, the nurse's wait for A or B, the switch's party menu),
             // which only the US tables have.
             trainingRefusal: table => table is RsPointerService { WaitForAorBPress: not null, DeleteMoveYesNo: not null, StopLearningYesNo: not null,
                 PartyMenuMainCallback2: not null }
                 ? null
-                : NoTrainingAddresses);
+                : NoTrainingAddresses,
+            rates: RsRates.Compute,
+            milestones: milestones);
     }
 }

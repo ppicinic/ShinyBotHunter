@@ -99,7 +99,7 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
   hub.on(
     'ReceiveDashboardConfig',
     (rawConfig: {
-      gamePhases: Array<{ game: string; phase: string; gameFileName?: string | null }>
+      gamePhases: Array<{ game: string; phase: string; gameFileName?: string | null; followsHunt?: boolean }>
       recentEncounterCount: number
       appearance: Appearance
     }) => {
@@ -107,7 +107,8 @@ function buildConnection(backendUrl: string): signalR.HubConnection {
         gamePhases: (rawConfig.gamePhases ?? []).map((gp) => ({
           game: gp.game,
           phase: gp.phase,
-          gameName: gp.gameFileName ?? null
+          gameName: gp.gameFileName ?? null,
+          followsHunt: gp.followsHunt ?? false
         })),
         recentEncounterCount: rawConfig.recentEncounterCount ?? 0,
         appearance: rawConfig.appearance

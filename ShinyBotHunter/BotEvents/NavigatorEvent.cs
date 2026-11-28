@@ -14,6 +14,7 @@ namespace ShinyBotHunter.BotEvents
     public class NavigatorEvent : AbstractBotEvent<GameState>
     {
         private readonly PokemonStateReader reader;
+        private readonly Func<string, Task> notifyStop;
 
         // How often the party is re-read while walking to catch a poison faint. Each tick costs a
         // party read plus decrypt, so this is deliberately far slower than the battle poll.
@@ -54,6 +55,9 @@ namespace ShinyBotHunter.BotEvents
         // A field script whose snapshot has not changed for this long parks the bot (R18).
         private static readonly TimeSpan ScriptStale = TimeSpan.FromSeconds(20);
 
+        // A warp wait whose screen and map id have not changed for this long parks the bot (R11).
+        private static readonly TimeSpan WarpStale = TimeSpan.FromSeconds(15);
+
         // The prompt-press values of LevelUpFlow: a press that has not landed after a second is pressed again.
         private static readonly TimeSpan ScriptPressConfirm = TimeSpan.FromMilliseconds(1000);
         private const int ScriptPressAttempts = 3;
@@ -73,11 +77,28 @@ namespace ShinyBotHunter.BotEvents
             PoisonEvent,
             Blocked,
             Sign,
+            // "Repel's effect wore off..." stopped the walk mid-segment.
+            RepelMessage,
+            // The macro finished with that message up.
+            CompletedUnderRepelMessage,
+            // A sight trainer's challenge stopped the walk (TrainerApproachScript).
+            Trainer,
         }
 
-        public NavigatorEvent(PokemonStateReader reader)
+        // std_trainer_approach: a sight trainer has seen the player. Up from the frame the step into his line begins, with no
+        // free or transitioning frame before it, and at the speech's arrow until A (docs/research/milestone-builder.md,
+        // "HeartGold and SoulSilver: a trainer's challenge during a navigator walk").
+        private const int TrainerApproachScript = 3739;
+
+        public NavigatorEvent(PokemonStateReader reader, ShinyAlertService alerts) : this(reader, alerts.NotifyStopAsync)
+        {
+        }
+
+        // The test seam for the Discord boundary (AGENTS rule 2's exception), as RsBattleEvent.RunAsync takes notifyStop.
+        internal NavigatorEvent(PokemonStateReader reader, Func<string, Task> notifyStop)
         {
             this.reader = reader;
+            this.notifyStop = notifyStop;
         }
 
         public override async Task<GameState> ExecuteWithResultAsync(GameState state, CancellationToken cancellationToken)
@@ -129,13 +150,13 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Navigator] Starting from map={mapId} ({x},{y})");
             }
 
-            bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
+            SegmentOutcome walked = await ExecuteNavigationAsync(state, cancellationToken);
 
-            if (battleOccurred)
+            if (walked == SegmentOutcome.Battle)
             {
                 state.State.Push(EventState.BattleStart);
             }
-            else
+            else if (walked == SegmentOutcome.Completed)
             {
                 ClearNavigation(state, "arrived at pokemon center");
                 state.SwapState(EventState.HealAtPokemonCenter);
@@ -257,10 +278,17 @@ namespace ShinyBotHunter.BotEvents
             => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask
                 && (s.Native == addresses.SignWaitNative || s.Native == addresses.SignPrintingNative);
 
-        // The overworld-ready wait that also stops at a sign; a warp, a poison script or a battle behaves as in
-        // Overworld.WaitForReadyAsync.
+        // A trainer's challenge (#604): the approach script under the script task, read from the script alone. Used only by the
+        // walk's two readers; during the battle the snapshot carries no script, so it is never read as the stop going on.
+        internal static bool IsTrainerChallenge(GameSnapshot s, HgssPointerService addresses)
+            => s.Screen == GameScreen.FieldTask && s.TaskFunction == addresses.RunScriptsTask && s.Script == TrainerApproachScript;
+
+        // The overworld-ready wait that also stops at a sign, at "Repel's effect wore off..." printing or waiting (FR-29), or at a
+        // trainer's challenge; a warp, a poison script or a battle behaves as in Overworld.WaitForReadyAsync.
         internal static Task<GameSnapshot> WaitForFieldFreeOrSignAsync(IGameStateReader game, HgssPointerService addresses, CancellationToken ct)
-            => GameStateWait.UntilAsync(game, "the overworld ready", s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses),
+            => GameStateWait.UntilAsync(game, "the overworld ready",
+                s => s.Screen == GameScreen.FieldFree || IsSign(s, addresses) || RunEncounterEvent.IsRepelMessage(s, addresses)
+                    || IsTrainerChallenge(s, addresses),
                 TimeSpan.FromSeconds(10), ct);
 
         /// <summary>
@@ -327,13 +355,13 @@ namespace ShinyBotHunter.BotEvents
                 Console.WriteLine($"[Navigator] Returning to start map={state.StartMapId} ({state.StartX},{state.StartY}) from map={mapId} ({x},{y})");
             }
 
-            bool battleOccurred = await ExecuteNavigationAsync(state, cancellationToken);
+            SegmentOutcome walked = await ExecuteNavigationAsync(state, cancellationToken);
 
-            if (battleOccurred)
+            if (walked == SegmentOutcome.Battle)
             {
                 state.State.Push(EventState.BattleStart);
             }
-            else
+            else if (walked == SegmentOutcome.Completed)
             {
                 FinishReturn(state, "arrived back at start");
             }
@@ -369,9 +397,10 @@ namespace ShinyBotHunter.BotEvents
         }
 
         // Walks the NodePath segment by segment, running A* for each leg.
-        // Returns true if a battle was encountered (NavigationPathIndex is left at the
-        // in-progress segment so the A* can be recomputed on resume).
-        private async Task<bool> ExecuteNavigationAsync(GameState state, CancellationToken cancellationToken)
+        // Returns Battle if a battle was encountered (NavigationPathIndex is left at the
+        // in-progress segment so the A* can be recomputed on resume), Trainer once a trainer's
+        // challenge has parked the bot, and Completed when the walk arrived or was abandoned.
+        private async Task<SegmentOutcome> ExecuteNavigationAsync(GameState state, CancellationToken cancellationToken)
         {
             // Covers resuming navigation right after a mid-route battle, where the first
             // segment's position read would otherwise hit the post-battle (0,0).
@@ -441,7 +470,12 @@ namespace ShinyBotHunter.BotEvents
                 {
                     var outcome = await ExecuteSegmentMacroAsync(state, macro, partyAtStart, cancellationToken);
                     if (outcome == SegmentOutcome.Battle)
-                        return true;
+                        return SegmentOutcome.Battle;
+                    if (outcome == SegmentOutcome.Trainer)
+                    {
+                        await StopForTrainerAsync(state, cancellationToken);
+                        return SegmentOutcome.Trainer;
+                    }
                     if (outcome == SegmentOutcome.PoisonEvent)
                     {
                         await ClearPoisonScriptAsync(state, cancellationToken);
@@ -451,6 +485,14 @@ namespace ShinyBotHunter.BotEvents
                         partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
                         // Retry this same segment: the walk stopped somewhere short of the node, so
                         // the loop re-reads our real position and recomputes the A* from there.
+                        continue;
+                    }
+                    if (outcome == SegmentOutcome.RepelMessage)
+                    {
+                        await RunEncounterEvent.CloseRepelMessageAsync(state.Bot, (HgssPointerService)state.Bot.Addresses, ScriptStale, ScriptPressConfirm,
+                            cancellationToken);
+                        // The A replaced the walk macro, and the player stands on the tile the box came up on, so the segment is
+                        // walked again from the tile read next, as after poison.
                         continue;
                     }
                     if (outcome is SegmentOutcome.Blocked or SegmentOutcome.Sign)
@@ -463,7 +505,7 @@ namespace ShinyBotHunter.BotEvents
                         if (blockedRetries > MaxBlockedRetries)
                         {
                             Console.WriteLine($"[Navigator] Segment {state.NavigationPathIndex} blocked {MaxBlockedRetries} times; abandoning the route.");
-                            return false;
+                            return SegmentOutcome.Completed;
                         }
                         await RecoverFromBlockedSegmentAsync(state, outcome == SegmentOutcome.Sign ? "Walked under a sign" : "Movement blocked",
                             cancellationToken);
@@ -474,29 +516,90 @@ namespace ShinyBotHunter.BotEvents
 
                 // After a portal crossing, poll until we're on the destination map
                 // and coordinates are valid.
+                int advance = 1;
                 var mapIdAfter = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
                 if (toNodeIsPortal)
                 {
                     var warpDest = path[state.NavigationPathIndex + 2].Node;
-                    await WaitForWarpAsync(state.Bot, mapIdAfter, warpDest.X, warpDest.Y, cancellationToken);
+                    await WaitForWarpAsync(state.Bot.State, state.Bot.Overworld, Press(state.Bot, cancellationToken),
+                        state.Bot.Profile.Maps!.GetGameMapIds(warpDest.MapId), warpDest.X, warpDest.Y, WarpStale, cancellationToken);
                     // The warp wait accepts a landing within one tile of the spawn node, and walking
                     // back onto the spawn node can step onto the door again, so the next segment goes
                     // from where we landed to the node after it. When the spawn node is the last
                     // node, this ends the walk.
                     var (landX, landY) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
                     Console.WriteLine($"[Navigator] Portal crossed: at ({landX},{landY}) on map {mapIdAfter}, skipping the spawn node ({warpDest.X},{warpDest.Y})");
-                    state.NavigationPathIndex += 2;
-                    continue;
+                    advance = 2;
                 }
                 else if (mapIdAfter != mapId)
                 {
-                    await WaitForWarpAsync(state.Bot, mapIdAfter, null, null, cancellationToken);
+                    await WaitForWarpAsync(state.Bot.State, state.Bot.Overworld, Press(state.Bot, cancellationToken),
+                        [mapIdAfter], null, null, WarpStale, cancellationToken);
                 }
 
-                state.NavigationPathIndex++;
+                if (macro is not null)
+                {
+                    // The walked segment is done, so whatever the field settled in is handled and the walk goes on to the next.
+                    var end = await WaitForSegmentEndAsync(state, partyAtStart, cancellationToken);
+                    if (end == SegmentOutcome.CompletedUnderRepelMessage)
+                    {
+                        await RunEncounterEvent.CloseRepelMessageAsync(state.Bot, (HgssPointerService)state.Bot.Addresses, ScriptStale, ScriptPressConfirm,
+                            cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.Sign)
+                    {
+                        await CloseSignAsync(state.Bot.State, (HgssPointerService)state.Bot.Addresses, Press(state.Bot, cancellationToken),
+                            ScriptStale, cancellationToken);
+                        await RecoverFromBlockedSegmentAsync(state, "Walked under a sign", cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.PoisonEvent)
+                    {
+                        await ClearPoisonScriptAsync(state, cancellationToken);
+                        partyAtStart = await ReadPartySnapshotAsync(state.Bot, cancellationToken);
+                    }
+                    else if (end == SegmentOutcome.Battle)
+                    {
+                        state.NavigationPathIndex += advance;
+                        return SegmentOutcome.Battle;
+                    }
+                    else if (end == SegmentOutcome.Trainer)
+                    {
+                        await StopForTrainerAsync(state, cancellationToken);
+                        return SegmentOutcome.Trainer;
+                    }
+                }
+
+                state.NavigationPathIndex += advance;
             }
 
-            return false;
+            return SegmentOutcome.Completed;
+        }
+
+        /// <summary>
+        /// A trainer's challenge stops the walk (#604), as Ruby and Sapphire stop on a trainer: nothing is pressed (the macro's
+        /// clear, already sent, only released the held direction), the route is dropped so the leg is planned again from the tile
+        /// read at Resume, and Waiting goes over the leg with StoppedForTrainer set, so Resume waits for the free field. The tile
+        /// logged can be the one the player was leaving (the research's R2) and no wait is added for a better one. The sentence is
+        /// sent once; a failed send is logged in full and the bot stays parked (AGENTS rule 10).
+        /// </summary>
+        private async Task StopForTrainerAsync(GameState state, CancellationToken cancellationToken)
+        {
+            GameSnapshot seen = await state.Bot.State.ReadAsync(cancellationToken);
+            int mapId = (int)await state.Bot.Overworld.GetMapIdAsync(cancellationToken);
+            (int x, int y) = await state.Bot.Overworld.GetPositionAsync(cancellationToken);
+            string sentence = $"A trainer battle started on {state.Bot.Profile.Maps!.GetMapLookup(mapId).InternalName}.";
+            Console.WriteLine($"[Navigator] stopped: {sentence} ({x}, {y}), {seen}");
+            ClearNavigation(state, "a trainer's challenge");
+            state.StoppedForTrainer = true;
+            state.State.Push(EventState.Waiting);
+            try
+            {
+                await notifyStop(sentence);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Navigator] The trainer stop's message was not sent: {sentence}{Environment.NewLine}{ex}");
+            }
         }
 
         // Runs macro and races it against battle detection and a party faint.
@@ -527,10 +630,59 @@ namespace ShinyBotHunter.BotEvents
                 await first;
                 if (ReferenceEquals(first, battleTask)) return SegmentOutcome.Battle;
                 if (ReferenceEquals(first, poisonTask)) return SegmentOutcome.PoisonEvent;
-                return (await stallTask) is null ? SegmentOutcome.Blocked : SegmentOutcome.Sign;
+                GameSnapshot? stopped = await stallTask;
+                return stopped is null ? SegmentOutcome.Blocked
+                    : IsTrainerChallenge(stopped.Value, (HgssPointerService)state.Bot.Addresses) ? SegmentOutcome.Trainer
+                    : RunEncounterEvent.IsRepelMessage(stopped.Value, (HgssPointerService)state.Bot.Addresses) ? SegmentOutcome.RepelMessage
+                    : SegmentOutcome.Sign;
             }
 
             return SegmentOutcome.Completed;
+        }
+
+        /// <summary>
+        /// The state a completed segment's field settles in, read after any warp wait so that wait sees the door transition
+        /// itself. The macro can answer done with the Repel message already up (docs/research/milestone-builder.md, "HeartGold:
+        /// the message during a navigator walk"), and a battle, a sign or the poison script can start on the last step too, so
+        /// the segment ends on that state, not on the reply. The Repel message is taken at its wait, so the close sees it in
+        /// its wait already. A sign and the Repel message log as the stall watch logs them, and the poison script logs the
+        /// party's event as the poison watch does, since that watch lost the race to the macro.
+        /// </summary>
+        private async Task<SegmentOutcome> WaitForSegmentEndAsync(GameState state, PartySnapshot partyAtStart, CancellationToken cancellationToken)
+        {
+            var hgss = (HgssPointerService)state.Bot.Addresses;
+            GameSnapshot end = await GameStateWait.UntilAsync(state.Bot.State, "the field after the segment",
+                s => s.Screen is not (GameScreen.Transitioning or GameScreen.FieldTask or GameScreen.OtherApp) || IsSign(s, hgss)
+                    || s.Script == hgss.SurvivePoisoningScript || (RunEncounterEvent.IsRepelMessage(s, hgss) && s.Native == hgss.WaitABPressNative)
+                    || IsTrainerChallenge(s, hgss),
+                TimeSpan.FromSeconds(10), cancellationToken);
+            if (end.Screen == GameScreen.FieldFree) return SegmentOutcome.Completed;
+            if (IsTrainerChallenge(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Trainer challenge seen: {end}");
+                return SegmentOutcome.Trainer;
+            }
+            if (RunEncounterEvent.IsRepelMessage(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Repel message seen: {end}");
+                return SegmentOutcome.CompletedUnderRepelMessage;
+            }
+            if (IsSign(end, hgss))
+            {
+                Console.WriteLine($"[Navigator] Sign seen: {end}");
+                return SegmentOutcome.Sign;
+            }
+            if (end.Script == hgss.SurvivePoisoningScript)
+            {
+                // The script on screen is the proof here; the party read names the member, as the poison watch's line does.
+                var party = await ReadValidatedPartyWithRetriesAsync(state.Bot, cancellationToken);
+                var poison = party is null ? null : FindPoisonEvent(party, partyAtStart);
+                Console.WriteLine(poison is null
+                    ? "[Navigator] Poison script at the end of the segment; the party read shows no poison event"
+                    : $"[Navigator] Poison event confirmed: {poison}");
+                return SegmentOutcome.PoisonEvent;
+            }
+            return SegmentOutcome.Battle;
         }
 
         /// <summary>
@@ -539,7 +691,8 @@ namespace ShinyBotHunter.BotEvents
         /// coordinate reaches its target, so anything that blocks movement holds that direction forever
         /// with nothing else noticing. A script or a warp is not a stall: while the screen is not
         /// <see cref="GameScreen.FieldFree"/> the timer is held, bounded by the overworld-ready wait. Returns null on a
-        /// stall, and the sign's snapshot when the held wait ends at a sign (<see cref="IsSign"/>).
+        /// stall, and the snapshot when the held wait ends at a sign (<see cref="IsSign"/>), the Repel message or a trainer's
+        /// challenge (<see cref="IsTrainerChallenge"/>).
         /// </summary>
         private async Task<GameSnapshot?> WaitForStallAsync(IBot bot, CancellationToken cancellationToken)
         {
@@ -555,7 +708,9 @@ namespace ShinyBotHunter.BotEvents
                     GameSnapshot ready = await WaitForFieldFreeOrSignAsync(bot.State, (HgssPointerService)bot.Addresses, cancellationToken);
                     if (ready.Screen != GameScreen.FieldFree)
                     {
-                        Console.WriteLine($"[Navigator] Sign seen: {ready}");
+                        Console.WriteLine(IsTrainerChallenge(ready, (HgssPointerService)bot.Addresses) ? $"[Navigator] Trainer challenge seen: {ready}"
+                            : RunEncounterEvent.IsRepelMessage(ready, (HgssPointerService)bot.Addresses) ? $"[Navigator] Repel message seen: {ready}"
+                            : $"[Navigator] Sign seen: {ready}");
                         return ready;
                     }
                     (lastX, lastY) = await bot.Overworld.GetPositionAsync(cancellationToken);
@@ -807,36 +962,37 @@ namespace ShinyBotHunter.BotEvents
             }
         }
 
-        // Waits until the field is free on the destination map (and, when given, within a tile of
-        // the destination). Throws after 15 s with neither the screen nor the map id changing (R11).
-        private async Task WaitForWarpAsync(IBot bot, int destMapId, int? destX, int? destY, CancellationToken cancellationToken)
+        // Waits until the field is free on one of the destination map ids (and, when given, within a tile of
+        // the destination). Throws after the stale time with neither the screen nor the map id changing (R11).
+        internal static async Task WaitForWarpAsync(IGameStateReader game, IOverworldReader overworld, Func<string, Task> press,
+            IReadOnlyList<int> destMapIds, int? destX, int? destY, TimeSpan stale, CancellationToken cancellationToken)
         {
+            string dest = string.Join("/", destMapIds);
             (GameScreen Screen, int MapId)? last = null;
             var unchanged = Stopwatch.StartNew();
             while (true)
             {
-                GameSnapshot snapshot = await bot.State.ReadAsync(cancellationToken);
-                int mapId = await bot.Overworld.GetMapIdAsync(cancellationToken);
+                GameSnapshot snapshot = await game.ReadAsync(cancellationToken);
+                int mapId = await overworld.GetMapIdAsync(cancellationToken);
                 if (last != (snapshot.Screen, mapId))
                 {
-                    Console.WriteLine($"[Navigator] Warp to map {destMapId}: on map {mapId}, {snapshot}");
+                    Console.WriteLine($"[Navigator] Warp to map {dest}: on map {mapId}, {snapshot}");
                     last = (snapshot.Screen, mapId);
                     unchanged.Restart();
                 }
-                if (mapId == destMapId && snapshot.Screen == GameScreen.FieldFree)
+                if (destMapIds.Contains(mapId) && snapshot.Screen == GameScreen.FieldFree)
                 {
                     if (!destX.HasValue || !destY.HasValue)
                         break;
-                    var (x, y) = await bot.Overworld.GetPositionAsync(cancellationToken);
+                    var (x, y) = await overworld.GetPositionAsync(cancellationToken);
                     if (Math.Abs(x - destX.Value) <= 1 && Math.Abs(y - destY.Value) <= 1)
                         break;
                 }
-                if (unchanged.Elapsed >= TimeSpan.FromSeconds(15))
-                    throw new GameStateTimeoutException($"the warp to map {destMapId} (still on map {mapId})", snapshot);
+                if (unchanged.Elapsed >= stale)
+                    throw new GameStateTimeoutException($"the warp to map {dest} (still on map {mapId})", snapshot);
                 await Task.Delay(Constant.PollIntervalMs, cancellationToken);
             }
-            bot.RunMacroString("W.60");
-            await bot.WaitForMacroAsync(cancellationToken);
+            await press("W.60");
         }
 
         // Wait until the field is free: no app, no task, map up, so we don't pathfind from a bogus origin.

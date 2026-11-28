@@ -44,6 +44,15 @@ describe('windowNameFromSearch', () => {
     expect(windowNameFromSearch(search({ card: 'phase', ...noFile }))).toBe(phaseWindowName(noFile))
   })
 
+  it('gives the follows-the-hunt window name main uses, whatever its milestone', () => {
+    const query = { card: 'phase', game: 'RS', gameName: 'Ruby' }
+    expect(windowNameFromSearch(search(query))).toBe('phase:RS::Ruby')
+    expect(windowNameFromSearch(search(query))).toBe(
+      phaseWindowName({ game: 'RS', phase: 'Hoenn Starters', gameName: 'Ruby', followsHunt: true })
+    )
+    expect(phaseWindowName({ game: 'RS', phase: 'Route 102', gameName: 'Ruby', followsHunt: true })).toBe('phase:RS::Ruby')
+  })
+
   it('gives the pickup window name main uses', () => {
     expect(windowNameFromSearch(search({ card: 'pickup', game: 'Ruby' }))).toBe('pickup:Ruby')
     expect(windowNameFromSearch(search({ card: 'pickup', game: 'Ruby' }))).toBe(pickupWindowName('Ruby'))
@@ -57,6 +66,10 @@ describe('windowLabel', () => {
     expect(windowLabel('pickup:Ruby')).toBe('Pickup Items (Ruby)')
     expect(windowLabel('admin')).toBe('Admin')
     expect(windowLabel('recent')).toBe('Recent Encounters')
+  })
+
+  it('labels a follows-the-hunt window by its game file', () => {
+    expect(windowLabel('phase:RS::Ruby')).toBe('RS / Ruby (follows the hunt)')
   })
 })
 

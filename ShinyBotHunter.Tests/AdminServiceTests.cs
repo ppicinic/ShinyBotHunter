@@ -35,6 +35,7 @@ namespace ShinyBotHunter.Tests
             Assert.Equal("HGSS", (string?)json["gamePhases"]![0]!["game"]);
             Assert.Equal("Johto Starters", (string?)json["gamePhases"]![0]!["phase"]);
             Assert.Equal("HeartGold", (string?)json["gamePhases"]![0]!["gameFileName"]);
+            Assert.False((bool?)json["gamePhases"]![0]!["followsHunt"]);
             Assert.Equal(10, (int?)json["recentEncounterCount"]);
             JsonNode appearance = json["appearance"]!;
             Assert.Equal("07:00", (string?)appearance["dayStart"]);
@@ -97,6 +98,130 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(config.GamePhases, loaded.GamePhases);
             Assert.Equal(25, loaded.RecentEncounterCount);
             AssertSameAppearance(config.Appearance, appearance!);
+        }
+
+        [Fact]
+        public void StoredSubscriptionWithoutFollowsHuntIsAFixedCard()
+        {
+            BsonDocument stored = new()
+            {
+                { "_id", "dashboard" },
+                { "GamePhases", new BsonArray
+                    {
+                        new BsonDocument { { "game", (int)GameFlavor.HGSS }, { "phase", "Route 32" }, { "gameFileName", "HG-TimeMove" } },
+                        new BsonDocument { { "game", (int)GameFlavor.HGSS }, { "phase", "Johto Starters" }, { "gameFileName", BsonNull.Value } },
+                        new BsonDocument { { "game", (int)GameFlavor.RS }, { "phase", "Hoenn Starters" }, { "gameFileName", "Ruby" } },
+                    }
+                },
+                { "RecentEncounterCount", 10 },
+            };
+
+            (DashboardConfig loaded, _) = MongoDashboardConfigDao.FromDocument(stored);
+
+            Assert.Equal(3, loaded.GamePhases.Length);
+            Assert.All(loaded.GamePhases, gp => Assert.False(gp.followsHunt));
+            BsonDocument saved = MongoDashboardConfigDao.ToDocument(loaded);
+            Assert.All(saved["GamePhases"].AsBsonArray, element => Assert.False(element.AsBsonDocument.Contains("followsHunt")));
+
+            BsonDocument follows = MongoDashboardConfigDao.ToDocument(new DashboardConfig([new GamePhase(GameFlavor.HGSS, "Route 32", "HG-TimeMove") { followsHunt = true }]));
+            Assert.True(follows["GamePhases"][0]["followsHunt"].AsBoolean);
+        }
+
+        [Fact]
+        public async Task FollowHuntIsOnePush()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> sharedSaves = [];
+            AdminService service = Service(pushes, sharedSaves, []);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove");
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-Other", followsHunt: true);
+            pushes.Clear();
+            sharedSaves.Clear();
+
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 30 Night");
+
+            GamePhase[] expected = [
+                new(GameFlavor.HGSS, "Route 32", "HG-TimeMove"),
+                new(GameFlavor.HGSS, "Route 30 Night", "HG-TimeMove") { followsHunt = true },
+                new(GameFlavor.HGSS, "Route 32", "HG-Other") { followsHunt = true },
+            ];
+            Assert.Equal(expected.ToHashSet(), Assert.Single(pushes).GamePhases.ToHashSet());
+            Assert.Equal(expected.ToHashSet(), Assert.Single(sharedSaves).GamePhases.ToHashSet());
+        }
+
+        [Fact]
+        public async Task FollowHuntWithNoSuchCardOrTheSameMilestoneDoesNothing()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> sharedSaves = [];
+            AdminService service = Service(pushes, sharedSaves, []);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-Fixed");
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            pushes.Clear();
+            sharedSaves.Clear();
+
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-Fixed", "Route 30 Night");
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 32");
+
+            Assert.Empty(pushes);
+            Assert.Empty(sharedSaves);
+        }
+
+        [Fact]
+        public async Task ASecondFollowsHuntCardReplacesTheFirst()
+        {
+            List<DashboardConfig> pushes = [];
+            List<DashboardConfig> sharedSaves = [];
+            AdminService service = Service(pushes, sharedSaves, []);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove");
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 30 Night", "HG-TimeMove", followsHunt: true);
+
+            GamePhase[] expected = [
+                new(GameFlavor.HGSS, "Route 32", "HG-TimeMove"),
+                new(GameFlavor.HGSS, "Route 30 Night", "HG-TimeMove") { followsHunt = true },
+            ];
+            Assert.Equal(expected.ToHashSet(), sharedSaves[^1].GamePhases.ToHashSet());
+        }
+
+        [Fact]
+        public async Task AFailedSaveDoesNotFailFollowHunt()
+        {
+            List<DashboardConfig> pushes = [];
+            bool failing = false;
+            RecordingLogger logger = new();
+            AdminService service = new(
+                config => { pushes.Add(config); return Task.CompletedTask; },
+                () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
+                _ => failing ? throw new InvalidOperationException("save failed") : Task.CompletedTask,
+                () => Task.FromResult<Appearance?>(null),
+                _ => Task.CompletedTask,
+                logger);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            failing = true;
+
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 30 Night");
+
+            Assert.Equal([new GamePhase(GameFlavor.HGSS, "Route 30 Night", "HG-TimeMove") { followsHunt = true }], pushes[^1].GamePhases);
+            var entry = Assert.Single(logger.Entries);
+            Assert.Equal(LogLevel.Error, entry.Level);
+            Assert.Equal("save failed", entry.Exception!.Message);
+        }
+
+        [Fact]
+        public async Task UnsubscribingAFollowsHuntCardRemovesItWhateverItShows()
+        {
+            List<DashboardConfig> sharedSaves = [];
+            AdminService service = Service([], sharedSaves, []);
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove");
+            await service.SubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+            await service.FollowHuntAsync(GameFlavor.HGSS, "HG-TimeMove", "Route 30 Night");
+
+            await service.UnsubscribeGamePhaseAsync("HGSS", "Route 32", "HG-TimeMove", followsHunt: true);
+
+            Assert.Equal([new GamePhase(GameFlavor.HGSS, "Route 32", "HG-TimeMove")], sharedSaves[^1].GamePhases);
         }
 
         // The same options as the controllers in Startup.cs; the JsonException is what [ApiController] answers with a 400.

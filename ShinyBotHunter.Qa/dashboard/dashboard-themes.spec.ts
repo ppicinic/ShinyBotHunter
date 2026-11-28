@@ -217,7 +217,7 @@ test('dashboard themes: Midnight matches the base, seven themes, contrast, anima
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json')
     if (req.url!.includes('/encounterRate/')) return void res.end('412')
-    if (req.url!.startsWith('/api/phaseinfo/')) return void res.end(JSON.stringify({ phaseInfo, data }))
+    if (req.url!.startsWith('/api/phaseinfo/')) return void res.end(JSON.stringify({ phaseInfo, rowNames: phaseInfo.pokemon.map((p) => p.name), data }))
     res.statusCode = 404
     res.end('{}')
   }).listen(5099)

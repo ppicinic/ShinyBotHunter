@@ -76,6 +76,10 @@ namespace ShinyBotHunter.BotEvents
         // The bot stopped for a trainer (FR-10): Resume waits for the free field before the hunt carries on. Set by the
         // battle event, cleared by that Resume; both run on the event's one loop, in sequence.
         public bool StoppedForTrainer { get; set; }
+        // The rate inputs the last decision read ("last seen", FR-26 and FR-28); null before the first decision.
+        // Replaced, never mutated: written by the decision on the event's loop, read on that loop by OrchestratorEvent, which
+        // hands it to PhaseInfoService for the card, and by C3b's plan step; the reference swap is atomic.
+        public RateInputs? RatesSeen { get; set; }
 
         public void SwapState(EventState newState)
         {

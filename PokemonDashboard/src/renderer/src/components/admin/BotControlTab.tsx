@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useAppContext } from '../../context/AppContext'
 import * as api from '../../services/apiClient'
-import type { AdminMetadata, BotDashboardState, EmulatorState, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
+import type { AdminMetadata, BotDashboardState, BotMilestones, EmulatorState, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
 import { buildLegBody, initialParamsFor, LEG_PARAM_KEYS, legsVisible, visibleParamNames } from './actionSchema'
 import { botPositionsReducer, initialBotPositions } from './botPositions'
 import { EmulatorCard } from './EmulatorCard'
@@ -50,16 +50,21 @@ export function BotControlTab(): JSX.Element {
   const [feedback, setFeedback] = useState<{ msg: string; isError: boolean; at: number | string } | null>(null)
   const [allGames, setAllGames] = useState<GameRomInfo[]>([])
   const [metadata, setMetadata] = useState<AdminMetadata | null>(null)
+  // The milestone picker of each idle bot's game file, fetched with its actions.
+  const [milestonesByPos, setMilestonesByPos] = useState<Record<number, BotMilestones>>({})
 
   /**
    * Milestones belonging to whichever ROM the action has selected. Top-level actions pick a game
    * before a milestone, so the list follows from that choice rather than being global -- offering
-   * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads.
+   * an HGSS milestone for a Ruby hunt would file encounters under a phase nothing reads. As on a
+   * bot's launch form, archived milestones and those ticked only for other files are left out.
    */
   const phasesForSelectedGame = (params: Record<string, string>, legs?: Record<string, string>[]): PhaseInfo[] => {
     const handle = params['GameName'] ?? legs?.find((leg) => leg['GameName'])?.['GameName']
     const rom = allGames.find((g) => g.handle === handle)
-    return rom?.flavor ? (metadata?.games[rom.flavor]?.phases ?? []) : []
+    return rom?.flavor
+      ? (metadata?.games[rom.flavor]?.phases ?? []).filter((p) => !p.archived && (p.gameFiles.length === 0 || p.gameFiles.includes(rom.handle)))
+      : []
   }
   const [loadingParty, setLoadingParty] = useState<number | null>(null)
 
@@ -81,6 +86,17 @@ export function BotControlTab(): JSX.Element {
     }
   }, [apiUrl])
 
+  const loadMilestones = useCallback(async (pos: number): Promise<void> => {
+    if (!apiUrl) return
+    try {
+      const r = await api.getBotMilestones(apiUrl, pos)
+      const milestones: BotMilestones = r.ok ? await r.json() as BotMilestones : { gameFileName: '', milestones: [] }
+      setMilestonesByPos((prev) => ({ ...prev, [pos]: milestones }))
+    } catch (err) {
+      console.error(`Failed to fetch milestones for pos ${pos}:`, err)
+    }
+  }, [apiUrl])
+
   const fetchBotActionsForState = useCallback(async (state: BotDashboardState): Promise<void> => {
     if (!apiUrl) return
     const entries = Object.entries(state)
@@ -90,6 +106,7 @@ export function BotControlTab(): JSX.Element {
         const pos = Number(posStr)
         const es = emulatorState as EmulatorState
         if (ACTIONABLE_STATES.has(es.eventState)) {
+          const milestones = loadMilestones(pos)
           try {
             const r = await api.getBotActions(apiUrl, pos)
             if (r.ok) {
@@ -98,13 +115,14 @@ export function BotControlTab(): JSX.Element {
           } catch (err) {
             console.error(`Failed to fetch bot actions for pos ${pos}:`, err)
           }
+          await milestones
         } else {
           updates[pos] = []
         }
       })
     )
     dispatch({ type: 'actionsLoaded', updates })
-  }, [apiUrl])
+  }, [apiUrl, loadMilestones])
 
   const loadDashboardState = useCallback(async (): Promise<void> => {
     if (!apiUrl) return
@@ -359,8 +377,8 @@ export function BotControlTab(): JSX.Element {
                 key={pos}
                 pos={pos}
                 name={name}
-                emState={positions.botState[pos] as EmulatorState | undefined}
-                metadata={metadata}
+                milestones={milestonesByPos[pos]}
+                onMilestonesChanged={() => loadMilestones(pos)}
                 actions={positions.botActions[pos] ?? []}
                 params={positions.botActionParams[pos] ?? {}}
                 legs={positions.botChainLegs[pos] ?? {}}

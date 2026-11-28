@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Target;
+using ShinyBotHunter.Emulators;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Games.Hgss;
 using ShinyBotHunter.Games.Rs;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Pokemon;
 using ShinyBotHunter.Scripts.Maps;
 using ShinyBotHunter.Pathfinding;
@@ -291,7 +293,24 @@ namespace ShinyBotHunter.Tests
             Assert.Equal([EventState.DecideOverworldAction], state.State);
         }
 
-        // Not after a trainer stop (HGSS always): Resume reads no game state, as before.
+        // A trainer's challenge on the walk to the anchor parks with the leg under Waiting: the walk goes on after Resume. A Waiting
+        // for anything else ends it, as before.
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void AnchorWalkGoesOn_TrainerStop_KeepsTheWalk(bool stoppedForTrainer)
+        {
+            GameState state = new() { StoppedForTrainer = stoppedForTrainer };
+            state.State.Push(EventState.ReturnToStart);
+            state.State.Push(EventState.Waiting);
+
+            bool goesOn = OrchestratorEvent.AnchorWalkGoesOn(state, new Anchor(34, 547, 304, 0, 6), "Route 30 · grass");
+
+            Assert.Equal(stoppedForTrainer, goesOn);
+            Assert.Equal([EventState.Waiting, EventState.ReturnToStart], state.State);
+        }
+
+        // Not after a trainer stop: Resume reads no game state, as before.
         [Fact]
         public async Task Resume_NotAfterATrainerStop_ReadsNoGameState()
         {
@@ -451,8 +470,12 @@ namespace ShinyBotHunter.Tests
             return block;
         }
 
-        // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip.
-        private static FakeBot RsBot(params byte[][] party)
+        // The RS profile on the shared table (FakeBot reads revision 0), its parser on the seeded moves and Mudkip; chain reads
+        // answer zeroed blocks (no Repel).
+        private static FakeBot RsBot(params byte[][] party) =>
+            RsBot(blocks => blocks.Select(b => new ChainBlockResult(ChainBlockStatus.Ok, 0, new byte[b.Length])).ToArray(), party);
+
+        private static FakeBot RsBot(Func<IReadOnlyList<ChainBlockRequest>, ChainBlockResult[]> chainBlocks, params byte[][] party)
         {
             PokemonMetadataService metadata = Moves();
             metadata.Seed(new PokemonMetadata { Id = 258, PokemonName = "Mudkip", PokeApiName = "mudkip" });
@@ -462,6 +485,7 @@ namespace ShinyBotHunter.Tests
                 createNavigatorEvent: rs.CreateNavigatorEvent))
             {
                 PartyBlocks = party,
+                ChainBlocks = chainBlocks,
             };
         }
 
@@ -474,8 +498,9 @@ namespace ShinyBotHunter.Tests
             return state;
         }
 
-        private static Task DecideAsync(GameState state) =>
-            OrchestratorEvent.DecideOverworldAction(state, new PokemonStateReader(), Moves().GetPokemonMoveMetadata, null!, CancellationToken.None);
+        // No PickupTally: a Pickup visit would throw.
+        private static Task DecideAsync(GameState state, Func<GameState, bool>? endsHere = null) =>
+            OrchestratorEvent.DecideOverworldAction(state, new PokemonStateReader(), Moves().GetPokemonMoveMetadata, null!, CancellationToken.None, endsHere);
 
         // FR-18 on Gen 3 data: a lead with HP and damaging PP fights the next encounter, back in Battle.
         [Fact]
@@ -548,6 +573,205 @@ namespace ShinyBotHunter.Tests
 
             Assert.False(OrchestratorEvent.CanFightNextEncounter(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
             Assert.Equal(line, OrchestratorEvent.HealTripLine(state, party, party.PartyPokemon[0]!, Moves().GetPokemonMoveMetadata));
+        }
+
+        // A party block for RateInputs: level, HP, ability, and 1 for an egg.
+        private sealed class RateFieldsParser : IPokemonParser
+        {
+            public PokemonData? Parse(byte[] raw) => new PokemonData { Level = raw[0], HP = raw[1], Ability = raw[2], IVs = raw[3] == 1 ? 1u << 30 : 0 };
+        }
+
+        private static PokemonState Party(params byte[][] members)
+        {
+            PokemonState party = new() { PartySize = members.Length };
+            for (int i = 0; i < members.Length; i++) party.PartyPokemon[i] = new RateFieldsParser().Parse(members[i]);
+            return party;
+        }
+
+        // The B3 note on #522: the Repel level skips eggs as well as fainted members.
+        [Fact]
+        public void RateInputsOf_RepelOn_SkipsFaintedAndEggs()
+        {
+            RateInputs inputs = RateInputs.Of(5, 20, 50, Party([1, 10, 0, 1], [30, 0, 0, 0], [12, 20, 0, 0]));
+
+            Assert.Equal(new RateInputs(5, 20, 50, 12, 0, 1, true), inputs);
+        }
+
+        // No Repel, or the save's section table not read yet: no Repel level.
+        [Theory]
+        [InlineData(0)]
+        [InlineData(null)]
+        public void RateInputsOf_NoRepel_NoRepelLevel(int? repelSteps)
+        {
+            RateInputs inputs = RateInputs.Of(0, 4, repelSteps, Party([12, 20, 51, 0]));
+
+            Assert.Equal(new RateInputs(0, 4, repelSteps, null, 51, 12, false), inputs);
+        }
+
+        // HGSS with the rate-fields parser and only what the decision uses; the bot's state reader is the real one over placed
+        // memory.
+        private static (FakeBot Bot, FakeMemoryClient Memory) HgssDecisionBot(params byte[][] party)
+        {
+            HgssPointerService table = new();
+            FakeMemoryClient memory = new();
+            memory.Place(table.LiveClock + 0x0C, BitConverter.GetBytes(3u));
+            memory.Place(table.LiveClock + 0x10, BitConverter.GetBytes(21u));
+            GameProfile hgss = new(GameFlavor.HGSS,
+                new GameCapabilities(HasOverworldNavigation: false, HasWildEncounters: false, HasTraining: false, HasEggs: false,
+                    CanReadBoxes: true, HasSoftResetStarterHunt: false, HasShinyStarterHunt: false, HasWishmakerJirachi: false),
+                [0], (_, _) => table, new RateFieldsParser(), battleParser: null);
+            FakeBot bot = new(Task.CompletedTask, hgss) { PartyBlocks = party, State = new HgssFieldSystemStateReader(memory, table) };
+            return (bot, memory);
+        }
+
+        // FR-26: each decision makes one chain request beside the party read and keeps what it read as "last seen".
+        [Fact]
+        public async Task Decide_Hgss_KeepsTheRateInputsFromOneRequest()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state);
+            await DecideAsync(state);
+
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), state.RatesSeen);
+            Assert.Equal(2, memory.ChainReads.Count);
+            Assert.All(memory.ChainReads, read => Assert.Equal(2, read.Blocks.Count));
+            Assert.Equal(2, bot.PartyReads);
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        // FR-42 and its binding note: with no plan the decision is today's, one chain read beside the party read and no
+        // overworld read (the bot has no reader, so one would throw).
+        [Fact]
+        public async Task Decide_NoPlan_IsTodaysDecision()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state);
+
+            Assert.Single(memory.ChainReads);
+            Assert.Equal(1, bot.PartyReads);
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), state.RatesSeen);
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        // R6b and AGENTS rule 16: a plan's step that ends at the decision completes there, on the clock the decision read,
+        // with no press and no Pickup visit (the tally is null, so a visit would throw).
+        [Fact]
+        public async Task Decide_StepEndsHere_CompletesWithNoPressOrPickupVisit()
+        {
+            (FakeBot bot, FakeMemoryClient memory) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            state.Pickup = true;
+            RateInputs? seen = null;
+
+            await DecideAsync(state, s => { seen = s.RatesSeen; return true; });
+
+            Assert.Equal([EventState.Complete], state.State);
+            Assert.Empty(bot.Macros);
+            Assert.Single(memory.ChainReads);
+            Assert.Equal(new RateInputs(3, 21, null, null, 51, 12, false), seen);
+        }
+
+        [Fact]
+        public async Task Decide_StepEndsHere_False_IsTodaysEncounter()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+
+            await DecideAsync(state, _ => false);
+
+            Assert.Equal([EventState.Encountering], state.State);
+        }
+
+        // A lead with no damaging PP would take a heal trip; a step that ends here leaves before it.
+        [Fact]
+        public async Task Decide_StepEndsHere_HurtLead_EndsBeforeTheHealTrip()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = Training(bot, TrainType.Standard);
+
+            await DecideAsync(state, _ => true);
+
+            Assert.Equal([EventState.Complete], state.State);
+        }
+
+        // A step complete at its decision finishes as today and is never switched away from: the hook is not asked.
+        [Fact]
+        public async Task Decide_StepComplete_FinishWinsOverTheSwitch()
+        {
+            (FakeBot bot, _) = HgssDecisionBot([12, 20, 51, 0]);
+            GameState state = StateFor(bot, new ShinyTarget(), EventState.DecideOverworldAction);
+            state.MilestoneComplete = true;
+            int asked = 0;
+
+            await DecideAsync(state, _ => { asked++; return true; });
+
+            Assert.Equal(0, asked);
+            Assert.Equal([EventState.Complete], state.State);
+        }
+
+        // FR-26a and NFR-1: on RS each decision reads the Repel counter as one 2-byte block, with no clock.
+        [Fact]
+        public async Task Decide_Rs_KeepsTheRepelCounterFromOneBlock()
+        {
+            List<IReadOnlyList<ChainBlockRequest>> requests = [];
+            FakeBot bot = RsBot(blocks =>
+            {
+                requests.Add(blocks);
+                return [new ChainBlockResult(ChainBlockStatus.Ok, 0, BitConverter.GetBytes((ushort)3))];
+            }, Gen3Mon(40));
+            GameState state = Training(bot, TrainType.Standard);
+
+            await DecideAsync(state);
+
+            Assert.Equal(new RateInputs(null, null, 3, 10, 0, 10, false), state.RatesSeen);
+            ChainBlockRequest block = Assert.Single(Assert.Single(requests));
+            Assert.Equal((0x02026AB6u, 0, 2), (block.Anchor, block.Hops.Length, block.Length));
+        }
+
+        // FR-34a with no plan: told when the milestone becomes complete after Init's read, never at Start, never twice.
+        [Theory]
+        [InlineData(null, true, true, 0)]
+        [InlineData(null, false, false, 0)]
+        [InlineData(false, false, false, 0)]
+        [InlineData(false, true, true, 1)]
+        [InlineData(true, true, true, 0)]
+        public async Task TellIfComplete_NoPlan(bool? told, bool complete, bool toldAfter, int sentences)
+        {
+            List<string> sent = [];
+
+            bool result = await OrchestratorEvent.TellIfCompleteAsync(told, complete, () => "Route 30 · grass is complete on fake.nds.",
+                s => { sent.Add(s); return Task.CompletedTask; });
+
+            Assert.Equal(toldAfter, result);
+            Assert.Equal(sentences, sent.Count);
+        }
+
+        // FR-34a in a plan: each step's orchestrator starts its told flag at null, so two steps on one milestone tell its
+        // completion once: A sees it complete mid-hunt, B sees it complete at its Init.
+        [Fact]
+        public async Task TellIfComplete_TwoStepsOneMilestone_TellsOnce()
+        {
+            List<string> sent = [];
+            Func<string, Task> tell = s => { sent.Add(s); return Task.CompletedTask; };
+            Func<string> sentence = () => "Route 30 · grass is complete on fake.nds.";
+
+            bool? stepA = await OrchestratorEvent.TellIfCompleteAsync(null, false, sentence, tell);
+            stepA = await OrchestratorEvent.TellIfCompleteAsync(stepA, true, sentence, tell);
+            await OrchestratorEvent.TellIfCompleteAsync(null, true, sentence, tell);
+
+            Assert.True(stepA);
+            Assert.Single(sent);
+        }
+
+        // FR-34a: a failed send is logged and the hunt goes on.
+        [Fact]
+        public async Task Tell_SendThrows_TheHuntGoesOn()
+        {
+            await OrchestratorEvent.TellAsync(_ => throw new System.Threading.Channels.ChannelClosedException(), "Route 30 · grass is complete on fake.nds.");
         }
     }
 }

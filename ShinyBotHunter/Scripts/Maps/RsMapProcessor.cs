@@ -17,7 +17,9 @@ namespace ShinyBotHunter.Scripts.Maps
         // Behaviours, from include/constants/metatile_behaviors.h at 5784633.
         private const byte MB_TALL_GRASS = 0x02;
         private const byte MB_LONG_GRASS = 0x03;
-        private const byte MB_LONG_GRASS_SOUTH_EDGE = 0x09;
+        private const byte MB_UNUSED_05 = 0x05;
+        private const byte MB_UNUSED_DEEP_SAND = 0x06;
+        private const byte MB_UNUSED_CAVE = 0x08;
         private const byte MB_INDOOR_ENCOUNTER = 0x0B;
         private const byte MB_MT_PYRE_HOLE = 0x0F;
         private const byte MB_WATERFALL = 0x13;
@@ -25,6 +27,7 @@ namespace ShinyBotHunter.Scripts.Maps
         private const byte MB_SHOAL_CAVE_ENTRANCE = 0x1C;
         private const byte MB_ICE = 0x20;
         private const byte MB_ASHGRASS = 0x24;
+        private const byte MB_FOOTPRINTS = 0x25;
         private const byte MB_THIN_ICE = 0x26;
         private const byte MB_CRACKED_ICE = 0x27;
         private const byte MB_LAVARIDGE_GYM_B1F_WARP = 0x29;
@@ -52,7 +55,9 @@ namespace ShinyBotHunter.Scripts.Maps
         private const byte MB_MUDDY_SLOPE = 0xD0;
         private const byte MB_HORIZONTAL_RAIL = 0xD6;
 
-        private static readonly HashSet<byte> Grass = [MB_TALL_GRASS, MB_LONG_GRASS, MB_LONG_GRASS_SOUTH_EDGE, MB_INDOOR_ENCOUNTER, MB_ASHGRASS];
+        // The behaviours MetatileBehavior_IsLandWildEncounter (src/metatile_behavior.c) passes: the wild-encounter bit
+        // and no surfable bit in sTileBitAttributes. Cave floor is MB_UNUSED_CAVE and Route 111's desert MB_UNUSED_DEEP_SAND.
+        private static readonly HashSet<byte> Grass = [MB_TALL_GRASS, MB_LONG_GRASS, MB_UNUSED_05, MB_UNUSED_DEEP_SAND, MB_UNUSED_CAVE, MB_INDOOR_ENCOUNTER, MB_ASHGRASS, MB_FOOTPRINTS];
         // The behaviours with the surfable bit in sTileBitAttributes (src/metatile_behavior.c).
         private static readonly HashSet<byte> Surfable = [0x10, 0x11, 0x12, 0x14, 0x15, 0x19, 0x22, 0x2A, 0x50, 0x51, 0x52, 0x53, 0x6C, 0x6D, 0x6F];
         // MetatileBehavior_IsDiveable and MetatileBehavior_IsNotSurfacable.

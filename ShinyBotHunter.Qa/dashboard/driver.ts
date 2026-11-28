@@ -140,27 +140,38 @@ function powershell(script: string): string {
   return spawnSync('powershell', ['-NoProfile', '-EncodedCommand', encoded], { encoding: 'utf8' }).stdout.trim()
 }
 
-/** Focuses EmuHawk and sends Ctrl+Shift+F12 (Toggle All Cheats in the QA install). Returns whether EmuHawk had the foreground. */
-export function sendCheatHotkey(): boolean {
+/**
+ * Focuses EmuHawk and, only when it then holds the foreground, sends Ctrl+Shift+F12 (Toggle All Cheats in the QA install).
+ * `sent` is false when another window kept the foreground; `foreground` names that window's process and title.
+ */
+export function sendCheatHotkey(): { sent: boolean; foreground: string } {
   const out = powershell(`
 Add-Type @'
-using System; using System.Runtime.InteropServices;
+using System; using System.Text; using System.Runtime.InteropServices;
 public static class K {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint type);
 }
 '@
 $h = (Get-Process EmuHawk | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1).MainWindowHandle
 [void][K]::SetForegroundWindow($h); Start-Sleep -Milliseconds 300
-$fg = ([K]::GetForegroundWindow() -eq $h)
+$fg = [K]::GetForegroundWindow()
+if ($fg -ne $h) {
+  $fgPid = [uint32]0; [void][K]::GetWindowThreadProcessId($fg, [ref]$fgPid)
+  $title = New-Object System.Text.StringBuilder 256; [void][K]::GetWindowText($fg, $title, 256)
+  "not sent, foreground=$((Get-Process -Id $fgPid).ProcessName) ""$title"""
+  exit
+}
 foreach ($vk in 0x11,0x10,0x7B) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirtualKey($vk,0), 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 30 }
 Start-Sleep -Milliseconds 120
 foreach ($vk in 0x7B,0x10,0x11) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirtualKey($vk,0), 2, [UIntPtr]::Zero); Start-Sleep -Milliseconds 30 }
-"foreground=$fg"`)
-  step(`hotkey sent: ${out}`)
-  return out.endsWith('foreground=True')
+"sent, foreground=EmuHawk"`)
+  step(`hotkey: ${out}`)
+  return { sent: out.startsWith('sent,'), foreground: out.replace(/^(not )?sent, foreground=/, '') }
 }
 
 // Not locked: one scenario runs per worker process. The test sets this once, and stopRecorder clears it
@@ -168,12 +179,17 @@ foreach ($vk in 0x7B,0x10,0x11) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirt
 let recorder: ChildProcess | null = null
 const stopFile = path.join(runDir, 'stop-recorder')
 
-/** Records EmuHawk to `<name>.mp4`; a stop file left by an earlier recording in this run is removed first. */
+/**
+ * Records EmuHawk to `<name>.mp4`, or to `<name>-2.mp4`, `<name>-3.mp4`, ... when an earlier recording in this run took the
+ * name, so a second launch never overwrites the first; a stop file left by an earlier recording is removed first.
+ */
 export function startEmulatorRecorder(name = 'emulator'): void {
   fs.rmSync(stopFile, { force: true })
+  let file = name
+  for (let n = 2; fs.existsSync(path.join(runDir, `${file}.mp4`)); n++) file = `${name}-${n}`
   recorder = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'record-window.ps1'),
-    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, `${name}.mp4`), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
-  step(`emulator recorder started: ${name}.mp4`)
+    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, `${file}.mp4`), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
+  step(`emulator recorder started: ${file}.mp4`)
 }
 
 async function shotEmulator(name: string): Promise<void> {

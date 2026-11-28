@@ -433,7 +433,7 @@ export function checkAttempt(log: string[], n: number): Attempt {
 // --- settings: user secrets first, then appsettings.json; values are never logged (copied from hgss-primo-egg-shiny) ---
 
 // The other scenarios' path first; the PostgreSQL installer's when that one is not on this PC.
-const PSQL = ['C:\\Tools\\pgsql\\bin\\psql.exe', 'C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe'].find((p) => fs.existsSync(p)) ?? 'psql'
+const PSQL_PATHS = ['C:\\Tools\\pgsql\\bin\\psql.exe', 'C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe']
 export function settings(): { pg: NodeJS.ProcessEnv; discordToken: string; channel: string; mongoUri: string } {
   const secrets = spawnSync('dotnet', ['user-secrets', 'list', '--project', path.join(repoDir, 'ShinyBotHunter')], { encoding: 'utf8' }).stdout
   const appsettings = fs.readFileSync(path.join(repoDir, 'ShinyBotHunter', 'appsettings.json'), 'utf8')
@@ -459,7 +459,9 @@ export function settings(): { pg: NodeJS.ProcessEnv; discordToken: string; chann
   }
 }
 export function psql(env: NodeJS.ProcessEnv, sql: string): string[] {
-  const res = spawnSync(PSQL, ['-At', '-F', '|', '-c', sql], { env, encoding: 'utf8' })
+  const exe = PSQL_PATHS.find((p) => fs.existsSync(p))
+  if (!exe) throw new Error(`no psql at ${PSQL_PATHS.join(' or ')}`)
+  const res = spawnSync(exe, ['-At', '-F', '|', '-c', sql], { env, encoding: 'utf8' })
   if (res.status !== 0) throw new Error(`psql exited with ${res.status}: ${res.stderr}`)
   return res.stdout.split(/\r?\n/).filter((l) => l !== '')
 }

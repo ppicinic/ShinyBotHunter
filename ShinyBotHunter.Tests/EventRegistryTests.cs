@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.Controllers;
 using ShinyBotHunter.BotEvents;
@@ -61,7 +62,7 @@ namespace ShinyBotHunter.Tests
 
             var names = service.GetAvailableActions(0).Select(a => a.Name).ToList();
 
-            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg", "HGSS Static Encounter"], names);
+            Assert.Equal(["Wild Encounter", "Chained Encounter", "HGSS Togepi Egg", "HGSS Primo Egg", "HGSS Static Encounter", "Plan"], names);
         }
 
         [Fact]
@@ -89,6 +90,55 @@ namespace ShinyBotHunter.Tests
             Assert.Equal(["Dialga (Sinjoh Ruins)", "Palkia (Sinjoh Ruins)", "Giratina (Sinjoh Ruins)"], choices["StaticEncounter"]);
             Assert.All(actions.Where(a => a.Name != "HGSS Static Encounter"), a => Assert.Null(a.Choices));
             Assert.Null(EventRegistry.Get("HGSS Static Encounter").Options.Choices);
+        }
+
+        [Fact]
+        public async Task IdleHgssBot_PlanTakesTheHuntPlan()
+        {
+            var service = Build();
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Chained Encounter").LegParameters!.OptionalParameters!);
+            Assert.Equal(["HuntPlan"], actions.Single(a => a.Name == "Plan").RequiredParameters!);
+        }
+
+        [Fact]
+        public void PlanChoices_AreTheSavedNamesSorted()
+        {
+            EventArgumentOptions plan = EventRegistry.PlanChoices(["Pickup days", "Johto nights"]);
+
+            Assert.Equal(["HuntPlan"], plan.Choices!.Keys);
+            Assert.Equal(["Johto nights", "Pickup days"], plan.Choices["HuntPlan"]);
+            Assert.Null(EventRegistry.Get("Plan").Options.Choices);
+        }
+
+        [Fact]
+        public void PlanEntry_NeedsTheClock()
+        {
+            EventRegistration entry = EventRegistry.Get("Plan");
+
+            Assert.Equal(nameof(GameCapabilities.HasHuntPlans), entry.Requires?.Capability);
+            Assert.False(entry.OwnsEmulators);
+        }
+
+        [Fact]
+        public void Wait_IsNotARegistryName()
+        {
+            Assert.DoesNotContain(EventRegistry.All, e => e.Name == Milestones.Plan.Wait);
+        }
+
+        [Fact]
+        public async Task RsBot_WildEncounterHasNoHuntPlan()
+        {
+            var service = Build(RsProfile.Create(new PokemonMetadataService(null!), new MapService(new Dictionary<int, Map>())));
+            await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
+
+            var actions = await service.GetBotActionsAsync(0);
+
+            Assert.Equal(["TrainType"], actions.Single(a => a.Name == "Wild Encounter").OptionalParameters!);
         }
 
         [Fact]

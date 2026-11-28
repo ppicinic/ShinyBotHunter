@@ -185,9 +185,24 @@ namespace ShinyBotHunter.Tests
         {
             ScriptedReader game = new(Free, At(GameScreen.FieldTask));
 
-            TimeSpan locked = await SpinEncounterEvent.SeekAsync(game, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50), CancellationToken.None);
+            (TimeSpan locked, GameSnapshot at) = await SpinEncounterEvent.SeekAsync(game, TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(50), CancellationToken.None);
 
             Assert.InRange(locked, TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(5));
+            Assert.Equal(At(GameScreen.FieldTask), at);
+        }
+
+        // Run's stop at the Repel message: the field task that matches stopAt ends the seek at once, long before the deadline.
+        [Fact]
+        public async Task Seek_StopAt_ReturnsTheSnapshotBeforeTheDeadline()
+        {
+            GameSnapshot message = new(GameScreen.FieldTask, null, 2022, null, 0x0203FF45, 0x02041001);
+            ScriptedReader game = new(Free, At(GameScreen.FieldTask), message);
+            System.Diagnostics.Stopwatch elapsed = System.Diagnostics.Stopwatch.StartNew();
+
+            (_, GameSnapshot at) = await SpinEncounterEvent.SeekAsync(game, TimeSpan.FromSeconds(10), null, CancellationToken.None, s => s.Script == 2022);
+
+            Assert.Equal(message, at);
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5));
         }
 
         [Fact]

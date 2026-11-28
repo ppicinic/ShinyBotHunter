@@ -1,6 +1,8 @@
+using MongoDB.Bson.Serialization.Attributes;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
 using ShinyBotHunter.Macro;
+using ShinyBotHunter.Milestones;
 
 namespace ShinyBotHunter.Service
 {
@@ -10,6 +12,9 @@ namespace ShinyBotHunter.Service
         ShinyTarget,
         NoTarget
     }
+
+    // The bot's milestone picker, with its game file's name.
+    public record BotMilestones(string GameFileName, IReadOnlyList<PickerMilestone> Milestones);
 
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor, IReadOnlyList<string>? SpeedLines);
 
@@ -92,6 +97,8 @@ namespace ShinyBotHunter.Service
         public bool? RequireFemale { get; set; }
     }
 
+    // Also a plan step's stored body: a property deleted later must not make every stored plan unreadable.
+    [BsonIgnoreExtraElements]
     public class NewEventArguments
     {
         public string EventName { get; set; } = "";
@@ -118,6 +125,8 @@ namespace ShinyBotHunter.Service
         /// </summary>
         public string? RecordingName { get; set; }
         public string? StaticEncounter { get; set; }
+        /// <summary>The saved plan's name, the Plan action's one parameter.</summary>
+        public string? HuntPlan { get; set; }
         // Only used by chained actions. The flat fields above stay in place for single encounters.
         public List<NewEventLegArguments>? Legs { get; set; }
 

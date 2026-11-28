@@ -57,7 +57,7 @@ From `src/field/headbutt.c` and `files/arc/headbutt.json`:
 - Each map has a list of trees and three tables (common, rare, secret). A tree's type is fixed by the trainer ID's last digit and the tree's position in the list (`Headbutt_GetTreeType_Regular`); for maps with five or more trees the lookup uses the tree index modulo 5.
 - A tree whose type is "none" for the player's trainer ID never gives an encounter: the script shows the same messages and the swap, then returns to the field.
 - On a common, rare or secret tree the encounter is certain unless a Repel suppresses it (`FieldSystem_GenerateRegularEncounter` with `ENCOUNTER_TYPE_HEADBUTT`).
-- The spike's tree is tree 0 of Azalea's fifteen, at (426, 465) and (427, 465). Trainer ID 15613 ends in 3, so `sRareTreeLUT_5Plus[3][0]` makes it a common tree: Spearow (slot weight 50 %), Heracross (two slots, 30 %), Aipom (three slots, 20 %) at levels 3 to 5. Twenty cycles gave 10, 6 and 4.
+- The spike's tree is tree 0 of Azalea's fifteen, at (426, 465) and (427, 465). Trainer ID 2318286077 ends in 7, so `sRareTreeLUT_5Plus[7][0]` makes it a common tree (corrected 2026-11-25, #539 and #572, from the game's source, not observed on the emulator: `Task_TryHeadbuttEncounter` passes the full 32-bit ID, `profile->id`, to `trainerId % 10`; the visible 15613 is only its low half and the secret ID 35374 its high half; the visible half alone ends in 3, and `sRareTreeLUT_5Plus[3][0]` is also common, so the spike's tree could not tell the two readings apart): Spearow (slot weight 50 %), Heracross (two slots, 30 %), Aipom (three slots, 20 %) at levels 3 to 5. Twenty cycles gave 10, 6 and 4.
 
 The bot does not need the table to hunt: a tree that gives no encounter is visible in one cycle as the script ending in the field with no battle.
 
@@ -76,7 +76,7 @@ The one-step return is a short macro (turn and step), not a pathfinding job; the
 
 ## Open points
 
-- A tree in the map's list that is "none" for the player's trainer ID was not tried (on Azalea with trainer ID ending in 3, row 3 of `sRareTreeLUT_5Plus` reads common, rare, rare, none, common, so trees 3, 8 and 13 are "none", trees 1, 2, 6, 7, 11 and 12 rare, and trees 0, 4, 5, 9, 10 and 14 common). The decomp sends it down the same path as the unlisted tree that was tried.
+- A tree in the map's list that is "none" for the player's trainer ID was not tried (corrected 2026-11-25, #539, from the game's source, not observed: the digit is the full 32-bit ID's, 2318286077 on `HG-Headbutt`, so 7, not 3; row 7 of `sRareTreeLUT_5Plus` reads common, rare, none, common, rare, so on Azalea trees 2, 7 and 12 are "none", trees 1, 4, 6, 9, 11 and 14 rare, and trees 0, 3, 5, 8, 10 and 13 common). The decomp sends it down the same path as the unlisted tree that was tried.
 - The cycling and surfing branches were not run; the decomp sends them to the same cut-in as the non-follower case.
 - Natives 0x020492F1 and 0x020408D9 and tasks 0x0224E0ED and 0x022507E9 are named here by when they appear, not from symbols; 0x0204378D is named from the decomp. The bot does not branch on any of them.
 - A Repel would make a common tree look like a "none" tree; the stop message should name both.

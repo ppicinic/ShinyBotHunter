@@ -3,13 +3,13 @@ import * as api from '../services/apiClient'
 import { IpcSignalRService } from '../services/ipcSignalRService'
 import { applyTheme, windowNameFromSearch } from '../utils/theme'
 import type {
+  ActiveSubscription,
   AppConfig,
   DashboardConfig,
   GameEncounterResponse,
-  PhaseInfo,
+  PhaseInfoResponse,
   PokemonData,
-  SubscriptionState,
-  WrappedPokemonPhase
+  SubscriptionState
 } from '../types/api'
 
 interface AppContextValue {
@@ -38,22 +38,74 @@ const AppContext = createContext<AppContextValue>({
   signalR: null
 })
 
-// Fetches phase info + initial encounter data from GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
-// The endpoint returns WrappedPokemonPhase: { phaseInfo, data }
+// Fetches phase info, initial encounter data and the location's rows from GET /api/phaseinfo/{game}/{phase}[/{gameFileName}]
 async function fetchWrappedPhaseInfo(
   apiUrl: string,
   game: string,
   phase: string,
   gameName?: string | null
-): Promise<{ phaseInfo: PhaseInfo; encounterData: GameEncounterResponse } | null> {
+): Promise<PhaseInfoResponse | 'notFound' | null> {
   try {
     const response = await api.getSubscriptionPhaseInfo(apiUrl, game, phase, gameName)
+    if (response.status === 404) return 'notFound'
     if (!response.ok) return null
-    const wrapped = (await response.json()) as WrappedPokemonPhase
-    return { phaseInfo: wrapped.phaseInfo, encounterData: wrapped.data }
+    return (await response.json()) as PhaseInfoResponse
   } catch {
     return null
   }
+}
+
+function sameSubscription(a: ActiveSubscription, b: ActiveSubscription): boolean {
+  return a.game === b.game && a.phase === b.phase && (a.gameName ?? null) === (b.gameName ?? null)
+}
+
+// One subscription per pushed (game, phase, game file); kept ones are the same objects, so their data survives
+export function syncSubscriptions(
+  current: SubscriptionState[],
+  gamePhases: ActiveSubscription[]
+): { subscriptions: SubscriptionState[]; added: SubscriptionState[] } {
+  const kept = current.filter((sub) => gamePhases.some((gp) => sameSubscription(gp, sub)))
+  const added: SubscriptionState[] = []
+  for (const { game, phase, gameName } of gamePhases) {
+    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null, rowNames: [], location: null, live: false, timeOfDay: null, notFound: false }
+    if (!kept.some((s) => sameSubscription(s, sub)) && !added.some((s) => sameSubscription(s, sub))) {
+      added.push(sub)
+    }
+  }
+  return { subscriptions: [...kept, ...added], added }
+}
+
+// A push names the file that encountered in gameSpecificResponse; a no-file card takes the game-wide counts
+function receivesPush(sub: SubscriptionState, response: GameEncounterResponse, game: string, phase: string): boolean {
+  return sub.game === game &&
+    sub.phase === phase &&
+    (sub.gameName === null || sub.gameName in response.gameSpecificResponse)
+}
+
+export function applyEncounters(
+  subs: SubscriptionState[],
+  response: GameEncounterResponse,
+  game: string,
+  phase: string
+): SubscriptionState[] {
+  return subs.map((sub) => (receivesPush(sub, response, game, phase) ? { ...sub, encounterData: response } : sub))
+}
+
+// A re-read's rows, names and location, which the card pairs by position, so all come from the one response. The counts stay the
+// push's, so a late response cannot roll them back.
+export function applyReread(subs: SubscriptionState[], target: SubscriptionState, response: PhaseInfoResponse): SubscriptionState[] {
+  const { phaseInfo, rowNames, location, live, timeOfDay } = response
+  return subs.map((sub) => (sameSubscription(sub, target) ? { ...sub, phaseInfo, rowNames, location, live, timeOfDay } : sub))
+}
+
+// The milestones with a location a push reaches: their shares change at the first encounter of a new time of day, so they are read again
+export function milestonesToReread(
+  subs: SubscriptionState[],
+  response: GameEncounterResponse,
+  game: string,
+  phase: string
+): SubscriptionState[] {
+  return subs.filter((sub) => sub.location !== null && receivesPush(sub, response, game, phase))
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }): JSX.Element {
@@ -66,6 +118,8 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   // Refs so async callbacks always have the latest values without stale closures
   const configRef = useRef<AppConfig | null>(null)
   const dashboardConfigRef = useRef<DashboardConfig>(emptyDashboardConfig)
+  // Written only by the effect below, read by the SignalR callbacks and the rows' re-read timer
+  const subscriptionsRef = useRef<SubscriptionState[]>([])
 
   // Load static config on mount
   useEffect(() => {
@@ -81,6 +135,30 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
   useEffect(() => {
     dashboardConfigRef.current = dashboardConfig
   }, [dashboardConfig])
+
+  useEffect(() => {
+    subscriptionsRef.current = subscriptions
+  }, [subscriptions])
+
+  // A response for a subscription that has gone since, after a follows-the-hunt move for one, matches nothing
+  const rereadMilestones = (apiUrl: string, targets: SubscriptionState[]): void => {
+    targets.forEach(async (target) => {
+      const result = await fetchWrappedPhaseInfo(apiUrl, target.game, target.phase, target.gameName)
+      if (result !== null && result !== 'notFound') {
+        setSubscriptions((prev) => applyReread(prev, target, result))
+      }
+    })
+  }
+
+  // The rows' shares follow the bot's clock and the hunt ending, which push nothing, so they are also read on the rate poll's interval
+  useEffect(() => {
+    if (!config) return
+    const timer = setInterval(
+      () => rereadMilestones(config.apiUrl, subscriptionsRef.current.filter((sub) => sub.location !== null)),
+      config.encounterRatePollingIntervalMs ?? 60000
+    )
+    return () => clearInterval(timer)
+  }, [config])
 
   // Start SignalR once config is loaded
   useEffect(() => {
@@ -99,13 +177,9 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
 
     const unsubEncounters = service.onEncounters((response: GameEncounterResponse, game: string, phase: string) => {
       // Update subscription encounter data
-      setSubscriptions((prev) =>
-        prev.map((sub) =>
-          sub.game === game && sub.phase === phase
-            ? { ...sub, encounterData: response }
-            : sub
-        )
-      )
+      setSubscriptions((prev) => applyEncounters(prev, response, game, phase))
+
+      rereadMilestones(config.apiUrl, milestonesToReread(subscriptionsRef.current, response, game, phase))
 
       // Extract latest encounters from the payload, trimmed to the configured count.
       // Use the ref to get the current recentEncounterCount without stale closure.
@@ -137,52 +211,47 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
     const cfg = configRef.current
     if (!service || !cfg) return
 
-    const newSubs = dashboardConfig.gamePhases
-
     // Use functional update to get current subscriptions without stale closure
     setSubscriptions((currentSubs) => {
-      // Determine which subs to add (not already tracked)
-      const toAdd = newSubs.filter(
-        ({ game, phase }) => !currentSubs.some((s) => s.game === game && s.phase === phase)
-      )
+      const { subscriptions: synced, added } = syncSubscriptions(currentSubs, dashboardConfig.gamePhases)
 
       // Fetch phase info for new subs
-      toAdd.forEach(async ({ game, phase, gameName }) => {
+      added.forEach(async (fresh) => {
         // Fetch phase info + initial encounter data from REST API
-        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, game, phase, gameName)
-        if (result) {
+        const result = await fetchWrappedPhaseInfo(cfg.apiUrl, fresh.game, fresh.phase, fresh.gameName)
+        if (result === 'notFound') {
+          setSubscriptions((prev) => prev.map((sub) => (sameSubscription(sub, fresh) ? { ...sub, notFound: true } : sub)))
+          return
+        }
+        if (result !== null) {
+          const fill = {
+            phaseInfo: result.phaseInfo,
+            rowNames: result.rowNames,
+            encounterData: result.data,
+            location: result.location,
+            live: result.live,
+            timeOfDay: result.timeOfDay
+          }
           setSubscriptions((prev) =>
             prev.map((sub) =>
-              sub.game === game && sub.phase === phase
-                ? { ...sub, phaseInfo: result.phaseInfo, encounterData: result.encounterData }
+              sameSubscription(sub, fresh)
+                ? { ...sub, ...fill }
                 : sub
             )
           )
 
           // Also populate recent encounters from the initial REST load
-          if (result.encounterData.latestEncounters && result.encounterData.latestEncounters.length > 0) {
+          if (fill.encounterData.latestEncounters && fill.encounterData.latestEncounters.length > 0) {
             const maxCount = dashboardConfigRef.current.recentEncounterCount
             const trimmed = maxCount > 0
-              ? result.encounterData.latestEncounters.slice(0, maxCount)
-              : result.encounterData.latestEncounters
+              ? fill.encounterData.latestEncounters.slice(0, maxCount)
+              : fill.encounterData.latestEncounters
             setRecentEncounters(trimmed)
           }
         }
       })
 
-      // Build new subscriptions list: keep existing ones that are still in config,
-      // add placeholders for new ones
-      const kept = currentSubs.filter((sub) =>
-        newSubs.some((ns) => ns.game === sub.game && ns.phase === sub.phase)
-      )
-      const added = toAdd.map(({ game, phase, gameName }) => ({
-        game,
-        phase,
-        gameName: gameName ?? null,
-        encounterData: null,
-        phaseInfo: null
-      }))
-      return [...kept, ...added]
+      return synced
     })
   }, [dashboardConfig])
 

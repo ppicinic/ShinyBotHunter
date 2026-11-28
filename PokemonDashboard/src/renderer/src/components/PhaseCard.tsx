@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { GameEncounterResponseBase, PhasePokemonInfo, SubscriptionState } from '../types/api'
+import type { GameEncounterResponseBase, MilestoneLocation, PhaseEncounterResponse, PhasePokemonInfo, PlanTime, SubscriptionState } from '../types/api'
 import { useAppContext } from '../context/AppContext'
 import * as api from '../services/apiClient'
 import { PokemonSprite } from './PokemonSprite'
@@ -13,6 +13,86 @@ function getGameDisplayName(game: string): string {
   return GAME_DISPLAY_NAMES[game] ?? game
 }
 
+// The one row shape the table draws
+interface CardRow {
+  // The count key, unique per row: a female and a male row, or Unown's 28, share a species
+  key: string
+  name: string
+  sprite: string
+  genderSymbol: string
+  amount: number
+  caught: number
+  encountersHere: number
+  encountersOnFile: number
+  missed: number
+  // From the location's row at the same position; null and empty without a location
+  share: number | null
+  times: PlanTime[]
+}
+
+// The time-of-day pills; "all day" follows the theme's neutrals and border
+const PILL_COLORS: Record<PlanTime | 'All', string> = {
+  Morning: 'text-amber-300 border-amber-300/40',
+  Day: 'text-sky-300 border-sky-300/40',
+  Night: 'text-violet-300 border-violet-300/40',
+  All: 'text-slate-400 border-card-border'
+}
+
+function TimePill({ time }: { time: PlanTime | 'All' }): JSX.Element {
+  return (
+    <span data-testid="time-pill" className={`ml-1 text-xs px-1 rounded border ${PILL_COLORS[time]}`}>
+      {time === 'All' ? 'all day' : time.toLowerCase()}
+    </span>
+  )
+}
+
+// A row hidden now is not drawn, nor one at a zero share (Repel blocks it): only what can be met now shows
+export function phaseCardRows(
+  pokemon: PhasePokemonInfo[],
+  rowNames: string[],
+  phaseData: PhaseEncounterResponse | undefined,
+  scopedData: GameEncounterResponseBase | null | undefined,
+  location: MilestoneLocation | null
+): CardRow[] {
+  return pokemon.flatMap((pkmn, i) => {
+    const at = location?.rows[i]
+    if (at && (at.hiddenNow || at.share === 0)) return []
+    // A row that pins a form counts only that form (male and female, or Unown's 28,
+    // stay separate); a row that accepts any form counts the whole species. Must match
+    // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
+    const countKey = pkmn.requireSpecificForm ? pkmn.formCode : `#${pkmn.speciesId}`
+    const phaseCounts = phaseData?.pokemonEncounters?.[countKey]
+    const totalCounts = scopedData?.pokemonEncounters?.[countKey]
+    const shiniesCaught = totalCounts?.shiniesCaught ?? 0
+    const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
+    // Missed = shiny encounters that were not caught
+    const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
+    // Only shown when the row actually pins a form -- otherwise it accepts either
+    // gender and marking it would be a lie. Within a pinned row, ";f" is the only thing
+    // ever encoded, so a plain code means male when the species has a female form.
+    const genderSymbol = !pkmn.requireSpecificForm
+      ? ''
+      : pkmn.formCode.endsWith(';f')
+        ? '♀'
+        : pkmn.hasFemaleForm
+          ? '♂'
+          : ''
+    return [{
+      key: countKey,
+      name: rowNames[i],
+      sprite: pkmn.formCode,
+      genderSymbol,
+      amount: pkmn.amount,
+      caught: shiniesCaught,
+      encountersHere: phaseCounts?.encounters ?? 0,
+      encountersOnFile: totalCounts?.encounters ?? 0,
+      missed: shiniesMissed,
+      share: at?.share ?? null,
+      times: at?.times ?? []
+    }]
+  })
+}
+
 interface PhaseCardProps {
   subscription: SubscriptionState
   windowChrome?: boolean
@@ -20,7 +100,7 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
   const { config, connectionState } = useAppContext()
-  const { game, phase, gameName, encounterData, phaseInfo } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo, rowNames, location, live, timeOfDay, notFound } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
   const scopedData: GameEncounterResponseBase | null | undefined = gameName
@@ -32,7 +112,11 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
   const phaseCount = phaseData?.phaseCount ?? null
 
-  const pokemonList: PhasePokemonInfo[] = phaseInfo?.pokemon ?? []
+  const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], rowNames, phaseData, scopedData, location)
+  // Ruby and Sapphire, and a location met all day, carry no pills: only a location with a timed row has them
+  const timed = location?.rows.some((r) => r.times.length === 1 || r.times.length === 2) ?? false
+  // The rows hidden now, by the next time they can be met, in the response's order
+  const hiddenGroups = Object.entries(location?.hiddenUntil ?? {}) as [PlanTime, string[]][]
 
   // The phase card sizes its rows to the space available rather than scrolling: the whole point is
   // to see every milestone pokemon at a glance. Sprites shrink with the rows but only within
@@ -43,23 +127,26 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const SPRITE_MAX = 96
   const bodyRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
+  const summaryRef = useRef<HTMLTableRowElement>(null)
   const [rowHeight, setRowHeight] = useState<number | null>(null)
 
   useLayoutEffect(() => {
     const body = bodyRef.current
-    if (!body || pokemonList.length === 0) {
+    if (!body || rows.length === 0) {
       setRowHeight(null)
       return
     }
     const measure = (): void => {
-      const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0)
-      setRowHeight(Math.max(ROW_MIN, Math.floor(available / pokemonList.length)))
+      const available = body.clientHeight - (headRef.current?.offsetHeight ?? 0) - (summaryRef.current?.offsetHeight ?? 0)
+      setRowHeight(Math.max(ROW_MIN, Math.floor(available / rows.length)))
     }
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(body)
+    // The summary row grows when its names wrap to another line
+    if (summaryRef.current) observer.observe(summaryRef.current)
     return () => observer.disconnect()
-  }, [pokemonList.length])
+  }, [rows.length, hiddenGroups.length])
 
   // Leave room for the row's own vertical padding so sprites never force a row taller than its slot.
   const spriteSize = rowHeight === null
@@ -101,8 +188,17 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
           <span>
             Encounters: <span data-testid="phase-encounter-count" className="text-white font-semibold">{totalPhaseEncounters.toLocaleString()}</span>
           </span>
+          <span>
+            Phase: <span className="text-white font-semibold">{phaseCount !== null ? phaseCount.toLocaleString() : '—'}</span>
+          </span>
+          <span>
+            Rate: <span className="text-white font-semibold">{encounterRate !== null ? `${encounterRate.toFixed(2)}/hr` : '—'}</span>
+          </span>
           {totalPhaseShiny > 0 && (
             <span className="shiny-glow font-semibold">✨ {totalPhaseShiny}</span>
+          )}
+          {gameName !== null && location !== null && !live && (
+            <span>{timeOfDay === null ? 'not live' : `not live (last seen ${timeOfDay.toLowerCase()})`}</span>
           )}
           {windowChrome && (
             <>
@@ -114,9 +210,13 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
       </div>
 
       <div ref={bodyRef} className="flex-1 overflow-hidden px-2 py-1">
-        {pokemonList.length === 0 ? (
+        {(phaseInfo?.pokemon.length ?? 0) === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-500 text-sm">
-            {phaseInfo === null ? 'Loading milestone requirements...' : 'No Pokémon defined for this milestone.'}
+            {notFound
+              ? `Milestone "${phase}" was not found.`
+              : phaseInfo === null
+                ? 'Loading milestone requirements...'
+                : 'No Pokémon defined for this milestone.'}
           </div>
         ) : (
           <table className="w-full border-collapse">
@@ -130,64 +230,47 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
               </tr>
             </thead>
             <tbody>
-              {pokemonList.map((pkmn) => {
-                // A row that pins a form counts only that form (male and female, or Unown's 28,
-                // stay separate); a row that accepts any form counts the whole species. Must match
-                // CacheLoadRequest.SpeciesKey on the server, which decides what got cached.
-                const countKey = pkmn.requireSpecificForm ? pkmn.formCode : `#${pkmn.speciesId}`
-                const phaseCounts = phaseData?.pokemonEncounters?.[countKey]
-                const totalCounts = scopedData?.pokemonEncounters?.[countKey]
-                const shiniesCaught = totalCounts?.shiniesCaught ?? 0
-                const shiniesEncountered = totalCounts?.shinyEncounters ?? 0
-                // Missed = shiny encounters that were not caught
-                const shiniesMissed = Math.max(0, shiniesEncountered - shiniesCaught)
-                const amountRequired = pkmn.amount
+              {rows.map(({ key, name, sprite, genderSymbol, amount: amountRequired, caught: shiniesCaught, encountersHere, encountersOnFile, missed: shiniesMissed, share, times }) => {
                 // Amount 0 means "track this pokemon's encounters but don't require it". Without the
                 // guard, 0 >= 0 marks the row complete and shows a meaningless "0/0".
                 const isTrackedOnly = amountRequired === 0
                 const isComplete = !isTrackedOnly && shiniesCaught >= amountRequired
-                // Phase card shows target (shiny) sprites since these are the pokemon being hunted
-                // Only shown when the row actually pins a form -- otherwise it accepts either
-                // gender and marking it would be a lie. Within a pinned row, ";f" is the only thing
-                // ever encoded, so a plain code means male when the species has a female form.
-                const genderSymbol = !pkmn.requireSpecificForm
-                  ? ''
-                  : pkmn.formCode.endsWith(';f')
-                    ? '♀'
-                    : pkmn.hasFemaleForm
-                      ? '♂'
-                      : ''
 
                 return (
                   <tr
-                    key={pkmn.speciesId}
+                    key={key}
                     className={`border-b border-card-border/30 ${isComplete ? 'bg-green-900/20' : ''}`}
                     style={rowHeight === null ? undefined : { height: rowHeight }}
                   >
                     {/* Sprite */}
                     <td className="py-0 pr-3 text-center">
-                      <PokemonSprite formCode={pkmn.formCode} isShiny name={pkmn.name} size={spriteSize} />
+                      {/* Phase card shows target (shiny) sprites since these are the pokemon being hunted */}
+                      <PokemonSprite formCode={sprite} isShiny name={name} size={spriteSize} />
                     </td>
 
                     {/* Name */}
                     <td className="py-0 pr-3 text-center">
-                      <span className="text-white font-semibold text-sm capitalize">{pkmn.name}</span>
+                      <span className="text-white font-semibold text-sm capitalize">{name}</span>
                       {genderSymbol && (
                         <span className={`ml-1 text-sm ${genderSymbol === '♀' ? 'text-pink-400' : 'text-sky-400'}`}>{genderSymbol}</span>
                       )}
                       {isComplete && (
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-green-700/50 text-green-300">✓</span>
                       )}
+                      {timed && (times.length === 3 ? <TimePill time="All" /> : times.map((t) => <TimePill key={t} time={t} />))}
+                      {share !== null && (
+                        <div data-testid="row-share" className="text-xs text-slate-400">{(share * 100).toFixed(1)} %</div>
+                      )}
                     </td>
 
                     {/* Phase encounters */}
                     <td className="py-0 pr-3 text-center text-white font-medium text-sm">
-                      {(phaseCounts?.encounters ?? 0).toLocaleString()}
+                      {encountersHere.toLocaleString()}
                     </td>
 
                     {/* Game encounters */}
                     <td className="py-0 pr-3 text-center text-white font-medium text-sm">
-                      {(totalCounts?.encounters ?? 0).toLocaleString()}
+                      {encountersOnFile.toLocaleString()}
                     </td>
 
                     {/* Shinies caught / needed */}
@@ -207,25 +290,21 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
                   </tr>
                 )
               })}
+              {hiddenGroups.length > 0 && (
+                <tr ref={summaryRef} data-testid="hidden-summary">
+                  <td colSpan={5} className="py-0.5 text-center text-xs text-slate-500">
+                    {hiddenGroups.map(([time, names], i) => (
+                      <span key={time}>
+                        {i > 0 && ' · '}
+                        {names.length} more at<TimePill time={time} />: {names.join(', ')}
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}
-      </div>
-
-      {/* Footer: phase count + encounter rate */}
-      <div className="flex items-center justify-end gap-4 px-3 py-1.5 border-t border-card-border bg-card-header/50 flex-shrink-0">
-        <span className="text-xs text-slate-400">
-          Phase:{' '}
-          <span className="text-white font-semibold">
-            {phaseCount !== null ? phaseCount.toLocaleString() : '—'}
-          </span>
-        </span>
-        <span className="text-xs text-slate-400">
-          Rate:{' '}
-          <span className="text-white font-semibold">
-            {encounterRate !== null ? `${encounterRate.toFixed(2)}/hr` : '—'}
-          </span>
-        </span>
       </div>
     </div>
   )

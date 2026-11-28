@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ShinyBotHunter.BotEvents;
 using ShinyBotHunter.BotEvents.Factories;
@@ -64,8 +65,12 @@ namespace ShinyBotHunter.Tests
                 createNavigatorEvent: hgss.CreateNavigatorEvent);
             var settings = Options.Create(new ApplicationSettings { MaxEmulators = new() { ["DS"] = 2 } });
             var factory = new FakeBotFactory(settings, Task.CompletedTask, profile);
-            var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().BuildServiceProvider();
-            var service = new BotService(settings, factory, provider, null!, null!, null!);
+            // A start moves the follows-the-hunt card, so the provider needs an AdminService; nothing here watches it.
+            var admin = new AdminService(_ => Task.CompletedTask, () => Task.FromResult<(DashboardConfig Config, Appearance? Appearance)?>(null),
+                _ => Task.CompletedTask, () => Task.FromResult<Appearance?>(null), _ => Task.CompletedTask, NullLogger.Instance);
+            var provider = new ServiceCollection().AddSingleton<PokemonStateReader>().AddSingleton(admin).BuildServiceProvider();
+            // A ROM directory never scanned: no game file has a version, so no phase name is a generated milestone.
+            var service = new BotService(settings, factory, provider, null!, new RomInfoService(settings, NullLogger<RomInfoService>.Instance), new GameProfiles(profile));
             await service.ExecuteNewBotOrSpecialEvent(LaunchBot);
             FakeBot bot = factory.Bots[0];
             bot.PartyBlocks = party;
@@ -341,7 +346,7 @@ namespace ShinyBotHunter.Tests
         }
 
         [Fact]
-        public async Task StartChainedEncounterWithPickupInSlotFour_Starts()
+        public async Task StartChainedEncounterWithPickupInSlotFour_PassesTheGuards()
         {
             var (service, bot) = await LaunchAsync(WithBoth);
             var args = new NewEventArguments
@@ -352,8 +357,11 @@ namespace ShinyBotHunter.Tests
 
             var result = await new BotController(service).StartAction(0, args);
 
+            // Chained reads no game file, so Start passes the guards (one party read) and returns; the chain then fails at once in
+            // OrchestratorEvent's constructor, since the stub provider has no PokemonMetadataService.
             Assert.IsType<OkObjectResult>(result.Result);
             Assert.Equal(1, bot.PartyReads);
+            await service.CancelBotOrEventAsync(0);
         }
 
         [Fact]

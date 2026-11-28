@@ -38,6 +38,8 @@ namespace ShinyBotHunter.Tests
         public Func<IReadOnlyList<ChainBlockRequest>, ChainBlockResult[]> ChainBlocks { get; init; } = _ => Array.Empty<ChainBlockResult>();
         public byte[][] PartyBlocks { get; set; } = Array.Empty<byte[]>();
         public Action<string> Pressed { get; init; } = _ => { };
+        // What WaitForMacroAsync waits on; a test that holds a walk macro until ClearMacro sets it.
+        public Func<Task> MacroDone { get; init; } = () => Task.CompletedTask;
 
         // RunRepeatMacro as "RP:" + macro, ClearMacro as "clear". Written and read by the test's one async flow; no lock.
         public List<string> Macros { get; } = new();
@@ -63,7 +65,7 @@ namespace ShinyBotHunter.Tests
         public void RunRepeatMacro(string macro) => Macros.Add("RP:" + macro);
         public void RunMacros(params MacroStruct[] macro) { }
         public void ClearMacro() => Macros.Add("clear");
-        public Task WaitForMacroAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task WaitForMacroAsync(CancellationToken ct = default) => MacroDone();
         public Task FlushSave(CancellationToken ct = default) => Task.CompletedTask;
         public Task StartRecordingAsync(CancellationToken ct = default) => Task.CompletedTask;
         public Task<string> StopRecordingAsync(CancellationToken ct = default) => Task.FromResult("");

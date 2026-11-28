@@ -1,11 +1,16 @@
-import React, { useEffect } from 'react'
-import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PhaseInfo } from '../../types/api'
+import React, { useEffect, useState } from 'react'
+import type { ConditionalParameter, EventArgumentOptions, GameRomInfo, PartySlotInfo, PickerMilestone } from '../../types/api'
 import { romLabel } from '../../types/api'
 import { choiceOptions, encounterTypeChoices, getParamLabel, isConditionMet, pickupChoice } from './actionSchema'
 
 const TRAIN_TYPE_OPTIONS = ['None', 'Standard', 'Switch']
 
 const TARGET_TYPE_OPTIONS = ['PhaseTarget', 'ShinyTarget', 'NoTarget']
+
+// The selected milestone stays listed whatever the box says, so the select never shows one milestone while holding another.
+export function launchMilestones(milestones: PickerMilestone[], selected: string, incompleteOnly: boolean): PickerMilestone[] {
+  return milestones.filter((m) => m.name === selected || !incompleteOnly || !m.complete)
+}
 
 /**
  * The inputs for one set of encounter parameters, driven entirely by the schema the server sent.
@@ -19,19 +24,30 @@ export function ActionParamFields({
   party,
   onReloadParty,
   partyLoading,
-  games
+  games,
+  offerIncompleteOnly = true
 }: {
   schema: EventArgumentOptions
   params: Record<string, string>
   onChange: (param: string, value: string) => void
-  availablePhases: PhaseInfo[]
+  availablePhases: PickerMilestone[]
   party: PartySlotInfo[] | undefined
-  onReloadParty: () => void
+  // Absent where there is no bot, so no party to reload.
+  onReloadParty?: () => void
   partyLoading: boolean
   // Detected ROMs, for schemas whose entries pick a game (the starter hunt's legs do). When absent,
   // GameName falls through to a plain text input like any other parameter.
   games?: GameRomInfo[]
+  // False in the Plan Editor, where no milestone reads as complete.
+  offerIncompleteOnly?: boolean
 }): JSX.Element {
+  const [incompleteOnly, setIncompleteOnly] = useState(false)
+  // A milestone with a location is a wild one, so only an encounter form (Wild Encounter, a chain's leg) offers it;
+  // Togepi, Primo and Static Encounter list milestones with no location only.
+  const offered = schema.requiredParameters?.includes('EncounterType')
+    ? availablePhases
+    : availablePhases.filter((m) => m.modality === null)
+  const shownMilestones = launchMilestones(offered, params['PhaseName'] ?? '', incompleteOnly)
   const encounter = encounterTypeChoices(schema, params['EncounterType'])
   useEffect(() => {
     if (params['EncounterType'] && encounter.selected !== params['EncounterType']) onChange('EncounterType', '')
@@ -46,7 +62,9 @@ export function ActionParamFields({
   return (
     <>
       {schema.requiredParameters?.map((param) => (
-        <div key={param} data-testid={`param-${param}`} className="flex items-center gap-2">
+        // The milestone picker carries param-PhaseName on the wrapper of its one milestone select, not on the row, so
+        // the row's Incomplete only box is not inside it.
+        <div key={param} data-testid={param === 'PhaseName' ? undefined : `param-${param}`} className="flex items-center gap-2">
           <label className="text-xs text-slate-500 w-20 flex-shrink-0">{getParamLabel(param)}</label>
           {param === 'GameName' && games ? (
             <select
@@ -60,16 +78,29 @@ export function ActionParamFields({
               ))}
             </select>
           ) : param === 'PhaseName' ? (
-            <select
-              value={params[param] ?? ''}
-              onChange={(e) => onChange(param, e.target.value)}
-              className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="">Select a milestone...</option>
-              {availablePhases.map((phase) => (
-                <option key={phase.name} value={phase.name}>{phase.name}</option>
-              ))}
-            </select>
+            <div className="flex-1 space-y-1">
+              <div data-testid="param-PhaseName" className="space-y-1">
+                {/* A "no hunt yet" milestone stays selectable, so Start shows the server's reason. */}
+                <select
+                  value={params[param] ?? ''}
+                  onChange={(e) => onChange(param, e.target.value)}
+                  className="w-full bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="">Select a milestone...</option>
+                  {shownMilestones.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {`${m.name}${m.huntable ? '' : ' (no hunt yet)'}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {offerIncompleteOnly && (
+                <label className="flex items-center gap-1 text-xs text-slate-500">
+                  <input type="checkbox" checked={incompleteOnly} onChange={(e) => setIncompleteOnly(e.target.checked)} className="w-3 h-3 accent-indigo-500" />
+                  Incomplete only
+                </label>
+              )}
+            </div>
           ) : param === 'TargetType' ? (
             <select
               value={params[param] ?? ''}
@@ -195,7 +226,7 @@ export function ActionParamFields({
                     className="flex-1 bg-card-border text-white text-xs rounded px-2 py-0.5 border border-slate-600 focus:outline-none focus:border-indigo-500 placeholder-slate-500 disabled:opacity-40"
                   />
                 )}
-                {cp.name === 'SwitchSlot' && (
+                {cp.name === 'SwitchSlot' && onReloadParty && (
                   <button
                     type="button"
                     onClick={onReloadParty}
