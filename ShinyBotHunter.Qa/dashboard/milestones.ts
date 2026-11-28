@@ -206,9 +206,10 @@ export async function launchHgss(admin: Page, handle: string, { clock = false, c
   const launch = admin.getByTestId(`top-level-action-${cont ? 'Launch Bot + Continue' : 'Launch Bot'}`)
   await launch.locator('select').selectOption(handle)
   if (clock) {
-    // A controlled checkbox: click, then wait for React's re-render to show it checked.
+    // A controlled checkbox that keeps its value while Bot Control stays open (a second launch finds it ticked): click only
+    // when unticked, then wait for React's re-render to show it checked.
     const sound = launch.locator('input[type="checkbox"]')
-    await sound.click()
+    if (!(await sound.isChecked())) await sound.click()
     await expect(sound).toBeChecked()
   }
   await launch.getByRole('button', { name: 'Start', exact: true }).click()
