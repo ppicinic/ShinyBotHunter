@@ -20,7 +20,7 @@ function card(
   encounterData: GameEncounterResponse | null = null
 ): string {
   const phaseInfo = { gameName: 'HGSS', name: 'Route 30', pokemon: rows, isStatic: false, location: null, gameFiles: [], archived: false }
-  const subscription = { game: 'HGSS', phase: 'Route 30', gameName: 'HG-QA', encounterData, phaseInfo, location, live, timeOfDay, notFound: false }
+  const subscription = { game: 'HGSS', phase: 'Route 30', gameName: 'HG-QA', encounterData, phaseInfo, rowNames: rows.map((r) => r.name), location, live, timeOfDay, notFound: false }
   return renderToStaticMarkup(createElement(PhaseCard, { subscription }))
 }
 
@@ -148,7 +148,7 @@ describe('phaseCardRows', () => {
       pokemonEncounters: { '#167': counts(10, 3, 1), 'bidoof;f': counts(6, 1, 1), bidoof: counts(7, 0, 0) }
     } as unknown as GameEncounterResponseBase
 
-    const result = phaseCardRows(pokemon, phaseData, scopedData, null)
+    const result = phaseCardRows(pokemon, ['Spinarak', 'Bidoof', 'Bidoof'], phaseData, scopedData, null)
 
     expect(result).toEqual([
       { key: '#167', name: 'Spinarak', sprite: 'spinarak', genderSymbol: '', amount: 2, caught: 1, encountersHere: 4, encountersOnFile: 10, missed: 2, share: null, times: [] },
@@ -160,7 +160,7 @@ describe('phaseCardRows', () => {
   it("takes each row's share and times from the location by position", () => {
     const location = { rows: [at('#16', ['Morning', 'Day'], 0.4), at('#19', [], null)], hiddenUntil: {} }
 
-    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Rattata', 19)], undefined, undefined, location)
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Rattata', 19)], ['Pidgey', 'Rattata'], undefined, undefined, location)
 
     expect(result.map((r) => [r.key, r.share, r.times])).toEqual([['#16', 0.4, ['Morning', 'Day']], ['#19', null, []]])
   })
@@ -171,14 +171,22 @@ describe('phaseCardRows', () => {
       hiddenUntil: { Night: ['Hoothoot'] }
     }
 
-    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19), pokemon('Spearow', 21)], undefined, undefined, location)
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19), pokemon('Spearow', 21)], ['Pidgey', 'Hoothoot', 'Rattata', 'Spearow'], undefined, undefined, location)
 
     expect(result.map((r) => r.key)).toEqual(['#16', '#21'])
   })
 
   it('keeps every row without a location', () => {
-    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19)], undefined, undefined, null)
+    const result = phaseCardRows([pokemon('Pidgey', 16), pokemon('Hoothoot', 163), pokemon('Rattata', 19)], ['Pidgey', 'Hoothoot', 'Rattata'], undefined, undefined, null)
 
     expect(result.map((r) => r.key)).toEqual(['#16', '#163', '#19'])
+  })
+
+  it("names each row with the response's row name, not the stored name", () => {
+    const unown = (letter: string): PhasePokemonInfo => ({ ...pokemon('Unown', 201), formCode: `unown-${letter}`, requireSpecificForm: true })
+
+    const result = phaseCardRows([unown('a'), unown('question'), pokemon('Unown', 201)], ['Unown (A)', 'Unown (?)', 'Unown'], undefined, undefined, null)
+
+    expect(result.map((r) => [r.key, r.name])).toEqual([['unown-a', 'Unown (A)'], ['unown-question', 'Unown (?)'], ['#201', 'Unown']])
   })
 })

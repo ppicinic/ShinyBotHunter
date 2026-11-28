@@ -1,6 +1,7 @@
 using MongoDB.Bson.Serialization;
 using PKHeX.Core;
 using ShinyBotHunter.BotEvents;
+using ShinyBotHunter.Controllers;
 using ShinyBotHunter.Games;
 using ShinyBotHunter.Milestones;
 using ShinyBotHunter.Persistence.MongoDb;
@@ -157,6 +158,20 @@ namespace ShinyBotHunter.Tests
 
             Assert.Equal(["Pidgey", "Ledyba", "Ledyba", "Giratina"],
                 new[] { metadata.RowName(Pidgey, null), metadata.RowName(Ledyba, "ledyba;f"), metadata.RowName(Ledyba, "ledyba"), metadata.RowName(487, "giratina-origin") });
+        }
+
+        [Fact]
+        public void RowNames_LetterRowsNameTheLetterAndAnyFormRowsThePlainName()
+        {
+            var metadata = Metadata();
+            // The Ruins of Alph's rows as the editor saves them from game data: the plain name, a letter row's own form code.
+            var letters = Enumerable.Range(0, 28).Select(i => new PhasePokemonInfo
+                { Name = "Unown", SpeciesId = Unown, FormCode = metadata.GetFormCode(Unown, 0, i), RequireSpecificForm = true });
+            var phase = new PhaseInfo { Name = "1-10 Ruins of Alph", Pokemon = [.. letters, Row("Unown", Unown), Row("Pidgey", Pidgey)] };
+
+            Assert.Equal(Enumerable.Range('A', 26).Select(c => $"Unown ({(char)c})").Concat(["Unown (!)", "Unown (?)", "Unown", "Pidgey"]),
+                PhaseMetadataController.RowNames(phase, metadata));
+            Assert.All(phase.Pokemon, p => Assert.Equal(p.SpeciesId == Unown ? "Unown" : "Pidgey", p.Name));
         }
 
         private const int Ekans = 23, Zubat = 41, Bellsprout = 69, Mareep = 179, Hoppip = 187, Wooper = 194, Azurill = 298;

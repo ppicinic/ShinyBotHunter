@@ -67,7 +67,7 @@ export function syncSubscriptions(
   const kept = current.filter((sub) => gamePhases.some((gp) => sameSubscription(gp, sub)))
   const added: SubscriptionState[] = []
   for (const { game, phase, gameName } of gamePhases) {
-    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null, location: null, live: false, timeOfDay: null, notFound: false }
+    const sub = { game, phase, gameName: gameName ?? null, encounterData: null, phaseInfo: null, rowNames: [], location: null, live: false, timeOfDay: null, notFound: false }
     if (!kept.some((s) => sameSubscription(s, sub)) && !added.some((s) => sameSubscription(s, sub))) {
       added.push(sub)
     }
@@ -91,11 +91,11 @@ export function applyEncounters(
   return subs.map((sub) => (receivesPush(sub, response, game, phase) ? { ...sub, encounterData: response } : sub))
 }
 
-// A re-read's rows and location, which the card pairs by position, so both come from the one response. The counts stay the
+// A re-read's rows, names and location, which the card pairs by position, so all come from the one response. The counts stay the
 // push's, so a late response cannot roll them back.
 export function applyReread(subs: SubscriptionState[], target: SubscriptionState, response: PhaseInfoResponse): SubscriptionState[] {
-  const { phaseInfo, location, live, timeOfDay } = response
-  return subs.map((sub) => (sameSubscription(sub, target) ? { ...sub, phaseInfo, location, live, timeOfDay } : sub))
+  const { phaseInfo, rowNames, location, live, timeOfDay } = response
+  return subs.map((sub) => (sameSubscription(sub, target) ? { ...sub, phaseInfo, rowNames, location, live, timeOfDay } : sub))
 }
 
 // The milestones with a location a push reaches: their shares change at the first encounter of a new time of day, so they are read again
@@ -226,6 +226,7 @@ export function AppProvider({ children }: { children: React.ReactNode }): JSX.El
         if (result !== null) {
           const fill = {
             phaseInfo: result.phaseInfo,
+            rowNames: result.rowNames,
             encounterData: result.data,
             location: result.location,
             live: result.live,
