@@ -1,4 +1,4 @@
-<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (goal/{gameFileName}, goal/{game}/{gameFileName}/preset/{preset}, species/{game}, goal/{gameFileName}/archived, goal/{gameFileName}/order, goal/{gameFileName}/hidden, goal/{gameFileName}/assigned, goal/{game}/{gameFileName}/link, goal/{game}/{gameFileName}/backfill/{phase}, goal/{game}/{gameFileName}/copy/{phase}, milestone/{game}/{milestoneId}/{gameFileName}), ShinyBotHunter/Milestones/Backfill.cs, ShinyBotHunter/Service/BotService.cs (RefuseLinked, LinkedRefusal), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
+<!-- Derived from: PokemonDashboard/src/renderer/src/components/admin/*, ShinyBotHunter/Games/EventRegistry.cs, ShinyBotHunter/Service/BotDtos.cs, PokemonDashboard/README.md, PokemonDashboard/src/renderer/src/components/AdminCard.tsx, PokemonDashboard/src/renderer/src/components/PhaseCard.tsx, PokemonDashboard/src/renderer/src/components/RecentPokemonCard.tsx, PokemonDashboard/src/renderer/src/components/WindowLayoutTab.tsx, PokemonDashboard/src/renderer/src/windows/PickupWindow.tsx, PokemonDashboard/src/renderer/src/components/admin/AppearanceSection.tsx, PokemonDashboard/src/renderer/src/utils/theme.ts, PokemonDashboard/src/renderer/src/components/PokemonSprite.tsx, ShinyBotHunter/Service/BotService.cs, ShinyBotHunter/Service/BotEventRunner.cs, ShinyBotHunter/Controllers/BotController.cs, ShinyBotHunter/Controllers/AdminController.cs, ShinyBotHunter/Emulators/BizHawkApiHawkLauncher.cs, ShinyBotHunter/Service/PhaseInfoService.cs, ShinyBotHunter/Milestones/MilestonePicker.cs, ShinyBotHunter/Controllers/PhaseMetadataController.cs (phaseinfo/{game}/{phase}/{gameFileName?}, updatePhaseInfo, milestones/{game}/locations, milestones/{game}/locations/{locationId}/seed, milestones/{game}/{name}/location/{locationId} PUT, milestones/{game}/{name}/location DELETE, plans/steps, plans/{game}, PUT plans/{game}/{name} and PlanError, plans/{game}/{name}/rename), ShinyBotHunter/Service/PhaseInfoService.cs (Seed, HiddenUntil), ShinyBotHunter/Milestones/GoalPresets.cs, ShinyBotHunter/Milestones/MilestoneRows.cs (Counted, Shares), ShinyBotHunter/Milestones/Backfill.cs (Suggestion), ShinyBotHunter/Milestones/HuntPlan.cs (Plan.StepActions, Plan.TimeOfDay), ShinyBotHunter/BotEvents/PlanEvent.cs (StepName, FollowHuntAsync), ShinyBotHunter/Service/BotService.cs (StartPlanAsync, OffFileRefusal, PlanInUseRefusal, SavePlanAsync, RenamePlanAsync, DeletePlanAsync, GetBotDashboardState), PokemonDashboard/src/renderer/src/context/AppContext.tsx, docs/guide/01-install.md (Get the BizHawk fork, step 4) -->
 # The dashboard
 
 Part of the [ShinyBotHunter guide](README.md)
@@ -20,8 +20,8 @@ The Admin window has five tabs, in this order:
 
 1. **Dashboard Config**: the look of the windows (themes), which counts windows are open, how many recent encounters to show, and the Pickup items windows.
 2. **Bot Control**: launch emulators, and start, resume and cancel hunts.
-3. **Milestone Editor**: make and change milestones.
-4. **Goals**: set what each game file is collecting (see [Set a game file's goal](#set-a-game-files-goal)).
+3. **Milestone Editor**: make and change milestones (see [Make a milestone](#make-a-milestone)).
+4. **Plan Editor**: make and change plans, which switch a HeartGold or SoulSilver hunt by the in-game clock (see [Make a plan](#make-a-plan)).
 5. **Window Layout**: set window positions and sizes by number.
 
 A sixth tab, **Dev Mode**, appears only when macro recording is switched on in the bot's settings. It is for changing the bot, not for running hunts, and this guide does not cover it.
@@ -34,7 +34,7 @@ A sixth tab, **Dev Mode**, appears only when macro recording is switched on in t
 4. Optional: tick **Sound On** to hear the game (see [Turn the sound on](#turn-the-sound-on)).
 5. Click **Start**.
 
-You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name (once a hunt is started, the hunt's milestone, such as `Route 30 · grass`, or its plan, such as `Plan Johto`). When nothing is running, **Active Emulators** reads "No active emulators."
+You see a green message `Started "Launch Bot"` beside the box, and a new entry under **Active Emulators**: a number such as `#1`, then its name (once a hunt is started, the hunt's milestone, such as `Route 30 · grass`, or its plan, such as `Plan Johto`, which reads `Plan Johto: Route 30 · grass` once the plan has picked a step, or `Plan Johto: Wait`). When nothing is running, **Active Emulators** reads "No active emulators."
 
 **Launch Bot + Continue** works the same way. After the emulator opens, it waits about four seconds, then presses Continue on the game's menu for you, so the game loads your save. Its entry under **Active Emulators** only appears once the game has loaded and you are standing in the field, so nothing reads the game before then.
 
@@ -93,37 +93,16 @@ You see a green message such as `Started "Wild Encounter" on bot #1`, or a red m
 
 ### The Milestone field
 
-On an emulator's form, **Milestone** lists the milestones of that emulator's game file, in this order: the ones you gave an order label, by label, then the rest by name. Numbers in a name or label count as numbers, so `1-4` comes before `1-10`. A game file you have set nothing on lists every milestone you made, as before.
+On an emulator's form, **Milestone** lists the milestones saved in the [Milestone Editor](#make-a-milestone) that are offered on that emulator's game file: the ones with that file ticked under **Game files**, or with no file ticked, and not archived. They are in name order, and numbers in a name count as numbers, so `1-4` comes before `1-10`. The wild places in the game's data are not listed here by themselves: make a milestone from one first.
 
-- **Wild Encounter** and each leg of **Chained Encounter** list two kinds: the milestones you made in the [Milestone Editor](#make-a-milestone), and one generated milestone for each wild place and way of meeting Pokémon in the game, named like `Route 30 · grass`.
-- **HGSS Togepi Egg**, **HGSS Primo Egg** and **HGSS Static Encounter** list only the milestones you made.
+- **Wild Encounter** and each leg of **Chained Encounter** list all of them.
+- **HGSS Togepi Egg**, **HGSS Primo Egg** and **HGSS Static Encounter** list only the milestones with no location.
 
-Above the list:
+Under the list, **Incomplete only** hides the milestones that are complete on this game file.
 
-- **Filter**: type part of a name, an order label or a generated id such as `34-land`. Upper and lower case match alike.
-- The second box, shown when there are generated milestones: **All**, **Custom** (the ones you made), or one way of meeting Pokémon (**Land**, **Surf**, **OldRod**, **GoodRod**, **SuperRod**, **RockSmash**, **Headbutt**).
-- **Incomplete only**: hides the milestones that are complete for this game file.
-- **Show archived**: shows the milestones you archived. They are hidden otherwise.
+A milestone the bot cannot hunt yet reads `(no hunt yet)` after its name: one whose location is met by surfing, a rod or rock smash. You can pick it, but Run is refused with the reason.
 
-A milestone the bot cannot hunt yet reads `(no hunt yet)` after its name: surf, the three rods and rock smash. You can pick it, but Run is refused with the reason. An archived one reads `(archived)`.
-
-Once a milestone is picked, two controls appear under the list:
-
-- **Archive** hides it from this game file's list; **Unarchive** brings it back. Archiving changes no count and no encounter.
-- **Order**: type a label such as `1-4` and click elsewhere to save it. Empty the box to remove the label.
-
-Both are saved for this game file and the list reloads.
-
-On **Wild Encounter**, a line under the settings shows the picked milestone's anchor, the tile its hunt starts from, or `No anchor: hunted where the bot stands`. **Set anchor here** makes where your character stands the anchor for this game file, and **Clear** removes one you set; [Where the hunt starts: the anchor](04-hunts/01-wild-encounter.md#where-the-hunt-starts-the-anchor) explains both. With a hunt plan picked, the line is not shown.
-
-#### Hide a row
-
-When the milestone picked on **Wild Encounter** is a generated one, a line under the anchor reads **Rows (N hidden)**, N being how many of its rows you hid on this game file. Click it to list the rows: each shows the Pokémon and its form (or "any form"), how many are wanted and caught, the encounters at this milestone, and a **Hide** checkbox.
-
-- Tick **Hide** to hide a row on this game file. A hidden row is not shown on the counts card and is never a target; its encounters are still logged. It stays in this list, greyed, so you can untick it to show it again.
-- The card drops or brings back the row at its next count update.
-- Hiding is per game file: the same milestone on another file keeps its rows.
-- You hide rows from an emulator's form, so the game file needs a bot running on it.
+On **Wild Encounter**, a line under the settings shows the picked milestone's anchor, the tile its hunt starts from, or `No anchor: hunted where the bot stands`. **Set anchor here** makes where your character stands the anchor for this game file, and **Clear** removes one you set; [Where the hunt starts: the anchor](04-hunts/01-wild-encounter.md#where-the-hunt-starts-the-anchor) explains both.
 
 An emulator offers only the actions its game supports, and only while it is not busy. While an action is running, the entry shows no actions; you can only cancel it.
 
@@ -139,99 +118,117 @@ The actions, in the order the dashboard lists them. "Start Action" is the list o
 | Launch Bot + Continue | Start Action | **Game**; optional **Sound On** | [Launch an emulator](#launch-an-emulator) |
 | Shiny Starter Hunt | Start Action | **Game** (HeartGold / SoulSilver or Ruby / Sapphire). For Ruby / Sapphire only: **Milestone**, **Emulators**, and one or more **Starter** entries, each with **Game**, **Starter**, optional **RecordingName** and optional **RequireFemale** | [HGSS starter](04-hunts/02-hgss-starter.md), [RS starter](04-hunts/03-rs-starter.md) |
 | Wishmaker Jirachi Hunt | Start Action | **Game**, **Milestone** | [Wishmaker Jirachi](04-hunts/05-wishmaker-jirachi.md) |
-| Wild Encounter | Emulator | **Milestone** (made and generated; see [The Milestone field](#the-milestone-field)); **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None); for HeartGold and SoulSilver, optional **Hunt Plan** (No plan, or a saved plan, with **Edit plans** beside it; with a plan the Milestone field is set by the plan, see [Hunt plans](04-hunts/01-wild-encounter.md#hunt-plans-move-by-the-in-game-clock)). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it. For Ruby and Sapphire, Headbutt and Pickup are greyed out with the reason in brackets | [Wild and chained encounters](04-hunts/01-wild-encounter.md), [RS wild encounters](04-hunts/08-rs-wild-encounter.md) |
+| Wild Encounter | Emulator | **Milestone** (see [The Milestone field](#the-milestone-field)); **Target Type** (PhaseTarget, ShinyTarget or NoTarget); **Encounter Type** (Spin, Run or Headbutt); optional **Train Type** (None, Standard or Switch; starts at None). Only when Encounter Type is Run: **X Range** and **Y Range** (start at 0). Only when Train Type is not None: **Target Level (101 = no end)** and **Pickup** (a checkbox, greyed out with the reason when no Pokémon in your party has the Pickup ability). Only when Train Type is Switch: **Battler**, a list of the Pokémon in the game's party right now (slot 1 is never offered; starts at slot 2), with a reload button beside it. For Ruby and Sapphire, Headbutt and Pickup are greyed out with the reason in brackets | [Wild and chained encounters](04-hunts/01-wild-encounter.md), [RS wild encounters](04-hunts/08-rs-wild-encounter.md) |
 | Chained Encounter | Emulator | The same fields as Wild Encounter, once per leg. **+ Leg** adds a leg, **Remove** drops one. Every leg must be filled in before **Run** works. HeartGold and SoulSilver only | [Wild and chained encounters](04-hunts/01-wild-encounter.md) |
-| HGSS Togepi Egg | Emulator | **Milestone** (only the milestones you made) | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
-| HGSS Primo Egg | Emulator | **Milestone** (only the milestones you made) | [Primo egg hunt](04-hunts/06-primo-egg.md) |
-| HGSS Static Encounter | Emulator | **Milestone** (only the milestones you made), **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
+| HGSS Togepi Egg | Emulator | **Milestone** (only the milestones with no location) | [Togepi egg hunt](04-hunts/04-togepi-egg.md) |
+| HGSS Primo Egg | Emulator | **Milestone** (only the milestones with no location) | [Primo egg hunt](04-hunts/06-primo-egg.md) |
+| HGSS Static Encounter | Emulator | **Milestone** (only the milestones with no location), **StaticEncounter** (a list: Dialga (Sinjoh Ruins), Palkia (Sinjoh Ruins), Giratina (Sinjoh Ruins)) | [Static encounter hunt](04-hunts/07-static-encounter.md) |
+| Plan | Emulator | **Plan** (a list of the game's saved plans). HeartGold and SoulSilver only | [Make a plan](#make-a-plan), [Plans](04-hunts/01-wild-encounter.md#plans-change-hunts-by-the-in-game-clock) |
 | Resume | Emulator | None | [Resume a hunt that is waiting](#resume-a-hunt-that-is-waiting) |
 
 ## Make a milestone
 
-A milestone is a list of the Pokémon you want, and how many of each. When you start a hunt you pick a milestone, the hunt's encounters are filed under it, and the counts windows show them per milestone.
+A milestone is a list of the Pokémon you want, and how many of each. When you start a hunt you pick a milestone, the hunt's encounters are filed under it, and the counts windows show them per milestone. Shinies are counted per game file: one caught on a file counts for that Pokémon in every milestone hunted on that file.
+
+Every milestone is one you save here. There are two ways to start one, and both begin the same way:
 
 1. In the Admin window, click the **Milestone Editor** tab.
 2. In the first list, pick the game: **HGSS** or **RS**.
-3. In the second list, choose **+ New milestone…**.
-4. Type a name in the **New milestone name** box.
-5. Fill in the Pokémon row:
-   - **Name / Species**: the Pokémon, for example Rattata.
+
+### From the game's data
+
+1. Click **New from game data**. It is greyed out until the game's places have loaded.
+2. In **Location**, pick the wild place. The list holds every wild place of the game, grouped by how Pokémon are met there (**Land**, **Surf**, **OldRod**, **GoodRod**, **SuperRod**, **RockSmash**, **Headbutt**), each named like `Route 30 · grass`. It starts at the first one.
+3. In **Load species of**, pick **Both versions** or one version: **HeartGold only** and **SoulSilver only**, or **Ruby only** and **Sapphire only**. It starts at **Both versions**.
+4. In **Preset**, pick how the amounts are filled. It starts at **Living dex**:
+   - **None (all 0)**: every amount is 0.
+   - **Living dex**: each Pokémon at the number of Pokémon in its evolution line. Unown is one row per letter, 28 in all, at 1 each.
+   - **Female forms** (HeartGold and SoulSilver only): a Pokémon with a female form gets two rows, the female form at the number of its line that have one, and the male form at 0. Every other Pokémon is at 0.
+   - **Version exclusives**: 1 of each Pokémon that only one version has in the wild (with one version picked, only that version's), and 0 for the rest.
+5. The name box is filled with the place's name. Change it if you like.
+6. Change the rows: type another **Amount**, click the cross at the end of a row to remove it, or click **+ Add** for a row of your own. A row from the game's data keeps its Pokémon and form; only its amount can change.
+7. Click **Save Milestone**. Nothing is stored before that, as the line under the button says.
+
+Picking another version or preset fills the amounts again, but keeps every amount you typed, every row you removed and every row you added; the hint beside **Preset** reads "Fills the amounts. An amount you typed yourself is kept." Picking another location starts over, with that place's name in the name box; the version and preset stay.
+
+The rows have the columns **Pokémon**, **When**, **Version** and **Amount**:
+
+- **When**: `morning`, `day` or `night` for when the Pokémon can be met there, or `all day`. It is shown only when some Pokémon of the place can be met at some times of day only, so never on Ruby and Sapphire, which have no clock.
+- **Version**: the version that has the Pokémon there, when only one does, or `both`.
+
+A milestone with no location shows both columns empty.
+
+On a game file of one version, a row only the other version has at that place is not a target and does not hold the milestone back.
+
+The milestone remembers its place: that gives its hunt an anchor to start from, and its counts window the shares and the time-of-day pills (see [Watch the counts](#watch-the-counts)).
+
+### From nothing
+
+1. Click **New empty**.
+2. Type a name in the **New milestone name** box.
+3. Fill in the Pokémon row:
+   - The first box: the Pokémon, for example Rattata.
    - **Amount**: how many you want.
-   - **Form Code** (optional): one particular form of the Pokémon.
+   - The form code box (optional): one particular form of the Pokémon.
    - **Require form**: tick it to count only that form.
-6. Click **+ Add** for another row. The cross at the end of a row removes it.
-7. Click **Save Milestone**.
+4. Click **+ Add** for another row. The cross at the end of a row removes it.
+5. Click **Save Milestone**.
+
+A milestone made this way has no location: it is hunted where your character stands, and its counts window shows no shares and no pills. You can [attach it to a location](#game-files-archived-and-the-location) once it is saved.
+
+### After Save
 
 You see `Saved "NAME" successfully`, with your milestone's name, and the name is now in the second list.
 
-- **Amount 0** means the Pokémon is counted but never required, so it never stops the bot.
+- A name another milestone of the game already has is refused before anything is saved: `A milestone named "NAME" already exists; choose another name.`
+- **Amount 0** means the Pokémon is counted but never required, so it never stops the bot ("Amount 0: shown and counted, never a target."). To leave a Pokémon out, set it to 0 or remove its row.
 - A milestone with no Pokémon at all is allowed. It is the place to file training encounters, so they stay out of your real milestones' counts.
-- To change a milestone you made, pick it in the second list, edit the rows, and click **Save Milestone**.
-- A milestone that shows "This milestone is static (loaded from disk) and cannot be edited." came with the bot. Make a new one instead.
+- To change a milestone, pick it in the second list, edit the rows, and click **Save Milestone**. Its name cannot be changed: make a new one instead.
+- A milestone that shows "This milestone is loaded from disk: its Pokémon cannot be edited." came with the bot. Its game files, **Archived** and location can still be changed.
 
 Milestones are stored in the bot's database; see [Your data](06-your-data.md). Always make and change them here.
 
-When you pick a saved milestone, a **Game files** section under **Save Milestone** has one box for each detected game file of that game. Opening it saves nothing; each change below is saved when you click it, for that game file only.
+### Game files, Archived and the location
 
-### Use a milestone on some game files only
+Under the rows:
 
-Tick **Assigned** on the game files whose **Milestone** list should offer this milestone. The line above the boxes says where it is listed:
+- **Game files**: one checkbox for each detected game file of the game. A milestone is offered in a game file's **Milestone** list when that file is ticked. "None ticked: offered on every game file."
+- **Archived: hide from the launch form**: ticked, the milestone leaves every **Milestone** list. Its counts and encounters stay, and a counts window can still show it.
 
-- `Assigned to no game file: listed on every game file.` is how every milestone starts.
-- `Assigned to 2 game files: listed only on those.` once you tick some. Untick them all to list it everywhere again.
+Both are saved with **Save Milestone**. A Start with a milestone that is archived or not ticked for the file, picked on a form before the change, is refused; see [When something goes wrong](07-when-something-goes-wrong.md#the-milestone-is-archived-or-not-ticked-for-this-file).
 
-Generated milestones need no assignment: the game file's goal decides their rows.
+Above the rows, a saved milestone shows its location:
 
-### Link a milestone you made to a generated one
+- `Location: Route 30 · grass`, with **Detach**, which takes the location away.
+- `Location: none. No anchor, no shares, no markers.`, with a list of the game's places and **Attach to a location**. For some milestones made before the bot had the game's data, such as `1-4 Route 30`, the bot suggests a place: it is picked already and reads `(suggested)`. Otherwise pick one; the list starts on "Pick a location...".
 
-A milestone you made before the generated ones existed, such as `1-4 Route 30`, can be linked on one game file to the generated milestone for the same place, such as `34-land` (`Route 30 · grass`). The box is filled with the suggested id when there is one; type another id to override it, or leave it empty for a milestone with none, such as a training one.
+**Attach to a location** and **Detach** are saved at once. They change no row and no amount, and they keep any changes to the rows you have not saved yet.
 
-1. Check the id in the box. Typing an id such as `34-land` in an emulator's **Milestone** filter finds the generated milestone it names.
-2. Click **Link**.
+## Make a plan
 
-The box then reads `Linked to 34-land`. On that game file:
+HeartGold and SoulSilver only. A plan is a list of hunts with time rules: the **Plan** action in Bot Control runs it, and it switches between its hunts by the in-game clock. How a running plan behaves is on [Plans: change hunts by the in-game clock](04-hunts/01-wild-encounter.md#plans-change-hunts-by-the-in-game-clock).
 
-- The generated milestone's counts include everything logged under the linked name, and new encounters are logged under the generated milestone. Nothing already logged is rewritten.
-- The linked name leaves the **Milestone** list. Hunt the generated milestone instead; a Start with the linked name is refused with, for example, `1-4 Route 30 is linked to Route 30 · grass on <file>; start Route 30 · grass, or remove the link.`
-- **Remove link** undoes it: the name is back in the list, and the generated milestone counts only what is logged under its own id.
+1. In the Admin window, click the **Plan Editor** tab.
+2. In **Game**, pick **HGSS**.
+3. In **Plan**, pick a saved plan to change it, or **New plan...** for a new one, and type its name in the **Plan name** box. A new name another plan has reads `already a plan`, and **Save plan** stays greyed out.
+4. Click **+ Add a rule** for each rule. A rule has:
+   - **When**: the chips **Morning**, **Day** and **Night**. With none on, it reads "none on: any time".
+   - **Days**: the chips **Su** to **Sa**. With none on, it reads "none on: any day".
+   - **Do**: **Wild Encounter** or **Wait**, and under it that step's fields. A Wild Encounter step has the same fields as Bot Control's Wild Encounter form (see [What each action asks for](#what-each-action-asks-for)); a Wait step reads "(this step has no options)".
+   - **Up** and **Down** move the rule; **Remove** drops it.
+5. Fill in **Default: when no rule matches** the same way.
+6. In **Plan ends**, pick **Never (runs until cancelled)** or **When every shiny-hunt step is complete**.
+7. Click **Save plan**.
 
-A red message says why a link is refused: `No generated milestone "<id>" for this game file's version`, or `<milestone> is already linked to <id> on <file>; remove that link first`.
+Rules are checked from the top, and the first whose time and day both match the game's clock is run; the default runs when none matches. The times are the in-game clock: morning 4:00 to 10:00, day 10:00 to 20:00, night 20:00 to 4:00.
 
-### Copy its amounts into the goal
+- A step's **Milestone** lists every milestone of the game that is not archived, whatever its game files, in name order, with no **Incomplete only** box. Start checks the milestone against the game file. An archived milestone stays listed while a step uses it.
+- No emulator is asked, so **Battler** is a number box, and **Pickup** and **Headbutt** are not greyed out. Start reads your party instead.
+- Nothing is written until **Save plan**, **Rename** or **Delete**. **Save plan** saves under the plan's saved name. To give a saved plan another name, type it in the box and click **Rename**, which shows while the box differs from the saved name. **Delete** asks "Delete?"; click **Yes**, or **No** to back out.
+- A refused write shows the bot's reason in red, word for word, for example `The default: Wild Encounter needs PhaseName.` (no milestone picked) or `A plan named Johto already exists.`. **RS** is in the **Game** list too, but its plans are refused: `RS has no in-game clock, so it has no plans.`
+- While a hunt uses the plan, running or waiting for you, **Save plan**, **Rename** and **Delete** are all refused: `Johto is in use by the hunt on bot #2; cancel that hunt first.`
 
-Linking copies nothing. To take the amounts saved in this milestone into the game file's goal, so the generated milestone wants the same:
-
-1. Click **Copy amounts…** on the game file.
-2. Each Pokémon of the milestone is shown with what it would copy beside what the goal has for it now. Tick the ones to copy.
-3. Click **Copy chosen**.
-
-Only the ticked Pokémon change: their entries in the goal are replaced by the milestone's, and every other entry is kept. The goal column then shows the new entries. To change amounts one by one, use [Set a game file's goal](#set-a-game-files-goal).
-
-## Set a game file's goal
-
-A game file's goal is what that file is collecting: for each Pokémon, or one form of it, how many. You set it once per game file, and every generated milestone, such as `Route 30 · grass`, shows its rows on that file through it. The milestones you made in the Milestone Editor keep their own amounts.
-
-1. In the Admin window, click the **Goals** tab.
-2. In **Game file**, pick the game file. Its goal is shown; a file with no goal yet shows none, and nothing is saved until you save or pick a preset.
-3. Optional: in **Preset**, pick one. It shows the preset the file has now:
-   - **None**: no default amounts; the goal is only what you add.
-   - **Living dex**: every species, as many as there are Pokémon in its evolution line; Unown is one of each of its 28 letters.
-   - **Female forms** (HeartGold and SoulSilver only): every species with a female form, the female form at the number of its line that have one, and the male form at 0.
-   - **Version exclusives**: one of each species found in this game's wild places and not in the other game's.
-
-   A yellow box says what the preset does. Click **Apply** and the preset's name to go ahead, or **Cancel**. The goal is saved at once. Every amount you have not changed takes the new preset's amount, and a Pokémon the new preset does not have goes. A Pokémon you changed, added or removed by hand is left as you left it; changing one form, or one Unown letter, counts for the whole Pokémon. An amount you set that equals the current preset's own amount counts as the preset's and follows the next change. A Pokémon you removed stays removed when you change the preset, but it can come back if you first pick a preset without it and then one with it. To get a removed Pokémon back on purpose, add it again. A message then says how many Pokémon changed and how many hand edits were kept, for example `Living dex chosen: 412 species changed, 3 hand-edited species kept.` **Preset** is greyed out while you have edits not yet saved.
-4. Change the entries:
-   - **Filter**: type part of a name, a number such as `190`, or a form code to show only those entries.
-   - Each entry shows the Pokémon, its number, the form (or "any form") and its **Amount**. An amount of 0 reads "tracked, never a target": the Pokémon is shown and counted, but the bot never stops for it. An amount that is not a whole number, 0 or more, reads "Amount is a whole number, 0 or more." in red, and the goal cannot be saved until it is fixed.
-   - The cross at the end of an entry removes it.
-   - To add one, type a species name or number in **Species** (the list suggests names), an optional **Form code**, and an **Amount**, then click **+ Add**.
-5. Click **Save goal**.
-
-You see `Saved the goal of FILE`. If the bot refuses the goal, a red message says why, for example `Species 201 has both an any-form entry and form entries`: a species is wanted either in any form or by its forms, never both, and each form only once. While you have edits not yet saved, **Game file** is greyed out; save them first, or leave the tab to drop them.
-
-If a preset says "This game file is no longer in the game list: reopen the Goals tab.", the bot no longer has that game file in its list. Click another tab and then **Goals** again, and pick a file from the list it shows.
-
-Goals are stored in the bot's database; see [Your data](06-your-data.md).
+A plan is saved per game and shared by every HeartGold and SoulSilver game file. Plans are stored in the bot's database; see [Your data](06-your-data.md).
 
 ## Watch the counts
 
@@ -239,21 +236,32 @@ Goals are stored in the bot's database; see [Your data](06-your-data.md).
 2. Under **Add Subscription**, pick the game in the first list.
 3. Pick the milestone in the second list.
 4. Optional: pick a game file in the third list to count only that file. Leave it on **No game file** to count all of them.
-5. Optional: tick **Follows the hunt** to make a window that follows that game file's hunt (see below). It is greyed out until you pick a game file.
+5. Optional: tick **Follows the hunt (and a running plan's steps)** to make a window that follows that game file's hunt (see below). It is greyed out until you pick a game file.
 6. Click **Add**.
 
-A counts window opens for that milestone, and it is listed under **Active Subscriptions**. The window shows one row per Pokémon in the milestone, with the columns **Name**, **Milestone Encounters**, **Game Encounters** and **Shinies Caught**.
+A counts window opens for that milestone, and it is listed under **Active Subscriptions**. The window shows one row per Pokémon in the milestone, with the columns **Name**, **Milestone Encounters**, **Game Encounters** and **Shinies Caught**. A row at amount 0 reads `tracked` beside its catches. Its counts are read again at each encounter. If the bot knows no milestone by that name, the window says `Milestone "NAME" was not found.`
 
-A window on a generated milestone, such as `Route 30 · grass`, shows that name as its title and one row for every Pokémon that can be met there: one per form the game file wants, so the Ruins of Alph with the Unown preset shows 28, named `Unown (A)` to `Unown (Z)`, `Unown (!)` and `Unown (?)`. A row for any form of a species shows the plain name, such as `Unown`. A row the game file wants none of reads `tracked`. A row you hid on that game file is not shown. Its counts are read again at each encounter. If the bot knows no milestone by that name, the window says `Milestone "NAME" was not found.`
+The window's header shows the game file (or the game), the milestone, **Encounters** (every encounter filed under the milestone), **Phase** and **Rate** (encounters an hour), with `—` until there is a number. The window has no footer.
 
-Such a window also shows, in small text under each Pokémon's name, its share: the part of the encounters there it is expected to make right now, such as `53.8 %`, for the in-game time of day, the Repel and the lead. Only the Pokémon you can meet right now are shown: one that is out at another time of day, blocked by the Repel or only heard on the radio has no row until it can be met again. If a Repel blocks every Pokémon there, the window shows the column headings and no rows. The encounter count in the title bar and the footer's **Phase** and **Rate** still count every Pokémon of the milestone. The shares are read again at each encounter and on the counts windows' polling interval (a minute by default), so during a hunt they change at the first encounter after 4:00, 10:00 or 20:00 in-game, within one polling interval, with no move. On HeartGold and SoulSilver, for the first encounter after a launch the bot has not yet read the Repel, so the shares are shown as if there were none, and the window cannot tell you so. Ruby and Sapphire have no clock, so their shares change with the Repel and the lead only, and they are live from the first encounter.
+A window with a game file, on a milestone with a location, shows more:
 
-With no hunt running on the game file, the shares are those for the time of day the file was last seen in, with no Repel and no lead, and the footer says `not live (last seen night)`, or just `not live` for a game with no clock, such as Ruby and Sapphire, where it means no hunt is running on the file, and for a milestone with no time-of-day Pokémon (such as surfing or Rock Smash) on a file not seen since the bot started. When the bot has not seen the file since it started and the Pokémon there depend on the time of day, the window shows no share and every Pokémon, and the footer says `Shares: not seen since the backend started`. A headbutt milestone's window shows no share and every Pokémon, and a stored milestone's window is as before.
+- **The share**, in small text under each Pokémon's name: the part of the encounters there it is expected to make right now, such as `53.8 %`, for the in-game time of day, the Repel and the lead.
+- **The time-of-day pills**, beside the name, when some Pokémon of the place can be met at some times of day only: `morning`, `day`, `night`, or `all day`. Ruby and Sapphire have no clock, so their windows have none.
+- **Only the Pokémon you can meet right now have a row.** One that is out at another time of day is named in one dim last row instead, by the next time it can be met, such as `2 more at night: Hoothoot, Spinarak`; with two times it reads `<n> more at <time>: <names> · <n> more at <time>: <names>`. One blocked by the Repel or only heard on the radio has no row and is not in that last row. If a Repel blocks every Pokémon there, the window shows the column headings and no rows.
+- A Pokémon only the other version has at that place has a row with no share.
+
+**Encounters**, **Phase** and **Rate** still count every Pokémon of the milestone. The shares are read again at each encounter and on the counts windows' polling interval (a minute by default), so during a hunt they change at the first encounter after 4:00, 10:00 or 20:00 in-game, within one polling interval, with no move. On HeartGold and SoulSilver, for the first encounter after a launch the bot has not yet read the Repel, so the shares are shown as if there were none, and the window cannot tell you so. Ruby and Sapphire have no clock, so their shares change with the Repel and the lead only, and they are live from the first encounter.
+
+With no hunt running on the game file, the header says `not live (last seen night)`, and the shares and the rows shown are those for the time of day the file was last seen in, with no Repel and no lead. It says just `not live` on Ruby and Sapphire, which have no clock, and on a file the bot has not seen since it started. On such a file, a place whose Pokémon depend on the time of day shows every Pokémon and no shares.
+
+- A headbutt place shows no shares, and every Pokémon.
+- A window with no game file shows the pills and every Pokémon, with no shares and no `not live`.
+- A milestone with no location, or a game file whose version the bot does not know, shows only the rows: no share, no pill, no last row and no `not live`.
 
 There are two kinds of counts window:
 
 - **Fixed**: shows the one milestone you picked, always. A game file can have any number of these. Its title is the game, the milestone and the game file, for example `HGSS — Route 32 (HG-TimeMove)`.
-- **Follows the hunt**: shows whatever milestone the bot on that game file is hunting. When a hunt starts on the file at another milestone, or a Chained Encounter moves to its next leg, the same window shows the new milestone's rows: it keeps its title, place and size, and it draws the new rows even while another window covers it. With no hunt running it shows the last milestone hunted, and after a restart it shows that one again. The milestone you pick when you add it is the one it shows until a hunt starts. Its title is the game and the game file, for example `HGSS — HG-TimeMove`, and it is listed with `· follows the hunt` after it.
+- **Follows the hunt**: shows whatever milestone the bot on that game file is hunting. When a hunt starts on the file at another milestone, a Chained Encounter moves to its next leg, or a running plan starts a step at another milestone, the same window shows the new milestone's rows: it keeps its title, place and size, and it draws the new rows even while another window covers it. With no hunt running it shows the last milestone hunted, and after a restart it shows that one again. The milestone you pick when you add it is the one it shows until a hunt starts. Its title is the game and the game file, for example `HGSS — HG-TimeMove`, and it is listed with `· follows the hunt` after it.
 
 A game file has at most one window that follows the hunt, beside any fixed ones. When the game file you picked already has one, the checkbox is greyed out and reads **Follows the hunt (this file has one)**. Subscriptions made before this checkbox existed are fixed.
 
@@ -359,7 +367,7 @@ Move and resize the windows with the mouse; positions and sizes are saved as you
 ## If something on this screen goes wrong
 
 - **You see** Start or Run greyed out. **It means** a field the action needs is empty. **Do** fill in every field.
-- **You see** a red message "NAME: no hunt yet." after Run. **It means** the milestone is met by surfing, fishing or rock smash, which the bot cannot do yet. **Do** pick a grass, cave or headbutt milestone; the **Land** and **Headbutt** filters show only those.
+- **You see** a red message "NAME: no hunt yet." after Run. **It means** the milestone is met by surfing, fishing or rock smash, which the bot cannot do yet. **Do** pick a grass, cave or headbutt milestone.
 - **You see** "Pick a game first" in **Milestone**. **It means** no game is chosen yet. **Do** pick the game first.
 - **You see** a red box under **Start Action**. **It means** the dashboard could not reach the bot. **Do** see [When something goes wrong](07-when-something-goes-wrong.md).
 - **You see** a red message after Start or Run. **It means** the bot refused, and the message is its reason, word for word. For example, a message of the form "ACTION needs CAPABILITY, which GAME does not have." means that action does not exist for that game. **Do** what the message asks, then try again.
