@@ -65,6 +65,9 @@ test('hgss-plan-editor-tab: a new plan of whole hunts, stored, reselected, Wait,
     const milestone = (scope: Locator): Locator => field(scope, 'PhaseName').locator('select')
     const select = tab('plan-select')
     const save = tab('plan-save')
+    // A Save, Rename or Delete puts back the form as it was at its click once its response is handled, and only then reads
+    // "Save plan" again (busy cleared): the next edit waits for that, so the response cannot undo it.
+    const settled = (what: string): Promise<void> => expect(save, `${what}: the response handled`).toHaveText('Save plan', { timeout: 30_000 })
     await tab('plan-game').selectOption('HGSS')
     await expect(select, 'a new plan is open').toHaveValue('', { timeout: 30_000 })
 
@@ -97,6 +100,7 @@ test('hgss-plan-editor-tab: a new plan of whole hunts, stored, reselected, Wait,
     await save.click()
     // The select shows the saved name once the list read after the Save holds it.
     await expect(select, `the plan select after the Save of ${PLAN}`).toHaveValue(PLAN, { timeout: 30_000 })
+    await settled(`the Save of ${PLAN}`)
 
     const first = await stored('HGSS', PLAN)
     expect(first.status, `GET plans/HGSS/${PLAN}`).toBe(200)
@@ -142,6 +146,7 @@ test('hgss-plan-editor-tab: a new plan of whole hunts, stored, reselected, Wait,
     const order = async (): Promise<string[]> => ((await stored('HGSS', PLAN)).json?.rules ?? []).map((r: any) => r.arguments.eventName)
     await save.click()
     await expect.poll(order, { message: 'the Save of the Wait rule', timeout: 30_000 }).toEqual(['Wild Encounter', 'Wait'])
+    await settled('the Save of the Wait rule')
     const wait = (await stored('HGSS', PLAN)).json.rules[1]
     expect([wait.times, wait.weekdays, wait.arguments.eventName, setFields(wait.arguments)], '"saved as { eventName: Wait }"')
       .toEqual([['Morning'], ['Friday'], 'Wait', {}])
@@ -153,21 +158,25 @@ test('hgss-plan-editor-tab: a new plan of whole hunts, stored, reselected, Wait,
     await expect(rule(1).getByTestId('plan-step-action'), 'rule 1 after Up').toHaveValue('Wait')
     await save.click()
     await expect.poll(order, { message: 'the stored order after Up', timeout: 30_000 }).toEqual(['Wait', 'Wild Encounter'])
+    await settled('the Save after Up')
     await rule(1).getByTestId('plan-rule-down').click()
     await expect(rule(1).getByTestId('plan-step-action'), 'rule 1 after Down').toHaveValue('Wild Encounter')
     await save.click()
     await expect.poll(order, { message: 'the stored order after Down', timeout: 30_000 }).toEqual(['Wild Encounter', 'Wait'])
+    await settled('the Save after Down')
     await shotAll('04-order', pages)
 
     // Rename, then Delete with Yes.
     await tab('plan-name').fill(RENAMED)
     await tab('plan-rename').click()
     await expect(select, `the plan select after the rename to ${RENAMED}`).toHaveValue(RENAMED, { timeout: 30_000 })
+    await settled('the rename')
     expect((await stored('HGSS', PLAN)).status, '"the old name is 404"').toBe(404)
     expect((await stored('HGSS', RENAMED)).status, '"the new 200"').toBe(200)
     await tab('plan-delete').click()
     await tab('plan-delete-yes').click()
     await expect(select, 'a new plan after the delete').toHaveValue('', { timeout: 30_000 })
+    await settled('the delete')
     await expect.poll(async () => (await stored('HGSS', RENAMED)).status, { message: '"Delete with Yes: gone"', timeout: 30_000 }).toBe(404)
     await shotAll('05-deleted', pages)
 
@@ -178,6 +187,7 @@ test('hgss-plan-editor-tab: a new plan of whole hunts, stored, reselected, Wait,
     await field(rule(1), 'TargetType').locator('select').selectOption('PhaseTarget')
     await save.click()
     await expect(tab('plan-error'), 'the refusal of a rule with no EncounterType').toHaveText('Rule 1: Wild Encounter needs EncounterType.', { timeout: 30_000 })
+    await settled(`the refused Save of ${BAD}`)
     expect((await stored('HGSS', BAD)).status, `${BAD} was stored`).toBe(404)
     await shotAll('06-refused-step', pages)
     await tab('plan-game').selectOption('RS')
