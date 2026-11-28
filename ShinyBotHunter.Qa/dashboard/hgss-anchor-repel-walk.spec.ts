@@ -1,24 +1,23 @@
-// hgss-plan-repel-walk (docs/specs/hunt-plans-and-milestone-builder.md, QA; #525 Q1b, plan scenario 10): C5 (#562) and its
-// expected result from the 2026-11-25 addition. Plan QA Walk (default Route 30 · grass, no rules) from the save's tile on
-// Route 32, (474, 294), at noon, with the Repel counter written to 8 steps (QA_REPEL_STEPS overrides it) with the bot idle:
-// "Repel's effect wore off..." comes up during the plan's first walk, is closed with one A, and the walk carries on to
+// hgss-anchor-repel-walk (docs/specs/hunt-plans-and-milestone-builder.md, QA; #525 Q1b, plan scenario 10; #621 R8b1): C5
+// (#562) and its expected result from the 2026-11-25 addition, on a plain Wild Encounter, since a plan step walks with the
+// same Init anchor walk (R6b). The saved milestone QA Route 30 at Route 30 · grass, hunted from the save's tile on Route 32,
+// (474, 294), at noon, with the Repel counter written to 8 steps (QA_REPEL_STEPS overrides it) with the bot idle: "Repel's
+// effect wore off..." comes up during the walk to the generated anchor, is closed with one A, and the walk carries on to
 // Route 30's anchor (547, 304) with no park.
-// Run: `npx playwright test hgss-plan-repel-walk`. A second run with QA_REPEL_STEPS set to segment 1's logged step count tries
-// the box on a segment's last tile; it is reported, not required.
+// Run: `npx playwright test hgss-anchor-repel-walk`. A second run with QA_REPEL_STEPS set to segment 1's logged step count
+// tries the box on a segment's last tile; it is reported, not required.
 import * as fs from 'fs'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { emuHawkRunning, shotAll, step } from './driver'
 import {
-  applyPreset, assertLocalStores, cancelEventAndBot, clockConfig, launchHgss, NAV_REPEL, PLAN_WALK, putPlan, readClock,
-  REPEL_CLOSED, REPEL_NOT_CLOSED, RUN_FROM, saveOf, seen, shutdown, stageCopy, startFrame, startWild, teardown, WALK_ENDED,
-  writeLeadExtension, writeRepel, type Frame, type Plan
+  ANCHOR_HUNT, assertLocalStores, cancelEventAndBot, cardWindow, clockConfig, launchHgss, NAV_REPEL, NO_PATH, putMilestone, REPEL_CLOSED,
+  REPEL_NOT_CLOSED, RUN_FROM, saveOf, seen, shutdown, stageCopy, startFrame, startWild, subscribe, teardown, writeLeadExtension, writeRepel,
+  type Frame
 } from './milestones'
 import { backendLog, MINUTE } from './static'
 
 const HANDLE = 'HG-Walk'
-const R30 = { id: '34-land', name: 'Route 30 · grass', at: ['34', '547', '304'] }
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-const PLAN: Plan = { name: 'QA Walk', default: R30.id, rules: [] }
+const MILESTONE = 'QA Route 30'
 const STEPS = Number(process.env.QA_REPEL_STEPS ?? 8)
 // NavigatorEvent: each segment as it starts, a warp wait, and FinishReturn after the walk.
 const SEGMENT = /\[Navigator\] Segment (\d+): map=(\d+) \((\d+),(\d+)\) -> \((\d+),(\d+)\)/
@@ -27,7 +26,7 @@ const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\
 const BATTLE = /, isShiny: (True|False)\s*$/
 const R30_MACRO = /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/
 
-test('hgss-plan-repel-walk: the Repel message on the plan\'s walk closed with one A, the walk carries on to the anchor', async () => {
+test('hgss-anchor-repel-walk: the Repel message on the walk to the anchor closed with one A, the walk carries on to the anchor', async () => {
   test.setTimeout(25 * MINUTE)
   const frame: Frame = { backend: null, app: null }
   assertLocalStores()
@@ -36,21 +35,19 @@ test('hgss-plan-repel-walk: the Repel message on the plan\'s walk closed with on
     stageCopy(HANDLE, { rom: 'HG-Route32.nds', save: 'hgss.qa-route32' })
     clockConfig('2026-11-29T12:00:00')
     const admin = await startFrame(frame)
-    const pages = { admin }
-    expect((await applyPreset('HGSS', HANDLE, 'LivingDex')).status, 'the Living dex goal').toBe(200)
-    expect((await putPlan('HGSS', PLAN)).status, 'PUT plan').toBe(204)
+    expect((await putMilestone({ game: 'HGSS', name: MILESTONE, location: '34-land', gameFiles: [HANDLE], archived: false })).status, `${MILESTONE} saved`).toBe(200)
+    expect((await subscribe({ game: 'HGSS', phase: MILESTONE, gameName: HANDLE })).status, 'the fixed card').toBeLessThan(300)
+    const pages: Record<string, Page> = { admin, card: await cardWindow(frame.app!, `HGSS — ${MILESTONE} (${HANDLE})`) }
 
     const card = await launchHgss(admin, HANDLE, { clock: true })
-    const clock = await readClock()
     await writeLeadExtension({ hp: 30 })
     await writeRepel(STEPS)
     await shotAll('01-launched', pages)
 
-    await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
-    // The first decision walks from the save's tile (the pick is the default, so no switch).
-    const walk = PLAN_WALK.exec((await seen(PLAN_WALK, 1, 2 * MINUTE)).line)!
-    expect([walk[1], walk[3], walk[4], walk[5], walk[6], walk[7], walk[8], walk[9]], 'the plan\'s first walk')
-      .toEqual([WEEKDAYS[clock.weekday], R30.name, '36', '474', '294', ...R30.at])
+    await startWild(card, { phase: MILESTONE, mode: 'Run', yRange: 1 })
+    // The Start walks from the save's tile to the generated anchor.
+    const hunt = ANCHOR_HUNT.exec((await seen(ANCHOR_HUNT, 1, MINUTE)).line)!
+    expect(hunt.slice(1, 7), 'the anchor line').toEqual(['Route 30 · grass', '34', '547', '304', 'run up-down ±6', 'generated'])
 
     // The box, seen by the navigator at a segment's end or from the stall path, then the one close.
     await seen(NAV_REPEL, 1, 5 * MINUTE)
@@ -63,7 +60,7 @@ test('hgss-plan-repel-walk: the Repel message on the plan\'s walk closed with on
     expect(log.filter((l) => NAV_REPEL.test(l)).length, '"the Repel message seen" once').toBe(1)
     const closes = log.filter((l) => REPEL_CLOSED.test(l))
     expect(closes.map((l) => REPEL_CLOSED.exec(l)![1]), '"exactly one close, with one A"').toEqual(['1'])
-    expect(log.filter((l) => REPEL_NOT_CLOSED.test(l) || WALK_ENDED.test(l)), 'a failed close or a walk that ended off the anchor').toEqual([])
+    expect(log.filter((l) => REPEL_NOT_CLOSED.test(l) || NO_PATH.test(l)), 'a failed close or no path to the anchor').toEqual([])
     const seenAt = log.findIndex((l) => NAV_REPEL.test(l))
     const closedAt = log.findIndex((l) => REPEL_CLOSED.test(l))
     const arrivedAt = log.findIndex((l) => ARRIVED.test(l))
