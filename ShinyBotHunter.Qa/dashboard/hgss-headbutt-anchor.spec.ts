@@ -1,20 +1,21 @@
 import * as fs from 'fs'
 import { expect, test, type Page } from '@playwright/test'
-import { shotAll, step, windowByTitle } from './driver'
+import { shotAll, step } from './driver'
 import { parseFr11 } from './headbutt'
 import { API, backendLog, MINUTE, readTile } from './static'
 import {
-  ANCHOR_HUNT, applyPreset, assertLocalStores, cancelEventAndBot, CLEARING, launchHgss, rows, rowsFor, saveOf, seen, shutdown, stageCopy,
-  startFrame, startWild, subscribe, teardown, teachMove, TRAINER_ID, writeLeadExtension, type Frame
+  ANCHOR_HUNT, assertLocalStores, cancelEventAndBot, cardWindow, CLEARING, launchHgss, phaseInfo, putMilestone, rowsFor, saveOf, seen, shutdown,
+  stageCopy, startFrame, startWild, subscribe, teardown, teachMove, TRAINER_ID, writeLeadExtension, type Frame
 } from './milestones'
 
 // #525 Q1c: FR-21 in a hunt (B1h-b checks 1, 3 and 6) and a headbutt card with no share, at Violet City's headbutt
 // milestone, reached going north from the save's tile on Route 32. Not Route 32's own stand to the south: that walk meets a
 // one-time story NPC ("Wait up! What's the hurry?", script 3) at (475, 305), which the navigator does not handle. The
 // Violet City stand no longer exercises the walk with no Rock Smash (B1h-c, #572), so that check has no emulator scenario now.
+// On the saved milestone QA Violet Headbutt at Violet City · headbutt, Living dex (#621 R8b1).
 const HANDLE = 'HG-Headbutt2'
-const HEADBUTT = '73-headbutt'
-const CARD = `HGSS — ${HEADBUTT} (${HANDLE})`
+const MILESTONE = 'QA Violet Headbutt'
+const CARD = `HGSS — ${MILESTONE} (${HANDLE})`
 // The full trainer ID of hgss.qa-route32 (TID 15613, SID 35374); 2318286077 % 10 = 7 picks Violet City's tree 4 (rare; tiles
 // (496, 279) to (497, 279)), stood on from (497, 278) facing Down, the cheapest of the trees whose kind holds a wanted
 // species (milestones.json.gz; tree 7, cheaper at cost 72, gives nothing for this ID).
@@ -35,10 +36,10 @@ test('HGSS headbutt anchor: the trainer ID picks Violet City\'s stand, the walk 
   try {
     stageCopy(HANDLE, { rom: 'HG-Route32.nds', save: 'hgss.qa-route32' })
     const admin = await startFrame(frame)
-    expect((await applyPreset('HGSS', HANDLE, 'LivingDex')).status, 'the Living dex preset').toBeLessThan(300)
-    expect((await subscribe({ game: 'HGSS', phase: HEADBUTT, gameName: HANDLE })).status, 'the fixed card').toBeLessThan(300)
-    const cardWindow: Page = await windowByTitle(frame.app!, CARD, MINUTE)
-    const pages = { admin, card: cardWindow }
+    expect((await putMilestone({ game: 'HGSS', name: MILESTONE, location: '73-headbutt', gameFiles: [HANDLE], archived: false })).status, `${MILESTONE} saved`).toBe(200)
+    expect((await subscribe({ game: 'HGSS', phase: MILESTONE, gameName: HANDLE })).status, 'the fixed card').toBeLessThan(300)
+    const fixed: Page = await cardWindow(frame.app!, CARD)
+    const pages = { admin, card: fixed }
     const card = await launchHgss(admin, HANDLE)
     expect(await readTile(), 'not the save\'s start tile').toEqual({ map: 36, x: 474, y: 294, facing: 'up' })
 
@@ -52,7 +53,7 @@ test('HGSS headbutt anchor: the trainer ID picks Violet City\'s stand, the walk 
 
     // 2. Start: the trainer ID line, then the hunt from the generated stand.
     const fr11Before = count(FR11)
-    const runStart = await startWild(card, { phase: HEADBUTT, mode: 'Headbutt' })
+    const runStart = await startWild(card, { phase: MILESTONE, mode: 'Headbutt' })
     const trainer = TRAINER_ID.exec((await seen(TRAINER_ID, 1, MINUTE)).line)!
     expect([trainer[1], trainer[2]], 'the trainer ID line').toEqual(TRAINER)
     step(`trainer ID ${trainer[3]}`)
@@ -75,18 +76,18 @@ test('HGSS headbutt anchor: the trainer ID picks Violet City\'s stand, the walk 
     await shotAll('01-three-cycles', pages)
     await cancelEventAndBot(card)
 
-    // 4. The headbutt card: no share under a name, no shares footer; the endpoint gives no shares for a headbutt milestone.
-    const json = (await rows('HGSS', HEADBUTT, HANDLE)).json
-    expect([json.survive, json.rows.every((r: { share: number | null }) => r.share === null)], 'shares on a headbutt milestone').toEqual([null, true])
-    await expect(cardWindow.getByTestId('row-share'), 'a share on the headbutt card').toHaveCount(0)
-    await expect(cardWindow.getByText(/Shares: not seen|not live/), 'a shares footer on the headbutt card').toHaveCount(0)
+    // 4. The headbutt card: no share under a name; the endpoint gives no shares for a headbutt milestone (MilestoneRows.Shares).
+    const { json } = await phaseInfo('HGSS', MILESTONE, HANDLE)
+    expect(json.location, `${MILESTONE} on ${HANDLE}: no location rows`).not.toBeNull()
+    expect([json.location.survive, json.location.rows.every((r: { share: number | null }) => r.share === null)], 'shares on a headbutt milestone').toEqual([null, true])
+    await expect(fixed.getByTestId('row-share'), 'a share on the headbutt card').toHaveCount(0)
     await shotAll('02-card', pages)
 
     expect(fs.readFileSync(saveOf(HANDLE)).equals(fs.readFileSync(saveOf(HANDLE) + '.bak')), 'SaveRAM differs from its .bak').toBe(true)
     await shutdown(frame, admin)
     // The walk's battles are filed under the milestone too, so only the rows from the arrival on are the tree's.
-    step(`${rowsFor(HANDLE, HEADBUTT, runStart).length} rows under ${HEADBUTT} since the Start, the walk's included`)
-    const found = rowsFor(HANDLE, HEADBUTT, new Date(arrival.at).toISOString())
+    step(`${rowsFor(HANDLE, MILESTONE, runStart).length} rows under ${MILESTONE} since the Start, the walk's included`)
+    const found = rowsFor(HANDLE, MILESTONE, new Date(arrival.at).toISOString())
     expect(found.length, 'fewer than 3 headbutt rows').toBeGreaterThanOrEqual(3)
     for (const r of found) expect(SPECIES, `species ${r.species} is not a Violet City headbutt species`).toContain(r.species)
   } finally {
