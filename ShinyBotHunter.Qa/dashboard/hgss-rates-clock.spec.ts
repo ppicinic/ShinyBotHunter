@@ -23,9 +23,9 @@ const TABLE: Record<string, Record<number, number>> = {
   Day: { 69: 0.3, 19: 0.4, 179: 0.2, 187: 0.1 },
   Night: { 194: 0.35, 19: 0.3, 69: 0.2, 179: 0.1, 41: 0.05 }
 }
-// Every species of HeartGold Route 32's slots; the Living dex rows of both versions also hold SoulSilver's Ekans (23), which
-// has no slot on a HeartGold file, so no share and no times there.
-const HG_SPECIES = [19, 41, 69, 179, 187, 194, 264, 293, 399, 418]
+// The Living dex rows of both versions also hold SoulSilver's Ekans (23): on a HeartGold file a row only the other version
+// has gets no share and is hidden now at every time (PhaseInfoService.HiddenNow), never drawn and never in the summary.
+const EKANS = 23
 // MilestoneRows.Reason for a species with no slot at that time: Wooper 194 (night), Hoppip 187 (morning, day), Zubat 41
 // (morning, night); the radio's species never have a share (FR-30).
 const REASON: Record<number, string> = { 194: 'night only', 187: 'morning and day only', 41: 'morning and night only' }
@@ -65,8 +65,8 @@ async function read(name: string): Promise<Seen> {
 function expectTime(s: Seen, time: string, what: string): void {
   expect(s.timeOfDay, `${what}: the time of day`).toBe(time)
   for (const r of s.rows) {
-    if (!HG_SPECIES.includes(r.species)) {
-      expect([r.share, r.hiddenNow], `${what}: species ${r.species}, not in HeartGold's slots: its share and hiddenNow`).toEqual([null, false])
+    if (r.species === EKANS) {
+      expect([r.share, r.hiddenNow], `${what}: SoulSilver's Ekans on a HeartGold file: its share and hiddenNow`).toEqual([null, true])
       continue
     }
     expect(r.share, `${what}: species ${r.species}'s share`).toBeCloseTo(TABLE[time][r.species] ?? 0, 3)
@@ -138,6 +138,7 @@ test(`HGSS rates and the clock (${VARIANT}): the rows change at the first decisi
     const names = HIDDEN[c.after].species.map((s) => NAMES[s]).sort()
     expect([Number(hidden![1]), hidden![2].toLowerCase(), hidden![3].toLowerCase().split(', ').sort()], 'the hidden rows: their count, next time and names')
       .toEqual([names.length, HIDDEN[c.after].next, names])
+    await expect(fixed.locator(SPECIES_ROW, { hasText: /ekans/i }), 'SoulSilver\'s Ekans drawn on a HeartGold file').toHaveCount(0)
     await expect(fixed.getByText(/^not live/), '"not live" on the card while hunting').toHaveCount(0)
     await shotAll('02-after', pages)
 
