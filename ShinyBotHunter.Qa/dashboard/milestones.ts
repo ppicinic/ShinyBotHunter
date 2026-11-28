@@ -708,19 +708,16 @@ export const rowsFor = (handle: string, milestone: string, sinceIso: string): Ro
 
 // --- log lines the asserts rest on (code at 13a752c); the comment names where each is written ---------------------
 
-// BotService, at Start: one per plan stop.
-export const PLAN_STOP = /\[BotService\] Plan (.+?): (.+) at map (\d+) \((\d+), (\d+)\), (.*)$/
+// PlanEvent: the step the clock picks (a milestone's name, or Wait) at Start, after each step's hunt ends, when a Wait begins
+// and when a Wait's poll picks a step; and the Wait parked when the clock has not moved.
+export const PLAN_PICK = /\[Plan\] (.+?): (\w+) (\d+)h picks (.+?)\s*$/
+export const PLAN_STALE = /\[Plan\] (.+?): the in-game clock stayed at (\w+) (\d+)h for (\d+) minutes; waiting for Resume\./
 // BotService, at Start with an anchor (FR-23): `set on this file` or `generated` at the end.
 export const ANCHOR_HUNT = /\[BotService\] (.+?): hunting from the anchor map (\d+) \((\d+), (\d+)\), (.*) \((set on this file|generated)\)\s*$/
 // OrchestratorEvent at Init: where the hunt starts, after any walk to the anchor.
 export const START_TILE = /\[Orchestrator\] Start tile captured: map=(\d+) \((-?\d+),(-?\d+)\) facing=(\w+)/
 // BotService, a headbutt milestone's trainer ID (B1h).
 export const TRAINER_ID = /\[BotService\] Trainer ID (\d+) \(visible (\d+)\), (.*)$/
-// HuntPlanRun: a pick that walks, and the switch: before the walk on the plan's first pick when it is not the default, once
-// on the anchor after any later walk.
-export const PLAN_WALK = /\[Orchestrator\] Plan: (\w+) (\d+)h names (.+); walking from map (\d+) \((\d+), (\d+)\) to map (\d+) \((\d+), (\d+)\)\s*$/
-export const PLAN_NOW = /\[Orchestrator\] Plan: now hunting (.+?)\s*$/
-export const WALK_ENDED = /\[Orchestrator\] (.+?): the walk ended at map (\d+) \((\d+), (\d+)\), not on the anchor \((\d+), (\d+)\)\./
 // OrchestratorEvent, no route to the anchor (B2a).
 export const NO_PATH = /\[Orchestrator\] (.+?): no path to the anchor \((\d+), (\d+)\)\./
 // RunEncounterEvent: the Repel message closed (HGSS Run and navigator; then RS), and the close that failed.
