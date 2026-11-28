@@ -92,6 +92,7 @@ namespace ShinyBotHunter.Controllers
             var milestones = profile.Milestones!;
             var at = PhaseInfoService.At(milestones, locationId);
             Milestone? milestone = null;
+            RomVersion? onFile = null;
             if (gameFileName is not null)
             {
                 if (romInfoService.GetByHandle(gameFileName)?.Version is not { } version)
@@ -99,6 +100,7 @@ namespace ShinyBotHunter.Controllers
                     return null;
                 }
                 milestone = at.GetValueOrDefault(version);
+                onFile = milestone is null ? null : version;
             }
             IEnumerable<Milestone> scope = gameFileName is null ? at.Values : milestone is null ? [] : [milestone];
             var shares = milestone is null ? null : MilestoneRows.Shares(milestone, profile.Rates, seen);
@@ -113,14 +115,15 @@ namespace ShinyBotHunter.Controllers
                 Rows = rows.Select(r =>
                 {
                     (double Share, string? Reason)? share = shares is { } s && s.Species.TryGetValue(r.Pokemon.SpeciesId, out var found) ? found : null;
+                    var only = PhaseInfoService.OnlyVersion(milestones, at, r.Pokemon.SpeciesId);
                     return new
                     {
                         Key = Key(r.Pokemon),
-                        Version = PhaseInfoService.OnlyVersion(milestones, at, r.Pokemon.SpeciesId),
+                        Version = only,
                         r.Times,
                         Share = share?.Share,
                         Reason = share?.Reason,
-                        HiddenNow = timeOfDay is { } now && r.Times.Length > 0 && !r.Times.Contains(now)
+                        HiddenNow = PhaseInfoService.HiddenNow(only, onFile, r.Times, timeOfDay)
                     };
                 }).ToList(),
                 HiddenUntil = PhaseInfoService.HiddenUntil(rows.Select(r =>

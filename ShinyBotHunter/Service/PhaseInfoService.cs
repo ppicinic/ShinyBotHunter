@@ -227,6 +227,12 @@ namespace ShinyBotHunter.Service
                 _ => true
             }))).ToArray();
 
+        // A card's row not drawn now: on a file whose version has the location, a row only the other version has there, which
+        // MilestoneRows.Counted leaves out and which never comes back (default 5); else a row not meetable at this time of day.
+        // version is null on the editor's read and where the location is not on the file's version: every row counts there.
+        internal static bool HiddenNow(RomVersion? only, RomVersion? version, SlotCondition[] times, SlotCondition? now)
+            => (version is not null && only is not null && only != version) || (now is { } t && times.Length > 0 && !times.Contains(t));
+
         // The rows not meetable now, grouped by the next time each can be met, in order from now; empty when now is not known.
         // A row with Times [] (not in the slots) or all three is never hidden. Form rows of one species give its name once.
         internal static Dictionary<SlotCondition, List<string>> HiddenUntil(IEnumerable<(string Name, SlotCondition[] Times)> rows, SlotCondition? now)

@@ -271,5 +271,54 @@ namespace ShinyBotHunter.Tests
         {
             Assert.Equal(["Rattata"], PhaseInfoService.HiddenUntil([("Rattata", [Night]), ("Rattata", [Night])], Day)[Night]);
         }
+
+        // The card's Route 32 rows as PhaseMetadataController.LocationRows builds them, for a milestone made from game data at
+        // "Both versions": read for a file of this version, or, with null, the editor's read over both versions' slots.
+        private static (List<string> HiddenNow, Dictionary<SlotCondition, List<string>> HiddenUntil) Route32Card(RomVersion? version, SlotCondition now)
+        {
+            var metadata = Metadata();
+            var at = PhaseInfoService.At(Hgss, "36-land");
+            IEnumerable<Milestone> scope = version is { } v ? [at[v]] : at.Values;
+            var rows = PhaseInfoService.Seed(Hgss, "36-land", Versions(null), GoalPreset.None, metadata)
+                .Select(r => (Name: metadata.RowName(r.Entry.Species, null), Only: r.Version, Times: PhaseInfoService.Times(scope, r.Entry.Species))).ToList();
+            return (rows.Where(r => PhaseInfoService.HiddenNow(r.Only, version, r.Times, now)).Select(r => r.Name).ToList(),
+                PhaseInfoService.HiddenUntil(rows.Select(r => (r.Name, r.Times)), now));
+        }
+
+        [Theory]
+        [InlineData(SlotCondition.Morning)]
+        [InlineData(SlotCondition.Day)]
+        [InlineData(SlotCondition.Night)]
+        public void Route32Card_HeartGoldFile_SoulSilversEkansHiddenAndNeverComesBack(SlotCondition now)
+        {
+            // Today's rows hidden by the time of day, the same on the editor's read and on each version's file.
+            (List<string> HiddenNow, Dictionary<SlotCondition, List<string>> HiddenUntil) byTime = now switch
+            {
+                SlotCondition.Morning => (["Wooper"], new() { [Night] = ["Wooper"] }),
+                SlotCondition.Day => (["Zubat", "Wooper"], new() { [Night] = ["Zubat", "Wooper"] }),
+                _ => (["Hoppip"], new() { [Morning] = ["Hoppip"] })
+            };
+            // SoulSilver's Route 32 has Rattata in the morning and day only.
+            (List<string> HiddenNow, Dictionary<SlotCondition, List<string>> HiddenUntil) soulSilver = now == Night
+                ? (["Rattata", "Hoppip"], new() { [Morning] = ["Rattata", "Hoppip"] })
+                : byTime;
+
+            var heartGold = Route32Card(RomVersion.HeartGold, now);
+            var editor = Route32Card(null, now);
+            var onSoulSilver = Route32Card(RomVersion.SoulSilver, now);
+
+            Assert.Equal([.. byTime.HiddenNow, "Ekans"], heartGold.HiddenNow);
+            Assert.Equal(byTime.HiddenUntil, heartGold.HiddenUntil);
+            Assert.Equal(byTime.HiddenNow, editor.HiddenNow);
+            Assert.Equal(byTime.HiddenUntil, editor.HiddenUntil);
+            Assert.Equal(soulSilver.HiddenNow, onSoulSilver.HiddenNow);
+            Assert.Equal(soulSilver.HiddenUntil, onSoulSilver.HiddenUntil);
+        }
+
+        [Fact]
+        public void HiddenNow_LocationNotOnTheFilesVersion_OtherVersionRowShown()
+        {
+            Assert.False(PhaseInfoService.HiddenNow(RomVersion.SoulSilver, null, [], Day));
+        }
     }
 }
