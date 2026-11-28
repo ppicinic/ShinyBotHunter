@@ -206,9 +206,10 @@ export async function launchHgss(admin: Page, handle: string, { clock = false, c
   const launch = admin.getByTestId(`top-level-action-${cont ? 'Launch Bot + Continue' : 'Launch Bot'}`)
   await launch.locator('select').selectOption(handle)
   if (clock) {
-    // A controlled checkbox: click, then wait for React's re-render to show it checked.
+    // A controlled checkbox that keeps its value while Bot Control stays open (a second launch finds it ticked): click only
+    // when unticked, then wait for React's re-render to show it checked.
     const sound = launch.locator('input[type="checkbox"]')
-    await sound.click()
+    if (!(await sound.isChecked())) await sound.click()
     await expect(sound).toBeChecked()
   }
   await launch.getByRole('button', { name: 'Start', exact: true }).click()
@@ -609,13 +610,15 @@ export const attach = (game: Game, name: string, location: string): Promise<Res>
 export const detach = (game: Game, name: string): Promise<Res> => rest('DELETE', `milestones/${game}/${q(name)}/location`)
 
 /** PUT plans/{game}/{name}; fails at once on a plan of that name this run did not make, which is never overwritten. */
-export async function putPlan(game: Game, { name, ...plan }: Plan): Promise<Res> {
+export async function putPlan(game: Game, plan: Plan): Promise<Res> {
+  const { name } = plan
   if (!made.plans.some((p) => p.game === game && p.name === name)) {
     const existing = await rest('GET', `plans/${game}/${q(name)}`)
     if (existing.status !== 404) throw new Error(`a ${game} plan named "${name}" exists and this run did not make it; rename the fixture or delete it by hand`)
     made.plans.push({ game, name })
   }
-  return rest('PUT', `plans/${game}/${q(name)}`, plan)
+  // The body is the whole Plan record, as the dashboard's Save sends it: without Name (non-nullable) MVC answers 400 before the action.
+  return rest('PUT', `plans/${game}/${q(name)}`, { game, ...plan })
 }
 export async function deletePlan(game: Game, name: string): Promise<Res> {
   const res = await rest('DELETE', `plans/${game}/${q(name)}`)

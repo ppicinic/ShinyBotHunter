@@ -1,15 +1,17 @@
 import * as fs from 'fs'
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { shotAll, step } from './driver'
 import { API, backendLog, MINUTE, readTile } from './static'
 import {
-  ANCHOR_HUNT, applyPreset, assertLocalStores, cancelEventAndBot, CLEARING, clockConfig, HEAL_TRIP, HEALING, launchHgss, rowsFor, RUN_FROM,
-  saveOf, seen, shutdown, stageCopy, startFrame, startWild, teardown, WILD, type Frame
+  ANCHOR_HUNT, assertLocalStores, cancelEventAndBot, cardWindow, CLEARING, clockConfig, HEAL_TRIP, HEALING, launchHgss, putMilestone, rowsFor,
+  RUN_FROM, saveOf, seen, shutdown, stageCopy, startFrame, startWild, subscribe, teardown, WILD, type Frame
 } from './milestones'
 
-// #525 Q1c, row hgss-milestone-anchor (FR-23, FR-38; B2a's battle on a walk and heal trip back to the anchor).
+// #525 Q1c, row hgss-milestone-anchor (FR-23, FR-38; B2a's battle on a walk and heal trip back to the anchor), on the saved
+// milestone QA Route 30 at Route 30 · grass (#621 R8b1).
 const HANDLE = 'HG-Anchor'
 const ROUTE30 = '34-land'
+const MILESTONE = 'QA Route 30'
 // HG Route 30 by day (milestones.json.gz): Pidgey, Caterpie, Metapod.
 const ROUTE30_DAY = ['16', '10', '11']
 const GATEHOUSE = '97'
@@ -43,14 +45,15 @@ test('HGSS milestone anchor: Route 30 · grass from Route 32 walks through the g
     // Day, so the Route 30 species are fixed.
     clockConfig('2026-11-29T12:00:00')
     const admin = await startFrame(frame)
-    const pages = { admin }
-    expect((await applyPreset('HGSS', HANDLE, 'LivingDex')).status, 'the Living dex preset').toBeLessThan(300)
+    expect((await putMilestone({ game: 'HGSS', name: MILESTONE, location: ROUTE30, gameFiles: [HANDLE], archived: false })).status, `${MILESTONE} saved`).toBe(200)
+    expect((await subscribe({ game: 'HGSS', phase: MILESTONE, gameName: HANDLE })).status, 'the fixed card').toBeLessThan(300)
+    const pages: Record<string, Page> = { admin, card: await cardWindow(frame.app!, `HGSS — ${MILESTONE} (${HANDLE})`) }
     const card: Locator = await launchHgss(admin, HANDLE, { clock: true })
     expect(await readTile(), 'not the save\'s start tile').toEqual({ map: 36, x: 474, y: 294, facing: 'up' })
     await shotAll('01-launched', pages)
 
     // 1. The hunt from the generated anchor, in train mode so the lead at 1 HP takes a heal trip once there.
-    const runStart = await startWild(card, { phase: ROUTE30, target: 'ShinyTarget', mode: 'Run', yRange: 1, train: { type: 'Standard', targetLevel: 10 } })
+    const runStart = await startWild(card, { phase: MILESTONE, target: 'ShinyTarget', mode: 'Run', yRange: 1, train: { type: 'Standard', targetLevel: 10 } })
     const hunt = ANCHOR_HUNT.exec((await seen(ANCHOR_HUNT, 1, MINUTE)).line)!
     expect(hunt.slice(1, 7), 'the anchor line').toEqual(['Route 30 · grass', '34', '547', '304', 'run up-down ±6', 'generated'])
 
@@ -97,7 +100,7 @@ test('HGSS milestone anchor: Route 30 · grass from Route 32 walks through the g
     // 5. A second Start with no train mode: the up-down Run from the anchor and three encounters there.
     const runsBefore = count(RUN_FROM)
     const foesFrom = backendLog().length
-    const second = await startWild(card, { phase: ROUTE30, target: 'ShinyTarget', mode: 'Run', yRange: 1 })
+    const second = await startWild(card, { phase: MILESTONE, target: 'ShinyTarget', mode: 'Run', yRange: 1 })
     const run = RUN_FROM.exec((await seen(RUN_FROM, runsBefore + 1, 5 * MINUTE)).line)!
     expect([run[1], run[2]], 'the Run\'s tile').toEqual(['547', '304'])
     expect(run[3], 'the Run macro').toMatch(/^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/)
@@ -108,10 +111,10 @@ test('HGSS milestone anchor: Route 30 · grass from Route 32 walks through the g
     // 6. Nothing was saved in game; the documented shutdown writes the encounters.
     expect(fs.readFileSync(saveOf(HANDLE)).equals(fs.readFileSync(saveOf(HANDLE) + '.bak')), 'SaveRAM differs from its .bak').toBe(true)
     await shutdown(frame, admin)
-    const rows = rowsFor(HANDLE, ROUTE30, second)
-    expect(rows.length, 'fewer than 3 Route 30 rows since the second Start').toBeGreaterThanOrEqual(3)
+    const rows = rowsFor(HANDLE, MILESTONE, second)
+    expect(rows.length, `fewer than 3 rows under ${MILESTONE} since the second Start`).toBeGreaterThanOrEqual(3)
     for (const r of rows) expect(ROUTE30_DAY, `species ${r.species} is not in HG Route 30's day table`).toContain(r.species)
-    step(`first Start at ${runStart}, ${rowsFor(HANDLE, ROUTE30, runStart).length} rows under ${ROUTE30} in all`)
+    step(`first Start at ${runStart}, ${rowsFor(HANDLE, MILESTONE, runStart).length} rows under ${MILESTONE} in all`)
   } finally {
     await teardown(frame)
   }
