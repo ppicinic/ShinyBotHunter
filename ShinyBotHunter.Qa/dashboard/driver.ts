@@ -179,12 +179,17 @@ foreach ($vk in 0x7B,0x10,0x11) { [K]::keybd_event([byte]$vk, [byte][K]::MapVirt
 let recorder: ChildProcess | null = null
 const stopFile = path.join(runDir, 'stop-recorder')
 
-/** Records EmuHawk to `<name>.mp4`; a stop file left by an earlier recording in this run is removed first. */
+/**
+ * Records EmuHawk to `<name>.mp4`, or to `<name>-2.mp4`, `<name>-3.mp4`, ... when an earlier recording in this run took the
+ * name, so a second launch never overwrites the first; a stop file left by an earlier recording is removed first.
+ */
 export function startEmulatorRecorder(name = 'emulator'): void {
   fs.rmSync(stopFile, { force: true })
+  let file = name
+  for (let n = 2; fs.existsSync(path.join(runDir, `${file}.mp4`)); n++) file = `${name}-${n}`
   recorder = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'record-window.ps1'),
-    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, `${name}.mp4`), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
-  step(`emulator recorder started: ${name}.mp4`)
+    '-ProcessName', 'EmuHawk', '-OutFile', path.join(runDir, `${file}.mp4`), '-StopFile', stopFile, '-ShotDir', runDir], { stdio: 'ignore' })
+  step(`emulator recorder started: ${file}.mp4`)
 }
 
 async function shotEmulator(name: string): Promise<void> {
