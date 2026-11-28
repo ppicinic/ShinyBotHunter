@@ -187,16 +187,16 @@ A plan is a list of steps. A step is a whole hunt as Bot Control's form defines 
 
 ### Consequences
 - Defaults 6 to 10 and 12 of the rework doc, each the orchestrator's default, for the owner to correct:
-  - 6: a step is Wild Encounter in all its modes, or Wait. HGSS Togepi Egg, HGSS Primo Egg, HGSS Static Encounter and Chained Encounter are refused as steps, with one sentence for all of them.
+  - 6: "Plan steps on the first cut: Wild Encounter in all its modes, and Wait. The eggs follow the research (R5). Static and Chained Encounter are refused as steps with the reason until then." As built, the eggs are refused too, and all four with one sentence ([spec](../specs/hunt-plans-and-milestone-builder.md), What diverged 22).
   - 7: a party a step cannot run with is refused at Start with the reason, named by the step.
   - 8: on returning to a training step the level target carries on; a complete step is skipped.
   - 9: a plan runs until cancelled unless it is set to end when every shiny-hunt step is complete.
   - 10: saved plans in the old shape are dropped.
   - 12: "Plan" is HGSS only, and Ruby and Sapphire cards carry no markers.
 - Open, the owner's, in the rework doc's words: "may a plan save the game by itself when it arrives at an egg step? Without it the egg hunt's reset undoes the wild step's levels and Pickup items."
-- A switch happens only at the hunt's decision, between encounters, never in a battle or a heal trip; Pickup items are not collected at a switch.
+- From #619's plan: a switch happens only at the hunt's decision, between encounters, never in a battle or a heal trip; Pickup items are not collected at a switch. The owner confirmed it on 2026-11-27, in his words as the orchestrator relays them on PR #641: "a cancel from a plan switch should only happen when returning to the field".
 - A step complete in a run is skipped until the next Start.
-- The anchor reach check at Start (FR-35) is dropped (binding answer 4 on #619): an anchor with no path parks at the walk.
+- The anchor reach check at Start (FR-35) is dropped (binding answer 4 on #619): an anchor with no path parks at the walk. The orchestrator's, for the owner to correct.
 - `Plans` replaces `HuntPlans`, which nothing reads.
 - It refines "A Discord message when a hunt's milestone completes": the message names the milestone and the game file only, not the plan or what comes next.
 
@@ -214,6 +214,6 @@ The owner, as the [rework doc](../specs/milestone-builder-rework.md) quotes him:
 Each row carries a marker for when it can be met (morning, day, night, or all day), where some row of the location is met at some times only. The share is under the Pokémon's name for every milestone with a location. The footer is removed. As the orchestrator's default, for the owner to correct: the phase count, the encounters per hour and "not live" move to the card's header, and the rows hidden now are one dim last row of the table ("2 more at night: Hoothoot, Spinarak").
 
 ### Consequences
-- It refines "The counts card shows only what can be met now, the share under the name". Its consequence "a file not seen since the backend started draws every row" still holds for a location whose slots depend on the time of day, drawn with no shares, except a row only the other version has.
-- A form row is named `Unown (A)` on the card again (#634), as "A form row is named "Species (Form)"" decided; a row for any form has the plain name, and the Milestone Editor shows and saves the plain name.
+- It refines "The counts card shows only what can be met now, the share under the name". Its consequence that a card for a file not seen since the backend started draws every row still holds for a location whose slots depend on the time of day, drawn with no shares, except a row only the other version has.
+- A row for one Unown letter is named `Unown (A)` on the card again (#634), as "A form row is named "Species (Form)"" decided, where only Unown gets a form name; every other row shows the species name, a female or male form row with its symbol, and the Milestone Editor shows and saves the plain name.
 - A row only the other version has at the location is not drawn on a game file's card, nor named in the hidden row (#639); the Milestone Editor still shows it. The orchestrator's default, for the owner to correct.
