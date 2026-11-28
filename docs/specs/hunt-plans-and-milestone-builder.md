@@ -1,11 +1,13 @@
 # Spec: hunt plans and the milestone builder
 
-Status: Implemented on `feature/hunt-plans-milestones` (2026-11-25, epic #508). See "As built", "What diverged" and "Evidence".
-Last updated: 2026-11-25
+Status: Implemented on `feature/hunt-plans-milestones` (2026-11-25, epic #508); reworked there by the [milestone builder rework](milestone-builder-rework.md) (2026-11-27), which awaits the end-of-feature QA. See "As built", "What diverged" and "Evidence".
+Last updated: 2026-11-27
 Owner: Phil
 Related: [research: the time mover](../research/time-mover.md) (the clock, the walk, the dashboard window), [research: the milestone builder](../research/milestone-builder.md) (the data, the encounter rule, the memory reads, the anchors, the name mapping), [headbutt research](../research/headbutt.md), [pathfinder spec](pathfinder-maps-flags-hms.md)
 
 ## Summary
+
+**2026-11-27, the rework.** The owner rejected the generated milestones in the picker and the goal per game file ([rework](milestone-builder-rework.md)). A milestone is now always a saved one: "New from game data" fills a new one from a location's species and a preset, its amounts are its own, and it is offered on the game files ticked for it. A plan is now a list of whole hunts (a Wild Encounter, or Wait) with time rules, run by its own "Plan" action and edited in its own tab. The rows below are rewritten to that; the paragraphs under this one are as written on 2026-11-24.
 
 Two things that share one model.
 
@@ -21,18 +23,18 @@ Ruby and Sapphire get the milestone builder in the same feature, with their own 
 
 | Term | Meaning |
 |---|---|
-| Milestone | One map (or several that share a table) and one way of hunting it: land (grass or a cave floor), surf, Old Rod, Good Rod, Super Rod, rock smash, and on HGSS headbutt. Generated. Has a name, slots, and an anchor. |
+| Milestone | A saved milestone: a name, rows of a species or one form with an amount each, and three optional fields: a location (a generated entry of FR-1 to FR-5, one map or several that share a table and one way of hunting it, with its slots and anchor), the game files it is ticked for, and archived. Made in the Milestone Editor from a location's data or empty (changed 2026-11-27, see the changelog; before that a milestone was the generated entry itself, now called a location; FR-1 to FR-5, FR-19 to FR-21, FR-25 and the appendix still say "milestone" for it). |
 | Slot | One line of the game's table: a species, a level or level range, a weight, and when it applies (morning, day, night, Hoenn Sound, Sinnoh Sound, night fishing). |
-| Goal | What one game file is collecting: for each species or form, how many. One per game file. |
+| Goal | None: a milestone's own rows hold its amounts (changed 2026-11-27, see the changelog; before that what one game file is collecting: for each species or form, how many, one per game file). |
 | Row | One line of a milestone on screen: a species, or one form of it. |
 | Anchor | Where and how a milestone is hunted: a tile, a facing, and run left-right with a range, run up-down with a range, or spin. For headbutt and fishing, a tile and a facing. |
-| Hunt plan | A default milestone and ordered rules, each a set of times of day and weekdays and a milestone. |
-| Custom milestone | A milestone typed by hand, as all are today. Starters, Togepi, Jirachi and training stay custom. |
+| Hunt plan | A plan: per game and name, ordered rules, each a set of times of day and weekdays and a step, and a default step; a step is a Wild Encounter, as Bot Control's form defines it, or Wait (changed 2026-11-27, see the changelog; before that a default milestone and ordered rules, each a set of times of day and weekdays and a milestone). |
+| Custom milestone | Not a kind of its own: every milestone is saved, and one with no location is hunted as a custom one was (changed 2026-11-27, see the changelog; before that a milestone typed by hand, as all were; starters, Togepi, Jirachi and training stayed custom). |
 
 ## Goals
 
 - G1: no milestone for a wild location is typed by hand.
-- G2: an amount is entered once per game file, not once per place the species appears.
+- G2: an amount is entered once per milestone, filled by a preset and edited in the Milestone Editor (changed 2026-11-27, see the changelog; before that an amount is entered once per game file, not once per place the species appears).
 - G3: the right table for the version: HeartGold and SoulSilver differ slot by slot, and Ruby and Sapphire differ on 30 of their 97 maps.
 - G4: forms are first-class: a row can be the species in any form, or one form (female, male, an Unown letter).
 - G5: the dashboard shows what the game will give right now: the rows available at this in-game hour, and the expected share of each, with Repel and the lead's ability counted.
@@ -78,6 +80,13 @@ From the owner, 2026-11-25:
 
 - A card either shows one fixed milestone, as today, with any number of them per game file, or follows the hunt on its game file. A hunt plan is defined once, saved by name and shared.
 
+From the owner, 2026-11-27 (the [rework](milestone-builder-rework.md); decisions: [a saved milestone](../decisions/hunt-plans-and-milestones.md#a-milestone-is-a-saved-one-made-from-the-games-data-its-amounts-are-its-own), [plans](../decisions/hunt-plans-and-milestones.md#a-plan-is-a-list-of-whole-hunts-with-time-rules-in-its-own-tab-and-action), [the counts card](../decisions/hunt-plans-and-milestones.md#the-counts-card-markers-the-hidden-now-row-counts-in-the-header-no-footer)):
+
+- A milestone is made from the game data, edited and saved; its amounts are its own. This reverses "Wanted amounts are global per game file" above. The caught counts stay global per game file.
+- Game files are checkboxes on the milestone, archive is in the editor, and the launch form lists saved milestones only.
+- A plan is a list of whole hunts with time rules, in its own tab, and "Plan" is one more action in Bot Control.
+- The counts card has time-of-day markers, a row naming what is hidden now, its counts in the header and no footer.
+
 ## Requirements
 
 ### Milestones from the game
@@ -95,24 +104,28 @@ From the owner, 2026-11-25:
 
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
-| FR-7 | A goal belongs to one game file and lists wanted entries: a species in any form, or one form, with an amount. It is stored in Mongo with the other schema-fluid data. | Must | Unit test. |
-| FR-8 | A goal can be started from a preset and then edited. HGSS: living dex (every species, amount = the size of its evolution line); female forms (every species with a female form: the female form at the line's size, the male form at 0); version exclusives (species in this version's tables and not the other's, 1 each). RS: living dex and version exclusives. The preset is one choice per game file, picked from a dropdown (none, living dex, female forms, version exclusives), and it supplies the default amounts: choosing another preset replaces every amount the owner has not edited by hand with the new preset's, and keeps every hand edit. Every entry and amount can still be edited or removed (changed 2026-11-25, see the changelog; before that a preset filled entries once and only added species the goal lacked). | Must | Unit test per preset; unit test that an edited amount survives a change of preset and an unedited one follows it. |
-| FR-9 | Caught counts are global per game file: a shiny caught anywhere on that file counts toward its entry, whichever milestone it was caught under. | Must | Unit test. |
-| FR-10 | A milestone shown for a game file has a row for every species in its slots, whether or not the goal wants it, so the statistics are kept. A species the goal has no entry for is a row at 0. Where the goal has entries for forms of a species, each form is a row under the species (female and male; the 28 Unown letters). | Must | Unit test: Route 30 for the three production goals gives the rows of today's three phases, zero rows included. |
+| FR-7 | A milestone is saved by name per game in `PhaseInfos`, with its rows (a species in any form, or one form, with an amount) and three optional fields: its location, its game files and archived. A stored document without them reads as no location, none ticked and not archived (changed 2026-11-27, see the changelog; before that a goal belonged to one game file and listed wanted entries, stored in Mongo). | Must | Unit tests `StoredMilestones_WithoutNewFields_ReadAsToday`, `Milestone_BsonRoundTrip_KeepsLocationFilesArchived`; QA: `hgss-milestone-editor`, `hgss-existing-milestones`. |
+| FR-7a | "New from game data" takes a location from one dropdown of every location of the game, grouped by modality, and a version filter (both versions, or one), and fills a new milestone's rows from the location's slots, with its name prefilled. Nothing is stored before Save, and a name another milestone of the game has is refused in the form. Added 2026-11-27. | Must | Unit tests `Seed_Route30Grass_ByVersionFilter`, `Seed_Route30Grass_InSlotOrder_FirstVersionThenNewOnes`; QA: `hgss-milestone-editor`, `rs-milestone-seed`. |
+| FR-7b | Each row is marked with the one version that has it at the location, or `both`, and with when it can be met (morning, day, night, all day), the markers drawn only where some row of the location is met at some times only, so never on Ruby and Sapphire. A row can be added and removed; a seeded row's species and form are fixed. Added 2026-11-27. | Must | Unit tests `Seed_Route30Grass_Times`, `Times_Rs_AllDay`; dashboard tests `markerLabels`, `draftRows`; QA: `hgss-milestone-editor`, `rs-milestone-seed`. |
+| FR-7c | A saved milestone can be attached to a location, with the existing names' suggestion preselected, and detached; both write only its location, never a row or an amount, and apply to the seeded read-only milestones too. Added 2026-11-27. | Must | Unit tests `WithLocation_AttachThenDetach_ChangesNoRowOrAmount`, `Suggestion_ProductionNames_MatchTheResearchTable`; QA: `hgss-existing-milestones`. |
+| FR-7d | A Wild Encounter Start, and each Wild Encounter step of a plan at Start, refuses an archived milestone, `<milestone> is archived.`, and one ticked only for other files, `<milestone> is not ticked for <game file>.`; one ticked for no file is accepted on every file. Added 2026-11-27. | Must | Unit tests `OffFile_Archived_Refused`, `OffFile_TickedForAnotherFile_Refused_TickedForThisOne_Accepted`, `OffFile_NoTicks_AcceptedOnAnyFile`; QA: `hgss-milestone-refusals`, `hgss-plan-refusals`. |
+| FR-8 | A milestone from game data is started from a preset and then edited. HGSS: living dex (every species at the size of its evolution line; Unown one row per letter at 1); female forms (every species with a female form: the female form at the number of its line that have one, the male form at 0); version exclusives (species in this version's tables and not the other's, 1 each); none (all 0). RS: living dex, version exclusives and none. The preset is a dropdown on the editor's form, starting at living dex; choosing another preset or version refills every amount not typed by hand and keeps every typed amount, removed row and added row (changed 2026-11-25, see the changelog; before that a preset filled entries once and only added species the goal lacked) (changed 2026-11-27, see the changelog; before that the preset was one stored choice per game file's goal). | Must | Unit tests `Seed_Route30Grass_None_AllZero`, `Seed_Route30Grass_LivingDex_LineSizes`, `Seed_Route30Grass_FemaleForms_FemaleAtFamilyCount_MaleAtZero`, `Seed_Route30Grass_VersionExclusives_ExclusivesAtOne`, `Seed_RuinsOfAlph_LivingDex_28UnownRows`, `Seed_Rs_FemaleForms_Throws`; dashboard test `draftRows` (a preset change keeps typed amounts); QA: `hgss-milestone-editor`, `rs-milestone-seed`. |
+| FR-9 | Caught counts are global per game file: a shiny caught on a file counts toward its species or form in every milestone hunted on that file, whichever milestone it was caught under (changed 2026-11-27, see the changelog; before that it counted toward the file's goal entry). | Must | Unit tests `Located_OwnAmounts_TargetUntilCaughtOnThisFile`, `Picker_Complete_ByItsOwnAmounts`. |
+| FR-10 | A milestone's rows are its own, seeded or added, each at its own amount. On a file of one version, a row only the other version has at the milestone's location is not a target and does not hold completion back (default 5) (changed 2026-11-27, see the changelog; before that a generated milestone shown for a file had a row for every species in its slots, at the goal's amount or 0). | Must | Unit tests `Counted_Route30_LeavesOutTheOtherVersionsSpecies`, `Counted_NoLocation_EveryRow`, `Counted_HandAddedRow_Kept`, `IsPhaseComplete_OtherVersionRowDoesNotHoldItBack`. |
 | FR-11 | A row shows wanted, caught (global, FR-9), encounters at this milestone, and encounters on this game file, as the phase card does today. | Must | QA. |
-| FR-12 | A row at 0 is shown and counted and is never a target. A row whose entry is complete stays shown, marked complete, and is not a target. A row can also be hidden by the operator: a hidden row is not shown and is not a target, and its encounters are still logged. | Must | Unit test; QA. |
-| FR-13 | `PhaseTarget` asks the goal: a wild Pokémon is a target when it is shiny, its species and form match an entry with an amount above 0 that is not complete, and its row at the current milestone is not hidden. A shiny that is not a target is handled as it is today. | Must | Unit test. |
+| FR-12 | A row at 0 is shown and counted and is never a target. A row whose amount the file has caught is not a target. There are no hidden rows: a species is left out at 0 or by removing its row (default 3) (changed 2026-11-27, see the changelog; before that the operator could also hide a row per file). | Must | Unit test `ProductionPhases_SameTargetsAsMain`; QA: `hgss-milestone-complete`. |
+| FR-13 | `PhaseTarget` asks the saved milestone: a wild Pokémon is a target when it is shiny and matches, by name and form, a row that counts on the file (FR-10) whose catches on the file are fewer than its amount. A shiny that is not a target is handled as before (changed 2026-11-27, see the changelog; before that it asked the file's goal and its hidden rows). | Must | Unit tests `Located_OwnAmounts_TargetUntilCaughtOnThisFile`, `Located_OtherVersionRow_NotATarget`, `Located_HandAddedRow_StillATarget`. |
 | FR-14 | A milestone is complete for a game file when none of its rows is a target. | Must | Unit test. |
 
 ### The picker
 
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
-| FR-15 | The bot control's milestone picker lists, for the bot's game file: milestones of its version that have at least one row, and custom milestones assigned to it or to no file. It can be filtered by text, by modality, and to incomplete only. | Must | QA. |
+| FR-15 | The launch form's milestone list for the bot's game file holds the saved milestones ticked for it or for no file and not archived, in name order with digits as numbers; locations are never listed by themselves. It can be filtered to incomplete only. HGSS Togepi Egg, HGSS Primo Egg and HGSS Static Encounter list only milestones with no location (changed 2026-11-27, see the changelog; before that it listed the version's generated milestones with a row and the custom ones assigned to the file or none, filtered by text, modality and incomplete). | Must | Unit tests `Picker_GameFiles_TickedFileOnly_NoneTickedEveryFile`, `Picker_Archived_LeftOut_TargetUnchanged`, `Picker_GeneratedMilestonesNeverListed`; dashboard test `launchMilestones`; QA: `hgss-milestone-editor`, `hgss-milestone-refusals`. |
 | FR-15a | A milestone whose modality the bot cannot hunt (surf, the rods, rock smash) is listed with its rows and rates, marked "no hunt yet", and Start refuses it with that reason. | Must | Unit test; QA. |
-| FR-16 | A custom milestone can be assigned to one or more game files; none means all. Generated milestones need no assignment: the goal decides. | Must | Unit test. |
-| FR-17 | Archive, per milestone and game file, hides it from the picker and changes nothing else: its counts, its windows and its log are as before. | Must | Unit test; QA. |
-| FR-18 | The owner's order ("1-4") is kept as an optional label on a milestone per game file and sorts the picker; without one, milestones sort by name. | Should | QA. |
+| FR-16 | A milestone is offered on the game files ticked for it in the Milestone Editor's Game files checkboxes; none ticked means every file (default 1) (changed 2026-11-27, see the changelog; before that a custom milestone was assigned to files and a generated one needed none). | Must | Unit test `Picker_GameFiles_TickedFileOnly_NoneTickedEveryFile`; dashboard test `toggleFile`; QA: `hgss-milestone-editor`. |
+| FR-17 | Archived is one flag per milestone, set in the Milestone Editor (default 2). It hides the milestone from the launch form, and a Wild Encounter Start refuses it (FR-7d); its counts, its windows and its log are as before (changed 2026-11-27, see the changelog; before that archive was per milestone and game file, set on the picker). | Must | Unit test `Picker_Archived_LeftOut_TargetUnchanged`; QA: `hgss-milestone-editor`. |
+| FR-18 | No order label: the list sorts by name with digits as numbers, so "1-4" comes before "1-10" (changed 2026-11-27, see the changelog; before that the owner's order was an optional label per milestone and file that sorted the picker). | Should | Unit test `Picker_ProductionNamesInTheOwnersOrder`. |
 
 ### Anchors
 
@@ -123,7 +136,7 @@ From the owner, 2026-11-25:
 | FR-19b | RS. A land tile is one whose tile behaviour the game marks as giving wild encounters and that is not water: in `pokeruby`'s `src/metatile_behavior.c` these are the eight behaviours that file's land-encounter test accepts (0x02, 0x03, 0x05, 0x06, 0x08, 0x0B, 0x24, 0x25; see the B1r changelog entry). There is no "footprint sand": Route 111's desert is one of the eight. The committed RS map data marks only grass as kind 3, so Route 111 gave no tile in the spike; the map data's generator is extended to mark every such tile, and the anchor is then chosen as FR-19a says. In a cave that is almost every floor tile. | Must | Unit test: Route 111 has an anchor on its desert; a cave has one on its floor. |
 | FR-20 | The anchor is the middle tile of the run with the range that reaches both ends, since the Run encounter paces an equal distance each way and a longer line means fewer turns. | Must | Unit test: Route 30 gives (547, 304), up-down, range 6. |
 | FR-21 | Headbutt, fishing and rock smash anchors are a tile and a facing: the tree, shore tile or rock with the shortest route to a Pokémon Center. For headbutt the tree must be one that gives the wanted table for the game file's trainer ID, so the anchor is worked out per game file. | Should | Unit test for Azalea Town with trainer ID 15613. |
-| FR-22 | The operator can replace a milestone's anchor with where the bot stands and how it faces, per game file, and can clear the replacement. | Must | QA. |
+| FR-22 | The operator can replace a milestone's anchor with where the bot stands and how it faces, per game file, keyed by the saved milestone's name, and can clear the replacement; a milestone with no location is then hunted from it too (changed 2026-11-27, see the changelog; before that a replacement was keyed by the generated milestone or the custom name). | Must | Unit tests `NeedsTrainerId_OnlyAGeneratedHeadbuttWithNoReplacement`, `AnchorFor_Replacement_WinsOverGenerated`; QA: `hgss-existing-milestones`, `hgss-milestone-refusals`. |
 | FR-23 | Starting a hunt at a milestone with an anchor walks there first. With no anchor (a custom milestone), the hunt starts where the bot stands, as today. | Must | QA. |
 | FR-24 | At the anchor, before the first encounter, the tile under the player is checked to be of the milestone's kind. If it is not, the hunt stops with "{milestone}: the anchor ({x}, {y}) is not {grass}." | Must | Unit test; QA. |
 
@@ -136,8 +149,8 @@ From the owner, 2026-11-25:
 | FR-25b | RS. No lead ability changes which species appears. Stench and Illuminate change only how often an encounter comes and are not part of the share. | Must | Unit test: the shares are the same for every lead ability. |
 | FR-26 | The inputs are read from memory while a hunt runs, never entered: the in-game time of day; the Repel counter; the lead's ability, level and egg flag, and the level of the first member that has not fainted and is not an egg (the Repel level). | Must | QA: the rate changes when the Repel counter is written. |
 | FR-26a | RS. The Repel counter is save variable `0x4021` at `gSaveBlock1 + 0x1382` (`u16`), from the decomp's layout; it is confirmed on the emulator before B3r's plan is approved. The Repel level is taken from the party read the bot already makes. | Must | The emulator round in the research doc; QA: `rs-rates-repel`. |
-| FR-27 | The phase card shows each row's expected share now, and the survive share when it is below 100 %. A row whose share is zero now (wrong time of day, cancelled by Repel) is dimmed and says why: "night only", "blocked by Repel". (Changed 2026-11-25, see the changelog: the share is drawn under the Pokémon's name, not in a Share column; a row at a zero share is not drawn; the survive share is not shown.) | Must | QA. |
-| FR-28 | With no hunt running on the game file, the card shows the shares for the time of day the game file was last seen in, with no Repel and no lead effect, marked as not live. | Should | QA. |
+| FR-27 | For a milestone with a location, on a game file, the card shows each row's expected share now under the Pokémon's name, and a time-of-day pill by the name (morning, day, night, or all day) where some row of the location is met at some times only. A row not meetable at this time of day, a row at a zero share now (blocked by Repel, a radio sound) and a row only the other version has are not drawn; the rows not meetable now are named in one dim last row, by the next time they can be met ("2 more at night: Hoothoot, Spinarak"). A form row is named `Unown (A)`. (Changed 2026-11-25, see the changelog: the share is drawn under the Pokémon's name, not in a Share column; a row at a zero share is not drawn; the survive share is not shown.) (changed 2026-11-27, see the changelog; before that only a generated milestone had shares, with no pills and no last row, and a row only the other version has was drawn with no share). | Must | Unit tests `HiddenUntil_Route30_AtMorningDayNight`, `Route32Card_HeartGoldFile_SoulSilversEkansHiddenAndNeverComesBack`, `RowNames_LetterRowsNameTheLetterAndAnyFormRowsThePlainName`; dashboard tests in `PhaseCard.test.ts`; QA: `hgss-rates-clock`, `hgss-rates-repel`, `rs-rates-repel`. |
+| FR-28 | With no hunt running on the game file, the card shows the shares and rows for the time of day the file was last seen in, with no Repel and no lead effect, and its header says `not live (last seen <time>)`; `not live` alone on Ruby and Sapphire and on a file not seen since the backend started, where a location whose slots depend on the time of day has no shares and every row (changed 2026-11-27, see the changelog; before that the not-live mark was in the footer, with "Shares: not seen since the backend started" for a file not seen). | Should | Unit tests `Shares_NotLive_LastSeenHourNoRepelNoLead`, `Shares_NeverSeen_TimedSlots_Null`; dashboard tests in `PhaseCard.test.ts`; QA: `hgss-rates-clock`. |
 | FR-29 | A Spin hunt is expected never to run a Repel out. A Run hunt and a plan's walk do spend steps: when "Repel's effect wore off..." comes up during a hunt, the bot closes it with A, confirmed by the field being free, and carries on. | Should | QA: the counter is unchanged across thirty spins; the message is closed on a Run hunt. |
 | FR-30 | The radio sounds are a condition a row can have and a rate input, but the playing sound is not read: a milestone's sound rows are shown as "needs Hoenn Sound" and counted as off. | Should | Unit test. |
 
@@ -145,17 +158,20 @@ From the owner, 2026-11-25:
 
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
-| FR-31 | HGSS only. Wild Encounter takes an optional plan: a default milestone and ordered rules. A rule is a set of times of day (morning 4 to 10, day 10 to 20, night 20 to 4), a set of weekdays, and a milestone. The first rule that matches the in-game clock wins; none matching is the default. | Must | Unit test. |
+| FR-31 | HGSS only. The Plan action takes a saved plan: ordered rules and a default step. A rule is a set of times of day (morning 4 to 10, day 10 to 20, night 20 to 4), a set of weekdays (an empty set matches any) and a step, the body Bot Control posts for a Wild Encounter in any of its modes, or Wait. The first rule that matches the in-game clock and whose step is not done in this run (FR-34) wins; none matching is the default (changed 2026-11-27, see the changelog; before that Wild Encounter took an optional plan of a default milestone and rules naming milestones). | Must | Unit tests `PlanPick_FirstMatchingRuleWins`, `PlanPick_NoRuleMatches_IsTheDefault`, `PlanPick_Weekday_MatchesOnlyItsDay`, `PlanPick_EmptyLists_MatchAny`, `PlanPick_TimeBoundaries`, `PlanEntry_NeedsTheClock`, `IdleHgssBot_PlanTakesTheHuntPlan`; QA: `hgss-plan-refusals`. |
+| FR-31a | A Wait step presses nothing and reads the clock every 60 s; it ends when the clock picks another step, or on cancellation. When the weekday and hour it reads have not changed for 65 minutes it parks in Waiting with `[Plan] <plan>: the in-game clock stayed at <weekday> <hour>h for 65 minutes; waiting for Resume.`, and Resume re-enters the plan. Added 2026-11-27. | Must | Unit tests `Wait_PressesNothing_EndsWhenTheClockPicksAStep`, `Wait_ClockStale_ParksWithTheSentence_ResumeReentersThePlan`, `Wait_Cancelled_Ends`; QA: `hgss-plan-wait` (R8c2, pending merge). |
+| FR-31b | Plan ends: never, so the plan runs until cancelled and with nothing left to pick waits as a Wait does; or once every shiny-hunt step (a Wild Encounter step whose target is not NoTarget) is done in this run. Added 2026-11-27. | Must | Unit tests `EndWhenComplete_EveryShinyStepDone_EndsThePlan`, `EndWhenComplete_False_NothingOpen_Waits`; QA: `hgss-plan-ending` (R8c2, pending merge). |
+| FR-31c | Start reads the plan by name (`No hunt plan named <name>.`) and refuses each Wild Encounter step as a Wild Encounter Start would, with `Rule <n>: ` or `The default: ` in front of the reason; a Wait step is not checked. Added 2026-11-27. | Must | Unit test `StartPlan_StepRefusal_NamesTheStepAndKeepsItsType`; QA: `hgss-plan-refusals`. |
 | FR-32 | The clock is the game's live one (`0x021D1058`: weekday, hour), read in the bot's snapshot, not the save block's copy, which is up to a minute and a battle behind. | Must | Unit test with `FakeMemoryClient`; QA. |
-| FR-33 | The plan is consulted at each decision between encounters. When the milestone it names is not the one being hunted, the bot walks to that milestone's anchor with the navigator and hunts there. | Must | QA. |
+| FR-33 | The plan is asked at each decision of the step's hunt, on the clock that decision read, before a heal trip or a Pickup visit. When it picks another step, the hunt ends there with nothing pressed, and the next step starts at its Init, which walks to its own anchor, or hunts where the bot stands with none. A switch never happens in a battle or a heal trip, and Pickup items are not collected at a switch (changed 2026-11-27, see the changelog; before that when the milestone the plan named was not the one hunted, the same hunt walked to its anchor). | Must | Unit tests `Switch_FleeToTrainWithPickup_AtTheBoundary`, `SameStep_AtTheDecision_DoesNotEnd`, `ClockCrossesTheBoundaryMidBattle_HuntIsNotEnded`, `Decide_StepEndsHere_CompletesWithNoPressOrPickupVisit`, `Decide_StepEndsHere_HurtLead_EndsBeforeTheHealTrip`; QA: `hgss-plan-night`, `hgss-plan-pickup-switch` (R8c2, pending merge). |
 | FR-33a | A move happens at the first decision after the rule stops matching. There is no minimum stay. | Must | Unit test. |
-| FR-34 | A rule whose milestone is complete for the game file is skipped. A planned hunt ends only when every milestone the plan names is complete. When no rule matches the clock and the default is complete, the first rule in order whose milestone is not complete stands in for the default, whatever its times and weekdays (changed 2026-11-25, see the changelog; before that the hunt ended when the default was complete and no rule matched). | Must | Unit test. |
-| FR-34a | When a milestone a hunt is working on becomes complete for the game file, a message goes to the shiny log channel in Discord with the mention, naming the milestone and the game file; a planned hunt names the plan and what it hunts next, or that the plan is finished. A hunt with no plan sends it for its one milestone. Once per milestone per hunt. | Must | Unit test. |
-| FR-35 | Start refuses a plan with a milestone that has no anchor, or whose anchor the pathfinder cannot reach with the party and badges as they are, naming the milestone. | Must | Unit test. |
-| FR-36 | An encounter on the walk is logged under the milestone being left until the bot stands on the new anchor. | Must | Unit test. |
-| FR-37 | The dashboard's form shows the rules, the in-game clock, and a 24-hour preview for a chosen weekday (the mock of 2026-11-24, kept as [hunt-plan-editor-mock.html](hunt-plan-editor-mock.html)). | Should | QA. |
-| FR-37a | A plan is defined once and saved by name, per game: its default milestone and its rules. Wild Encounter picks a saved plan by name; the same plan can be used on any game file of that game. Plans are stored in Mongo, in their own collection. | Must | Unit test: a plan saved once is started on two game files. |
-| FR-37b | The dashboard lists the saved plans and can add, edit, rename and delete one. A plan in use by a running hunt cannot be deleted. Editing a plan does not change a hunt already running on it; the hunt reads the plan at Start. | Must | Unit test; QA. |
+| FR-34 | A step whose hunt ends on its own (its milestone complete, its training target reached) is done for the rest of the run, even if its amounts are raised meanwhile, and is skipped until the next Start. A step switched away from is not done; returning to it starts a new hunt with its own target level (changed 2026-11-25, see the changelog; before that the hunt ended when the default was complete and no rule matched) (changed 2026-11-27, see the changelog; before that a rule whose milestone was complete for the file was skipped, a complete default gave way to the first incomplete rule, and the hunt ended only when every milestone the plan named was complete). | Must | Unit tests `CompleteStep_IsSkipped`, `TrainingStep_ReturnedTo_KeepsItsTargetLevel`, `PlanPick_DoneRuleSkipped_ThenDefault_ThenNull`; QA: `hgss-plan-ending` (R8c2, pending merge). |
+| FR-34a | When the milestone a hunt is working on becomes complete for the game file, a message goes to the shiny log channel in Discord with the mention: `<milestone> is complete on <game file>.`, the same in a plan's step. Once per milestone per hunt; a milestone already complete when the hunt starts sends nothing (changed 2026-11-27, see the changelog; before that a planned hunt named the plan and what it hunted next, or that the plan was finished). | Must | Unit test `TellIfComplete_TwoStepsOneMilestone_TellsOnce`; QA: `hgss-milestone-complete`. |
+| FR-35 | Start does not check that a step's anchor can be reached: a step whose anchor has no path parks in Waiting at the walk with `<milestone>: no path to the anchor (<x>, <y>).` (changed 2026-11-27, see the changelog; before that Start refused a plan with a milestone that had no anchor, or whose anchor the pathfinder could not reach, naming the milestone). | Must | Unit test `AnchorWalkGoesOn_NoPath_ParksInsteadOfComplete`; QA: `hgss-milestone-refusals`. |
+| FR-36 | An encounter on a step's walk to its anchor is logged under that step's milestone: the step is applied before its Init walks (changed 2026-11-27, see the changelog; before that an encounter on the walk was logged under the milestone being left until the bot stood on the new anchor). | Must | QA: `hgss-plan-night` (R8c2, pending merge). |
+| FR-37 | The Plan Editor is its own Admin tab: the game, the plan or "New plan...", its name; rules with When and Days chips, Up, Down and Remove; each step's Do (Wild Encounter or Wait) with Bot Control's own fields, from `GET plans/steps`; the default; Plan ends; Save, Rename, and Delete with a confirmation. Every refusal shows the server's sentence; a new plan under a saved name reads `already a plan` and cannot be saved (changed 2026-11-27, see the changelog; before that the plan's form was inside Wild Encounter, with the rules, the in-game clock and a 24-hour preview for a chosen weekday, as the mock of 2026-11-24, kept as [hunt-plan-editor-mock.html](hunt-plan-editor-mock.html)). | Should | Dashboard tests in `PlanEditorTab.test.ts` (`formOf`, `planBody`, `moveRule`, `toggled`, `editorMilestones`); QA: `hgss-plan-editor-tab`. |
+| FR-37a | A plan is saved by name per game, in its own collection, `Plans`: its rules, its default and Plan ends. The Plan action picks a saved plan by name, and one plan can be run on any game file of that game. `PUT plans` refuses a step that is not a step action, a parameter its action does not declare or whose condition does not hold, and a missing required one, each with its sentence; a step's milestone and party are checked at Start (FR-31c) (changed 2026-11-27, see the changelog; before that Wild Encounter picked a saved plan of a default milestone and rules, stored in `HuntPlans`). | Must | Unit tests `Plan_BsonRoundTrip`, `Plan_BsonRead_IgnoresAnArgumentFieldNoLongerDefined`, `PlanError_ValidPlan_IsNull`, `PlanError_StepNotYet_Refused`, `PlanChoices_AreTheSavedNamesSorted`; QA: `hgss-plan-editor-tab`, `hgss-plan-refusals`. |
+| FR-37b | The Plan Editor lists the game's saved plans and can add, edit, rename and delete one. While a hunt uses the plan, running or parked in Waiting, its save, rename and delete are refused with `<plan> is in use by the hunt on bot #<n>; cancel that hunt first.`; a running hunt keeps the plan it read at Start (changed 2026-11-27, see the changelog; before that a plan in use by a running hunt could not be deleted, and the list and editor were under Wild Encounter). | Must | Unit tests `PlanInUse_RunningHunt_RefusedWithTheSentence`, `PlanInUse_ParkedHunt_Refused`, `RenamePlan_BlankName_Refused`; QA: `hgss-plan-editor-tab`, `hgss-plan-night` (R8c2, pending merge). |
 | FR-37c | A card does not follow a plan by itself: with no hunt running, the in-game clock is not known. A plan reaches a card only through the hunt, by FR-39b. | Must | By design; no test. |
 
 FR-36, note of 2026-11-26: at the first decision after Start nothing is being left, so the clock's pick becomes the milestone before the first walk (C3b, #550; `HuntPlanRun.cs:62-64`, pinned by `Step_FirstDecision_PickBecomesTheMilestone_ThenWalks`). An encounter on that first walk is logged under the pick. Every later walk logs under the milestone being left, as the row says.
@@ -179,36 +195,36 @@ The spike's workaround (one more step in the last walked direction when the walk
 |---|---|---|---|
 | FR-38d | A card is one of two kinds. A **fixed card** shows one milestone, as every card does today: its own window, any number of them for one game file, unchanged by this feature. A **follows-the-hunt card** belongs to one game file and shows whatever milestone the bot on that file is hunting. A game file has at most one follows-the-hunt card and can have fixed cards beside it. | Must | QA: one game file with a fixed card and a follows-the-hunt card is two windows. |
 | FR-39 | A follows-the-hunt card is the game file's one window: its name, title, place and size do not change when the milestone does. The new milestone is shown in it. | Must | QA: the window handle and bounds before and after a move. |
-| FR-39b | A follows-the-hunt card changes when a hunt starts on its game file at another milestone and when a plan moves the hunt. With no hunt running it keeps showing the last milestone hunted, which is stored with the subscription. | Must | Unit test; QA. |
+| FR-39b | A follows-the-hunt card changes when a hunt starts on its game file at another milestone and when a running plan starts a Wild Encounter step. With no hunt running it keeps showing the last milestone hunted, which is stored with the subscription (changed 2026-11-27, see the changelog; before that it changed when a plan moved its one hunt). | Must | Unit test; QA: `hgss-plan-night` (R8c2, pending merge). |
 | FR-39c | Existing subscriptions are fixed cards and are read as stored (FR-42). The operator adds a follows-the-hunt card from the dashboard configuration, where a fixed card is added today. | Must | QA: `hgss-existing-unchanged`. |
 | FR-39a | A phase window is painted while another window covers it, so a capture of it never shows a blank or stale card. | Must | QA: a swap with the window fully covered, captured, shows the new milestone. |
 | FR-40 | A change of milestone replaces the follows-the-hunt card's milestone in the dashboard configuration in one push; a game file with no such card gets no push and no window. | Must | Unit test. |
-| FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows dim and its shares change at 4:00, 10:00 and 20:00 in-game without a move. (Changed 2026-11-25, see the changelog: a row is left out rather than dimmed.) | Must | QA. |
+| FR-41 | The window re-reads the in-game time of day from the bot's state, so its rows, its last row and its shares change at the first encounter after 4:00, 10:00 and 20:00 in-game without a move. Its header shows the encounters, the phase count, the encounters per hour and not live; there is no footer. (Changed 2026-11-25, see the changelog: a row is left out rather than dimmed.) (changed 2026-11-27, see the changelog; before that the phase count and the rate were in a footer). | Must | Dashboard test "draws the phase count, the rate and not live in the header"; QA: `hgss-rates-clock`. |
 
 ### Existing milestones and the backfill
 
 | ID | Requirement | Priority | Verified by |
 |---|---|---|---|
 | FR-42 | A redeploy changes no stored data. Every existing phase is a custom milestone and behaves exactly as it does today: its species, amounts, form rows, counts, windows and targets, on both games. Nothing is migrated at start-up. | Must | Unit test: production's 20 phases, loaded as stored, give the same rows and targets before and after. QA: every existing scenario unchanged. |
-| FR-42a | The existing phase documents are read as stored; their schema does not change. The phase editor keeps editing them. An existing milestone is shown with today's phase card, unchanged, with a note where a generated milestone shows a share. | Must | QA: `hgss-existing-unchanged`. |
-| FR-43 | Backfill is an operator action on one existing milestone and game file: link it to a generated milestone. The mapping in the research doc ("The existing names") is offered as the suggestion and can be overridden. The link is stored; the phase's document and the encounter log are not rewritten. | Must | Unit test; QA: `hgss-backfill`. |
-| FR-44 | After a link, the generated milestone's counts for that game file include the encounters and catches logged under the linked name, and the linked name no longer appears in the picker. Removing the link restores it. | Must | Unit test with production's names. |
-| FR-44a | After a link, new encounters and catches on that game file are logged under the generated milestone's id. The linked name is only ever read. | Must | Unit test. |
-| FR-45 | The link offers to copy the phase's amounts into the game file's goal. Nothing is copied without the operator choosing it, and an entry the goal already has is shown side by side, not overwritten. | Must | Unit test. |
-| FR-46 | Hunts and the dashboard accept custom and generated milestones alike, so a game file can be part backfilled. A custom milestone has no slots and no expected shares, and its amounts stay its own, not a goal's. It has no anchor unless the operator sets one from where the bot stands (FR-22); without one it can be hunted from where the bot stands and cannot be a plan's destination (FR-35). | Must | QA. |
+| FR-42a | The existing phase documents are read as stored; their schema gains FR-7's three optional fields, which a document without them reads as none. The Milestone Editor keeps editing them. An existing milestone's card has no share, pill or last row until it is attached to a location (FR-7c) (changed 2026-11-27, see the changelog; before that the schema did not change, and a note was to show where a generated milestone showed a share). | Must | Unit test `StoredMilestones_WithoutNewFields_ReadAsToday`; QA: `hgss-existing-milestones`. |
+| FR-43 | Backfill is Attach to a location in the Milestone Editor: one action on one saved milestone, for every game file. The mapping in the research doc ("The existing names") is the preselected suggestion and can be overridden. Only the milestone's location is written; its rows and the encounter log are not rewritten (changed 2026-11-27, see the changelog; before that it was a link per existing milestone and game file to a generated milestone, stored on the file). | Must | Unit tests `WithLocation_AttachThenDetach_ChangesNoRowOrAmount`, `Suggestion_ProductionNames_MatchTheResearchTable`; QA: `hgss-existing-milestones`. |
+| FR-44 | After an attach the milestone keeps its name, so its counts are the encounters and catches logged under it, as before; it gains its location's anchor, shares, pills and Start checks, and Detach removes them (changed 2026-11-27, see the changelog; before that after a link the generated milestone's counts included those logged under the linked name, and the linked name left the picker). | Must | QA: `hgss-existing-milestones`. |
+| FR-44a | New encounters and catches are logged under the saved milestone's name, attached or not (changed 2026-11-27, see the changelog; before that after a link they were logged under the generated milestone's id). | Must | By design. |
+| FR-45 | Nothing is copied: a milestone's amounts are its own (changed 2026-11-27, see the changelog; before that the link offered to copy the phase's amounts into the file's goal). | Must | By design. |
+| FR-46 | Hunts and the dashboard treat every saved milestone alike. One with no location has no slots and no expected shares, and no anchor unless the operator sets one from where the bot stands (FR-22); without one it is hunted from where the bot stands, and it can be a plan's step (changed 2026-11-27, see the changelog; before that a custom milestone's amounts were its own, not a goal's, and without an anchor it could not be a plan's destination). | Must | QA: `hgss-existing-milestones`. |
 
 ## Non-functional
 
 - NFR-1: reading the clock, the Repel counter and the lead adds no read to the flee-only hunt beyond one block; encounters per hour do not fall on either game (the Route 33 speed check; `rs-wild-speed` at 265 an hour or more).
 - NFR-2: the rate computation is pure and has no emulator in it.
-- NFR-3: no new package, no new store, no ApiHawk change. New data files and two Mongo collections (`GameFiles`, one document per game file; the saved plans) are listed in the PR.
+- NFR-3: no new package, no new store, no ApiHawk change. New data files and two Mongo collections (`GameFiles`, one document per game file, now holding only its replacement anchors; `Plans`, the saved plans) are listed in the PR (changed 2026-11-27, see the changelog; before that the second collection was `HuntPlans`).
 - NFR-4: a plan's move is as safe as a heal trip: every wait bounded, a stop naming what it saw.
 
 ## Design notes
 
-- **One model, two features.** The plan picks a milestone; the milestone carries the anchor the navigator walks to and the slots the dashboard and the target ask about. Without generated anchors a plan would need a tile typed per rule, which is how the spike's first run ended up hunting a path.
-- **Where it sits.** The milestone data loads beside the map data. The goal and the rate computation are plain classes. `PhaseTarget` and the count queries ask the goal instead of a phase's list. The plan is consulted in `OrchestratorEvent`'s decision, where the heal trip is decided, and moves with the navigator's existing walk to a start tile.
-- **Game profile.** The milestone file, the rate rule and the reads are the profile's, one answer per game. Goals, rows, the picker, archive, anchors and the old-name mapping are the same code for both. Plans are offered only where the profile has a clock.
+- **One model, two features.** A milestone is a saved one; its location carries the anchor the navigator walks to and the slots the card's shares ask about, and its own rows give the target. A plan picks a whole hunt by the in-game clock, and each Wild Encounter step walks to its own milestone's anchor (changed 2026-11-27, see the changelog; before that the plan picked a milestone, and the goal gave its rows).
+- **Where it sits.** The location data loads beside the map data. The rows and the rate computation are plain classes. `PhaseTarget` and completion ask the milestone's rows that count on the file (`MilestoneRows.Counted`). A plan runs in `PlanEvent`, a parent event over one shared state, asked at `OrchestratorEvent`'s decision through its `endsHere` hook (changed 2026-11-27, see the changelog; before that the goal answered the target, and the plan moved the hunt inside `OrchestratorEvent` with the navigator's walk to a start tile).
+- **Game profile.** The location file, the rate rule and the reads are the profile's, one answer per game. Rows, the launch list, archive, anchors and the old-name suggestion are the same code for both. Plans are offered only where the profile has a clock (`HasHuntPlans`) (changed 2026-11-27, see the changelog; before that goals and the picker were the shared code).
 - **Save sections.** The Repel counter is reached through the save's section table (research doc), which also gives the party and the clock. One read of the table per launch.
 
 ## QA
@@ -217,24 +233,28 @@ New scenarios, on a copy of `hgss.qa-route32` unless said; the emulator's DS clo
 
 | Scenario | Rows it covers | Proves |
 |---|---|---|
-| `hgss-goal-rows` | `hgss-goal-rows` | No emulator: three HeartGold files with no save, one preset each, seen on one milestone's fixed cards (FR-8, FR-10, FR-12); the Goals tab's preset dropdown (#582), the goal editor's refusals, a hidden row, Ruins of Alph's 28 Unown rows, named `Unown (A)` to `Unown (?)` (#605), the not-found sentence and the species lists. |
-| `hgss-existing-backfill` | `hgss-existing-unchanged`, `hgss-backfill` | Production's phases, imported into the local QA `PhaseInfos` by id and removed after, behave as before (FR-42, FR-42a, FR-39c): the picker, a stored card and a hunt where the bot stands. Then "1-4 Route 30" linked to Route 30 · grass on one file (FR-43 to FR-46, FR-44a): the counts with and without the link, the link's refusals, the copy of amounts, and a second file's picker at the title screen. |
-| `hgss-milestone-refusals` | `hgss-plan-refused`, `hgss-milestone-bad-anchor` | FR-15, FR-15a, FR-17, FR-18, FR-22, FR-24, FR-35, the HGSS no-path case, the picker items, the all-complete ending, and the headbutt picker read. |
-| `rs-milestone-anchor` | `rs-milestone-anchor`, `rs-milestone-rows` | `anchor`: no Hunt Plan field and the RS plan refusal; the Sapphire picker; Route 101 · grass's card at 45, 45 and 10 before Run; the walk to the generated anchor (4, 2) and a spin there; a Version exclusives goal changes the rows' wanted. `no-route`: Route 110 · grass is not reachable on foot from Route 101: the RS navigator's no-route line and Waiting. |
-| `rs-rates-repel` | `rs-rates-repel` | FR-26a and FR-29 on RS: with the lead at Lv 4 and the Repel counter at 30, the endpoint gives all three Route 101 rows "blocked by Repel" and live, and the card draws none of them; a Run hunt closes "REPEL's effect wore off" with one A and carries on; the card back at 45, 45 and 10. |
-| `hgss-milestone-anchor` | `hgss-milestone-anchor` | FR-23 and FR-38: Route 30 · grass started from Route 32 walks to its anchor through the side door, both ways; a battle on the walk and a heal trip back to the anchor. |
-| `hgss-rates-repel` | `hgss-rates-repel` | FR-26, FR-27, FR-29: `run`, the Repel counter through a Run hunt and its close, the rows it blocks gone from the card and the others with their share under the name; `spin`, the counter unchanged across 90 s of turning. |
-| `hgss-rates-clock` | `hgss-rates-clock` | FR-27, FR-28, FR-30, FR-32, FR-41: the card's rows change at the first decision past 20:00, 4:00 or 10:00 with no move: a species out of its time leaves the card, one in it shows its share under its name; `20` also checks the not-live card, the night rod card and a restart. |
-| `hgss-plan-editor` | new | FR-37, FR-37a, FR-37b: the Hunt Plan field's create, replace, preview, rename, delete and their refusals, a plan naming a milestone with no anchor refused at Start, the plan on a SoulSilver bot. |
-| `hgss-plan-ending` | new | FR-34 as rewritten and FR-34a's "none for a milestone complete at Start": `default-complete`, the first incomplete rule stands in for a complete default; `all-complete`, Complete at the first decision with no walk and no message. |
-| `hgss-plan-repel-walk` | new | FR-29 on a plan's walk (#562): "Repel's effect wore off..." during the walk is closed with one A and the walk carries on to Route 30's anchor with no park. |
-| `hgss-plan-night` | `hgss-plan-night` | From Route 32 at 19:48 in-game (not 19:58), Route 32 hunted from its anchor set on the save's tile (the walk south to the generated one meets a story trigger): FR-33, FR-36, FR-38 on a plan walk, FR-38d, FR-39, FR-39a, FR-39b, FR-40 and FR-34a's next milestone, then every Route 30 row a night species at Lv 2 to 4 and none a day species (#610); `start-on-rule`, at 21:00 the first pick is Route 30 before any walk. |
-| `hgss-plan-morning-back` | `hgss-plan-morning-back` | From 09:42 (not 09:52), with Route 32's anchor set on the save's tile first: Route 30 in the morning, back to Route 32 at 10:00; `complete-on-return`, Route 32 complete when the walk arrives, the message and the walk back (FR-34, FR-34a). |
-| `hgss-plan-weekday` | `hgss-plan-weekday` | Started on a Thursday before midnight: before it the Friday rule does not match, after it it does; `hg` on HeartGold, started 23:50, hunting Route 32 from its anchor set on the save's tile with no Thursday walk; `ss` on SoulSilver with the two milestones swapped, started 23:45, whose Thursday walk checks the trainer stop (#604): Youngster Joey's challenge, one message, Waiting, Resume during the speech parks again with no second message, then the scenario wins the battle and Resume walks on to Route 30's anchor. `ss` is cancelled at midnight's walk line: the Friday walk passes Lyra's one-time gatehouse scene. |
-| `hgss-milestone-complete` | new | Route 32 hunted from its anchor set on the save's tile: FR-34a with no plan and for a plan's last milestone, FR-13's wanted shiny parking the hunt, the shiny alert, a plan in use while its hunt is parked in Waiting. |
-| `hgss-headbutt-anchor` | new | FR-21 in a hunt, started from Route 32: the trainer ID picks Violet City's tree 4, stood on from (497, 278) facing Down; the bot walks there and its headbutts give battles; a headbutt card with no share. Moved from Route 32's own stand, whose walk meets a one-time story NPC (#606). |
+| `hgss-milestone-editor` | `hgss-goal-rows` | No emulator but two title-screen launches: New from game data on Route 30 · grass (the prefilled name, the version marks, the When markers, the version filter), the presets with a typed amount kept, Save and a taken name, the ticks and archive in both launch lists, the card (FR-7 to FR-7b, FR-8, FR-15 to FR-17). |
+| `rs-milestone-seed` | new | No emulator: no Female forms on RS, Route 102 for both versions and each, Version exclusives, no When marker, Save (FR-7a, FR-7b, FR-8). |
+| `hgss-existing-milestones` | `hgss-existing-unchanged`, `hgss-backfill` | Production's phases read as stored (FR-42, FR-42a), Attach and Detach (FR-7c, FR-43, FR-44), a hunt with no location, then from a set anchor (FR-22, FR-46), the seeded Starters. |
+| `hgss-milestone-refusals` | `hgss-plan-refused`, `hgss-milestone-bad-anchor` | FR-7d's not ticked, FR-15, FR-15a, the wrong type, FR-24, FR-35's park at the walk, the all-complete ending, the egg and static forms' lists. |
+| `rs-milestone-anchor` | `rs-milestone-anchor`, `rs-milestone-rows` | `anchor`: no Plan action on RS, the launch list, Route 101's shares 45, 45 and 10 with no pill, the walk to the generated anchor (4, 2) and a spin; `no-route`: Route 110's no-route line and Waiting. |
+| `rs-rates-repel` | `rs-rates-repel` | FR-26a and FR-29 on RS, on a saved milestone with a location. |
+| `hgss-milestone-anchor` | `hgss-milestone-anchor` | FR-23 and FR-38 on a saved milestone at Route 30 · grass. |
+| `hgss-rates-repel` | `hgss-rates-repel` | FR-26, FR-27, FR-29: `run`, `spin`. |
+| `hgss-rates-clock` | `hgss-rates-clock` | FR-27, FR-28, FR-30, FR-32, FR-41: `20`, `4`, `10`: the rows, the last row and the not-live header across a boundary; a row only the other version has never drawn. |
+| `hgss-plan-editor-tab` | `hgss-plan-editor` | FR-37, FR-37a, FR-37b: the Plan Editor, with no emulator. |
+| `hgss-plan-refusals` | new | FR-31, FR-31c and FR-7d in a step, and FR-37a's refused saves. |
+| `hgss-plan-ending` | `hgss-plan-ending` | (R8c2, pending merge) FR-31b: `end`, `runs-on`. |
+| `hgss-anchor-repel-walk` | `hgss-plan-repel-walk` | FR-29 on the walk to an anchor, from a plain Wild Encounter. |
+| `hgss-plan-night` | `hgss-plan-night` | (R8c2, pending merge) FR-33, FR-36, FR-38d, FR-39, FR-39b: `night`, `start-on-rule`. |
+| `hgss-plan-morning-back` | `hgss-plan-morning-back` | (R8c2, pending merge) FR-33: `back`. |
+| `hgss-plan-weekday` | `hgss-plan-weekday` | (R8c2, pending merge) FR-31's weekday: `hg`, `ss`. |
+| `hgss-plan-wait` | new | (R8c2, pending merge) FR-31a. |
+| `hgss-plan-pickup-switch` | new | (R8c2, pending merge) FR-33's switch with Pickup. |
+| `hgss-milestone-complete` | `hgss-milestone-complete` | FR-13, FR-34a: `no-plan`; `plan` (R8c2, pending merge). |
+| `hgss-headbutt-anchor` | `hgss-headbutt-anchor` | FR-21 in a hunt, on a saved milestone at Violet City · headbutt. |
 
-Each scenario's steps, asserts and data review are in the plan on #525.
+Each scenario's steps, asserts and data review are in the plan on #525; the reworked ones' in the plan on #621 (2026-11-27).
 
 Regression: every existing HGSS and RS scenario, since each starts a hunt at a phase.
 
@@ -266,24 +286,40 @@ Three slices, each useful alone, in this order.
 
 Q1 the scenarios; D1 the guide pages, the architecture doc, the close-out.
 
+2026-11-27: the rework's tasks, R1 to R9, are split in the [rework doc](milestone-builder-rework.md#task-split).
+
 ## As built
 
 Implemented on `feature/hunt-plans-milestones`, epic #508, 2026-11-25. The requirement rows above stand except where "What diverged" says otherwise; the changelog has each change as it was made. Decisions: [hunt plans and milestones](../decisions/hunt-plans-and-milestones.md).
 
+### After the rework (2026-11-27)
+
+- `PhaseInfo` gains `Location`, `GameFiles` and `Archived` (`Service/PhaseInfoService.cs:316-320`), read as none on a document without them; attach and detach go through `SetLocationAsync` (`:124-140`); the seed, the times, the version mark and the rows hidden now are `PhaseInfoService.Seed`, `Times`, `OnlyVersion`, `HiddenNow` and `HiddenUntil` (`:209-264`).
+- `GameFile` (`Milestones/Goal.cs:9-27`) holds only `Anchors`, keyed by the saved name; a pre-rework document's other fields are ignored on load.
+- The rows that count on a file, `MilestoneRows.Counted` (`Milestones/MilestoneRows.cs:12-19`), feed `PhaseTarget` (`BotEvents/Target/PhaseTarget.cs:25`), completion (`OrchestratorEvent.cs:327-338`) and the launch list (`MilestonePicker.List`, `MilestonePicker.cs:18-26`).
+- A Wild Encounter Start's refusals and anchor are `BotService.BuildWildLegAsync` (`Service/BotService.cs:319-359`), shared with each plan step, with `OffFileRefusal` (`:1087-1091`).
+- The routes: `phaseinfo`'s one shape with `rowNames` and `location` (`Controllers/PhaseMetadataController.cs:60-132`), the locations, seed, attach and detach (`:145-216`), the plans (`:226-287`) and `PlanError` (`:298-371`).
+- `Plan` and `PlanStep` (`Milestones/HuntPlan.cs:8-37`) in `Plans` (`MongoHuntPlanDao.cs:16`); the Plan entry (`Games/EventRegistry.cs:83-86`) and `PlanChoices` (`:96-97`); `BotService.StartPlanAsync` (`BotService.cs:363-384`); `PlanEvent` (`BotEvents/PlanEvent.cs`) and the orchestrator's `endsHere` hook (`OrchestratorEvent.cs:464-470`).
+- The milestone message comes only from `OrchestratorEvent.UpdateMilestoneState` (`:312-325`).
+- The dashboard: the Milestone Editor (`PhaseEditorTab.tsx`), the Plan Editor tab (`PlanEditorTab.tsx`; `AdminCard.tsx:15-21`), the launch list (`ActionParamFields.tsx`, `launchMilestones`), the counts card (`PhaseCard.tsx`: the row names `:82`, the pills `:117`, `:260`, the last row `:294-299`, the header `:201`).
+- One new test seam, `PlanEvent`'s internal constructor (#628). No package, project or ApiHawk change; `Plans` replaces `HuntPlans`, and `PhaseInfos` gains three fields.
+
+### As built on 2026-11-25 and 2026-11-26
+
 - The data files `Data/HGSS/milestones.json.gz` and `Data/RS/milestones.json.gz`, written by the setup commands `--generatemilestoneshgss` and `--generatemilestoners` (`Tools/SetupCommands.cs:66-83`) and loaded as the profile's `Milestones` (`HgssProfile.cs:25`).
-- `GameFile` (`Milestones/Goal.cs:12-31`), one document per game file in `GameFiles`: the goal's entries, its preset, hidden rows, archive, order labels, assignments, anchors and links. `HuntPlan` (`Milestones/HuntPlan.cs:10-12`), one document per game and plan name in `HuntPlans`.
-- `MilestoneRows.Build` (`Milestones/MilestoneRows.cs:18`) for a milestone's rows on a file, `MilestonePicker.List` (`Milestones/MilestonePicker.cs:18`) for the picker, and `PhaseTarget` asking the goal.
+- `GameFile` (`Milestones/Goal.cs:12-31`), one document per game file in `GameFiles`: the goal's entries, its preset, hidden rows, archive, order labels, assignments, anchors and links. `HuntPlan` (`Milestones/HuntPlan.cs:10-12`), one document per game and plan name in `HuntPlans`. (replaced 2026-11-27)
+- `MilestoneRows.Build` (`Milestones/MilestoneRows.cs:18`) for a milestone's rows on a file, `MilestonePicker.List` (`Milestones/MilestonePicker.cs:18`) for the picker, and `PhaseTarget` asking the goal. (replaced 2026-11-27)
 - Anchors: generated by `HgssAnchorFinder` and `RsMilestoneProcessor.FindAnchor` (`Scripts/Milestones/RsMilestoneProcessor.cs:152`) into the data files; a file's replacement or headbutt tree through `GameFile.AnchorFor` (`Goal.cs:39`) and `HeadbuttTrees.AnchorFor` (`HeadbuttTrees.cs:32`). FR-24 is checked at Start (`BotService.AnchorTileStop`, `BotService.cs:1076-1077`).
 - `profile.Rates` (`GameProfile.cs:65-67`) with `HgssRates.Compute` and `RsRates.Compute`. The rate inputs are read at each decision, beside the party read (`OrchestratorEvent.cs:487-496`; HGSS through `HgssFieldSystemStateReader.ReadClockAndRepelAsync`, `:103`).
 - The Repel message is closed on an HGSS Run hunt (`RunEncounterEvent.cs:89-102`), on the HGSS navigator's walk (`NavigatorEvent.cs:492`, `:546`) and on a US RS Run hunt (`RunEncounterEvent.cs:107-121`).
-- `HuntPlanRun` (`Milestones/HuntPlanRun.cs`) in the decision, whose walk line names the tile it walks from (`:111`, #602), the FR-35 refusal at Start (`HuntPlanRun.ReachRefusalAsync`, `:118-146`), and the milestone message (`OrchestratorEvent.cs:332-339` with no plan, `HuntPlanRun.cs:43-55` with one, both through `ShinyAlertService.NotifyStopAsync`).
+- `HuntPlanRun` (`Milestones/HuntPlanRun.cs`) in the decision, whose walk line names the tile it walks from (`:111`, #602), the FR-35 refusal at Start (`HuntPlanRun.ReachRefusalAsync`, `:118-146`), and the milestone message (`OrchestratorEvent.cs:332-339` with no plan, `HuntPlanRun.cs:43-55` with one, both through `ShinyAlertService.NotifyStopAsync`). (replaced 2026-11-27)
 - Fixed and follows-the-hunt cards; a phase window paints while covered (`windowManager.ts:148`).
-- The dashboard: the Goals tab (`AdminCard.tsx:19`, `GoalEditorTab.tsx`), `MilestoneFiles.tsx`, `MilestoneRowsPanel.tsx`, the plan editor `HuntPlanEditor.tsx` under the Wild Encounter form, and on the card each row's share under its name, with a row at a zero share not drawn (`PhaseCard.tsx:76`, `:245-246`; #603).
-- An Unown letter row is named `Unown (A)` to `Unown (?)` on the counts card (`PokemonMetadataService.RowName`, `:123-138`, used at `PhaseMetadataController.cs:278`; #605); the Goals tab and stored phases keep plain names.
-- The plan list re-reads when its select gets focus and when Edit plans opens (`HuntPlanEditor.tsx:126`), and the Admin card's heading shows a generated milestone's name, not its id (`EmulatorCard.tsx`, `cardHeading`; #606).
+- The dashboard: the Goals tab (`AdminCard.tsx:19`, `GoalEditorTab.tsx`), `MilestoneFiles.tsx`, `MilestoneRowsPanel.tsx`, the plan editor `HuntPlanEditor.tsx` under the Wild Encounter form, and on the card each row's share under its name, with a row at a zero share not drawn (`PhaseCard.tsx:76`, `:245-246`; #603). (replaced 2026-11-27)
+- An Unown letter row is named `Unown (A)` to `Unown (?)` on the counts card (`PokemonMetadataService.RowName`, `:123-138`, used at `PhaseMetadataController.cs:278`; #605); the Goals tab and stored phases keep plain names. (replaced 2026-11-27)
+- The plan list re-reads when its select gets focus and when Edit plans opens (`HuntPlanEditor.tsx:126`), and the Admin card's heading shows a generated milestone's name, not its id (`EmulatorCard.tsx`, `cardHeading`; #606). (replaced 2026-11-27)
 - A trainer's challenge during an HGSS navigator walk stops the walk (#604, #608): script 3739 is recognised on the walk (`NavigatorEvent.cs:284`), nothing is pressed, one message is sent per stop, Waiting goes over the leg with `StoppedForTrainer`, and Resume plans the leg again from where the player stands (`NavigatorEvent.cs:585-603`). A second unbeaten trainer is a new stop with its own message. The message names the map by its internal name (`R30`).
 - Two test seams: on the game-file store (A7, #574) and on the navigator's Discord send (`NavigatorEvent.cs:97-98`, #608); and the side door's step (C1, `PathfindingService.ExitDirection`, `PathfindingService.cs:526`).
-- No package, no project, no ApiHawk change; two new Mongo collections, `GameFiles` and `HuntPlans`.
+- No package, no project, no ApiHawk change; two new Mongo collections, `GameFiles` and `HuntPlans`. (replaced 2026-11-27)
 
 ## What diverged
 
@@ -307,6 +343,23 @@ Each item is recorded in the changelog on its date; this list does not restate t
 16. FR-44: the linked name is refused at Start on every hunt type (A4 and A7, 2026-11-25).
 17. Design notes, "the reads are the profile's": as built, the rate-input read and both Repel closes are chosen by the address table's type (`state.Bot.Addresses is HgssPointerService` / `is RsPointerService`, `OrchestratorEvent.cs:487`, `:492`; `RunEncounterEvent.cs:59`, `:107`), not through a profile part.
 18. Not built: shares on a headbutt card, the clock chip, the "do nothing until the rule's time" choice, the Route 1 edge (#578).
+
+After the rework (2026-11-27). Items 10 to 13 and 16 describe the plan's run and the link that the rework removed.
+
+19. FR-35: the reach check at Start is dropped; an anchor with no path parks at the walk (binding answer 4 on #619; `OrchestratorEvent.cs:216-229`).
+20. FR-7d: only a Wild Encounter Start, and a plan's Wild Encounter steps, refuse an archived or unticked milestone, and only when the file's ROM version is known (`BotService.cs:334-338`).
+21. The wire names are kept: `NewEventArguments.HuntPlan` (`Service/BotDtos.cs:129`), the Plan action's parameter `HuntPlan` (`EventRegistry.cs:84`), `MongoHuntPlanDao` and `GameCapabilities.HasHuntPlans`.
+22. Default 6: plan step types are Wild Encounter and Wait. HGSS Togepi Egg, HGSS Primo Egg, HGSS Static Encounter and Chained Encounter are refused with one sentence and no per-type reason (`PhaseMetadataController.cs:329-332`). Primo waits on the owner's open question about saving; the research task #614 Part 1 is reduced to one reading taken at QA.
+23. FR-8: "New from game data" starts at Living dex and both versions, on the first location of the list (#627; `PhaseEditorTab.tsx:314-316`).
+24. FR-27 and FR-28: `location` is null on a file whose ROM version is not known, so its card draws as one with no location (`PhaseMetadataController.cs:96-101`).
+25. FR-37b: a plan's save is refused while it is in use too, not only its rename and delete (`BotService.cs:434-449`).
+26. Default 4: a saved milestone has no name input, so it cannot be renamed; a new one's name is free and a taken name is refused in the form (`PhaseEditorTab.tsx:372-376`, `:533-543`).
+27. `GET species/{game}` lost its last caller with the Goals tab and is deleted (#632).
+28. The Plan Editor's game list offers RS, and its save is refused there: `RS has no in-game clock, so it has no plans.` (`PlanEditorTab.tsx:257`; `PhaseMetadataController.cs:300-303`).
+29. An edit made in the Plan Editor while a Save or Rename is in flight is lost: the response puts back the form as it was sent (`PlanEditorTab.tsx:225-232`).
+30. The location dropdown's groups are the backend's modalities, so grass and cave are one "Land" group (`PhaseEditorTab.tsx:43-48`, `:163-169`).
+31. FR-33: Pickup items are not collected at a switch; the hook comes before the Pickup visit, and the next decision of a Pickup step collects them (`OrchestratorEvent.cs:464-482`).
+32. FR-34: a step complete in a run is skipped until the next Start, even if its amounts are raised meanwhile (`PlanEvent.cs:37-38`, `:84-92`).
 
 ## Evidence
 
@@ -382,6 +435,52 @@ The pass ran on the feature tip, whose bot code is that of `bd96858`; the stamps
 - Whether a counts card with more rows than fit scrolls: the 28-row Unown card shows 15 rows at 640 by 520.
 - The headbutt walk with no Rock Smash (B1h-c, #572): `hgss-headbutt-anchor` moved to Violet City (#606), whose stand does not exercise it.
 
+**The rework (2026-11-27).** Nothing below was run for this close-out; the orchestrator runs the end-of-feature QA on the feature tip and fills in each placeholder.
+
+**The regression pass on the rework's tip.** [QA: pending]
+
+**The rework's scenarios.**
+
+| Scenario | Variant | Run folder | Result |
+|---|---|---|---|
+| `hgss-milestone-editor` | | [QA: pending] | [QA: pending] |
+| `rs-milestone-seed` | | [QA: pending] | [QA: pending] |
+| `hgss-existing-milestones` | | [QA: pending] | [QA: pending] |
+| `hgss-milestone-refusals` | | [QA: pending] | [QA: pending] |
+| `rs-milestone-anchor` | `anchor` | [QA: pending] | [QA: pending] |
+| `rs-milestone-anchor` | `no-route` | [QA: pending] | [QA: pending] |
+| `rs-rates-repel` | | [QA: pending] | [QA: pending] |
+| `hgss-milestone-anchor` | | [QA: pending] | [QA: pending] |
+| `hgss-rates-repel` | `run` | [QA: pending] | [QA: pending] |
+| `hgss-rates-repel` | `spin` | [QA: pending] | [QA: pending] |
+| `hgss-rates-clock` | `20` | [QA: pending] | [QA: pending] |
+| `hgss-rates-clock` | `4` | [QA: pending] | [QA: pending] |
+| `hgss-rates-clock` | `10` | [QA: pending] | [QA: pending] |
+| `hgss-plan-editor-tab` | | [QA: pending] | [QA: pending] |
+| `hgss-plan-refusals` | | [QA: pending] | [QA: pending] |
+| `hgss-anchor-repel-walk` | | [QA: pending] | [QA: pending] |
+| `hgss-headbutt-anchor` | | [QA: pending] | [QA: pending] |
+| `hgss-milestone-complete` | `no-plan` | [QA: pending] | [QA: pending] |
+| `hgss-milestone-complete` | `plan` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-night` | `night` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-night` | `start-on-rule` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-morning-back` | `back` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-weekday` | `hg` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-weekday` | `ss` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-ending` | `end` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-ending` | `runs-on` (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-wait` | (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+| `hgss-plan-pickup-switch` | (R8c2, pending merge) | [QA: pending] | [QA: pending] |
+
+**Not verified on the emulator, the rework.**
+
+- The counts card's pills and header in every theme: no reworked scenario changes the theme.
+- A form row's name on a card, `Unown (A)` (#634): no scenario asserts it.
+- A late seed response in the Milestone Editor, when the preset or the version is changed quickly.
+- A game file whose ROM version is not known: its card draws as one with no location, and Start skips the archived and unticked check (What diverged, 20 and 24).
+- An edit in the Plan Editor while a Save or Rename is in flight (What diverged, 29).
+- [QA: pending]
+
 ## Open questions
 
 Not the owner's to answer; it is the first step of the task's plan.
@@ -395,11 +494,14 @@ Answered on 2026-11-24 and written into "Decided": how a living dex amount is wo
 Open, the owner's:
 
 - A "do nothing until the rule's time" choice for a plan, in his words of 2026-11-25: "A do nothing is potentially correct." Not built; the first thing to add if hunting a rule's milestone outside its hours turns out wasteful.
+
+  **Answered 2026-11-27** (the rework, default 6): the Wait step, FR-31a.
 - #578: the HGSS graph has no on-foot edge between Route 1 and Viridian City.
 - The order of PR #506 (Pickup in Ruby and Sapphire, still open against `main`) and this feature.
 - Whether a one-time story scene on a walk should share the trainer stop: Route 32's "Wait up!" NPC, and Lyra's gatehouse scene on map 97 on the SoulSilver save. Today such a walk ends in the navigator's timeout and a Waiting with no message.
 
   **Answered 2026-11-26** (the owner: "Leave as is"): nothing is built; see the [decision](../decisions/hunt-plans-and-milestones.md).
+- 2026-11-27, from the [rework](milestone-builder-rework.md), in its words: "may a plan save the game by itself when it arrives at an egg step? Without it the egg hunt's reset undoes the wild step's levels and Pickup items." Until it is answered, the eggs are not plan steps.
 
 ## Not proved by the spikes
 
@@ -493,6 +595,18 @@ Ruby and Sapphire beyond one anchor (their tables and rule are from the decomp a
 - 2026-11-26, close-out (#526): "As built", the QA table and "Evidence" brought up to the tip `0c4d563` (#605 to #610): the Unown row names, the plan list re-read and the card heading, the trainer stop, `hgss-headbutt-anchor` at Violet City; the new-scenario and regression results of the final pass written in, `hgss-milestone-complete` still to run; the open story-scene question.
 - 2026-11-27, close-out (#526): `hgss-milestone-complete`'s two results on `0c4d563` written in; it and the cheat hotkey's in-front path leave the not-verified list.
 - 2026-11-26, the owner on a one-time story scene met on a walk: "Leave as is". It is not a stop of its own; the walk ends in the navigator's timeout and a Waiting with no message, as before. Recorded in the decisions doc.
+- **2026-11-27, the rework, from the owner.** After trying the feature by hand he rejected the generated milestones in the picker, the goal per game file, copy and link, and redefined plans; his words, the answers and the orchestrator's defaults are in the [rework doc](milestone-builder-rework.md), and the three decisions in the decisions doc. Rewritten in place, with their IDs kept: the Terms Milestone, Goal, Hunt plan and Custom milestone; G2; FR-7 to FR-10, FR-12, FR-13, FR-15 to FR-18, FR-22, FR-27, FR-28, FR-31, FR-33 to FR-37b, FR-39b, FR-41, FR-42a, FR-43 to FR-46, NFR-3 and the design notes. Added: FR-7a to FR-7d and FR-31a to FR-31c.
+- 2026-11-27, decided by the orchestrator at plan review and in review cycles of the rework's tasks:
+  - R1 (#613, PR #623): the per-file goal routes, the copy offer and the generated milestone's route are deleted; `phaseinfo` is one action with `live`, `timeOfDay`, `suggestedLocation` and `location`; the hidden rows name each name once.
+  - R2 (#615, PR #626): the linked refusal and the generated picker entries are deleted; a location that does not resolve on the file's version keeps every row; a headbutt tree is chosen only by wanted species its slots have.
+  - R4 (#616, PR #624): the re-read on an encounter push is kept, and writes the rows with their shares from one response.
+  - R3 (#617, PR #627): "New from game data" starts at Living dex; the egg and static forms keep listing only milestones with no location.
+  - R6a (#618, PR #625): `Plans` replaces `HuntPlans`, which is not read or migrated; a parameter holding only whitespace counts as unset.
+  - R6b (#619, PR #628): the reach check at Start is dropped (binding answer 4); the archived and unticked refusals are added at Start (review item 5); Bot Control shows `Running` during a Wait and `Plan <name>` before the first pick.
+  - R7 (#620, PR #629): "Incomplete only" is hidden in the Plan Editor; its game list offers every game; Rename is kept; a new plan under a saved name cannot be saved.
+  - R10 (#633, PR #634): the card names a form row `Unown (A)` again, from `rowNames`.
+  - R11 (#637, PR #639): a row only the other version has is not drawn on a game file's card, the orchestrator's default for the owner to correct.
+- 2026-11-27, close-out of the rework (#622): status line, Summary, Decided, Task split, As built, What diverged 19 to 32, the QA table, Evidence and the open questions brought to the rework's tip. The Evidence rows wait for the end-of-feature QA.
 
 ## Appendix: the maps and their names
 
