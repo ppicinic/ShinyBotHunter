@@ -160,6 +160,8 @@ export interface PhaseInfo {
 // Matches the response of GetPhaseInfo in PhaseMetadataController.cs; only the fields the card reads
 export interface PhaseInfoResponse {
   phaseInfo: PhaseInfo
+  // The card's name of each phaseInfo.pokemon row, in the same order: "Unown (A)" for a letter row
+  rowNames: string[]
   data: GameEncounterResponse
   // False when no hunt runs on the file
   live: boolean
@@ -204,6 +206,7 @@ export interface SubscriptionState {
   gameName: string | null
   encounterData: GameEncounterResponse | null
   phaseInfo: PhaseInfo | null
+  rowNames: string[]
   location: MilestoneLocation | null
   live: boolean
   timeOfDay: PlanTime | null

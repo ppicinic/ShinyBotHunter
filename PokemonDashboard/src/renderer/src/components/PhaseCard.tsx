@@ -49,6 +49,7 @@ function TimePill({ time }: { time: PlanTime | 'All' }): JSX.Element {
 // A row hidden now is not drawn, nor one at a zero share (Repel blocks it): only what can be met now shows
 export function phaseCardRows(
   pokemon: PhasePokemonInfo[],
+  rowNames: string[],
   phaseData: PhaseEncounterResponse | undefined,
   scopedData: GameEncounterResponseBase | null | undefined,
   location: MilestoneLocation | null
@@ -78,7 +79,7 @@ export function phaseCardRows(
           : ''
     return [{
       key: countKey,
-      name: pkmn.name,
+      name: rowNames[i],
       sprite: pkmn.formCode,
       genderSymbol,
       amount: pkmn.amount,
@@ -99,7 +100,7 @@ interface PhaseCardProps {
 
 export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.Element {
   const { config, connectionState } = useAppContext()
-  const { game, phase, gameName, encounterData, phaseInfo, location, live, timeOfDay, notFound } = subscription
+  const { game, phase, gameName, encounterData, phaseInfo, rowNames, location, live, timeOfDay, notFound } = subscription
 
   // When gameName is set, use the game-file-specific response; otherwise use the game-level response
   const scopedData: GameEncounterResponseBase | null | undefined = gameName
@@ -111,7 +112,7 @@ export function PhaseCard({ subscription, windowChrome }: PhaseCardProps): JSX.E
   const totalPhaseShiny = phaseData?.allPokemonCounts?.shinyEncounters ?? 0
   const phaseCount = phaseData?.phaseCount ?? null
 
-  const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], phaseData, scopedData, location)
+  const rows: CardRow[] = phaseCardRows(phaseInfo?.pokemon ?? [], rowNames, phaseData, scopedData, location)
   // Ruby and Sapphire, and a location met all day, carry no pills: only a location with a timed row has them
   const timed = location?.rows.some((r) => r.times.length === 1 || r.times.length === 2) ?? false
   // The rows hidden now, by the next time they can be met, in the response's order

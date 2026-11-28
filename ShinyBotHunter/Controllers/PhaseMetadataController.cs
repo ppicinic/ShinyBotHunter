@@ -49,6 +49,10 @@ namespace ShinyBotHunter.Controllers
         // The count cache's key of a row.
         private static string Key(PhasePokemonInfo pokemon) => pokemon.RequireSpecificForm ? pokemon.FormCode : CacheLoadRequest.SpeciesKey(pokemon.SpeciesId);
 
+        // The card's name of each row, by position: "Unown (A)" for a letter row; the stored name stays the plain species name.
+        internal static List<string> RowNames(PhaseInfo phaseInfo, PokemonMetadataService metadata)
+            => phaseInfo.Pokemon.Select(p => metadata.RowName(p.SpeciesId, p.RequireSpecificForm ? p.FormCode : null)).ToList();
+
         private bool IsLocation(GameFlavor flavor, string locationId)
             => gameProfiles.Get(flavor).Milestones is { } milestones && PhaseInfoService.At(milestones, locationId).Count > 0;
 
@@ -69,6 +73,7 @@ namespace ShinyBotHunter.Controllers
             return Ok(new
             {
                 PhaseInfo = WithFormMetadata(phaseInfo),
+                RowNames = RowNames(phaseInfo, pokemonMetadataService),
                 Data = rsp,
                 Live = seen?.Live ?? false,
                 TimeOfDay = timeOfDay,

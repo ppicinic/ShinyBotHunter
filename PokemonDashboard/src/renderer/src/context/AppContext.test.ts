@@ -10,6 +10,7 @@ function sub(phase: string, gameName: string | null, withData = false): Subscrip
     gameName,
     encounterData: withData ? ({ gameSpecificResponse: {} } as unknown as GameEncounterResponse) : null,
     phaseInfo: null,
+    rowNames: [],
     location: null,
     live: false,
     timeOfDay: null,
@@ -118,6 +119,7 @@ describe('applyReread', () => {
       ...sub('M', 'A'),
       encounterData: counts,
       phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Pidgey', 16), pokemon('Rattata', 19), pokemon('Sentret', 161)], isStatic: false, location: null, gameFiles: [], archived: false },
+      rowNames: ['Pidgey', 'Rattata', 'Sentret'],
       location: {
         rows: [
           { key: '#16', version: null, times: ['Morning', 'Day'], share: 0.5, hiddenNow: false },
@@ -129,6 +131,7 @@ describe('applyReread', () => {
     }
     const response = {
       phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [pokemon('Sentret', 161), pokemon('Pidgey', 16)], isStatic: false },
+      rowNames: ['Sentret', 'Pidgey'],
       data: { gameSpecificResponse: {} },
       live: true,
       timeOfDay: 'Day',
@@ -142,9 +145,31 @@ describe('applyReread', () => {
     } as unknown as PhaseInfoResponse
 
     const [after] = applyReread([before], sub('M', 'A'), response)
-    const rows = phaseCardRows(after.phaseInfo?.pokemon ?? [], undefined, undefined, after.location)
+    const rows = phaseCardRows(after.phaseInfo?.pokemon ?? [], after.rowNames, undefined, undefined, after.location)
 
     expect(rows.map((r) => [r.name, r.share])).toEqual([['Sentret', 0.25], ['Pidgey', 0.75]])
     expect(after.encounterData).toBe(counts)
+  })
+
+  it('names the rows from the same response after a letter row is removed', () => {
+    const unown = (letter: string): PhasePokemonInfo => ({ ...pokemon('Unown', 201), formCode: `unown-${letter}`, requireSpecificForm: true })
+    const before: SubscriptionState = {
+      ...sub('M', 'A'),
+      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [unown('a'), unown('b')], isStatic: false, location: null, gameFiles: [], archived: false },
+      rowNames: ['Unown (A)', 'Unown (B)']
+    }
+    const response = {
+      phaseInfo: { gameName: 'HGSS', name: 'M', pokemon: [unown('b')], isStatic: false },
+      rowNames: ['Unown (B)'],
+      data: { gameSpecificResponse: {} },
+      live: true,
+      timeOfDay: 'Day',
+      location: null
+    } as unknown as PhaseInfoResponse
+
+    const [after] = applyReread([before], sub('M', 'A'), response)
+    const rows = phaseCardRows(after.phaseInfo?.pokemon ?? [], after.rowNames, undefined, undefined, after.location)
+
+    expect(rows.map((r) => [r.key, r.name])).toEqual([['unown-b', 'Unown (B)']])
   })
 })
