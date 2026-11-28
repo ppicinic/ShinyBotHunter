@@ -1,6 +1,6 @@
 # Milestone builder rework: milestones are made from the game data, not listed from it
 
-Status: Agreed in outline, 2026-11-27; the owner: "this matches. the mock is missing some config options, but i think the jist is there. you can get started."
+Status: Implemented on `feature/hunt-plans-milestones` by R1 to R7, R10 and R11 (2026-11-27), awaiting the end-of-feature QA. The requirement rows, As built, What diverged and Evidence are in the [feature doc](hunt-plans-and-milestone-builder.md); this doc keeps the owner's words, the defaults and the task split. Agreed in outline, 2026-11-27; the owner: "this matches. the mock is missing some config options, but i think the jist is there. you can get started."
 Reworks part of [hunt plans and the milestone builder](hunt-plans-and-milestone-builder.md) (epic #508, PR #611 not merged).
 
 ## Why
@@ -64,6 +64,8 @@ Agreed on 2026-11-27 (mock screens 5 to 7), with one correction, his words: "bot
 
 Open: when a plan ends; what a switch does to a hunt in progress (a battle, an egg being hatched, a chain's leg); which hunts can be steps on the first cut.
 
+**Answered 2026-11-27** by defaults 6, 8 and 9 below and R6b (#628): a plan runs until cancelled unless it is set to end when every shiny-hunt step is complete; a switch happens only at the hunt's decision, between encounters, so no battle is in progress; the first cut's steps are Wild Encounter and Wait, so no egg or chain leg is.
+
 ## The counts card, from the owner on 2026-11-27
 
 His words: "I wanted to remove the footer and have the encounter rate be below the pokemon name in the Name column." He did not see shares on the branch because his milestones are stored ones with no location; a milestone made from game data or attached to a location gets them.
@@ -106,3 +108,9 @@ Open, his: may a plan save the game by itself when it arrives at an egg step? Wi
 | R9 docs: the guide, the architecture doc, decisions, the feature doc's requirement rows | #622 | S | all others |
 
 R1 and R5 start at once. After R1: R2, R4 and R6a have disjoint files. `types/api.ts` and `apiClient.ts` go R4, then R3, then R7. Between R1 and R3 the dashboard calls endpoints that are gone; nothing is QA'd until R1 to R4 are in.
+
+## Changelog
+
+- 2026-11-27: agreed in outline with the owner, with the answers, the plan redefinition, the counts card and the defaults above.
+- 2026-11-27: R1 to R7 merged on the feature branch (#623, #626, #624, #627, #625, #628, #629), then R10 (#633, PR #634: the card's `Unown (A)` again) and R11 (#637, PR #639: a row only the other version has is not drawn on a file's card), both orchestrator tasks outside the split above. R5 (#614) Part 1 is reduced to one reading taken at the end-of-feature QA. R8 (#621) is merged but for R8c2, the plan-run scenarios.
+- 2026-11-27, R9 (#622): the status line and the answer to the Open item above. The feature doc's requirement rows, As built, What diverged and Evidence, the decisions and the guide are brought to the rework there.
