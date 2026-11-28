@@ -3,7 +3,7 @@
 
 Part of the [ShinyBotHunter guide](README.md)
 
-The bot keeps everything it records in two databases on your PC: PostgreSQL and MongoDB. This page says what is kept where, how to look at it, and how to back it up. Looking is safe; this page never asks you to change anything in the databases.
+The bot keeps everything it records in two databases on your PC: PostgreSQL and MongoDB. This page says what is kept where, how to look at it, and how to back it up. Looking is safe; apart from one clean-up you may skip ([The old HuntPlans collection](#the-old-huntplans-collection)), this page never asks you to change anything in the databases.
 
 ## What does the bot keep, and where?
 
@@ -11,9 +11,9 @@ The bot keeps everything it records in two databases on your PC: PostgreSQL and 
 |---|---|
 | Every encounter, one row each | PostgreSQL, table `encounters` |
 | Shinies the bot actually caught | MongoDB, collection `CaughtPokemon` |
-| Your milestones | MongoDB, collection `PhaseInfos` |
-| Each game file's goal (see [Set a game file's goal](03-dashboard.md#set-a-game-files-goal)), and what you set for a milestone on that file: its preset, hidden rows, archived milestones, order labels, assignments, anchors and links | MongoDB, collection `GameFiles`, one document per game file |
-| Your saved hunt plans (see [Hunt plans](04-hunts/01-wild-encounter.md#hunt-plans-move-by-the-in-game-clock)) | MongoDB, collection `HuntPlans`, one document per game and plan name |
+| Your milestones, each with its location, its ticked game files and whether it is archived | MongoDB, collection `PhaseInfos` |
+| The anchors you set (see [Set or clear an anchor](04-hunts/01-wild-encounter.md#set-or-clear-an-anchor)), keyed by the milestone's name | MongoDB, collection `GameFiles`, one document per game file |
+| Your saved plans (see [Make a plan](03-dashboard.md#make-a-plan)) | MongoDB, collection `Plans`, one document per game and plan name |
 | How far each starter hunt has got | MongoDB, collection `PhaseStates` |
 | Pokémon species and move reference data, filled in when you set the bot up (see [Install](01-install.md)) | MongoDB, collections `PokemonMetadata` and `PokemonMoveMetadata` |
 | Your game files and their saves, including the copies the hunts make | Your game folder (see [Install](01-install.md)) |
@@ -108,7 +108,7 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
    db.CaughtPokemon.find({ Phase: "YOUR MILESTONE" })
    ```
 
-   **Milestones.** Each record holds the game (`GameName`, `HGSS` or `RS`), the milestone's name (`Name`), its list of Pokémon with the amount wanted (`Pokemon`), and whether it came with the bot (`IsStatic`).
+   **Milestones.** Each record holds the game (`GameName`, `HGSS` or `RS`), the milestone's name (`Name`), its list of Pokémon with the amount wanted (`Pokemon`), whether it came with the bot (`IsStatic`), the id of its location such as `34-land`, or null for none (`Location`), the game files it is ticked for, empty for every file (`GameFiles`), and whether it is archived (`Archived`).
 
    ```
    db.PhaseInfos.find()
@@ -137,6 +137,18 @@ Each row of the `encounters` table is one Pokémon the bot met. The column names
 4. Type `exit` and press Enter to leave.
 
 Make and change milestones in the dashboard, never here; see [The dashboard](03-dashboard.md).
+
+A `GameFiles` document written before milestones were made from the game's data can still hold that time's goal, preset, hidden rows, archived milestones, order labels, assignments and links. The bot ignores them: only `Anchors` is read.
+
+### The old HuntPlans collection
+
+Plans are kept in `Plans`. The collection `HuntPlans`, where plans were kept before, is no longer read, and a plan saved there is not carried over: make it again in the [Plan Editor](03-dashboard.md#make-a-plan). If you want it gone, drop it by hand in `mongosh`, as above:
+
+```
+db.HuntPlans.drop()
+```
+
+Nothing reads it, so this changes nothing the bot does. Leaving it there does no harm either.
 
 ## Back up your data
 
