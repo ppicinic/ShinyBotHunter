@@ -13,7 +13,7 @@ namespace ShinyBotHunter.Service
         NoTarget
     }
 
-    // The bot's milestone picker, with the game file name the archive and order calls take.
+    // The bot's milestone picker, with its game file's name.
     public record BotMilestones(string GameFileName, IReadOnlyList<PickerMilestone> Milestones);
 
     public record EmulatorState(string Name, EventState EventState, GameFlavor GameFlavor, IReadOnlyList<string>? SpeedLines);

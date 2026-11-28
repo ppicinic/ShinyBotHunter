@@ -20,12 +20,12 @@ namespace ShinyBotHunter.Service
         private PokemonMetadataService metadataService;
         // Guards phaseInfos and gamePhases after startup. Held only around dictionary reads, writes and the GetAllPhases copy, never across an await.
         private readonly object phasesLock = new();
-        // Filled by InitAsync before the host serves requests or starts bots (single-threaded by construction); after that, written by AddOrUpdatePhaseInfoAsync (dashboard requests) and read by requests, bot loops and the notification pipeline, only under phasesLock.
+        // Filled by InitAsync before the host serves requests or starts bots (single-threaded by construction); after that, written by AddOrUpdatePhaseInfoAsync and SetLocationAsync (dashboard requests) and read by requests, bot loops and the notification pipeline, only under phasesLock.
         private readonly Dictionary<GamePhase, PhaseInfo> phaseInfos = new Dictionary<GamePhase, PhaseInfo>();
         // Same as phaseInfos: filled by InitAsync before the host starts, then read and written only under phasesLock. A name is added here only in the same critical section that adds its phaseInfos entry.
         private readonly Dictionary<GameFlavor, List<string>> gamePhases = new Dictionary<GameFlavor, List<string>>();
         // The rate inputs each game file's hunt last saw, and whether its loop still runs (FR-28). Written by the bot loops
-        // (RecordLive after each decision, EndLive when the loop ends), read by GetMilestoneRowsAsync on request threads; only
+        // (RecordLive after each decision, EndLive when the loop ends), read by Seen on request threads; only
         // under phasesLock, never across an await. Memory only: empty after a restart (FR-28).
         private readonly Dictionary<string, (RateInputs Inputs, bool Live)> rates = new();
         // Set once in the constructor; thread-safe for concurrent use.
@@ -244,8 +244,8 @@ namespace ShinyBotHunter.Service
         }
 
         // A location's species as milestone rows, in slot order of the first included version, then any new ones from the second.
-        // Amounts are the preset's for the included versions, applied to each species as MilestoneRows.Build applies a goal: its
-        // form entries, else its any-form entry, else one any-form row at 0.
+        // Amounts are the preset's for the included versions, applied to each species: its form entries, else its any-form
+        // entry, else one any-form row at 0.
         internal static List<(GoalEntry Entry, RomVersion? Version, SlotCondition[] Times)> Seed(IReadOnlyDictionary<RomVersion, IReadOnlyList<Milestone>> milestones,
             string locationId, IReadOnlyList<RomVersion> versions, GoalPreset preset, PokemonMetadataService metadata)
         {
