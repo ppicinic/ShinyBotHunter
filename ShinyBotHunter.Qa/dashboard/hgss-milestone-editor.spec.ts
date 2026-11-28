@@ -78,6 +78,12 @@ test('hgss-milestone-editor: New from game data, presets, Save, ticks and archiv
     const nameInput = admin.getByPlaceholder('New milestone name')
     const save = admin.getByRole('button', { name: 'Save Milestone', exact: true })
     const saved = (name: string): Locator => admin.getByText(`Saved "${name}" successfully`, { exact: true })
+    // A new milestone's Save shows its sentence, then rereads the metadata before it selects the saved milestone and drops
+    // the draft; the next click waits for that, so a late reset cannot undo it.
+    const savedNew = async (name: string): Promise<void> => {
+      await expect(saved(name), `"Saved "${name}" successfully"`).toBeVisible({ timeout: 30_000 })
+      await expect(milestoneSelect, `the editor did not select ${name} after its Save`).toHaveValue(name, { timeout: 30_000 })
+    }
     const rowsShown = async (n: number, what: string): Promise<EditorRow[]> => {
       await expect.poll(async () => (await editorRows(admin)).length, { message: what, timeout: 30_000 }).toBe(n)
       return editorRows(admin)
@@ -157,7 +163,7 @@ test('hgss-milestone-editor: New from game data, presets, Save, ticks and archiv
     // Fails unless the PhaseInfos count for the name is 0, so it is the "before Save" check too.
     claimMilestone('HGSS', SAVED)
     await save.click()
-    await expect(saved(SAVED), `"Saved "${SAVED}" successfully"`).toBeVisible({ timeout: 30_000 })
+    await savedNew(SAVED)
     const doc = milestoneDoc('HGSS', SAVED)
     expect(doc?.Location, `${SAVED}: Location`).toBe(ROUTE30)
     expect(doc.Pokemon.map((p: { Name: string }) => p.Name), `${SAVED}: "Ditto and no Rattata"`).toContain('Ditto')
@@ -189,7 +195,7 @@ test('hgss-milestone-editor: New from game data, presets, Save, ticks and archiv
       }
       claimMilestone('HGSS', name)
       await save.click()
-      await expect(saved(name)).toBeVisible({ timeout: 30_000 })
+      await savedNew(name)
       const stored = milestoneDoc('HGSS', name)
       expect([stored.Location, stored.GameFiles, stored.Archived], `${name}: Location, GameFiles, Archived`).toEqual([null, [], archived])
     }
@@ -200,7 +206,7 @@ test('hgss-milestone-editor: New from game data, presets, Save, ticks and archiv
     await nameInput.fill(SS_ONLY)
     claimMilestone('HGSS', SS_ONLY)
     await save.click()
-    await expect(saved(SS_ONLY)).toBeVisible({ timeout: 30_000 })
+    await savedNew(SS_ONLY)
     const ssDoc = milestoneDoc('HGSS', SS_ONLY)
     expect([ssDoc.Location, ssDoc.GameFiles], `${SS_ONLY}: Location and no ticks`).toEqual([ROUTE30, []])
     expect(ssDoc.Pokemon.map((p: { Name: string; Amount: number }) => `${p.Name} ${p.Amount}`).sort(), `"${SS_ONLY}: Ledyba 1, every other row 0"`)

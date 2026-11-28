@@ -3,14 +3,14 @@
 // before with no location; attach and detach change only the location; a hunt from a set anchor once attached. Then the
 // seeded 1-1 Starters ticked, archived and attached. Run line: `npx playwright test hgss-existing-milestones`.
 import * as fs from 'fs'
-import { expect, test, type Locator, type Page } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { shotAll, step } from './driver'
 import {
-  ANCHOR_HUNT, assertLocalStores, attach, cancelBot, cardWindow, clearAnchor, clockConfig, detach, importPhases, keepExisting, launchHgss,
+  ANCHOR_HUNT, assertLocalStores, attach, cancelEventAndBot, cardWindow, clearAnchor, clockConfig, detach, importPhases, keepExisting, launchHgss,
   milestoneDoc, phaseInfo, PHASES_FIXTURE, picker, rowsFor, seen, setAnchorHere, shutdown, stageCopy, START_TILE, startFrame, startWild,
-  subscribe, teardown, WILD, writeLeadExtension, type Frame
+  subscribe, teardown, writeLeadExtension, type Frame
 } from './milestones'
-import { backendLog, MINUTE, readTile } from './static'
+import { backendLog, MINUTE } from './static'
 
 const HANDLE = 'HG-Exist'
 const ROUTE30_PHASE = '1-4 Route 30'
@@ -34,14 +34,6 @@ type FixtureRow = { Name: string; Amount: unknown; FormCode: string; RequireSpec
 type Fixture = { GameName: 'HGSS' | 'RS'; Name: string; Pokemon: FixtureRow[] }
 // The export is extended JSON: a number is { "$numberInt": "1" }.
 const num = (v: unknown): number => (typeof v === 'object' && v !== null ? Number(Object.values(v)[0]) : Number(v))
-
-async function cancelEvent(card: Locator): Promise<void> {
-  await card.page().getByRole('button', { name: 'Bot Control', exact: true }).click()
-  await card.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await card.getByRole('button', { name: 'Yes', exact: true }).click()
-  await expect(card.getByRole('button', { name: WILD, exact: true }), 'the event did not end').toBeVisible({ timeout: MINUTE })
-  step('event cancelled')
-}
 
 test('hgss-existing-milestones: the 20 read as before; attach and detach; a hunt with no location, then from a set anchor; Starters', async () => {
   test.setTimeout(30 * MINUTE)
@@ -102,7 +94,7 @@ test('hgss-existing-milestones: the 20 read as before; attach and detach; a hunt
 
     // (b) The emulator: the picker, a hunt with no location, then attached with a set anchor.
     await admin.getByRole('button', { name: 'Bot Control', exact: true }).click()
-    const card = await launchHgss(admin, HANDLE, { clock: true })
+    let card = await launchHgss(admin, HANDLE, { clock: true })
     // The save's lead is at 1 HP (QA save files); RAM only, never saved.
     await writeLeadExtension({ hp: 30 })
     const res = await picker(0)
@@ -122,7 +114,9 @@ test('hgss-existing-milestones: the 20 read as before; attach and detach; a hunt
     expect([Number(tile[1]), Number(tile[2]), Number(tile[3])], '"START_TILE map=36 (474,294)"').toEqual(SAVE_TILE)
     await seen(ENCOUNTER, 3, 10 * MINUTE)
     await shotAll('03-hunting', pages)
-    await cancelEvent(card)
+    // The encounter line is logged at a battle's start and Cancel flees nothing, so the bot may stop inside a battle; Set
+    // anchor here and the next Start need the free field, so the bot is closed and launched again on the same save.
+    await cancelEventAndBot(card)
     const log = backendLog()
     expect(log.filter((l) => ANCHOR_HUNT.test(l)), '"no ANCHOR_HUNT" with no location').toEqual([])
     const encounters = log.filter((l) => ENCOUNTER.test(l)).length
@@ -134,23 +128,26 @@ test('hgss-existing-milestones: the 20 read as before; attach and detach; a hunt
     await expect(fixed.getByTestId('row-share'), '"no row-share" with no location').toHaveCount(0)
     await shotAll('04-counted', pages)
 
+    // The second launch: no scenario saves in-game, so the handle's SaveRAM is still the pristine copy, on the save's tile.
+    card = await launchHgss(admin, HANDLE, { clock: true })
+    await writeLeadExtension({ hp: 30 })
     keepExisting('HGSS', ROUTE32_PHASE)
     expect((await attach('HGSS', ROUTE32_PHASE, '36-land')).status, `attach ${ROUTE32_PHASE} to 36-land`).toBe(204)
-    const here = await readTile()
     const set = await setAnchorHere(0, ROUTE32_PHASE, 0, 1)
     expect(set.status, 'Set anchor here (0, 1)').toBe(200)
-    expect([set.json.anchor.map, set.json.anchor.x, set.json.anchor.y], 'the anchor is the tile the bot stands on').toEqual([here.map, here.x, here.y])
+    expect([set.json.anchor.map, set.json.anchor.x, set.json.anchor.y], '"the anchor (474, 294)", the save\'s tile').toEqual(SAVE_TILE)
     await startWild(card, { phase: ROUTE32_PHASE, target: 'ShinyTarget', mode: 'Run', yRange: 1 })
     const hunt = ANCHOR_HUNT.exec((await seen(ANCHOR_HUNT, 1, MINUTE)).line)!
     expect(hunt.slice(1).map(String), '"ANCHOR_HUNT Route 32 · grass: hunting from the anchor ..., run up-down ±1 (set on this file)"')
-      .toEqual(['Route 32 · grass', String(here.map), String(here.x), String(here.y), 'run up-down ±1', 'set on this file'])
+      .toEqual(['Route 32 · grass', ...SAVE_TILE.map(String), 'run up-down ±1', 'set on this file'])
     await expect.poll(async () => [await fixed.getByTestId('time-pill').count() > 0, await fixed.getByTestId('row-share').count() > 0],
       { message: '"the card now shows time-pill and row-share"', timeout: 3 * MINUTE, intervals: [2000] }).toEqual([true, true])
     await shotAll('05-anchored', pages)
-    await cancelEvent(card)
-    expect((await clearAnchor(0, ROUTE32_PHASE)).status, 'Clear').toBe(204)
-    expect((await detach('HGSS', ROUTE32_PHASE)).status, 'Detach').toBe(204)
-    await cancelBot(card)
+    // Clear and Detach need no free field.
+    await cancelEventAndBot(card, async () => {
+      expect((await clearAnchor(0, ROUTE32_PHASE)).status, 'Clear').toBe(204)
+      expect((await detach('HGSS', ROUTE32_PHASE)).status, 'Detach').toBe(204)
+    })
 
     // Default 11 on the seeded 1-1 Starters: ticked and archived through the editor, attached and detached.
     keepExisting('HGSS', STARTERS)

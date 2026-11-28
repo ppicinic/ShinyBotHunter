@@ -56,19 +56,19 @@ test('rs-milestone-seed: no Female forms on RS, Route 102 for both versions and 
     expect(await presetSelect.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value)), '"None, Living dex and Version exclusives: no Female forms"')
       .toEqual(['None', 'LivingDex', 'VersionExclusives'])
 
-    // Route 102: six rows for both versions with Seedot and Lotad marked, five for each version.
-    const both = await rowsShown(6, '"Both versions gives 6 rows"')
+    // Route 102: seven rows for both versions (five shared, Seedot and Lotad marked), six for each version.
+    const both = await rowsShown(7, '"Both versions gives 7 rows"')
     step(`Route 102, both versions: ${JSON.stringify(both)}`)
     expect(both.map((r) => r.name).sort(), 'Route 102\'s species').toEqual([...SHARED, 'Seedot', 'Lotad'].sort())
     for (const r of both) expect(r.version, `the version mark of ${r.name}`).toBe(VERSION[r.name] ?? 'both')
     await shotAll('01-route102-both', pages)
     for (const [version, other] of [['Ruby', 'Lotad'], ['Sapphire', 'Seedot']]) {
       await admin.getByRole('button', { name: `${version} only`, exact: true }).click()
-      const only = await rowsShown(5, `"${version} only gives 5"`)
+      const only = await rowsShown(6, `"${version} only gives 6"`)
       expect(only.map((r) => r.name), `${version} only: no ${other}`).not.toContain(other)
     }
     await admin.getByRole('button', { name: 'Both versions', exact: true }).click()
-    await rowsShown(6, 'back to both versions')
+    await rowsShown(7, 'back to both versions')
 
     // Version exclusives: Seedot and Lotad at 1, the rest at 0.
     await presetSelect.selectOption('VersionExclusives')
@@ -76,7 +76,7 @@ test('rs-milestone-seed: no Female forms on RS, Route 102 for both versions and 
     const exclusives = [...SHARED, 'Seedot', 'Lotad'].map((name) => ({ name, amount: name in VERSION ? 1 : 0 }))
     await expect.poll(async () => amounts(await editorRows(admin)), { message: '"Version exclusives puts Seedot and Lotad at 1 and the rest at 0"', timeout: 30_000 })
       .toEqual(amounts(exclusives))
-    await rowsShown(6, 'Version exclusives')
+    await rowsShown(7, 'Version exclusives')
     await shotAll('02-version-exclusives', pages)
 
     // Saved, and read back from Mongo.
