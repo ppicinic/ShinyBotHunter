@@ -55,7 +55,8 @@ test('hgss-plan-pickup-switch: flee to train with Pickup at 10:00, the items tak
       expect((await putMilestone({ game: 'HGSS', name, location: '37-land', gameFiles: [HANDLE], archived: false })).status, `${name} saved`).toBe(200)
     }
     expect((await putPlan('HGSS', PLAN)).status, 'PUT plan').toBe(204)
-    expect((await subscribe({ game: 'HGSS', phase: FLEE, gameName: HANDLE, followsHunt: true })).status, 'the follows card').toBeLessThan(300)
+    // Subscribed on the default's milestone, so the flee step's heading proves the first move too.
+    expect((await subscribe({ game: 'HGSS', phase: PICKUP, gameName: HANDLE, followsHunt: true })).status, 'the follows card').toBeLessThan(300)
     const follows = await cardWindow(frame.app!, `HGSS — ${HANDLE}`)
     const pages: Record<string, Page> = { admin, follows }
     const heading = follows.locator('.card-header-title')
@@ -106,7 +107,9 @@ test('hgss-plan-pickup-switch: flee to train with Pickup at 10:00, the items tak
     await seen(PICKUP_TOOK, 5, MINUTE)
     const visit = backendLog().slice(pick2At)
     const lastTake = visit.findLastIndex((l) => PICKUP_TOOK.test(l))
-    expect(visit.slice(0, lastTake).filter((l) => /State: (Encountering|BattleStart)/.test(l)), 'an encounter before the takes').toEqual([])
+    // Only DecideOverworldAction swaps to Encountering; a battle on the step's Init walk is pushed by the navigator as
+    // BattleStart, before the first decision, so it is no encounter here.
+    expect(visit.slice(0, lastTake).filter((l) => /State: Encountering/.test(l)), 'an encounter before the takes').toEqual([])
     expect(visit.map(parseTook).filter((t) => t !== null).map((t) => ({ slot: t!.slot, item: t!.item })), 'the takes, in slot order').toEqual(expected)
     expect(backendLog().filter((l) => PICKUP_STOP.test(l)), 'a Pickup stop').toEqual([])
 

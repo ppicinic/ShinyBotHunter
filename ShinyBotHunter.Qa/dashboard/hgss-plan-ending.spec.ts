@@ -58,7 +58,14 @@ test(`hgss-plan-ending ${which}: a plan whose one step is complete ${which === '
     expect(set.status, `Set anchor here: ${set.text}`).toBe(200)
     await shotAll('01-launched', pages)
 
-    const runStart = await startPlan(card, PLAN.name)
+    const clicked = new Date().toISOString()
+    const runStart = await startPlan(card, PLAN.name).catch(async (e: Error) => {
+      // `end` may be Complete before the form's first poll, which then sees the actions offered again: accepted only with the
+      // pick logged and the plan Complete (a refusal logs no pick).
+      if (which !== 'end' || !backendLog().some((l) => PLAN_PICK.test(l)) || (await dashboardState())?.eventState !== 'Complete') throw e
+      step(`the Plan form's wait ended unseen, the plan already Complete: ${e.message.split('\n')[0]}`)
+      return clicked
+    })
     expect(fields(PLAN_PICK, (await seen(PLAN_PICK, 1, MINUTE)).line), 'the first pick').toEqual([PLAN.name, 'Sunday', String(clock.hour), DONE])
     expect(fields(START_TILE, (await seen(START_TILE, 1, MINUTE)).line), 'the step\'s start tile').toEqual(['36', '474', '294', 'Up'])
 

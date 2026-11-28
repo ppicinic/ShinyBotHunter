@@ -187,12 +187,18 @@ test(`hgss-plan-night ${which}: three milestones in one follows window, the swit
       const r30Rows = rowsFor(HANDLE, R30.name, runStart)
       expect(r30Rows.length, `six encounters rows under ${R30.name}`).toBeGreaterThanOrEqual(6)
       for (const row of r30Rows) {
-        expect(R30_NIGHT, `a ${row.species} under ${R30.name}`).toContain(row.species)
-        expect(row.level >= 2 && row.level <= 4, `a Lv ${row.level} ${row.species} under ${R30.name}, outside the night table's Lv 2 to 4`).toBe(true)
         expect(row.at, `a ${R30.name} row at ${new Date(row.at).toISOString()}, before the switch was seen`).toBeGreaterThanOrEqual(pick2.at - 300)
       }
+      // The pick applies the step's milestone before its Init walk, so a battle on the walk through Route 32 and 31 is filed
+      // under QA Route 30 too: the species and levels are judged on the rows from Route 30's anchor.
+      const fromAnchor = rowsFor(HANDLE, R30.name, new Date(arrived.at).toISOString())
+      expect(fromAnchor.length, `six rows under ${R30.name} from Route 30's anchor`).toBeGreaterThanOrEqual(6)
+      for (const row of fromAnchor) {
+        expect(R30_NIGHT, `a ${row.species} under ${R30.name} from Route 30's anchor`).toContain(row.species)
+        expect(row.level >= 2 && row.level <= 4, `a Lv ${row.level} ${row.species} under ${R30.name}, outside the night table's Lv 2 to 4`).toBe(true)
+      }
       // The fixed clock start replays the game's RNG, so which night species come up is the stream's, not a sample.
-      expect(r30Rows.filter((r) => R30_DAY.includes(r.species)), `a day species under ${R30.name} after the switch`).toEqual([])
+      expect(fromAnchor.filter((r) => R30_DAY.includes(r.species)), `a day species under ${R30.name} from Route 30's anchor`).toEqual([])
       // No step's milestone completed, so no milestone message.
       expect(await milestoneMessages(runStart), 'a milestone message').toEqual([])
       await shotAll('06-cancelled', pages)
