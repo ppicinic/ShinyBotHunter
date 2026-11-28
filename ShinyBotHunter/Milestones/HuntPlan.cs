@@ -8,7 +8,7 @@ namespace ShinyBotHunter.Milestones
     public record PlanStep(List<SlotCondition> Times, List<DayOfWeek> Weekdays, NewEventArguments Arguments);
 
     // A saved plan: one document per game and name in Plans, shared between that game's files. Mongo adds the _id. Each step's
-    // body is the one Bot Control posts to bot/startAction for that action; EndWhenComplete is stored here and run by R6b.
+    // body is the one Bot Control posts to bot/startAction for that action; EndWhenComplete is stored here and run by PlanEvent.
     [BsonIgnoreExtraElements]
     public record Plan(GameFlavor Game, string Name, List<PlanStep> Rules, NewEventArguments Default, bool EndWhenComplete)
     {
