@@ -112,5 +112,5 @@ R1 and R5 start at once. After R1: R2, R4 and R6a have disjoint files. `types/ap
 ## Changelog
 
 - 2026-11-27: agreed in outline with the owner, with the answers, the plan redefinition, the counts card and the defaults above.
-- 2026-11-27: R1 to R7 merged on the feature branch (#623, #626, #624, #627, #625, #628, #629), then R10 (#633, PR #634: the card's `Unown (A)` again) and R11 (#637, PR #639: a row only the other version has is not drawn on a file's card), both orchestrator tasks outside the split above. R5 (#614) Part 1 is reduced to one reading taken at the end-of-feature QA. R8 (#621) is merged but for R8c2, the plan-run scenarios.
+- 2026-11-27: R1 to R7 merged on the feature branch (#623, #626, #624, #627, #625, #628, #629), then R10 (#633, PR #634: the card's `Unown (A)` again) and R11 (#637, PR #639: a row only the other version has is not drawn on a file's card), both orchestrator tasks outside the split above. R5 (#614) Part 1 is reduced to one reading taken at the end-of-feature QA. R8 (#621) is merged, R8c2 (#640, the plan-run scenarios) last.
 - 2026-11-27, R9 (#622): the status line and the answer to the Open item above. The feature doc's requirement rows, As built, What diverged and Evidence, the decisions and the guide are brought to the rework there.

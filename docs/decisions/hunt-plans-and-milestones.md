@@ -194,7 +194,7 @@ A plan is a list of steps. A step is a whole hunt as Bot Control's form defines 
   - 10: saved plans in the old shape are dropped.
   - 12: "Plan" is HGSS only, and Ruby and Sapphire cards carry no markers.
 - Open, the owner's, in the rework doc's words: "may a plan save the game by itself when it arrives at an egg step? Without it the egg hunt's reset undoes the wild step's levels and Pickup items."
-- From #619's plan: a switch happens only at the hunt's decision, between encounters, never in a battle or a heal trip; Pickup items are not collected at a switch. The owner confirmed it on 2026-11-27, in his words as the orchestrator relays them on PR #641: "a cancel from a plan switch should only happen when returning to the field".
+- From #619's plan: a switch happens only at the hunt's decision, between encounters, never in a battle or a heal trip; Pickup items are not collected at a switch. The owner confirmed it, to the orchestrator, 2026-11-27: "a cancel from a plan switch should only happen when returning to the field."
 - A step complete in a run is skipped until the next Start.
 - The anchor reach check at Start (FR-35) is dropped (binding answer 4 on #619): an anchor with no path parks at the walk. The orchestrator's, for the owner to correct.
 - `Plans` replaces `HuntPlans`, which nothing reads.
