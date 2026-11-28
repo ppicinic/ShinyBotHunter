@@ -1,14 +1,15 @@
-// hgss-plan-weekday (docs/specs/hunt-plans-and-milestone-builder.md, QA; #525 Q1b, plan scenario 13): C3b's midnight check.
-// Plan QA Friday: a default, and a rule for Friday at any time; started at 23:50 on a Thursday. Before midnight the rule does
-// not match and the default is hunted; after midnight the weekday and the hour roll together (research R2) and the rule
-// matches. One launch shows a weekday rule matching and not matching.
-// `hg` (the default): HeartGold from the save's tile on Route 32, (474, 294): default Route 32 · grass, Friday -> Route 30 · grass,
-// goal Wooper 1 (Route 32 at night) and Spinarak 1 (Route 30 at night). Route 32's anchor is set on the save's tile, so
-// Thursday hunts there with no walk: the walk south to its generated anchor meets a story trigger.
+// hgss-plan-weekday (docs/specs/milestone-builder-rework.md, "Plans, as the owner redefined them"; #525 Q1b, #621 R8c2): C3b's
+// midnight check, through Bot Control's Plan action. Plan QA Friday: a default, and a rule for Friday at any time, each a Wild
+// Encounter step (PhaseTarget, Run, y 1) on a Living dex milestone ticked for the file; started at 23:50 on a Thursday. Before
+// midnight the rule does not match and the default's step hunts; at the first decision past midnight the weekday and the hour
+// have rolled together (research R2), the rule matches and its step walks to its anchor. One launch shows a weekday rule
+// matching and not matching.
+// `hg` (the default): HeartGold from the save's tile on Route 32, (474, 294): default QA Route 32 (Route 32 · grass), Friday ->
+// QA Route 30 (Route 30 · grass). QA Route 32's anchor is set on the save's tile, so Thursday hunts there with no walk: the
+// walk south to its generated anchor meets a story trigger.
 // `ss`: SoulSilver from the qa-ss-route30 save's tile on Route 30, (556, 374): the two milestones swapped, so the default is the
-// route the save stands on (default Route 30 · grass, Friday -> Route 32 · grass), goal Hoothoot 1 (SS Route 30 at night, not
-// Route 32) and Wooper 1 (SS Route 32 at night, not Route 30). Without the save it fails at once naming the missing file.
-// `ss` also checks the trainer stop (#604): on the Thursday walk Youngster Joey, unbeaten on the save, challenges on the step
+// route the save stands on (default QA Route 30, Friday -> QA Route 32). Without the save it fails at once naming the missing file.
+// `ss` also checks the trainer stop (#604), inside the default's step: on its walk Youngster Joey, unbeaten on the save, challenges on the step
 // up to (552, 332) (docs/research/milestone-builder.md, "HeartGold and SoulSilver: a trainer's challenge during a navigator
 // walk", R1). The bot logs `[Navigator] stopped: A trainer battle started on R30.`, sends that sentence once, parks in
 // Waiting with only Resume, presses nothing, and the speech stays at its arrow; Resume during the speech parks again with no
@@ -18,51 +19,52 @@
 // never sent again.
 // Before Run every other trainer is marked beaten by a RAM write, so Joey is the one trainer left unbeaten on the save: the
 // walks also cross Youngster Mikey's and Bug Catcher Don's sight, and their two-Pokémon battles have no researched gates.
-// `ss` ends at midnight's Friday walk line, cancelled once the overworld is ready: on this save the Friday walk passes Lyra's
-// one-time gatehouse scene (map script 1 on map 97), which the bot does not handle, so the Friday half has no SoulSilver run.
+// `ss` ends at midnight's Friday pick, cancelled once its step's walk has found the overworld ready: on this save the Friday walk
+// passes Lyra's one-time gatehouse scene (map script 1 on map 97), which the bot does not handle, so the Friday half has no
+// SoulSilver run.
 // Run: `npx playwright test hgss-plan-weekday`; `$env:QA_HGSS_VARIANT = "ss"` for SoulSilver.
 import * as fs from 'fs'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { emuHawkRunning, readMemory, readU32, runMacro, shotAll, step } from './driver'
 import {
-  assertLocalStores, cancelEventAndBot, clockConfig, DROPPED, launchHgss, PLAN_NOW, PLAN_STOP, PLAN_WALK, putGoal, putPlan, readClock,
-  rowsFor, RUN_FROM, saveOf, seen, setAnchorHere, shutdown, stageCopy, startFrame, startWild, teardown, variant, writeLeadExtension,
-  type Clock, type Frame, type Plan
+  assertLocalStores, cancelEventAndBot, cardWindow, clockConfig, DROPPED, launchHgss, PLAN_PICK, putMilestone, putPlan, readClock, rowsFor,
+  RUN_FROM, saveOf, seen, setAnchorHere, shutdown, stageCopy, startFrame, START_TILE, startPlan, subscribe, teardown, variant, WILD,
+  writeLeadExtension, type Clock, type Frame, type Plan
 } from './milestones'
 import { DISCORD_READY, discordMessages, RESUME, writeLogged } from './rs-training'
 import { dashboardState } from './rs-wild'
 import { API, backendLog, hex8, MINUTE, NAV_PRESS, NAV_YES, readTile } from './static'
 
 const which = variant(['hg', 'ss'] as const)
-const R32 = { id: '36-land', name: 'Route 32 · grass', at: ['36', '458', '339'], macro: /^M\.Up\.332\.\d+(:\S+)?;M\.Down\.346\.\d+$/ }
-const R30 = { id: '34-land', name: 'Route 30 · grass', at: ['34', '547', '304'], macro: /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/ }
+// The generated anchors (milestones.json.gz, both versions): Route 32 · grass (458, 339) up-down ±7, Route 30 · grass
+// (547, 304) up-down ±6.
+const R32 = { name: 'QA Route 32', location: '36-land', at: ['36', '458', '339'], macro: /^M\.Up\.332\.\d+(:\S+)?;M\.Down\.346\.\d+$/ }
+const R30 = { name: 'QA Route 30', location: '34-land', at: ['34', '547', '304'], macro: /^M\.Up\.298\.\d+(:\S+)?;M\.Down\.310\.\d+$/ }
 // Route 32's anchor as the hg variant sets it on the save's tile.
 const R32_HERE = { ...R32, at: ['36', '474', '294'], macro: /^M\.Up\.293\.\d+(:\S+)?;M\.Down\.295\.\d+$/ }
 type Stop = typeof R32
-// Each version's night tables: HG Route 32 Wooper, Rattata, Bellsprout, Mareep, Zubat; HG Route 30 Spinarak, Rattata,
-// Hoothoot; SS Route 30 Hoothoot, Rattata; SS Route 32 Wooper, Ekans, Bellsprout, Mareep, Zubat.
-const CASES: Record<typeof which, { handle: string; rom: string; save: string; before: Stop; after: Stop; goal: number[]; beforeNight: string[]; afterNight: string[] }> = {
+// Each version's night tables (milestones.json.gz): HG Route 32 Wooper, Rattata, Bellsprout, Mareep, Zubat; HG Route 30
+// Spinarak, Rattata, Hoothoot; SS Route 30 Hoothoot, Rattata; SS Route 32 Wooper, Ekans, Bellsprout, Mareep, Zubat.
+const CASES: Record<typeof which, { handle: string; rom: string; save: string; before: Stop; after: Stop; beforeNight: string[]; afterNight: string[] }> = {
   hg: {
-    handle: 'HG-Weekday', rom: 'HG-Route32.nds', save: 'hgss.qa-route32', before: R32_HERE, after: R30, goal: [194, 167],
+    handle: 'HG-Weekday', rom: 'HG-Route32.nds', save: 'hgss.qa-route32', before: R32_HERE, after: R30,
     beforeNight: ['194', '19', '69', '179', '41'], afterNight: ['167', '19', '163']
   },
   ss: {
-    handle: 'SS-Weekday', rom: 'Pokemon SoulSilver.nds', save: 'hgss.qa-ss-route30', before: R30, after: R32, goal: [163, 194],
+    handle: 'SS-Weekday', rom: 'Pokemon SoulSilver.nds', save: 'hgss.qa-ss-route30', before: R30, after: R32,
     beforeNight: ['163', '19'], afterNight: ['194', '23', '69', '179', '41']
   }
 }
 const run = CASES[which]
-const PLAN: Plan = { name: 'QA Friday', default: run.before.id, rules: [{ times: [], weekdays: ['Friday'], milestone: run.after.id }] }
+const stepOf = (phaseName: string): Record<string, unknown> => ({ eventName: WILD, phaseName, targetType: 'PhaseTarget', encounterType: 'Run', yRange: 1 })
+const PLAN: Plan = { name: 'QA Friday', rules: [{ times: [], weekdays: ['Friday'], arguments: stepOf(run.after.name) }], default: stepOf(run.before.name), endWhenComplete: false }
 const ARRIVED = /\[Navigator\] Clearing navigation path \(arrived back at start\)/
 const BATTLE = /, isShiny: (True|False)\s*$/
+const STATE = /\[Orchestrator\] State: (\w+)/
 const FIELD_READY = /\[GameState\] the overworld ready: GameSnapshot \{ Screen = FieldFree/
 
 const hhmm = (c: Clock): string => `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][c.weekday]} ${c.hour}:${String(c.minute).padStart(2, '0')}`
-// The walk line's weekday, hour, milestone, the map and x it walks from (a run line's y varies), and the destination.
-function walkOf(line: string): string[] {
-  const m = PLAN_WALK.exec(line)!
-  return [m[1], m[2], m[3], m[4], m[5], m[7], m[8], m[9]]
-}
+const fields = (pattern: RegExp, line: string): string[] => pattern.exec(line)!.slice(1)
 
 // --- ss: Youngster Joey on Route 30 (#604; research "HeartGold and SoulSilver: a trainer's challenge during a navigator walk") ---
 
@@ -398,9 +400,13 @@ test(`hgss-plan-weekday ${which}: Thursday ${which === 'ss' ? '23:45' : '23:50'}
     stageCopy(run.handle, { rom: run.rom, save: run.save })
     clockConfig(which === 'ss' ? '2026-12-03T23:45:00' : '2026-12-03T23:50:00')
     const admin = await startFrame(frame)
-    const pages = { admin }
-    expect((await putGoal(run.handle, run.goal.map((species) => ({ species, amount: 1 })))).status, 'PUT goal').toBe(204)
+    for (const m of [run.before, run.after]) {
+      expect((await putMilestone({ game: 'HGSS', name: m.name, location: m.location, gameFiles: [run.handle], archived: false })).status, `${m.name} saved`).toBe(200)
+    }
     expect((await putPlan('HGSS', PLAN)).status, 'PUT plan').toBe(204)
+    expect((await subscribe({ game: 'HGSS', phase: run.before.name, gameName: run.handle, followsHunt: true })).status, 'the follows card').toBeLessThan(300)
+    const follows = await cardWindow(frame.app!, `HGSS — ${run.handle}`)
+    const pages: Record<string, Page> = { admin, follows }
 
     const card = await launchHgss(admin, run.handle, { clock: true })
     const launchClock = await readClock()
@@ -408,7 +414,7 @@ test(`hgss-plan-weekday ${which}: Thursday ${which === 'ss' ? '23:45' : '23:50'}
       `${hhmm(launchClock)} at launch is not Thursday 23:55 or earlier; set QA_CLOCK_START earlier on that Thursday`).toBe(true)
     if (which === 'hg') {
       await writeLeadExtension({ hp: 30 })
-      const set = await setAnchorHere(0, R32.id, 0, 1)
+      const set = await setAnchorHere(0, run.before.name, 0, 1)
       expect(set.status, `Set anchor here: ${set.text}`).toBe(200)
     } else {
       // No QA record of this save's party: logged, not written.
@@ -417,54 +423,62 @@ test(`hgss-plan-weekday ${which}: Thursday ${which === 'ss' ? '23:45' : '23:50'}
     }
     await shotAll('01-launched', pages)
 
-    const runStart = await startWild(card, { plan: PLAN.name, mode: 'Run', yRange: 1 })
-    await seen(PLAN_STOP, 2, MINUTE)
-    // Thursday: the rule does not match, so the default: on HeartGold hunted on its anchor where the bot stands, on SoulSilver
-    // walked to from the save's tile, past Youngster Joey.
+    const runStart = await startPlan(card, PLAN.name)
+    // Thursday: the rule does not match, so the default's step: on HeartGold hunted on its anchor where the bot stands, on
+    // SoulSilver walked to from the save's tile, past Youngster Joey.
+    expect(fields(PLAN_PICK, (await seen(PLAN_PICK, 1, MINUTE)).line), 'the Thursday pick').toEqual([PLAN.name, 'Thursday', '23', run.before.name])
+    const tile1 = fields(START_TILE, (await seen(START_TILE, 1, MINUTE)).line)
+    expect(tile1.slice(0, 3), 'the default\'s step starts on the save\'s tile').toEqual(which === 'ss' ? ['34', '556', '374'] : run.before.at)
     let thursdayFrom = runStart
     if (which === 'ss') {
-      expect(walkOf((await seen(PLAN_WALK, 1, 2 * MINUTE)).line), 'the Thursday walk')
-        .toEqual(['Thursday', '23', run.before.name, '34', '556', ...run.before.at])
+      expect(fields(RETURNING, (await seen(RETURNING, 1, 2 * MINUTE)).line), 'the Thursday walk')
+        .toEqual([...run.before.at, '34', '556', '374'])
       await meetJoey(card, pages, runStart)
       thursdayFrom = new Date((await seen(ARRIVED, 1, 10 * MINUTE)).at).toISOString()
       expect(backendLog().filter((l) => TRAINER_STOP.test(l)), '"no second stop": the trainer stop lines').toHaveLength(1)
     }
-    const walksThursday = which === 'ss' ? 1 : 0
     const from1 = RUN_FROM.exec((await seen(RUN_FROM, 1, 2 * MINUTE)).line)!
     expect([from1[1], from1[2]], `the first Run starts on ${run.before.name}'s anchor`).toEqual(run.before.at.slice(1))
     expect(from1[3], `${run.before.name}'s run line`).toMatch(run.before.macro)
+    await expect(follows.locator('.card-header-title'), 'the follows window on the Thursday step').toHaveText(run.before.name, { timeout: 30_000 })
 
-    // Midnight: Friday 0h names the rule's milestone, walked to under the default, switched to on arrival.
-    const walk2At = await seen(PLAN_WALK, walksThursday + 1, 20 * MINUTE)
-    expect(walkOf(walk2At.line), 'the Friday walk').toEqual(['Friday', '0', run.after.name, ...run.before.at.slice(0, 2), ...run.after.at])
-    const thursday = rowsFor(run.handle, run.before.id, thursdayFrom).filter((r) => r.at < walk2At.at)
+    // The first decision past midnight: Friday 0h picks the rule's step, which ends the default's hunt there, between battles.
+    const pick2 = await seen(PLAN_PICK, 2, 20 * MINUTE)
+    expect(fields(PLAN_PICK, pick2.line), 'the Friday pick').toEqual([PLAN.name, 'Friday', '0', run.after.name])
+    const thursday = rowsFor(run.handle, run.before.name, thursdayFrom).filter((r) => r.at < pick2.at)
     expect(thursday.length, `no encounter at ${run.before.name}'s anchor before midnight (launched at ${hhmm(launchClock)}); set QA_CLOCK_START earlier`)
       .toBeGreaterThanOrEqual(1)
     for (const row of thursday) expect(run.beforeNight, `a ${row.species} at ${run.before.name}'s anchor on Thursday night`).toContain(row.species)
     const log = backendLog()
-    const walk2Index = log.flatMap((l, i) => (PLAN_WALK.test(l) ? [i] : []))[walksThursday]
-    expect(log.slice(0, walk2Index).filter((l) => (PLAN_WALK.test(l) || PLAN_NOW.test(l)) && l.includes(run.after.name)),
-      `a plan line naming ${run.after.name} before midnight`).toEqual([])
+    const pick2At = log.indexOf(pick2.line)
+    const before = log.slice(0, pick2At)
+    expect(before.filter((l) => STATE.test(l)).at(-1), 'the last state before the switch').toMatch(/State: DecideOverworldAction/)
+    expect(before.filter((l) => PLAN_PICK.test(l) && fields(PLAN_PICK, l)[3] === run.after.name), `a pick of ${run.after.name} before midnight`).toEqual([])
+    const tile2 = fields(START_TILE, (await seen(START_TILE, before.filter((l) => START_TILE.test(l)).length + 1, MINUTE)).line)
+    expect(tile2.slice(0, 2), `the Friday step starts on ${run.before.name}'s run line`).toEqual(run.before.at.slice(0, 2))
 
     if (which === 'ss') {
       // The Friday walk would meet Lyra's gatehouse scene (map script 1 on map 97): cancelled at the walk's first overworld
       // ready, before its first segment's macro has gone far.
-      await seen(FIELD_READY, log.slice(0, walk2Index).filter((l) => FIELD_READY.test(l)).length + 1, MINUTE)
+      await seen(FIELD_READY, before.filter((l) => FIELD_READY.test(l)).length + 1, MINUTE)
       await cancelEventAndBot(card)
-      expect(backendLog().slice(walk2Index).filter((l) => /\[Navigator\] Warp to map/.test(l)), 'a warp on the Friday walk before the cancel').toEqual([])
+      expect(backendLog().slice(pick2At).filter((l) => /\[Navigator\] Warp to map/.test(l)), 'a warp on the Friday walk before the cancel').toEqual([])
     } else {
-      const now = await seen(PLAN_NOW, 1, 15 * MINUTE)
-      expect(PLAN_NOW.exec(now.line)![1], 'the switch on arrival').toBe(run.after.name)
+      const walk2 = fields(RETURNING, (await seen(RETURNING, before.filter((l) => RETURNING.test(l)).length + 1, MINUTE)).line)
+      expect(walk2.slice(0, 5), 'the Friday walk').toEqual([...run.after.at, ...run.before.at.slice(0, 2)])
+      const arrived = await seen(ARRIVED, before.filter((l) => ARRIVED.test(l)).length + 1, 15 * MINUTE)
       const battles = backendLog().filter((l) => BATTLE.test(l)).length
       await seen(BATTLE, battles + 3, 10 * MINUTE)
       const after = backendLog()
-      const runs = after.slice(after.findIndex((l) => PLAN_NOW.test(l))).filter((l) => RUN_FROM.test(l)).map((l) => RUN_FROM.exec(l)!)
+      const runs = after.slice(after.indexOf(arrived.line)).filter((l) => RUN_FROM.test(l)).map((l) => RUN_FROM.exec(l)!)
       expect([runs[0][1], runs[0][2]], `the first Run after the switch starts on ${run.after.name}'s anchor`).toEqual(run.after.at.slice(1))
       for (const r of runs) expect(r[3], `a Run line not on ${run.after.name}'s line`).toMatch(run.after.macro)
+      await expect(follows.locator('.card-header-title'), 'the follows window on the Friday step').toHaveText(run.after.name, { timeout: 30_000 })
+      expect((await dashboardState())?.name, 'Bot Control\'s entry').toBe(`Plan ${PLAN.name}: ${run.after.name}`)
       await shotAll('02-friday', pages)
       await cancelEventAndBot(card)
-      const friday = rowsFor(run.handle, run.after.id, new Date(now.at).toISOString())
-      expect(friday.length, `three rows under ${run.after.id} on Friday`).toBeGreaterThanOrEqual(3)
+      const friday = rowsFor(run.handle, run.after.name, new Date(arrived.at).toISOString())
+      expect(friday.length, `three rows under ${run.after.name} on Friday`).toBeGreaterThanOrEqual(3)
       for (const row of friday) expect(run.afterNight, `a ${row.species} at ${run.after.name}'s anchor on Friday night`).toContain(row.species)
     }
 
