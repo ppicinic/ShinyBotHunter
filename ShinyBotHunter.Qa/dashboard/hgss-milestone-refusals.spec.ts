@@ -1,32 +1,36 @@
-import * as fs from 'fs'
-import * as path from 'path'
-import { expect, test, type Locator, type Page } from '@playwright/test'
-import { runDir, runMacro, shotAll, step } from './driver'
+import { expect, test, type Locator } from '@playwright/test'
+import { runMacro, shotAll, step } from './driver'
 import { X_ADDR, Y_ADDR } from './headbutt'
 import { backendLog, MINUTE, readTile } from './static'
 import {
-  applyPreset, assertLocalStores, cancelBot, launchHgss, milestoneMessages, NO_PATH, PLAN_WALK, picker, putGoal, putPlan, rows, seen, shutdown,
-  stageCopy, startAction, startFrame, startWild, teardown, WILD, writeRepel, type Frame
+  ANCHOR_HUNT, assertLocalStores, cancelBot, cardWindow, launchHgss, milestoneMessages, NO_PATH, picker, putMilestone, seen, setAnchorHere,
+  shutdown, stageCopy, startAction, startFrame, startWild, subscribe, teardown, WILD, writeRepel, type Frame
 } from './milestones'
 
-// #525 Q1c, rows hgss-plan-refused and hgss-milestone-bad-anchor: FR-15, FR-15a, FR-17, FR-18, FR-22, FR-24, FR-35, the HGSS
-// no-path case of B2a, the A3a and A3b picker items, the all-complete ending, and the headbutt picker read.
+// #525 Q1c and #621 R8b2, rows hgss-plan-refused and hgss-milestone-bad-anchor as reworked: saved milestones with a location
+// by fixture; FR-15 (not ticked for the file), FR-15a, FR-17, FR-18, FR-22, FR-24, the HGSS no-path case of B2a, the
+// launch forms' milestone lists, the all-complete ending, and the headbutt picker read.
 const HANDLE = 'HG-Refuse'
-const TITLE = 'SS-Title'
-const ROUTE32 = '36-land'
-const SURF = '36-surf'
-const HEADBUTT = '36-headbutt'
-const ROUTE47 = '151-land'
-const ROUTE30 = '34-land'
-const AZALEA = '74-headbutt'
+// A file name no scenario stages: the unticked fixture is ticked for it only.
+const ELSEWHERE = 'HG-Elsewhere'
+const ROUTE32 = 'QA Route 32'
+const SURF = 'QA Surf'
+const HEADBUTT = 'QA R32 Headbutt'
+const ROUTE47 = 'QA Route 47'
+const AZALEA = 'QA Azalea'
+const DONE = 'QA Done'
+const UNTICKED = 'QA Unticked'
+// The save's tile (qa-automation.md, QA save files: hgss.qa-route32), on Route 32's grass.
+const SAVE_TILE = [36, 474, 294]
 const NO_PATH_BACK = /\[Navigator\] No path back to start from /
-const GENERATED_ID = /^\d+-[a-z]+$/
+const RETURNING = /\[Navigator\] Returning to start/
 
-type Entry = { id: string; name: string; modality: string | null; complete: boolean; archived: boolean; order: string | null; anchor: { map: number; x: number; y: number } | null; anchorSet: boolean }
+type Entry = { name: string; modality: string | null; huntable: boolean; complete: boolean; anchor: { map: number; x: number; y: number } | null; anchorSet: boolean }
 const entries = async (): Promise<Entry[]> => (await picker(0)).json.milestones
-const entry = async (id: string): Promise<Entry> => (await entries()).find((e) => e.id === id)!
+const entry = async (name: string): Promise<Entry> => (await entries()).find((e) => e.name === name)!
 const state = async (): Promise<string> => (await (await fetch('http://localhost:5000/api/bot/getDashboardState')).json())['0']?.eventState
 const idleStates = ['None', 'NotStarted', 'Complete']
+const count = (pattern: RegExp): number => backendLog().filter((l) => pattern.test(l)).length
 
 async function openAction(card: Locator, name: string): Promise<void> {
   await card.page().getByRole('button', { name: 'Bot Control', exact: true }).click()
@@ -35,8 +39,6 @@ async function openAction(card: Locator, name: string): Promise<void> {
 const milestoneSelect = (card: Locator): Locator => card.getByTestId('param-PhaseName').first().locator('select')
 const optionValues = async (select: Locator): Promise<string[]> =>
   (await select.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))).filter((v) => v !== '')
-const optionTexts = async (select: Locator): Promise<string[]> =>
-  (await select.locator('option').evaluateAll((os) => os.map((o) => [(o as HTMLOptionElement).value, o.textContent ?? '']))).filter(([v]) => v !== '').map(([, t]) => t)
 
 // A Start refused with exactly `sentence`, and no event started.
 async function refused(args: Record<string, unknown>, sentence: string): Promise<void> {
@@ -45,101 +47,57 @@ async function refused(args: Record<string, unknown>, sentence: string): Promise
   expect(idleStates, 'an event started after a refusal').toContain(await state())
 }
 
-// The backend's log and the Admin video of the first session, before the restart overwrites them.
-function keepFirstSession(): void {
-  fs.copyFileSync(path.join(runDir, 'backend.log'), path.join(runDir, 'backend-1.log'))
-  fs.renameSync(path.join(runDir, 'admin.webm'), path.join(runDir, 'admin-1.webm'))
-}
-
-test('HGSS milestone refusals: the picker, no hunt yet, the wrong type, a bad anchor, an unreachable plan, no path, all complete', async () => {
+test('HGSS milestone refusals: not ticked, no hunt yet, the wrong type, a bad anchor, no path, all complete, the forms\' lists', async () => {
   test.setTimeout(30 * MINUTE)
   const frame: Frame = { backend: null, app: null }
   assertLocalStores()
   try {
     stageCopy(HANDLE, { rom: 'HG-Route32.nds', save: 'hgss.qa-route32' })
-    stageCopy(TITLE, { rom: 'Pokemon SoulSilver.nds', save: null })
-    let admin: Page = await startFrame(frame)
-    expect((await applyPreset('HGSS', HANDLE, 'LivingDex')).status, 'the Living dex preset').toBeLessThan(300)
-    let card = await launchHgss(admin, HANDLE)
+    const admin = await startFrame(frame)
+    const pages = { admin }
+    // The fixtures, Living dex at their locations, ticked for this file; QA Done at None (every amount 0); QA Unticked
+    // ticked for another file only.
+    for (const [name, location, gameFiles, preset] of [
+      [ROUTE32, '36-land', [HANDLE], 'LivingDex'], [SURF, '36-surf', [HANDLE], 'LivingDex'], [HEADBUTT, '36-headbutt', [HANDLE], 'LivingDex'],
+      [ROUTE47, '151-land', [HANDLE], 'LivingDex'], [AZALEA, '74-headbutt', [HANDLE], 'LivingDex'], [DONE, '36-land', [HANDLE], 'None'],
+      [UNTICKED, '36-land', [ELSEWHERE], 'LivingDex']
+    ] as const) {
+      const res = await putMilestone({ game: 'HGSS', name, location, gameFiles: [...gameFiles], archived: false, preset })
+      expect(res.status, `the fixture ${name}`).toBe(200)
+    }
+    const card = await launchHgss(admin, HANDLE)
 
-    // (a) The picker's filters on the Wild Encounter form.
-    await openAction(card, WILD)
-    const select = milestoneSelect(card)
-    const form = card.getByTestId('param-PhaseName').first().locator('xpath=../..')
-    const all = await optionValues(select)
-    step(`${all.length} milestones offered`)
-    await form.getByPlaceholder('Filter').fill('Route 32')
-    for (const text of await optionTexts(select)) expect(text.toLowerCase(), 'the text filter').toContain('route 32')
-    await form.getByPlaceholder('Filter').fill('')
-    const modality = card.getByTestId('param-PhaseName-filter')
-    await modality.selectOption('Surf')
-    for (const id of await optionValues(select)) expect(id, 'the modality filter').toMatch(/-surf$/)
-    await modality.selectOption('Custom')
-    for (const id of await optionValues(select)) expect(id, 'the Custom filter').not.toMatch(GENERATED_ID)
-    await modality.selectOption('')
-    await form.getByText('Incomplete only').click()
-    const complete = new Set((await entries()).filter((e) => e.complete).map((e) => e.id))
-    for (const id of await optionValues(select)) expect(complete.has(id), `${id} is complete but offered with Incomplete only`).toBe(false)
-    await form.getByText('Incomplete only').click()
-    // Archive Route 32 · surf and label Route 32 · grass 1-8.
-    await select.selectOption(SURF)
-    await card.getByRole('button', { name: 'Archive', exact: true }).click()
-    await expect.poll(async () => (await entry(SURF)).archived, { timeout: 10_000 }).toBe(true)
-    await select.selectOption(ROUTE32)
-    await card.getByPlaceholder('Order').fill('1-8')
-    await card.getByPlaceholder('Order').press('Tab')
-    await expect.poll(async () => (await entry(ROUTE32)).order, { timeout: 10_000 }).toBe('1-8')
-    await expect(select.locator(`option[value="${SURF}"]`), 'an archived milestone offered').toHaveCount(0, { timeout: 30_000 })
-    await form.getByText('Show archived').click()
-    await expect(select.locator(`option[value="${SURF}"]`), 'Show archived').toHaveText(/\(archived\)$/, { timeout: 30_000 })
-    await form.getByText('Show archived').click()
-    await expect(select.locator(`option[value="${ROUTE32}"]`)).toHaveText(/^1-8 Route 32 · grass/)
-    await shotAll('01-picker', { admin })
+    // (a) FR-15 at Start: a milestone ticked only for another file is not listed and is refused on this one.
+    expect((await entries()).map((e) => e.name), `${UNTICKED} is listed on ${HANDLE}`).not.toContain(UNTICKED)
+    await refused({ PhaseName: UNTICKED, EncounterType: 'Run', yRange: 1 }, `${UNTICKED} is not ticked for ${HANDLE}.`)
 
-    // The Togepi, Primo and Static forms list custom milestones only; a Chained Encounter leg lists both kinds.
+    // (b) The headbutt stand Azalea Town gets from this file's 32-bit trainer ID (2318286077 % 10 = 7: tree 3, the cheapest
+    // tree of all, a common one; it faces Up, which the picker does not carry).
+    expect((await entry(AZALEA)).anchor, 'Azalea Town · headbutt\'s stand').toMatchObject({ map: 74, x: 407, y: 456 })
+
+    // (c) The Togepi, Primo and Static forms list milestones with no location only; a Chained Encounter leg lists both kinds.
+    const all = await entries()
+    const noLocation = all.filter((e) => e.modality === null).map((e) => e.name)
+    step(`${all.length} milestones on ${HANDLE}, ${noLocation.length} with no location: ${noLocation.join(', ')}`)
+    expect(noLocation.length > 0 && noLocation.length < all.length, 'the picker has milestones of both kinds').toBe(true)
     for (const action of ['HGSS Togepi Egg', 'HGSS Primo Egg', 'HGSS Static Encounter']) {
       await openAction(card, action)
-      const ids = await optionValues(milestoneSelect(card))
-      step(`${action} offers ${ids.length}: ${ids.join(', ')}`)
-      for (const id of ids) expect(id, `${action} offers a generated milestone`).not.toMatch(GENERATED_ID)
+      await expect.poll(() => optionValues(milestoneSelect(card)), { message: `${action} offers only the milestones with no location`, timeout: 30_000 })
+        .toEqual(noLocation)
     }
     await openAction(card, 'Chained Encounter')
     await card.getByRole('button', { name: '+ Leg', exact: true }).click()
-    const legIds = await optionValues(milestoneSelect(card))
-    expect(legIds.some((id) => GENERATED_ID.test(id)) && legIds.some((id) => !GENERATED_ID.test(id)), 'a Chained Encounter leg does not list both kinds').toBe(true)
+    await expect.poll(() => optionValues(milestoneSelect(card)), { message: 'a Chained Encounter leg offers both kinds', timeout: 30_000 })
+      .toEqual(all.map((e) => e.name))
+    await shotAll('01-forms', pages)
 
-    // A dashboard reload and a backend restart keep both (Electron and the backend started again).
-    await cancelBot(card)
-    await shutdown(frame, admin)
-    keepFirstSession()
-    admin = await startFrame(frame)
-    card = await launchHgss(admin, HANDLE)
-    expect([(await entry(SURF)).archived, (await entry(ROUTE32)).order], 'after the restart').toEqual([true, '1-8'])
-    await openAction(card, WILD)
-    await milestoneSelect(card).selectOption(ROUTE32)
-    await expect(milestoneSelect(card).locator(`option[value="${ROUTE32}"]`)).toHaveText(/^1-8 Route 32 · grass/)
-    // Emptying the Order box clears the label.
-    await card.getByPlaceholder('Order').fill('')
-    await card.getByPlaceholder('Order').press('Tab')
-    await expect.poll(async () => (await entry(ROUTE32)).order, { timeout: 10_000 }).toBeNull()
-    // Route 32 · surf unarchived again, so (c) can pick it.
-    await card.getByTestId('param-PhaseName').first().locator('xpath=../..').getByText('Show archived').click()
-    await milestoneSelect(card).selectOption(SURF)
-    await card.getByRole('button', { name: 'Unarchive', exact: true }).click()
-    await expect.poll(async () => (await entry(SURF)).archived, { timeout: 10_000 }).toBe(false)
-
-    // (b) The headbutt stand Azalea Town gets from this file's 32-bit trainer ID (2318286077 % 10 = 7: tree 3, the cheapest
-    // of the trees whose kind holds a wanted species; it faces Up, which the picker does not carry).
-    const azalea = await entry(AZALEA)
-    expect(azalea.anchor, 'Azalea Town · headbutt\'s stand').toMatchObject({ map: 74, x: 407, y: 456 })
-
-    // (c) FR-15a and the type rule.
+    // (d) FR-15a and the type rule.
     await expect(startWild(card, { phase: SURF, mode: 'Run', yRange: 1 })).rejects.toThrow('Route 32 · surf: no hunt yet.')
     expect(idleStates, 'an event started after no hunt yet').toContain(await state())
     await refused({ PhaseName: ROUTE32, EncounterType: 'Headbutt' }, 'Route 32 · grass is not hunted with Headbutt.')
     await refused({ PhaseName: HEADBUTT, EncounterType: 'Run', yRange: 1 }, 'Route 32 · headbutt is not hunted with Run.')
 
-    // (d) FR-22 and FR-24: Repel so these steps start no battle; up two tiles of grass, left three onto bare ground.
+    // (e) FR-22 and FR-24: Repel so these steps start no battle; up two tiles of grass, left three onto bare ground.
     await writeRepel(250)
     await runMacro(`M.Up.292.${Y_ADDR};M.Left.471.${X_ADDR}`)
     const bare = await readTile()
@@ -152,10 +110,10 @@ test('HGSS milestone refusals: the picker, no hunt yet, the wrong type, a bad an
     await expect(anchorLine).toContainText('Anchor: map 36 (458, 339), run up-down ±7, generated')
     await anchorLine.getByRole('button', { name: 'Set anchor here', exact: true }).click()
     await expect(anchorLine).toContainText('Anchor: map 36 (471, 292), run up-down ±1, set on this file', { timeout: 10_000 })
-    const returning = backendLog().filter((l) => /\[Navigator\] Returning to start/.test(l)).length
+    const returning = count(RETURNING)
     await expect(startWild(card, { phase: ROUTE32, mode: 'Run', yRange: 1 })).rejects.toThrow('Route 32 · grass: the anchor (471, 292) is not grass.')
     expect(idleStates, 'an event started after the bad anchor').toContain(await state())
-    expect(backendLog().filter((l) => /\[Navigator\] Returning to start/.test(l)).length, 'a walk after the bad anchor').toBe(returning)
+    expect(count(RETURNING), 'a walk after the bad anchor').toBe(returning)
     await anchorLine.getByRole('button', { name: 'Clear', exact: true }).click()
     await expect(anchorLine).toContainText('Anchor: map 36 (458, 339), run up-down ±7, generated', { timeout: 10_000 })
     await expect(anchorLine.getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0)
@@ -165,51 +123,45 @@ test('HGSS milestone refusals: the picker, no hunt yet, the wrong type, a bad an
     await expect(anchorLine.locator('.text-red-400')).toHaveText('Close any menu or message and stand in the field.', { timeout: 10_000 })
     await runMacro('H.B.3;W.60')
     expect((await entry(ROUTE32)).anchorSet, 'the Set with the menu open stored an anchor').toBe(false)
+    // Back on the save's tile, which is grass, for QA Done's anchor: the walk south to its generated one meets a story trigger.
+    await runMacro(`M.Right.474.${X_ADDR};M.Down.294.${Y_ADDR}`)
+    const home = await readTile()
+    expect([home.map, home.x, home.y], 'the walk back to the save\'s tile').toEqual(SAVE_TILE)
+    const doneAnchor = await setAnchorHere(0, DONE, 0, 1)
+    expect(doneAnchor.status, `Set anchor here for ${DONE}: ${doneAnchor.text}`).toBe(200)
+    expect([doneAnchor.json.anchor.map, doneAnchor.json.anchor.x, doneAnchor.json.anchor.y], `${DONE}'s anchor on the save's tile`).toEqual(SAVE_TILE)
     await writeRepel(0)
-    await shotAll('02-anchor-refusals', { admin })
+    await shotAll('02-anchor-refusals', pages)
 
-    // (e) FR-35: a plan whose rule names Route 47, reached only by Surf from Cianwood.
-    expect((await putPlan('HGSS', { name: 'QA Refused', default: ROUTE32, rules: [{ times: ['Night'], weekdays: [], milestone: ROUTE47 }] })).status).toBeLessThan(300)
-    await refused({ HuntPlan: 'QA Refused', EncounterType: 'Run', yRange: 1 },
-      'QA Refused: Route 47 · grass\'s anchor (131, 367) cannot be reached from here without an HM.')
-
-    // (f) B2a: with no plan the hunt walks, the navigator finds no path, and the hunt parks (never Complete).
+    // (f) B2a: the hunt walks to Route 47's generated anchor, reached only by Surf from Cianwood; the navigator finds no path,
+    // and the hunt parks (never Complete). Its card is the one this run records.
+    expect((await subscribe({ game: 'HGSS', phase: ROUTE47, gameName: HANDLE })).status, `subscribe ${ROUTE47} for ${HANDLE}`).toBe(200)
+    const route47Card = await cardWindow(frame.app!, `HGSS — ${ROUTE47} (${HANDLE})`)
     await startWild(card, { phase: ROUTE47, mode: 'Run', yRange: 1 })
     await seen(NO_PATH_BACK, 1, MINUTE, { waiting: true })
     const noPath = NO_PATH.exec((await seen(NO_PATH, 1, MINUTE, { waiting: true })).line)!
-    expect(noPath.slice(1, 4), 'the no-path line').toEqual(['Route 47 · grass', '131', '367'])
+    expect(noPath.slice(1, 4), 'the no-path line').toEqual([ROUTE47, '131', '367'])
     await expect.poll(state, { timeout: 30_000 }).toBe('Waiting')
     await expect(card.getByText('Resume', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await shotAll('03-no-path', { ...pages, card: route47Card })
+    // No battle ran (the walk never started), so the player stands free on the save's tile after the cancel.
     await card.getByRole('button', { name: 'Cancel', exact: true }).click()
     await card.getByRole('button', { name: 'Yes', exact: true }).click()
     await expect(card.getByRole('button', { name: WILD, exact: true })).toBeVisible({ timeout: MINUTE })
 
-    // (g) FR-34, all complete: an empty goal and a plan; the hunt ends at its first decision with no walk and no message.
-    expect((await putGoal(HANDLE, [])).status, 'the empty goal').toBeLessThan(300)
-    expect((await putPlan('HGSS', { name: 'QA Done', default: ROUTE32, rules: [{ times: ['Night'], weekdays: [], milestone: ROUTE30 }] })).status).toBeLessThan(300)
+    // (g) FR-34, all complete: every amount 0; the hunt from its anchor, where the bot stands, ends at its first decision with
+    // no walk and no message.
     const doneStart = new Date().toISOString()
-    const walks = backendLog().filter((l) => PLAN_WALK.test(l)).length
-    const res = await startAction(0, { EventName: WILD, TargetType: 'PhaseTarget', HuntPlan: 'QA Done', EncounterType: 'Run', yRange: 1 })
-    expect(res.status, `the Start of QA Done: ${res.text}`).toBe(200)
+    const walks = count(RETURNING)
+    const anchorLines = count(ANCHOR_HUNT)
+    const res = await startAction(0, { EventName: WILD, TargetType: 'PhaseTarget', PhaseName: DONE, EncounterType: 'Run', yRange: 1 })
+    expect(res.status, `the Start of ${DONE}: ${res.text}`).toBe(200)
+    const hunt = ANCHOR_HUNT.exec((await seen(ANCHOR_HUNT, anchorLines + 1, MINUTE)).line)!
+    expect([...hunt.slice(2, 5).map(Number), hunt[6]], `${DONE}: hunting from its anchor`).toEqual([...SAVE_TILE, 'set on this file'])
     await expect.poll(state, { timeout: 2 * MINUTE, intervals: [1000] }).toBe('Complete')
-    expect(backendLog().filter((l) => PLAN_WALK.test(l)).length, 'a plan walk with every stop complete').toBe(walks)
-    expect(await milestoneMessages(doneStart), 'a milestone message for milestones complete at Start').toEqual([])
-    await shotAll('03-all-complete', { admin })
-    await cancelBot(card)
-
-    // (h) SoulSilver at the title screen: the picker lists its generated milestones (the version's own slots), and no
-    // headbutt stand, since the trainer ID does not read there.
-    card = await launchHgss(admin, TITLE, { continue: false })
-    const title = (await picker(0)).json
-    expect(title.gameFileName, 'the picker\'s file').toBe(TITLE)
-    const generated = (title.milestones as Entry[]).filter((e) => e.modality !== null)
-    step(`${generated.length} generated milestones on ${TITLE}`)
-    expect(generated.length, 'no generated milestone at the title screen').toBeGreaterThan(0)
-    expect(generated.find((e) => e.id === AZALEA)?.anchor, 'a headbutt stand with no trainer ID').toBeNull()
-    // SoulSilver's Route 30: Ledyba (165) and Weedle (13) in the morning, no Spinarak (167), unlike HeartGold's.
-    const species = ((await rows('HGSS', ROUTE30, TITLE)).json.rows as { species: number }[]).map((r) => r.species)
-    expect([species.includes(165), species.includes(13), species.includes(167)], 'Route 30 is not SoulSilver\'s').toEqual([true, true, false])
-    await shotAll('04-soulsilver-title', { admin })
+    expect(count(RETURNING), 'a walk with the milestone complete').toBe(walks)
+    expect(await milestoneMessages(doneStart), 'a milestone message for a milestone complete at Start').toEqual([])
+    await shotAll('04-all-complete', pages)
     await cancelBot(card)
     await shutdown(frame, admin)
   } finally {
